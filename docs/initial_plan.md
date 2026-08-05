@@ -228,29 +228,70 @@ each one.
 > just something to know if they ever misbehave in a similarly sandboxed
 > runner.
 
-## Phase 5 — Tenant Provisioning & Tenant Migrations
+## Phase 5 — Tenant Provisioning & Tenant Migrations ✅ done
 The riskiest phase. No HTTP yet — this is all service-level and
 script-driven so it can be proven in isolation.
 
-- [ ] Define the tenant migration track, kept entirely separate from the
-      control-plane track (different folder, different runner). Confusing
-      the two is the classic way to corrupt a multi-tenant DB.
-- [ ] Build `TenantProvisioningService.provision(company)`: creates the
-      company row, `CREATE SCHEMA`, and runs all tenant migrations —
-      atomically. If any step fails, no half-provisioned tenant survives.
-- [ ] Derive `schema_name` safely (never from raw user input; validate
-      against a strict pattern before it reaches SQL)
-- [ ] Build a "migrate all tenants" runner that applies pending tenant
-      migrations across every company schema, and reports per-schema
-      results. This is how every future tenant schema change ships.
-- [ ] Add a seed script creating a super admin plus **two** companies, each
-      with its own admin and distinguishable data. Two tenants is the
-      minimum needed to prove isolation.
-- [ ] Test: provision a company, assert the schema exists with the expected
-      tables; assert a failed provision leaves nothing behind
+- [x] Define the tenant migration track, kept entirely separate from the
+      control-plane track — `src/database/tenant/` with its own
+      `DataSource` factory and its own `tenant_migrations` bookkeeping
+      table *inside each tenant schema*, distinct from the control
+      plane's `migrations` table. The migration list is an **explicit
+      ordered array** (`tenant/migrations/index.ts`), not a glob: both
+      the provisioning path and the migrate-all runner read from it, so
+      they cannot silently disagree about what exists or in what order —
+      which in a multi-tenant system means schemas drifting apart.
+- [x] Build `TenantProvisioningService.provision(company)` — creates the
+      company row, the initial `billing` record, the first company admin,
+      `CREATE SCHEMA`, and every tenant migration, **atomically**.
+      > **Design note worth keeping:** all of this runs on ONE connection
+      > in ONE transaction. The obvious-looking alternative — calling
+      > `tenantDataSource.runMigrations()` — cannot work here, because
+      > that opens a *separate* connection which can't see this
+      > transaction's uncommitted `CREATE SCHEMA`. So the migrations are
+      > applied against the caller's `QueryRunner` with `SET LOCAL
+      > search_path`, and recorded in TypeORM's own bookkeeping format so
+      > the migrate-all runner later sees them as applied rather than
+      > pending. Verified: running `migrate:tenants` right after seeding
+      > reports both schemas as already up to date.
+- [x] Derive `schema_name` safely — slugified from the company name,
+      validated against a strict `^tenant_[a-z0-9_]{1,55}$` pattern.
+      Schema names are *identifiers*, so they cannot be bind parameters
+      and must be interpolated into DDL — that pattern is the actual
+      injection defence, and it is re-asserted immediately before every
+      DDL statement, even for values read back from our own database.
+      Collisions get a numeric suffix, so two companies with the same
+      name get distinct schemas. Non-ASCII names (e.g. Arabic) slugify to
+      a safe fallback rather than an invalid identifier.
+- [x] Build a "migrate all tenants" runner (`npm run migrate:tenants`) —
+      applies pending tenant migrations across every schema and reports
+      per-schema results. Deliberately **continues past a failing
+      schema** rather than aborting: if company 7 of 250 fails you want
+      to know 8–250 were fine, not have to work out where it stopped.
+      Exits non-zero on any failure so a deploy pipeline notices.
+- [x] Add a seed script (`npm run seed:dev`) creating a super admin plus
+      **two** fully-provisioned companies, each with its own admin and
+      its own `tenant_info` row — the minimum needed to prove isolation
+      in Phase 6. Idempotent, so it's safe to re-run.
+- [x] Test: provision a company, assert the schema exists with the
+      expected tables; assert a failed provision leaves nothing behind.
+      **Four e2e tests against the real database**, including the one
+      that actually matters: a migration failure *after* `CREATE SCHEMA`
+      must roll the schema back too. That's forced by stubbing the
+      migration to throw, then asserting no orphan schema, company row,
+      or user survives.
 
 **Proves:** a new manufacturer gets a correct, isolated, fully-migrated
-schema — and a failure leaves no mess.
+schema — and a failure leaves no mess. Both verified against real
+Postgres, not mocks.
+
+**Also added:** a `tenant_info` table in every tenant schema, recording
+which company owns that schema. Three jobs: it gives the tenant migration
+track a real table to create (so provisioning is verifiable rather than a
+no-op), it gives Phase 6's isolation test genuinely distinguishable
+per-tenant data, and it's defence in depth — code that resolves a schema
+can cross-check its recorded `company_id` against the JWT claim and fail
+closed if they ever disagree.
 
 ## Phase 6 — Tenant Resolution (the isolation guarantee)
 Still no real auth. Hand-mint JWTs so tenant resolution is tested on its

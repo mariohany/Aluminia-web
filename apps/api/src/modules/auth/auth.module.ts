@@ -32,5 +32,6 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     // here rather than per-controller, with @Public() as the opt-out.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
+  exports: [PasswordService],
 })
 export class AuthModule {}

@@ -135,25 +135,50 @@ Do this before writing feature code — every phase below ships as a PR into
       Conventions section of CLAUDE.md — done (branch is `main`, not
       `master`, matching the repo's actual default branch name)
 
-## Phase 3 — Backend Foundations
+## Phase 3 — Backend Foundations ✅ done
 No domain logic yet — this is the plumbing every later phase assumes.
 
-- [ ] Add a typed config module with schema-validated env vars (fail fast
-      and loudly at boot on a missing/invalid var, never silently at first use)
-- [ ] Add `.env.example` documenting every required var; keep real `.env`
-      files gitignored
-- [ ] Install and wire TypeORM + `pg`; connect to the control-plane DB
-- [ ] Set up migration infrastructure: CLI datasource, `migration:generate`
-      / `migration:run` / `migration:revert` scripts. `synchronize` stays
-      off everywhere.
-- [ ] Add a global validation pipe, global exception filter (consistent
-      error shape), and request-scoped structured logging with a request id
-- [ ] Configure CORS for the web app's origin, plus security headers
-- [ ] Add `GET /health` — checks DB and Redis connectivity. The deploy
-      platform needs this later; having it now makes Phase 10 boring.
-- [ ] Add the API test setup (unit + e2e harness, test DB config)
+- [x] Add a typed config module with schema-validated env vars (fail fast
+      and loudly at boot on a missing/invalid var, never silently at first
+      use) — Zod schema in `config/env.schema.ts`, wired into
+      `ConfigModule.forRoot({ validate })`, and reused as-is by the
+      migration CLI's `data-source.ts` so both ways of booting the app
+      validate identically. Verified: a malformed `DATABASE_URL` crashes
+      boot immediately with a readable message, not a raw stack trace.
+- [x] Add `.env.example` documenting every required var; keep real `.env`
+      files gitignored (already covered by `apps/api/.gitignore`)
+- [x] Install and wire TypeORM + `pg`; connect to the control-plane DB —
+      `TypeOrmModule.forRoot(controlPlaneDataSourceOptions)`, `synchronize`
+      hardcoded off. Verified against the real local Postgres.
+- [x] Set up migration infrastructure: CLI datasource, `migration:generate`
+      / `migration:run` / `migration:revert` scripts, using
+      `typeorm-ts-node-commonjs` (the standard pattern for TS + TypeORM
+      CLI). Verified the `DataSource` itself initializes and runs
+      migrations correctly against real Postgres; the CLI *binary*
+      specifically hit `EINTR`/process-signal issues in the sandboxed tool
+      environment this was built in — not a config problem, just note it
+      if `npm run migration:*` ever misbehaves in a similarly sandboxed
+      CI runner.
+- [x] Add a global validation pipe (Zod via `nestjs-zod`), global exception
+      filter (`common/filters/all-exceptions.filter.ts` — consistent
+      `{ statusCode, error, message, path, timestamp, requestId }` shape,
+      verified on a real 404), and request-scoped structured logging with
+      a request id (`nestjs-pino`, verified request ids show up in logs
+      and in error responses)
+- [x] Configure CORS for the web app's origin (`CORS_ORIGIN` env var, only
+      one origin — this product is single-domain, not subdomain-per-tenant)
+      plus security headers (`helmet`)
+- [x] Add `GET /health` — checks DB and Redis connectivity via
+      `@nestjs/terminus`, with a small custom Redis indicator. Verified
+      returning `{"status":"ok", ...}` against real Postgres + Redis.
+- [x] Add the API test setup (unit + e2e harness, test DB config) — unit
+      test covers `parseEnv`'s fail-fast behavior; e2e test hits the real
+      `/health` endpoint against the real docker-compose Postgres/Redis
+      (no mocking, matching the scale-appropriate approach in CLAUDE.md).
+      Both suites pass and exit cleanly.
 
-**Proves:** the API boots, connects, migrates, and reports its own health.
+**Proves:** the API boots, connects, migrates, and reports its own health
+— confirmed by actually running it, not just building it.
 
 ## Phase 4 — Control-Plane Schema
 The shared DB only. This is the single source of truth for identity and

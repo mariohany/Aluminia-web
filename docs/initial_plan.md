@@ -125,9 +125,10 @@ Do this before writing feature code — every phase below ships as a PR into
 - [x] Confirm the remote exists and both branches are pushed — `origin`
       is `https://github.com/mariohany/Aluminia-web.git`; `main` and `dev`
       are both pushed and tracking
-- [ ] Protect `main`: no direct pushes, PR + green CI required to merge —
-      a GitHub-side setting; no `gh` CLI in this environment, so this
-      needs to be done from the GitHub web UI (steps below)
+- ~~Protect `main` with branch-protection rules~~ — skipped by choice.
+  Solo project, not worth the overhead; `main` stays protected by
+  convention (only ever updated via `dev` → `main` merges at release time)
+  rather than a GitHub-enforced rule.
 - [x] Add a PR template (what changed / why / how it was verified) —
       `.github/PULL_REQUEST_TEMPLATE.md`
 - [x] Record commit-message and branch-naming conventions in the

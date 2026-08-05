@@ -122,11 +122,12 @@ Do this before writing feature code — every phase below ships as a PR into
       full landing page)
 - [x] Create the `dev` branch — currently the local working branch.
       "Default branch" (in the GitHub sense) is pending the remote below.
-- [ ] Confirm the remote exists and both branches are pushed — **blocked
-      on the user creating the GitHub repo and sharing the URL** (no `gh`
-      CLI in this environment, no remote configured yet)
+- [x] Confirm the remote exists and both branches are pushed — `origin`
+      is `https://github.com/mariohany/Aluminia-web.git`; `main` and `dev`
+      are both pushed and tracking
 - [ ] Protect `main`: no direct pushes, PR + green CI required to merge —
-      needs the remote above; branch protection is a GitHub-side setting
+      a GitHub-side setting; no `gh` CLI in this environment, so this
+      needs to be done from the GitHub web UI (steps below)
 - [x] Add a PR template (what changed / why / how it was verified) —
       `.github/PULL_REQUEST_TEMPLATE.md`
 - [x] Record commit-message and branch-naming conventions in the

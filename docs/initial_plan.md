@@ -25,7 +25,7 @@ turns out wrong, change it here first, then in the code.
 | **Provisioning** | Synchronous and transactional. Creating a company creates its row, its Postgres schema, and runs the tenant migrations in one transaction. No BullMQ for provisioning — at 250 companies this runs rarely. Redis/BullMQ stays reserved for email and reports. |
 | **Tokens** | Short-lived access JWT + long-lived refresh token, with rotation. Refresh tokens are tracked server-side so they can be revoked. |
 | **Sessions** | One active session per user. Logging in somewhere new invalidates the previous session. (See open question below.) |
-| **Git flow** | Feature branches → PR into `dev`. Release cut = merge `dev` → `master`, tagged as a release. Deploy fires on merge to `master`. |
+| **Git flow** | Feature branches → PR into `dev`. Release cut = merge `dev` → `main`, tagged as a release. Deploy fires on merge to `main`. |
 
 ### Open question to confirm before Phase 7
 
@@ -111,21 +111,27 @@ apps/api/src/
 Do this before writing feature code — every phase below ships as a PR into
 `dev`, so the workflow has to exist first.
 
-- [ ] Remove the nested git repo at `apps/api/.git` (left behind by
+- [x] Remove the nested git repo at `apps/api/.git` (left behind by
       `nest new`). While it exists, `apps/api` is a repo-inside-a-repo and
-      the parent can't track its contents properly.
-- [ ] Decide whether `docs/` and `CLAUDE.md` stay gitignored. They're both
-      ignored right now, so this plan file is untracked and invisible to
-      anyone else on the repo. Recommend un-ignoring both — they're
-      project documentation, not secrets.
-- [ ] Make the initial commit of the working skeleton
-- [ ] Create the `dev` branch; make it the default branch for day-to-day work
-- [ ] Confirm the remote exists and both branches are pushed
-- [ ] Protect `master`: no direct pushes, PR + green CI required to merge
-- [ ] Add a PR template (what changed / why / how it was verified)
-- [ ] Record commit-message and branch-naming conventions in the
-      Conventions section of CLAUDE.md (it's intentionally empty and
-      waiting for exactly this)
+      the parent can't track its contents properly. Had zero commits, so
+      nothing was lost.
+- [x] Decide whether `docs/` and `CLAUDE.md` stay gitignored. Un-ignored
+      both — they're project documentation, not secrets.
+- [x] Make the initial commit of the working skeleton (root commit
+      `078c16c`, 107 files — Turborepo skeleton, docker-compose, and the
+      full landing page)
+- [x] Create the `dev` branch — currently the local working branch.
+      "Default branch" (in the GitHub sense) is pending the remote below.
+- [ ] Confirm the remote exists and both branches are pushed — **blocked
+      on the user creating the GitHub repo and sharing the URL** (no `gh`
+      CLI in this environment, no remote configured yet)
+- [ ] Protect `main`: no direct pushes, PR + green CI required to merge —
+      needs the remote above; branch protection is a GitHub-side setting
+- [x] Add a PR template (what changed / why / how it was verified) —
+      `.github/PULL_REQUEST_TEMPLATE.md`
+- [x] Record commit-message and branch-naming conventions in the
+      Conventions section of CLAUDE.md — done (branch is `main`, not
+      `master`, matching the repo's actual default branch name)
 
 ## Phase 3 — Backend Foundations
 No domain logic yet — this is the plumbing every later phase assumes.
@@ -279,7 +285,7 @@ obvious. Per the decision above, deploys are driven by the branch flow.
       committed
 - [ ] Run control-plane migrations on deploy as an explicit, gated step —
       not silently at app boot, where a rollback becomes a scramble
-- [ ] Wire the release flow: merge `dev` → `master` triggers the production
+- [ ] Wire the release flow: merge `dev` → `main` triggers the production
       deploy and cuts a tagged release
 - [ ] Point the platform's health check at `GET /health`
 - [ ] Verify login → `/me` works in production, not just locally

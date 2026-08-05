@@ -180,25 +180,53 @@ No domain logic yet — this is the plumbing every later phase assumes.
 **Proves:** the API boots, connects, migrates, and reports its own health
 — confirmed by actually running it, not just building it.
 
-## Phase 4 — Control-Plane Schema
+## Phase 4 — Control-Plane Schema ✅ done
 The shared DB only. This is the single source of truth for identity and
 billing — no manufacturer business data ever lands here.
 
-- [ ] `companies` — name, status, subscription/plan, `max_users` seat
-      limit, `schema_name`, timestamps
-- [ ] `users` — email (unique), password hash, `role`
+- [x] `companies` — name, status (`active`/`suspended`), `plan`,
+      `max_users` seat limit (`CHECK > 0`), `schema_name` (unique — the
+      tenant's future Postgres schema, provisioned in Phase 5), timestamps
+- [x] `users` — email (unique), password hash, `role`
       (`super_admin` | `company_admin` | `user`), nullable `company_id`
       (null for super admins), status, timestamps
-- [ ] `billing` — subscription state per company, structured so plan
-      changes are auditable rather than overwritten in place
-- [ ] `sessions` (or `refresh_tokens`) — server-side record backing refresh
-      rotation and the one-active-session rule
-- [ ] Write the migration; run it; verify the tables against a fresh DB
-- [ ] Add DB constraints that encode the rules: unique email, FK
-      `users.company_id → companies.id`, and a check that a `super_admin`
-      has no `company_id` while other roles must have one
+- [x] `billing` — append-only history of subscription/plan changes per
+      company (`company_id`, `plan`, `max_users`, `effective_from`,
+      `notes`) — never updated in place, only ever inserted into.
+      `companies.plan`/`max_users` hold the current values for fast reads;
+      this table is the auditable record of how they got there.
+- [x] `sessions` — backs refresh-token rotation and the one-active-session
+      rule: `user_id` is **unique**, so a new login structurally replaces
+      the old session row rather than relying on application code to
+      enforce "only one."
+- [x] Write the migration; run it; verify the tables against a fresh DB —
+      hand-written (not CLI-generated; see note below), applied and
+      inspected via `psql \d` against the real local Postgres, then rolled
+      back (`down()`) and confirmed all 4 tables + 3 enum types were
+      cleanly removed, then re-applied.
+- [x] Add DB constraints that encode the rules — unique email, FK
+      `users.company_id → companies.id` (`ON DELETE RESTRICT`, so a
+      company can't be deleted out from under its users), FK
+      `billing.company_id`/`sessions.user_id` (`ON DELETE CASCADE`, since
+      that data is meaningless without its parent), and the `super_admin`
+      ⟺ no-`company_id` check constraint. **All constraints were
+      functionally tested with real inserts** (7 cases: both sides of the
+      role/company check, duplicate email, `max_users = 0`, and a second
+      session for the same user), not just declared and assumed correct.
 
-**Proves:** identity and tenancy metadata have a correct, constrained home.
+**Proves:** identity and tenancy metadata have a correct, constrained home
+— confirmed by trying to violate every rule and watching Postgres reject
+each one.
+
+> **Migration CLI note:** `migration:generate`/`migration:run` via the
+> `typeorm-ts-node-commonjs` binary hit the same sandboxed-environment
+> `EINTR` issue noted in Phase 3. This migration was hand-written (a
+> reasonable choice for a first migration where the schema is fully
+> specified up front) and verified by calling TypeORM's `DataSource` API
+> directly. The checked-in `npm run migration:*` scripts are still the
+> standard, correct way to run migrations in a normal terminal or CI —
+> just something to know if they ever misbehave in a similarly sandboxed
+> runner.
 
 ## Phase 5 — Tenant Provisioning & Tenant Migrations
 The riskiest phase. No HTTP yet — this is all service-level and

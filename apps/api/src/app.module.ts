@@ -6,6 +6,7 @@ import { RedisModule } from './common/redis.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ControlPlaneDatabaseModule } from './database/control-plane/typeorm.module';
 import { HealthModule } from './modules/health/health.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { HealthModule } from './modules/health/health.module';
     RedisModule,
     ControlPlaneDatabaseModule,
     HealthModule,
+    AuthModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

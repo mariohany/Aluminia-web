@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import type { Env } from './config/env.schema';
@@ -14,6 +15,7 @@ async function bootstrap() {
   const config = app.get<ConfigService<Env, true>>(ConfigService);
 
   app.use(helmet());
+  app.use(cookieParser());
   app.enableCors({
     origin: config.get('CORS_ORIGIN', { infer: true }),
     credentials: true,

@@ -7,6 +7,8 @@ const validEnv = {
   REDIS_URL: 'redis://localhost:6379',
   CORS_ORIGIN: 'http://localhost:5173',
   LOG_LEVEL: 'info',
+  JWT_ACCESS_SECRET: 'a'.repeat(32),
+  JWT_REFRESH_SECRET: 'b'.repeat(32),
 };
 
 function omit<T extends object, K extends keyof T>(obj: T, key: K): Omit<T, K> {

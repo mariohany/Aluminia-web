@@ -8,13 +8,10 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { UserRole } from '@repo/types/auth';
 import { Company } from './company.entity';
 
-export enum UserRole {
-  SUPER_ADMIN = 'super_admin',
-  COMPANY_ADMIN = 'company_admin',
-  USER = 'user',
-}
+export { UserRole };
 
 export enum UserStatus {
   ACTIVE = 'active',

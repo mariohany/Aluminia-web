@@ -1,0 +1,14 @@
+{
+  "heading": "Log in",
+  "subhead": "Sign in to your Aluminia account.",
+  "fields": {
+    "email": { "label": "Email" },
+    "password": { "label": "Password" }
+  },
+  "submit": {
+    "idle": "Log in",
+    "submitting": "Logging in…"
+  },
+  "error": "That email or password isn't right.",
+  "backHome": "Back to home"
+}

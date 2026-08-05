@@ -21,5 +21,12 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false
+  },
+  "ts-node": {
+    // Without this, ts-node only compiles files reachable through
+    // imports — which skips standalone .d.ts files like
+    // src/types/express.d.ts, so the seed/migration scripts fail to
+    // typecheck on `request.user` even though `nest build` is fine.
+    "files": true
   }
 }

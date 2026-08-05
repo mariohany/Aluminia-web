@@ -7,6 +7,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ControlPlaneDatabaseModule } from './database/control-plane/typeorm.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { TenancyModule } from './modules/tenancy/tenancy.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AuthModule } from './modules/auth/auth.module';
     ControlPlaneDatabaseModule,
     HealthModule,
     AuthModule,
+    TenancyModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

@@ -1,0 +1,15 @@
+{
+  "heading": "Why not a spreadsheet, or a generic CRM?",
+  "subhead": "General tools don't know your trade. That's the whole difference.",
+  "columns": {
+    "generic": "Spreadsheet / generic CRM",
+    "aluminia": "Aluminia"
+  },
+  "rows": {
+    "knowsProfiles": "Knows profiles, glass, and hardware",
+    "pricesFromDesign": "Prices a quote straight from the design",
+    "cuttingList": "Produces a work order the workshop can cut to",
+    "oneSource": "One design feeds every document — no re-typing",
+    "isolatedData": "Your data, kept separate from every other company"
+  }
+}

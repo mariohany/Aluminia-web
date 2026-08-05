@@ -1,0 +1,43 @@
+{
+  "appName": "Aluminia",
+  "nav": {
+    "howItWorks": "How it works",
+    "features": "What you get",
+    "faq": "FAQ",
+    "login": "Log in",
+    "requestQuote": "Request a quote"
+  },
+  "footer": {
+    "tagline": "From window design to work order — without re-typing anything.",
+    "contact": "Contact",
+    "email": "Email",
+    "legal": "Legal",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "copyright": "© {{year}} {{appName}}. All rights reserved."
+  },
+  "placeholder": {
+    "backHome": "Back to home",
+    "login": {
+      "title": "Login is coming soon",
+      "body": "The customer login isn't live yet. Reach out and we'll get you set up."
+    },
+    "privacy": {
+      "title": "Privacy Policy",
+      "body": "Our privacy policy is being finalized and will be published here."
+    },
+    "terms": {
+      "title": "Terms of Service",
+      "body": "Our terms of service are being finalized and will be published here."
+    }
+  },
+  "language": {
+    "switchLabel": "Language",
+    "en": "English",
+    "ar": "Arabic"
+  },
+  "phone": {
+    "label": "Call or text us",
+    "number": "+00 000 000 0000"
+  }
+}

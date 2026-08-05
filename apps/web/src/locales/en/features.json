@@ -1,0 +1,22 @@
+{
+  "heading": "What you get",
+  "subhead": "Everything follows the same workflow — design, paperwork, project.",
+  "items": {
+    "designer": {
+      "title": "Window designer",
+      "body": "Dimensions, profiles, glass types, and hardware — the single source every document is built from."
+    },
+    "paperwork": {
+      "title": "Paperwork, generated",
+      "body": "Quotes, spec sheets, and work orders, produced from the design instead of rebuilt around it."
+    },
+    "projects": {
+      "title": "Projects",
+      "body": "Every job's status in one place, from first enquiry to the day it's delivered."
+    },
+    "customers": {
+      "title": "Customers",
+      "body": "One record per customer, following them from enquiry through every project after."
+    }
+  }
+}

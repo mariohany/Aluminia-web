@@ -1,0 +1,29 @@
+{
+  "heading": "Request a quote",
+  "subhead": "Tell us a little about your company and we'll call you to understand your setup before we talk numbers.",
+  "reassurance": "We reply within one business day. No spam, no mailing list — just a call to get to know your shop.",
+  "phoneCta": "Prefer to talk now?",
+  "privacyNotice": "By submitting, you agree to our <privacyLink>Privacy Policy</privacyLink>.",
+  "fields": {
+    "companyName": { "label": "Company name" },
+    "requesterName": { "label": "Your name" },
+    "phone": { "label": "Phone number" }
+  },
+  "errors": {
+    "companyName": { "required": "Enter your company name.", "tooLong": "Company name is too long." },
+    "requesterName": { "required": "Enter your name.", "tooLong": "Name is too long." },
+    "phone": { "required": "Enter a phone number.", "invalid": "Enter a valid phone number." }
+  },
+  "submit": {
+    "idle": "Send request",
+    "submitting": "Sending…"
+  },
+  "success": {
+    "title": "Request received",
+    "body": "Thanks — we'll call you within one business day to talk through your setup."
+  },
+  "error": {
+    "title": "Something went wrong",
+    "body": "We couldn't send your request. Please try again, or call us directly."
+  }
+}

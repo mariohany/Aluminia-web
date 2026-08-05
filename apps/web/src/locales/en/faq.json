@@ -1,0 +1,29 @@
+{
+  "heading": "Frequently asked questions",
+  "items": {
+    "isolation": {
+      "question": "Is our data separate from other companies'?",
+      "answer": "Yes. Each company gets its own isolated data — nothing is ever shared or visible across companies."
+    },
+    "migration": {
+      "question": "Do we have to move everything at once?",
+      "answer": "No. We'll work with you on a pace that fits your shop, starting with the projects you're actively running."
+    },
+    "learningCurve": {
+      "question": "How long does it take to learn?",
+      "answer": "Most teams are comfortable within their first few jobs — the workflow follows how you already work, not the other way around."
+    },
+    "mobile": {
+      "question": "Does it work on a phone or tablet in the workshop?",
+      "answer": "Yes, it works in a browser on any device — no separate app to install."
+    },
+    "pricing": {
+      "question": "What does it cost?",
+      "answer": "Pricing depends on your company's size and needs. Request a quote and we'll work it out with you."
+    },
+    "arabic": {
+      "question": "Is it available in Arabic?",
+      "answer": "Yes — the whole product is available in both Arabic and English."
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "heading": "How it works",
+  "subhead": "The product in three steps.",
+  "steps": {
+    "design": {
+      "step": "1",
+      "title": "Design the window",
+      "body": "Dimensions, profiles, glass type, and hardware — captured once, in one place."
+    },
+    "paperwork": {
+      "step": "2",
+      "title": "Generate the paperwork",
+      "body": "The quote, spec sheet, and work order are built straight from the design — not retyped from it."
+    },
+    "project": {
+      "step": "3",
+      "title": "Run the project",
+      "body": "Track every job from enquiry to delivery, with the paperwork attached to the project it belongs to."
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "eyebrow": "Sound familiar?",
+  "heading": "The paperwork is where good jobs go sideways",
+  "subhead": "None of this is about your workshop's skill. It's about how much gets re-typed between the design and the door.",
+  "items": {
+    "quote": {
+      "title": "The same quote, rebuilt three times",
+      "body": "Every enquiry starts a fresh spreadsheet, even when it's close to a job you already priced last month."
+    },
+    "measurements": {
+      "title": "Measurements re-keyed by hand",
+      "body": "Dimensions get retyped from the design into the quote, then again into the work order — and every retype is a chance to get it wrong."
+    },
+    "specs": {
+      "title": "Specs that don't match what got cut",
+      "body": "By the time a job reaches the workshop, the paper spec and the actual design have quietly drifted apart."
+    },
+    "tracking": {
+      "title": "Work orders lost in chat threads",
+      "body": "There's no single place to see what stage a job is at — just a scroll through WhatsApp trying to remember."
+    }
+  }
+}

@@ -20,6 +20,10 @@ import faqEn from '@/locales/en/faq.json'
 import faqAr from '@/locales/ar/faq.json'
 import quoteFormEn from '@/locales/en/quoteForm.json'
 import quoteFormAr from '@/locales/ar/quoteForm.json'
+import loginEn from '@/locales/en/login.json'
+import loginAr from '@/locales/ar/login.json'
+import appEn from '@/locales/en/app.json'
+import appAr from '@/locales/ar/app.json'
 
 export const supportedLanguages = ['en', 'ar'] as const
 export type SupportedLanguage = (typeof supportedLanguages)[number]
@@ -50,6 +54,8 @@ void i18n
         comparison: comparisonEn,
         faq: faqEn,
         quoteForm: quoteFormEn,
+        login: loginEn,
+        app: appEn,
       },
       ar: {
         common: commonAr,
@@ -61,11 +67,25 @@ void i18n
         comparison: comparisonAr,
         faq: faqAr,
         quoteForm: quoteFormAr,
+        login: loginAr,
+        app: appAr,
       },
     },
     fallbackLng: 'en',
     supportedLngs: supportedLanguages,
-    ns: ['common', 'hero', 'problem', 'howItWorks', 'features', 'whoItsFor', 'comparison', 'faq', 'quoteForm'],
+    ns: [
+      'common',
+      'hero',
+      'problem',
+      'howItWorks',
+      'features',
+      'whoItsFor',
+      'comparison',
+      'faq',
+      'quoteForm',
+      'login',
+      'app',
+    ],
     defaultNS: 'common',
     detection: {
       // No browser-language auto-detect: first-time visitors default to

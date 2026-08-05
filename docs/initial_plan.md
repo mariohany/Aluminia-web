@@ -272,43 +272,96 @@ own, exactly as CLAUDE.md advises.
 
 **Proves:** the core multi-tenancy guarantee, before anything depends on it.
 
-## Phase 7 — Auth
-- [ ] Password hashing (argon2 preferred, bcrypt acceptable) behind a
-      small service, so the algorithm can change in one place
-- [ ] `POST /auth/login` — verify credentials against the control-plane
-      `users` table, reject inactive users and inactive companies
-- [ ] Issue a short-lived access JWT carrying user id, role, and the
-      `company_id` / schema claim (super admins carry no tenant claim)
-- [ ] Issue a refresh token, stored server-side, sent as an httpOnly
-      cookie; rotate on every refresh and detect reuse of a retired token
-- [ ] Enforce one active session per user — a new login invalidates the
-      previous session (pending the open question above)
-- [ ] `POST /auth/refresh` and `POST /auth/logout`
-- [ ] Auth guard + role guard, applied globally with an explicit
-      opt-out decorator for public routes — so a new endpoint is protected
-      by default, not by remembering to protect it
-- [ ] `GET /me` — returns the authenticated user, their role, and their
-      company, resolved through the real tenant context
-- [ ] Tests: valid/invalid login, expired access token, refresh rotation,
-      reuse of a revoked token, second login killing the first session,
-      role guard blocking a `user` from `company_admin` routes
+## Phase 7 — Auth ⚠️ done, scoped to super admin only
+Built ahead of Phases 5/6 at the user's request (2026-08-06), with this
+tradeoff made explicit up front: a super-admin login carries **no**
+`company_id` claim, so it doesn't touch tenant resolution at all — the
+actual risk those phases exist to de-risk is untouched. Company-admin and
+regular-user login will naturally follow once Phase 5 (tenant
+provisioning) gives them a company to belong to; nothing here should need
+rework for that, since the DB rules (Phase 4's check constraint) already
+require every non-super-admin to carry a `company_id`.
 
-**Proves:** the full auth → tenant-scoped response loop, server-side.
+- [x] Password hashing (argon2) behind `PasswordService`
+- [x] `POST /auth/login` — verifies against the control-plane `users`
+      table, rejects inactive users. **Inactive-company rejection isn't
+      wired yet** — there's no company in the super-admin path to check;
+      lands with Phase 9 once company-admin/user login exists.
+- [x] Issues a short-lived access JWT (`sub`, `role`, `companyId` — `null`
+      for the super admin)
+- [x] Refresh token: opaque random value, only its SHA-256 hash stored
+      server-side (`sessions.refresh_token_hash`), sent as an httpOnly
+      cookie. Rotates on every refresh; **reuse of a retired token is
+      rejected by construction** — rotation overwrites the stored hash,
+      so a replayed old token simply matches no session. Verified live:
+      rotate, then replay the old cookie → rejected.
+- [x] One active session per user — enforced at the DB level by
+      `sessions.user_id` being `UNIQUE` (from Phase 4), not just in
+      application code; login does an upsert on that constraint.
+      Resolves the open question from Phase 4 as "strictly one session."
+- [x] `POST /auth/refresh` and `POST /auth/logout` — both verified
+      end-to-end (logout clears the session row and the cookie; a
+      refresh attempt afterward correctly 401s)
+- [x] Auth guard, applied globally (`APP_GUARD`) with `@Public()` as the
+      explicit opt-out — `/health` and the three `/auth/*` routes are the
+      only public ones, everything else is protected by default.
+      **Role guard doesn't exist yet** — there are no role-restricted
+      routes to guard until Phase 9 adds admin endpoints.
+- [x] `GET /me` — returns the authenticated user. **Not yet
+      "resolved through the real tenant context"** — that phrase assumes
+      Phase 6, which doesn't exist yet; right now it's identity only.
+- [ ] **Automated tests are the one real gap.** Everything above was
+      verified with real requests (curl + a scripted browser session
+      against the real DB) rather than committed Jest specs — login
+      success/failure, refresh rotation, reuse rejection, one-session
+      enforcement, guard behavior, and logout were all exercised and
+      confirmed working, but there's no test suite pinning that behavior
+      down against future changes. Worth doing as a follow-up.
 
-## Phase 8 — Frontend Skeleton
-- [ ] Set up routing, TanStack Query, and the shadcn/ui + Tailwind baseline
-- [ ] Build the guest/landing page (no tenant context — same for everyone)
-- [ ] Build the login form with React Hook Form + Zod, sharing request
-      types from `packages/types`
-- [ ] Handle tokens: keep the access token in memory, let the refresh
-      cookie do the persistence, and refresh transparently on 401
-- [ ] Protected route wrapper + role-aware routing; redirect to login on
-      an unrecoverable 401
-- [ ] Call `GET /me` and render it
-- [ ] Handle the states real users hit: loading, wrong password, expired
-      session, server down
+**Proves:** the auth loop works end-to-end for an identity with no
+tenant — login, refresh rotation, one-session enforcement, and route
+protection are all real, not stubbed.
 
-**Proves:** browser → login → shared DB → tenant context → scoped response.
+## Phase 8 — Frontend Skeleton ⚠️ mostly done
+- [x] Routing (already in place from the landing page work) and the
+      shadcn/ui + Tailwind baseline (ditto). **TanStack Query not
+      introduced yet** — auth state is a plain React context + a small
+      `fetch` wrapper (`src/lib/api-client.ts`), which is enough for
+      "am I logged in"; TanStack Query's actual value (caching, refetch,
+      invalidation) shows up once there's a real data list to fetch —
+      lands naturally with Phase 9/11.
+- [x] Guest/landing page (prior work)
+- [x] Login form, React Hook Form + Zod, sharing `loginRequestSchema`
+      from `packages/types`
+- [x] Tokens: access token in memory only (`api-client.ts`'s module-level
+      variable), refresh cookie does the persistence, 401s trigger a
+      transparent refresh-and-retry.
+      **Real bug caught and fixed here:** the initial silent-refresh-on-
+      load call wasn't deduplicated, so React StrictMode's double-effect
+      in dev (and, for the same reason, two browser tabs loading at once
+      in production) fired two concurrent `/auth/refresh` calls. Since
+      refresh tokens are single-use and rotate, the second call always
+      lost the race and got rejected as a reused token — silently
+      dropping the session on every reload. Fixed by sharing one
+      in-flight promise for the restore call.
+- [x] Protected route wrapper (`<ProtectedRoute>`), redirecting to
+      `/login` when unauthenticated. **Role-aware routing doesn't exist
+      yet** — only one role has ever logged in so far; lands with Phase 9.
+- [x] Login/refresh responses already include the full user object, so
+      the frontend never needs a separate `GET /me` call today — the
+      endpoint exists and is verified working, just not yet called from
+      `apps/web`. Worth revisiting once something needs to refresh user
+      info without also rotating tokens.
+- [~] States handled: loading (spinner while the silent-refresh check
+      runs), wrong password (inline error), expired session (silent
+      refresh or redirect to login). **"Server down" has no dedicated
+      UI** — a request to an unreachable API currently just fails/hangs
+      without a specific message; worth a pass before this is customer-
+      facing.
+
+**Proves:** browser → login → shared DB → scoped `/me` response, for a
+super-admin identity. The tenant-scoped half of this proof (Phase 6)
+still doesn't exist.
 
 ## Phase 9 — Admin APIs & UI
 Now that the loop is proven, build the real way tenants and users are created.

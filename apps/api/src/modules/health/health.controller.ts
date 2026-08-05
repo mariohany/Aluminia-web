@@ -4,6 +4,7 @@ import {
   HealthCheckService,
   TypeOrmHealthIndicator,
 } from '@nestjs/terminus';
+import { Public } from '../../common/decorators/public.decorator';
 import { RedisHealthIndicator } from './redis.health';
 
 @Controller('health')
@@ -14,6 +15,7 @@ export class HealthController {
     private readonly redis: RedisHealthIndicator,
   ) {}
 
+  @Public()
   @Get()
   @HealthCheck()
   check() {

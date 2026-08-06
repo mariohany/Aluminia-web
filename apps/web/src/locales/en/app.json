@@ -1,6 +1,3 @@
 {
-  "loading": "Loading…",
-  "loggedInAs": "Logged in as {{email}}",
-  "placeholder": "This is where the app goes.",
-  "logout": "Log out"
+  "loading": "Loading…"
 }

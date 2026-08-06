@@ -1,0 +1,29 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "companies": "Companies",
+    "users": "Users",
+    "dataWarehouse": "Data warehouse"
+  },
+  "sidebar": {
+    "openMenu": "Open menu",
+    "loggedInAs": "Logged in as {{email}}",
+    "logout": "Log out"
+  },
+  "dashboardPage": {
+    "title": "Dashboard",
+    "comingSoon": "Statistics tiles land here in Stage D."
+  },
+  "companiesPage": {
+    "title": "Companies",
+    "comingSoon": "Company list and management lands here in Stage B."
+  },
+  "usersPage": {
+    "title": "Users",
+    "comingSoon": "User list and management lands here in Stage C."
+  },
+  "dataWarehousePage": {
+    "title": "Data warehouse",
+    "comingSoon": "Lookup table management lands here in Stage E."
+  }
+}

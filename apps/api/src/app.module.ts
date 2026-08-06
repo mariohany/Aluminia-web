@@ -11,6 +11,7 @@ import { TenancyModule } from './modules/tenancy/tenancy.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { UsersModule } from './modules/users/users.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { UsersModule } from './modules/users/users.module';
     AuditLogModule,
     CompaniesModule,
     UsersModule,
+    DashboardModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

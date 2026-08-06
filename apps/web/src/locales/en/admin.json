@@ -12,7 +12,39 @@
   },
   "dashboardPage": {
     "title": "Dashboard",
-    "comingSoon": "Statistics tiles land here in Stage D."
+    "error": "Couldn't load the dashboard. Try again.",
+    "tiles": {
+      "companies": {
+        "title": "Companies",
+        "active": "Active",
+        "archived": "Archived"
+      },
+      "liveSessions": {
+        "title": "Live sessions",
+        "description": "Users currently logged in"
+      },
+      "planDistribution": {
+        "title": "Plan distribution",
+        "empty": "No companies yet."
+      },
+      "recentActivity": {
+        "title": "Recent activity",
+        "empty": "No activity yet.",
+        "seats": "{{n}} seats"
+      },
+      "projects": {
+        "title": "Total projects",
+        "unavailable": "Not available yet — projects live in per-tenant schemas that don't exist until Phase 11."
+      },
+      "revenue": {
+        "title": "Subscription revenue",
+        "unavailable": "Not available yet — billing doesn't record a price."
+      },
+      "leads": {
+        "title": "Incoming leads",
+        "unavailable": "Not available yet — needs the landing page's backend."
+      }
+    }
   },
   "companiesPage": {
     "title": "Companies",

@@ -1,0 +1,29 @@
+{
+  "nav": {
+    "dashboard": "لوحة التحكم",
+    "companies": "الشركات",
+    "users": "المستخدمون",
+    "dataWarehouse": "مستودع البيانات"
+  },
+  "sidebar": {
+    "openMenu": "فتح القائمة",
+    "loggedInAs": "مسجل دخول بـ {{email}}",
+    "logout": "تسجيل الخروج"
+  },
+  "dashboardPage": {
+    "title": "لوحة التحكم",
+    "comingSoon": "بلاطات الإحصائيات هتيجي هنا في المرحلة D."
+  },
+  "companiesPage": {
+    "title": "الشركات",
+    "comingSoon": "قائمة الشركات وإدارتها هتيجي هنا في المرحلة B."
+  },
+  "usersPage": {
+    "title": "المستخدمون",
+    "comingSoon": "قائمة المستخدمين وإدارتهم هتيجي هنا في المرحلة C."
+  },
+  "dataWarehousePage": {
+    "title": "مستودع البيانات",
+    "comingSoon": "إدارة جداول البيانات المرجعية هتيجي هنا في المرحلة E."
+  }
+}

@@ -24,6 +24,8 @@ import loginEn from '@/locales/en/login.json'
 import loginAr from '@/locales/ar/login.json'
 import appEn from '@/locales/en/app.json'
 import appAr from '@/locales/ar/app.json'
+import adminEn from '@/locales/en/admin.json'
+import adminAr from '@/locales/ar/admin.json'
 
 export const supportedLanguages = ['en', 'ar'] as const
 export type SupportedLanguage = (typeof supportedLanguages)[number]
@@ -56,6 +58,7 @@ void i18n
         quoteForm: quoteFormEn,
         login: loginEn,
         app: appEn,
+        admin: adminEn,
       },
       ar: {
         common: commonAr,
@@ -69,6 +72,7 @@ void i18n
         quoteForm: quoteFormAr,
         login: loginAr,
         app: appAr,
+        admin: adminAr,
       },
     },
     fallbackLng: 'en',
@@ -85,6 +89,7 @@ void i18n
       'quoteForm',
       'login',
       'app',
+      'admin',
     ],
     defaultNS: 'common',
     detection: {

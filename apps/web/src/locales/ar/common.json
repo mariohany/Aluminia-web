@@ -1,5 +1,8 @@
 {
   "appName": "ألومينيا",
+  "actions": {
+    "cancel": "إلغاء"
+  },
   "nav": {
     "howItWorks": "كيف يعمل",
     "features": "ماذا ستحصل عليه",

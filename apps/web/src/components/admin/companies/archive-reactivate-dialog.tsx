@@ -18,6 +18,7 @@ import {
 
 export function ArchiveReactivateDialog({ company }: { company: CompanySummary }) {
   const { t } = useTranslation('admin')
+  const { t: tCommon } = useTranslation('common')
   const archiveMutation = useArchiveCompanyMutation(company.id)
   const reactivateMutation = useReactivateCompanyMutation(company.id)
 
@@ -35,7 +36,7 @@ export function ArchiveReactivateDialog({ company }: { company: CompanySummary }
             <AlertDialogDescription>{t('companyDetail.actions.archiveConfirmDescription')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('companyDetail.back')}</AlertDialogCancel>
+            <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               disabled={archiveMutation.isPending}
               onClick={async () => {
@@ -68,7 +69,7 @@ export function ArchiveReactivateDialog({ company }: { company: CompanySummary }
           <AlertDialogDescription>{t('companyDetail.actions.reactivateConfirmDescription')}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{t('companyDetail.back')}</AlertDialogCancel>
+          <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             disabled={reactivateMutation.isPending}
             onClick={async () => {

@@ -10,6 +10,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { TenancyModule } from './modules/tenancy/tenancy.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { CompaniesModule } from './modules/companies/companies.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { CompaniesModule } from './modules/companies/companies.module';
     TenancyModule,
     AuditLogModule,
     CompaniesModule,
+    UsersModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

@@ -106,7 +106,107 @@
   },
   "usersPage": {
     "title": "Users",
-    "comingSoon": "User list and management lands here in Stage C."
+    "createButton": "Create user",
+    "search": { "placeholder": "Search by email…" },
+    "filters": {
+      "allCompanies": "All companies",
+      "allRoles": "All roles",
+      "allStatuses": "All statuses"
+    },
+    "role": {
+      "super_admin": "Super admin",
+      "company_admin": "Company admin",
+      "user": "User"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "table": {
+      "email": "Email",
+      "role": "Role",
+      "company": "Company",
+      "status": "Status",
+      "lastActivity": "Last activity",
+      "online": "Online",
+      "offline": "Offline",
+      "never": "Never",
+      "noCompany": "—",
+      "actions": "Actions",
+      "empty": "No users yet.",
+      "noResults": "No users match your search."
+    },
+    "actions": {
+      "edit": "Edit",
+      "resetPassword": "Reset password",
+      "endSession": "End session",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "delete": "Delete permanently"
+    }
+  },
+  "createUser": {
+    "title": "Create user",
+    "description": "Adds a user to a company, within its seat limit.",
+    "fields": {
+      "email": "Email",
+      "password": "Password",
+      "role": "Role",
+      "company": "Company"
+    },
+    "submit": { "idle": "Create user", "submitting": "Creating…" },
+    "success": "{{email}} created.",
+    "error": "Couldn't create the user. Try again."
+  },
+  "editUser": {
+    "title": "Edit user",
+    "fields": {
+      "email": "Email",
+      "role": "Role",
+      "company": "Company"
+    },
+    "companyMoveWarning": "Moving {{email}} to a different company does not move anything they created — their history stays with their current company.",
+    "superAdminNoCompany": "A super admin doesn't belong to any company.",
+    "submit": { "idle": "Save changes", "submitting": "Saving…" },
+    "success": "User updated.",
+    "error": "Couldn't save changes."
+  },
+  "resetPassword": {
+    "title": "Reset password for {{email}}",
+    "description": "Sets a new password directly and ends their current session.",
+    "field": "New password",
+    "submit": { "idle": "Reset password", "submitting": "Resetting…" },
+    "success": "Password reset.",
+    "error": "Couldn't reset the password."
+  },
+  "deleteUser": {
+    "title": "Permanently delete {{email}}?",
+    "description": "Removes the user entirely. Anything they created inside their company's tenant schema keeps their user ID with no matching user — deactivating is usually the better choice.",
+    "confirmLabel": "Type {{email}} to confirm",
+    "confirmAction": "Delete permanently",
+    "success": "{{email}} deleted.",
+    "error": "That didn't work. Try again."
+  },
+  "deactivateUser": {
+    "title": "Deactivate {{email}}?",
+    "description": "This logs them out immediately and blocks login until reactivated.",
+    "confirmAction": "Deactivate",
+    "success": "{{email}} deactivated.",
+    "error": "That didn't work. Try again."
+  },
+  "reactivateUser": {
+    "title": "Reactivate {{email}}?",
+    "description": "They will be able to log in again.",
+    "confirmAction": "Reactivate",
+    "success": "{{email}} reactivated.",
+    "error": "That didn't work. Try again."
+  },
+  "endSessionUser": {
+    "title": "End {{email}}'s session?",
+    "description": "Logs them out immediately. They can log back in right away.",
+    "confirmAction": "End session",
+    "success": "Session ended for {{email}}.",
+    "error": "That didn't work. Try again."
   },
   "dataWarehousePage": {
     "title": "Data warehouse",

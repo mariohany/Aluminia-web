@@ -106,7 +106,107 @@
   },
   "usersPage": {
     "title": "المستخدمون",
-    "comingSoon": "قائمة المستخدمين وإدارتهم هتيجي هنا في المرحلة C."
+    "createButton": "إنشاء مستخدم",
+    "search": { "placeholder": "ابحث بالبريد الإلكتروني…" },
+    "filters": {
+      "allCompanies": "كل الشركات",
+      "allRoles": "كل الأدوار",
+      "allStatuses": "كل الحالات"
+    },
+    "role": {
+      "super_admin": "سوبر أدمن",
+      "company_admin": "أدمن الشركة",
+      "user": "مستخدم"
+    },
+    "status": {
+      "active": "نشط",
+      "inactive": "غير نشط"
+    },
+    "table": {
+      "email": "البريد الإلكتروني",
+      "role": "الدور",
+      "company": "الشركة",
+      "status": "الحالة",
+      "lastActivity": "آخر نشاط",
+      "online": "متصل",
+      "offline": "غير متصل",
+      "never": "أبدًا",
+      "noCompany": "—",
+      "actions": "إجراءات",
+      "empty": "لا يوجد مستخدمون بعد.",
+      "noResults": "لا يوجد مستخدمون مطابقون لبحثك."
+    },
+    "actions": {
+      "edit": "تعديل",
+      "resetPassword": "إعادة تعيين كلمة المرور",
+      "endSession": "إنهاء الجلسة",
+      "deactivate": "إيقاف",
+      "reactivate": "إعادة تنشيط",
+      "delete": "حذف نهائي"
+    }
+  },
+  "createUser": {
+    "title": "إنشاء مستخدم",
+    "description": "بيضيف مستخدم لشركة، في حدود عدد المقاعد المتاحة.",
+    "fields": {
+      "email": "البريد الإلكتروني",
+      "password": "كلمة المرور",
+      "role": "الدور",
+      "company": "الشركة"
+    },
+    "submit": { "idle": "إنشاء المستخدم", "submitting": "جاري الإنشاء…" },
+    "success": "تم إنشاء {{email}}.",
+    "error": "حصل خطأ أثناء إنشاء المستخدم. حاول تاني."
+  },
+  "editUser": {
+    "title": "تعديل المستخدم",
+    "fields": {
+      "email": "البريد الإلكتروني",
+      "role": "الدور",
+      "company": "الشركة"
+    },
+    "companyMoveWarning": "نقل {{email}} لشركة تانية مش هينقل حاجة من اللي عمله — سجله هيفضل في شركته الحالية.",
+    "superAdminNoCompany": "السوبر أدمن مش تابع لأي شركة.",
+    "submit": { "idle": "حفظ التغييرات", "submitting": "جاري الحفظ…" },
+    "success": "تم تحديث المستخدم.",
+    "error": "حصل خطأ أثناء الحفظ."
+  },
+  "resetPassword": {
+    "title": "إعادة تعيين كلمة مرور {{email}}",
+    "description": "بيحط كلمة مرور جديدة مباشرة وينهي جلسته الحالية.",
+    "field": "كلمة المرور الجديدة",
+    "submit": { "idle": "إعادة تعيين كلمة المرور", "submitting": "جاري إعادة التعيين…" },
+    "success": "تم إعادة تعيين كلمة المرور.",
+    "error": "حصل خطأ أثناء إعادة التعيين."
+  },
+  "deleteUser": {
+    "title": "حذف {{email}} نهائيًا؟",
+    "description": "ده هيمسح المستخدم بالكامل. أي حاجة عملها جوه سكيمة شركته هيفضل معاها معرّف مستخدم مالوش صاحب — الإيقاف عادةً هو الاختيار الأفضل.",
+    "confirmLabel": "اكتب {{email}} للتأكيد",
+    "confirmAction": "حذف نهائي",
+    "success": "تم حذف {{email}}.",
+    "error": "حصل خطأ. حاول تاني."
+  },
+  "deactivateUser": {
+    "title": "إيقاف {{email}}؟",
+    "description": "ده هيسجل خروجه فورًا ويمنعه من تسجيل الدخول لحد ما يترجع تنشيطه.",
+    "confirmAction": "إيقاف",
+    "success": "تم إيقاف {{email}}.",
+    "error": "حصل خطأ. حاول تاني."
+  },
+  "reactivateUser": {
+    "title": "إعادة تنشيط {{email}}؟",
+    "description": "هيقدر يسجل دخول تاني.",
+    "confirmAction": "إعادة تنشيط",
+    "success": "تم إعادة تنشيط {{email}}.",
+    "error": "حصل خطأ. حاول تاني."
+  },
+  "endSessionUser": {
+    "title": "إنهاء جلسة {{email}}؟",
+    "description": "ده هيسجل خروجه فورًا. يقدر يسجل دخول تاني على طول.",
+    "confirmAction": "إنهاء الجلسة",
+    "success": "تم إنهاء جلسة {{email}}.",
+    "error": "حصل خطأ. حاول تاني."
   },
   "dataWarehousePage": {
     "title": "مستودع البيانات",

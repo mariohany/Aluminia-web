@@ -1,5 +1,8 @@
 {
   "appName": "Aluminia",
+  "actions": {
+    "cancel": "Cancel"
+  },
   "nav": {
     "howItWorks": "How it works",
     "features": "What you get",

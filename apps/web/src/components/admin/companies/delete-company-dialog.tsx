@@ -27,6 +27,7 @@ export function DeleteCompanyDialog({
   onDeleted: () => void
 }) {
   const { t } = useTranslation('admin')
+  const { t: tCommon } = useTranslation('common')
   const [open, setOpen] = useState(false)
   const [confirmName, setConfirmName] = useState('')
   const mutation = useDeleteCompanyMutation(company.id)
@@ -77,7 +78,7 @@ export function DeleteCompanyDialog({
         </div>
 
         <AlertDialogFooter>
-          <AlertDialogCancel>{t('companyDetail.back')}</AlertDialogCancel>
+          <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             variant="destructive"
             disabled={!matches || mutation.isPending}

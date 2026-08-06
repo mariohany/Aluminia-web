@@ -16,7 +16,93 @@
   },
   "companiesPage": {
     "title": "Companies",
-    "comingSoon": "Company list and management lands here in Stage B."
+    "createButton": "Create company",
+    "search": { "placeholder": "Search by name…" },
+    "filters": {
+      "allStatuses": "All statuses",
+      "allPlans": "All plans"
+    },
+    "status": {
+      "active": "Active",
+      "suspended": "Archived"
+    },
+    "table": {
+      "name": "Name",
+      "status": "Status",
+      "plan": "Plan",
+      "seats": "Seats",
+      "createdAt": "Created",
+      "empty": "No companies yet.",
+      "noResults": "No companies match your search."
+    }
+  },
+  "createCompany": {
+    "title": "Create company",
+    "description": "Provisions a dedicated schema and creates the company's first admin.",
+    "fields": {
+      "name": "Company name",
+      "plan": "Plan",
+      "maxUsers": "Seat limit",
+      "adminEmail": "Admin email",
+      "adminPassword": "Admin password"
+    },
+    "submit": { "idle": "Create company", "submitting": "Creating…" },
+    "success": "{{name}} created.",
+    "error": "Couldn't create the company. Try again."
+  },
+  "companyDetail": {
+    "back": "Back to companies",
+    "notFound": "Company not found.",
+    "schemaName": "Schema",
+    "createdAt": "Created",
+    "updatedAt": "Last updated",
+    "editSection": {
+      "title": "Details",
+      "save": "Save changes",
+      "saving": "Saving…",
+      "success": "Company updated.",
+      "error": "Couldn't save changes."
+    },
+    "billingSection": {
+      "title": "Billing history",
+      "empty": "No billing history yet.",
+      "effectiveFrom": "Effective",
+      "notes": "Notes"
+    },
+    "usersSection": {
+      "title": "Users",
+      "empty": "No users yet.",
+      "role": "Role",
+      "status": "Status",
+      "roles": {
+        "company_admin": "Company admin",
+        "user": "User"
+      },
+      "userStatus": {
+        "active": "Active",
+        "inactive": "Inactive"
+      }
+    },
+    "actions": {
+      "archive": "Archive company",
+      "archiveConfirmTitle": "Archive {{name}}?",
+      "archiveConfirmDescription": "This logs out every user at this company immediately and blocks them from logging back in until reactivated.",
+      "archiveConfirmAction": "Archive",
+      "archiveSuccess": "{{name}} archived.",
+      "reactivate": "Reactivate company",
+      "reactivateConfirmTitle": "Reactivate {{name}}?",
+      "reactivateConfirmDescription": "Its users will be able to log in again.",
+      "reactivateConfirmAction": "Reactivate",
+      "reactivateSuccess": "{{name}} reactivated.",
+      "delete": "Delete permanently",
+      "deleteRequiresArchive": "Archive the company before it can be permanently deleted.",
+      "deleteConfirmTitle": "Permanently delete {{name}}?",
+      "deleteConfirmDescription": "This removes the tenant schema (every project, design, and document), its users, and its billing history. This cannot be undone.",
+      "deleteConfirmLabel": "Type {{name}} to confirm",
+      "deleteConfirmAction": "Delete permanently",
+      "deleteSuccess": "{{name}} deleted.",
+      "error": "That didn't work. Try again."
+    }
   },
   "usersPage": {
     "title": "Users",

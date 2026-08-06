@@ -8,6 +8,8 @@ import { ControlPlaneDatabaseModule } from './database/control-plane/typeorm.mod
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenancyModule } from './modules/tenancy/tenancy.module';
+import { AuditLogModule } from './modules/audit-log/audit-log.module';
+import { CompaniesModule } from './modules/companies/companies.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { TenancyModule } from './modules/tenancy/tenancy.module';
     HealthModule,
     AuthModule,
     TenancyModule,
+    AuditLogModule,
+    CompaniesModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

@@ -16,6 +16,13 @@ export const UserRole = {
 } as const
 export type UserRole = (typeof UserRole)[keyof typeof UserRole]
 
+// Same rationale as UserRole above: a const object, not a TS `enum`.
+export const UserStatus = {
+  ACTIVE: 'active',
+  INACTIVE: 'inactive',
+} as const
+export type UserStatus = (typeof UserStatus)[keyof typeof UserStatus]
+
 export const loginRequestSchema = z.object({
   email: z.email(),
   password: z.string().min(1),

@@ -11,6 +11,10 @@ import {
   UserStatus,
 } from '../../database/control-plane/entities/user.entity';
 import { Session } from '../../database/control-plane/entities/session.entity';
+import {
+  Company,
+  CompanyStatus,
+} from '../../database/control-plane/entities/company.entity';
 import type { Env } from '../../config/env.schema';
 import type { JwtPayload } from './jwt-payload';
 import { PasswordService } from './password.service';
@@ -36,6 +40,7 @@ export class AuthService {
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Session) private readonly sessions: Repository<Session>,
+    @InjectRepository(Company) private readonly companies: Repository<Company>,
     private readonly jwtService: JwtService,
     private readonly passwordService: PasswordService,
     private readonly config: ConfigService<Env, true>,
@@ -51,6 +56,17 @@ export class AuthService {
       // Deliberately the same error for "no such user" and "wrong
       // password" — telling them apart lets an attacker enumerate emails.
       throw new UnauthorizedException('Invalid email or password.');
+    }
+
+    // Closes the gap Phase 7 left open: a super admin carries no
+    // companyId and skips this entirely; a company-scoped user whose
+    // company has been archived is rejected here, on every login
+    // attempt, not just at the moment of archiving.
+    if (user.companyId) {
+      const company = await this.companies.findOne({ where: { id: user.companyId } });
+      if (!company || company.status !== CompanyStatus.ACTIVE) {
+        throw new UnauthorizedException('This company is not active.');
+      }
     }
 
     return this.issueTokens(user);

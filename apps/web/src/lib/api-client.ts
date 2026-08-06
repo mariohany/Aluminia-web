@@ -11,6 +11,19 @@ export class ApiError extends Error {
   }
 }
 
+// The global exception filter always shapes error bodies as
+// `{ message, ... }`. Surfacing that message (a validation failure, a
+// business-rule rejection like "already archived") is more useful to the
+// admin than a generic "something went wrong" — fall back to that only
+// when the body doesn't have one.
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError && err.body && typeof err.body === 'object' && 'message' in err.body) {
+    const message = (err.body as { message?: unknown }).message
+    if (typeof message === 'string') return message
+  }
+  return fallback
+}
+
 let accessToken: string | null = null
 
 export function setAccessToken(token: string | null): void {

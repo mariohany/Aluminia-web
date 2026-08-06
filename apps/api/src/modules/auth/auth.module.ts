@@ -5,6 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { User } from '../../database/control-plane/entities/user.entity';
 import { Session } from '../../database/control-plane/entities/session.entity';
+import { Company } from '../../database/control-plane/entities/company.entity';
 import type { Env } from '../../config/env.schema';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -14,7 +15,7 @@ import { RolesGuard } from './guards/roles.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Session]),
+    TypeOrmModule.forFeature([User, Session, Company]),
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => ({

@@ -5,11 +5,9 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { CompanyStatus } from '@repo/types/companies';
 
-export enum CompanyStatus {
-  ACTIVE = 'active',
-  SUSPENDED = 'suspended',
-}
+export { CompanyStatus };
 
 // A manufacturer (tenant). Created only by a super admin — see
 // CLAUDE.md's multi-tenancy model. `schemaName` is this company's

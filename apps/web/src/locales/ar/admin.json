@@ -16,7 +16,93 @@
   },
   "companiesPage": {
     "title": "الشركات",
-    "comingSoon": "قائمة الشركات وإدارتها هتيجي هنا في المرحلة B."
+    "createButton": "إنشاء شركة",
+    "search": { "placeholder": "ابحث بالاسم…" },
+    "filters": {
+      "allStatuses": "كل الحالات",
+      "allPlans": "كل الباقات"
+    },
+    "status": {
+      "active": "نشطة",
+      "suspended": "مؤرشفة"
+    },
+    "table": {
+      "name": "الاسم",
+      "status": "الحالة",
+      "plan": "الباقة",
+      "seats": "المقاعد",
+      "createdAt": "تاريخ الإنشاء",
+      "empty": "لا توجد شركات بعد.",
+      "noResults": "لا توجد شركات مطابقة لبحثك."
+    }
+  },
+  "createCompany": {
+    "title": "إنشاء شركة",
+    "description": "بينشئ سكيمة مخصصة ويعمل أول حساب أدمن للشركة.",
+    "fields": {
+      "name": "اسم الشركة",
+      "plan": "الباقة",
+      "maxUsers": "حد المقاعد",
+      "adminEmail": "بريد الأدمن الإلكتروني",
+      "adminPassword": "كلمة مرور الأدمن"
+    },
+    "submit": { "idle": "إنشاء الشركة", "submitting": "جاري الإنشاء…" },
+    "success": "تم إنشاء {{name}}.",
+    "error": "حصل خطأ أثناء إنشاء الشركة. حاول تاني."
+  },
+  "companyDetail": {
+    "back": "العودة للشركات",
+    "notFound": "الشركة غير موجودة.",
+    "schemaName": "السكيمة",
+    "createdAt": "تاريخ الإنشاء",
+    "updatedAt": "آخر تحديث",
+    "editSection": {
+      "title": "التفاصيل",
+      "save": "حفظ التغييرات",
+      "saving": "جاري الحفظ…",
+      "success": "تم تحديث الشركة.",
+      "error": "حصل خطأ أثناء الحفظ."
+    },
+    "billingSection": {
+      "title": "سجل الفوترة",
+      "empty": "لا يوجد سجل فوترة بعد.",
+      "effectiveFrom": "ساري من",
+      "notes": "ملاحظات"
+    },
+    "usersSection": {
+      "title": "المستخدمون",
+      "empty": "لا يوجد مستخدمون بعد.",
+      "role": "الدور",
+      "status": "الحالة",
+      "roles": {
+        "company_admin": "أدمن الشركة",
+        "user": "مستخدم"
+      },
+      "userStatus": {
+        "active": "نشط",
+        "inactive": "غير نشط"
+      }
+    },
+    "actions": {
+      "archive": "أرشفة الشركة",
+      "archiveConfirmTitle": "أرشفة {{name}}؟",
+      "archiveConfirmDescription": "ده هيسجل خروج كل مستخدمي الشركة فورًا ويمنعهم من تسجيل الدخول لحد ما الشركة ترجع تنشط.",
+      "archiveConfirmAction": "أرشفة",
+      "archiveSuccess": "تم أرشفة {{name}}.",
+      "reactivate": "إعادة تنشيط الشركة",
+      "reactivateConfirmTitle": "إعادة تنشيط {{name}}؟",
+      "reactivateConfirmDescription": "مستخدميها هيقدروا يسجلوا دخول تاني.",
+      "reactivateConfirmAction": "إعادة تنشيط",
+      "reactivateSuccess": "تم إعادة تنشيط {{name}}.",
+      "delete": "حذف نهائي",
+      "deleteRequiresArchive": "لازم تؤرشف الشركة الأول قبل ما تقدر تحذفها نهائيًا.",
+      "deleteConfirmTitle": "حذف {{name}} نهائيًا؟",
+      "deleteConfirmDescription": "ده هيمسح سكيمة الشركة بالكامل (كل مشروع وتصميم ومستند)، ومستخدميها، وسجل الفوترة بتاعها. الإجراء ده مينفعش يتراجع فيه.",
+      "deleteConfirmLabel": "اكتب {{name}} للتأكيد",
+      "deleteConfirmAction": "حذف نهائي",
+      "deleteSuccess": "تم حذف {{name}}.",
+      "error": "حصل خطأ. حاول تاني."
+    }
   },
   "usersPage": {
     "title": "المستخدمون",

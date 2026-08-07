@@ -41,3 +41,6 @@ yarn-error.log*
 .claude
 docs
 
+# Local API reference (kept up to date by hand, not shared via git)
+apps/api/postman
+

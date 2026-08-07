@@ -96,3 +96,16 @@ Keep this section updated as the manufacturing workflow gets nailed down.
 ### Testing approach
 (Fill in once the backend test harness exists — Phase 3 of
 `docs/initial_plan.md`.)
+
+### API reference (Postman)
+`apps/api/postman/Aluminia.postman_collection.json` documents every HTTP
+endpoint in `apps/api` — method, path, auth/role requirement, and the
+exact request body per its Zod schema in `packages/types`. It's
+gitignored (local reference only, not shared via git), so it doesn't
+ride along with commits automatically. **Whenever a route is added,
+removed, or its request/response shape changes in
+`apps/api/src/modules/**/*.controller.ts`, update this collection too**
+— a stale collection is worse than no collection. New routes get a
+request in the matching folder (or a new folder, matching the
+controller); removed routes get their request deleted; changed schemas
+get their example body and description updated to match.

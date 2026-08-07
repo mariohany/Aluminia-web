@@ -40,7 +40,12 @@ yarn-error.log*
 # Claude
 .claude
 docs
+.github
+.mcp.json
+CLAUDE.md
 
 # Local API reference (kept up to date by hand, not shared via git)
 apps/api/postman
 
+# Added by code-review-graph
+.code-review-graph/

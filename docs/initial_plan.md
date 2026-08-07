@@ -293,25 +293,61 @@ per-tenant data, and it's defence in depth — code that resolves a schema
 can cross-check its recorded `company_id` against the JWT claim and fail
 closed if they ever disagree.
 
-## Phase 6 — Tenant Resolution (the isolation guarantee)
-Still no real auth. Hand-mint JWTs so tenant resolution is tested on its
-own, exactly as CLAUDE.md advises.
+## Phase 6 — Tenant Resolution (the isolation guarantee) ✅ done
+Built last, not first — the opposite of this phase's original framing.
+Phase 7 (auth) and the entire admin dashboard (Phase 9) landed ahead of
+it, at the user's request each time, so by the time this phase started
+the core multi-tenancy guarantee was the one big unproven piece left
+under a working admin UI. Full design writeup, diagrams, and phase-by-
+phase build log: `docs/tenant_resolver_planing.md` (+ its visual
+companion). Summary here; that doc is the source of truth.
 
-- [ ] Build the request-scoped tenant context: read the tenant claim,
-      resolve it to a real company, expose it to the request
-- [ ] Build `TenantConnectionService`: resolves the right connection /
-      `search_path` for the request's tenant
-- [ ] Fail closed on every bad path: no claim, unknown company, inactive
-      company, or a claim the user isn't entitled to → reject. Never
-      default to a schema.
-- [ ] Ensure connection cleanup — a pooled connection must never carry one
-      tenant's `search_path` into the next request
-- [ ] Add a temporary endpoint that returns tenant-scoped data
-- [ ] **Isolation test:** call it with tenant A's and tenant B's tokens,
-      assert each sees only its own rows; assert a missing/garbage/unknown
-      tenant claim is rejected rather than served
+Real auth already existing changed the *test* strategy, not the design:
+the happy-path isolation test logs in for real through `/auth/login`
+rather than hand-minting a JWT, since that's what an actual client does.
+Hand-minted JWTs (via the app's own `JwtService`) are still used
+surgically for the two rejection paths a real login can never produce —
+a forged `companyId` that doesn't exist, and a token that stays
+technically valid after its company is archived mid-session.
 
-**Proves:** the core multi-tenancy guarantee, before anything depends on it.
+- [x] Built the request-scoped tenant context — split across two pieces
+      rather than one: `TenantGuard` (a plain singleton, like
+      `RolesGuard`) resolves the claim to a real, active company and
+      does everything decidable without a tenant connection; the
+      request-scoped `TenantContextService` is the ergonomic entry point
+      controllers inject, trusting the guard already ran
+- [x] Built `TenantConnectionService.runInSchema(schema, work)` — opens
+      a transaction, `SET LOCAL search_path`, runs the work, commits,
+      releases; rollback guarded against a transaction Postgres already
+      ended, so a failed commit can't mask the real error
+- [x] Fails closed on every bad path — no claim (a super admin) → `403`;
+      unknown company → `401`; archived company, **re-checked live on
+      every request** rather than trusted from token-issue time → `403`;
+      a corrupted/invalid stored schema name → refused before any SQL
+      runs. Never a default schema, on any path.
+- [x] Connection cleanup verified, not just claimed: `SET LOCAL` is
+      scoped to the transaction, so Postgres itself discards it on
+      commit *and* rollback. Confirmed the test can actually fail —
+      downgrading `SET LOCAL` to a plain `SET` in a throwaway edit made
+      3 of 7 connection tests fail, with the pooled connection coming
+      back still carrying the previous tenant's schema.
+- [x] Temporary endpoint (`GET /tenant/whoami`) — but not the usual kind
+      of temporary. It lives entirely under `apps/api/test/fixtures/`
+      and was never added to `AppModule` or anything in `src/` at any
+      point, so there was nothing to remember to delete before merging.
+      `grep -rn whoami apps/api/src` → zero hits, confirmed.
+- [x] **Isolation test**, real Postgres, real HTTP, no mocking: two
+      provisioned companies, real `/auth/login` for each admin, each
+      token sees only its own company through the same route — plus
+      every rejection path above, including the two a real login can't
+      produce. 5 cases.
+
+**Tested:** 33 unit + 21 e2e across the three implementation commits
+(`86629cb` plumbing, `ab00efd` request resolution, `af536be` the
+isolation test itself), all green; build and typecheck clean throughout.
+
+**Proves:** the core multi-tenancy guarantee, now that Phase 11
+(Projects) is the next thing that will depend on it.
 
 ## Phase 7 — Auth ⚠️ done, scoped to super admin only
 Built ahead of Phases 5/6 at the user's request (2026-08-06), with this
@@ -452,15 +488,37 @@ obvious. Per the decision above, deploys are driven by the branch flow.
 
 **Proves:** the tenant plumbing carries a real domain entity end to end.
 
-## Phase 12 — Shared Lookup Data
-- [ ] Add `lookup_values` and `lookup_meta` (with a `version` column) to
-      the shared DB
-- [ ] Build `LookupsService` using the Redis cache-aside pattern, keyed by
-      `lookups:v{version}`
-- [ ] Bump `lookup_meta.version` in the same transaction as any write to
-      `lookup_values`, so a failed write can't leave a stale cache key live
-- [ ] Expose `GET /lookups`; cache client-side with TanStack Query
-      (`staleTime: Infinity`)
+## Phase 12 — Shared Lookup Data ✅ done
+Landed as Stage E of the admin dashboard build
+(`docs/admin_dashboard_planing.md`), not as a standalone pass over this
+phase — these checkboxes were left stale after that shipped. Design
+diverged from the sketch below in one real way: **nine typed tables**
+(glass, colour, and systems clusters) rather than a single generic
+`lookup_values` blob, so every foreign key — "don't let a referenced
+value silently disappear" — is a real, enforced constraint instead of an
+advisory check. The version-per-write mechanism landed as designed, just
+via a statement-level Postgres trigger rather than application code, so
+a tenth table added later can't forget to wire it.
+
+- [x] Nine tables + `lookup_meta`, one migration
+      (`1786032288461-AddLookupTables`)
+- [x] `bump_lookup_version()` — a statement-level trigger on every
+      lookup table, not application code, so a failed write structurally
+      cannot leave a stale cache key live
+- [x] Redis cache-aside on `lookups:v{n}:{slice}`, sliced by cluster
+      (glass / colors / systems) rather than one blob, so a colour picker
+      doesn't pull the ~1MB systems catalogue
+- [x] `GET /lookups/{slice}` + `GET /lookups/version` — any authenticated
+      user, read-only; admin CRUD per table, super-admin only
+- [x] Client-side: the version lives in the TanStack Query key itself
+      (`['lookups', slice, version]`) with `staleTime: Infinity`, so a
+      bump is what triggers a refetch — closing the hole where
+      `staleTime: Infinity` alone would leave a tab open across a bump
+      never refetching
+
+See `docs/admin_dashboard_planing.md`'s Section 4 for the full table
+schemas, the trigger mechanism, and the open questions that remain
+(currency, `ColorPrice.type` as a real enum, profile image storage).
 
 ---
 

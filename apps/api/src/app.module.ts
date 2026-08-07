@@ -5,6 +5,7 @@ import { LoggerModule } from './common/logger.module';
 import { RedisModule } from './common/redis.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ControlPlaneDatabaseModule } from './database/control-plane/typeorm.module';
+import { TenantDatabaseModule } from './database/tenant/typeorm.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenancyModule } from './modules/tenancy/tenancy.module';
@@ -20,6 +21,7 @@ import { LookupsModule } from './modules/lookups/lookups.module';
     LoggerModule,
     RedisModule,
     ControlPlaneDatabaseModule,
+    TenantDatabaseModule,
     HealthModule,
     AuthModule,
     TenancyModule,

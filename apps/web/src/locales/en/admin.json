@@ -242,6 +242,127 @@
   },
   "dataWarehousePage": {
     "title": "Data warehouse",
-    "comingSoon": "Lookup table management lands here in Stage E."
+    "version": "v{{version}}",
+    "clusters": {
+      "glass": "Glass",
+      "colors": "Colour",
+      "systems": "Systems"
+    },
+    "tables": {
+      "glass": "Glass",
+      "glassCombinations": "Glass combinations",
+      "colors": "Colours",
+      "colorBrands": "Colour brands",
+      "colorPrices": "Colour prices",
+      "systemBrands": "System brands",
+      "systemCatalogs": "System catalogues",
+      "systemProfiles": "System profiles"
+    },
+    "createButtons": {
+      "glass": "Add glass",
+      "color": "Add colour",
+      "colorBrand": "Add brand",
+      "colorPrice": "Add price",
+      "systemBrand": "Add brand",
+      "systemCatalog": "Add catalogue",
+      "systemProfile": "Add profile"
+    },
+    "empty": {
+      "glass": "No glass yet.",
+      "color": "No colours yet.",
+      "colorBrand": "No brands yet.",
+      "colorPrice": "No prices yet.",
+      "systemBrand": "No brands yet.",
+      "systemCatalog": "No catalogues yet.",
+      "systemProfile": "No profiles yet."
+    },
+    "deleteWarnings": {
+      "glass": "Blocked if any glass combination still uses it.",
+      "color": "Blocked if any glass combination still uses it.",
+      "colorBrand": "Blocked if it still has prices.",
+      "systemBrand": "Blocked if it still has catalogues.",
+      "systemCatalog": "Blocked if it still has profiles."
+    },
+    "fields": {
+      "name": "Name",
+      "code": "Code",
+      "hex": "Hex",
+      "brand": "Brand",
+      "type": "Finish type",
+      "price": "Price",
+      "thickness": "Thickness (mm)",
+      "weightPerSqm": "Weight (kg/m²)",
+      "pricePerSqm": "Price (per m²)",
+      "systemType": "System type",
+      "maxGlassThickness": "Max glass thickness (mm)",
+      "maxSashWeight": "Max sash weight (kg)",
+      "catalog": "Catalogue",
+      "profileNo": "Profile no.",
+      "profileType": "Profile type",
+      "weight": "Weight (kg/m)",
+      "perimeter": "Perimeter (mm)",
+      "inertiaIx": "Inertia Ix (cm⁴)",
+      "inertiaIy": "Inertia Iy (cm⁴)"
+    },
+    "systemType": {
+      "sliding": "Sliding",
+      "hinged": "Hinged",
+      "curtain_wall": "Curtain wall"
+    },
+    "profileType": {
+      "frame": "Frame",
+      "leaf": "Leaf",
+      "transom": "Transom",
+      "glass_beading": "Glass beading",
+      "insert": "Insert",
+      "sliding_insert": "Sliding insert",
+      "control_rod": "Control rod"
+    },
+    "messages": {
+      "createSuccess": "Created.",
+      "updateSuccess": "Saved.",
+      "deleteSuccess": "Deleted.",
+      "deleteConfirmTitle": "Delete {{name}}?",
+      "error": "That didn't work. Try again.",
+      "bulkDeleteSuccess": "Deleted {{count}}.",
+      "bulkDeletePartial": "Deleted {{succeeded}}, but {{failed}} couldn't be deleted (likely still in use).",
+      "bulkDuplicateSuccess": "Duplicated {{count}}.",
+      "bulkDuplicatePartial": "Duplicated {{succeeded}}, but {{failed}} failed."
+    },
+    "bulk": {
+      "selectAll": "Select all",
+      "selectedCount": "{{count}} selected",
+      "duplicate": "Duplicate",
+      "delete": "Delete",
+      "clear": "Clear",
+      "copySuffix": "copy",
+      "deleteConfirmTitle": "Delete {{count}} selected?"
+    },
+    "combinationEditor": {
+      "createButton": "Add combination",
+      "editButton": "Edit",
+      "name": "Name",
+      "totalThickness": "Total thickness",
+      "items": "Items",
+      "empty": "No combinations yet.",
+      "description": "Build the ordered layer stack — sheets and gaps, in order.",
+      "runningTotal": "Total: {{total}} mm",
+      "noItems": "No items yet. Add a sheet or a gap to start.",
+      "kindSheet": "Sheet",
+      "kindGap": "Gap",
+      "selectGlass": "Select glass",
+      "selectColorOptional": "Colour (optional)",
+      "noColor": "No colour",
+      "gapTypeSpacer": "Spacer (air gap)",
+      "gapTypeLaminated": "Laminated (interlayer)",
+      "gapThickness": "Thickness (mm)",
+      "isGeorgian": "Georgian bars",
+      "columns": "Columns",
+      "rows": "Rows",
+      "addSheet": "Add sheet",
+      "addGap": "Add gap",
+      "addGapDisabled": "Add a sheet first — a combination can't start with a gap.",
+      "save": "Save combination"
+    }
   }
 }

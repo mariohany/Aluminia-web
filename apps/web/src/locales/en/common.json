@@ -1,7 +1,9 @@
 {
   "appName": "Aluminia",
   "actions": {
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete"
   },
   "nav": {
     "howItWorks": "How it works",

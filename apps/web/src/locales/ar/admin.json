@@ -242,6 +242,127 @@
   },
   "dataWarehousePage": {
     "title": "مستودع البيانات",
-    "comingSoon": "إدارة جداول البيانات المرجعية هتيجي هنا في المرحلة E."
+    "version": "الإصدار {{version}}",
+    "clusters": {
+      "glass": "الزجاج",
+      "colors": "الألوان",
+      "systems": "السكاشن"
+    },
+    "tables": {
+      "glass": "الزجاج",
+      "glassCombinations": "تركيبات الزجاج",
+      "colors": "الألوان",
+      "colorBrands": "ماركات الألوان",
+      "colorPrices": "أسعار الألوان",
+      "systemBrands": "ماركات السكاشن",
+      "systemCatalogs": "كتالوجات السكاشن",
+      "systemProfiles": "بروفايلات السكاشن"
+    },
+    "createButtons": {
+      "glass": "إضافة زجاج",
+      "color": "إضافة لون",
+      "colorBrand": "إضافة ماركة",
+      "colorPrice": "إضافة سعر",
+      "systemBrand": "إضافة ماركة",
+      "systemCatalog": "إضافة كتالوج",
+      "systemProfile": "إضافة بروفايل"
+    },
+    "empty": {
+      "glass": "لا يوجد زجاج بعد.",
+      "color": "لا توجد ألوان بعد.",
+      "colorBrand": "لا توجد ماركات بعد.",
+      "colorPrice": "لا توجد أسعار بعد.",
+      "systemBrand": "لا توجد ماركات بعد.",
+      "systemCatalog": "لا توجد كتالوجات بعد.",
+      "systemProfile": "لا توجد بروفايلات بعد."
+    },
+    "deleteWarnings": {
+      "glass": "الحذف هيتمنع لو أي تركيبة زجاج لسه مستخدماه.",
+      "color": "الحذف هيتمنع لو أي تركيبة زجاج لسه مستخدماه.",
+      "colorBrand": "الحذف هيتمنع لو لسه ليها أسعار.",
+      "systemBrand": "الحذف هيتمنع لو لسه ليها كتالوجات.",
+      "systemCatalog": "الحذف هيتمنع لو لسه ليه بروفايلات."
+    },
+    "fields": {
+      "name": "الاسم",
+      "code": "الكود",
+      "hex": "كود اللون (Hex)",
+      "brand": "الماركة",
+      "type": "نوع التشطيب",
+      "price": "السعر",
+      "thickness": "السمك (مم)",
+      "weightPerSqm": "الوزن (كجم/م²)",
+      "pricePerSqm": "السعر (للمتر المربع)",
+      "systemType": "نوع السكة",
+      "maxGlassThickness": "أقصى سمك زجاج (مم)",
+      "maxSashWeight": "أقصى وزن للدفة (كجم)",
+      "catalog": "الكتالوج",
+      "profileNo": "رقم البروفايل",
+      "profileType": "نوع البروفايل",
+      "weight": "الوزن (كجم/م)",
+      "perimeter": "المحيط (مم)",
+      "inertiaIx": "عزم القصور Ix (سم⁴)",
+      "inertiaIy": "عزم القصور Iy (سم⁴)"
+    },
+    "systemType": {
+      "sliding": "سحاب",
+      "hinged": "مفصلي",
+      "curtain_wall": "واجهة زجاجية"
+    },
+    "profileType": {
+      "frame": "برواز",
+      "leaf": "دفة",
+      "transom": "عارضة",
+      "glass_beading": "ليسة تثبيت الزجاج",
+      "insert": "إنسرت",
+      "sliding_insert": "إنسرت سحاب",
+      "control_rod": "ذراع تحكم"
+    },
+    "messages": {
+      "createSuccess": "تم الإنشاء.",
+      "updateSuccess": "تم الحفظ.",
+      "deleteSuccess": "تم الحذف.",
+      "deleteConfirmTitle": "حذف {{name}}؟",
+      "error": "حصل خطأ. حاول تاني.",
+      "bulkDeleteSuccess": "اتحذف {{count}}.",
+      "bulkDeletePartial": "اتحذف {{succeeded}}، لكن {{failed}} متقدرش يتحذف (غالبًا لسه مستخدم).",
+      "bulkDuplicateSuccess": "اتعمل نسخ لـ {{count}}.",
+      "bulkDuplicatePartial": "اتعمل نسخ لـ {{succeeded}}، لكن {{failed}} فشل."
+    },
+    "bulk": {
+      "selectAll": "تحديد الكل",
+      "selectedCount": "متحدد {{count}}",
+      "duplicate": "نسخ",
+      "delete": "حذف",
+      "clear": "إلغاء التحديد",
+      "copySuffix": "نسخة",
+      "deleteConfirmTitle": "حذف {{count}} عناصر محددة؟"
+    },
+    "combinationEditor": {
+      "createButton": "إضافة تركيبة",
+      "editButton": "تعديل",
+      "name": "الاسم",
+      "totalThickness": "إجمالي السمك",
+      "items": "الطبقات",
+      "empty": "لا توجد تركيبات بعد.",
+      "description": "كوّن طبقات الزجاج بالترتيب — شرائح وفراغات.",
+      "runningTotal": "الإجمالي: {{total}} مم",
+      "noItems": "لا توجد طبقات بعد. ضيف شريحة أو فراغ للبدء.",
+      "kindSheet": "شريحة زجاج",
+      "kindGap": "فراغ",
+      "selectGlass": "اختر الزجاج",
+      "selectColorOptional": "اللون (اختياري)",
+      "noColor": "بدون لون",
+      "gapTypeSpacer": "سبيسر (فراغ هوائي)",
+      "gapTypeLaminated": "لامينيتد (طبقة لاصقة)",
+      "gapThickness": "السمك (مم)",
+      "isGeorgian": "قوائم جورجية",
+      "columns": "أعمدة",
+      "rows": "صفوف",
+      "addSheet": "إضافة شريحة",
+      "addGap": "إضافة فراغ",
+      "addGapDisabled": "ضيف شريحة زجاج الأول — التركيبة مينفعش تبدأ بفراغ.",
+      "save": "حفظ التركيبة"
+    }
   }
 }

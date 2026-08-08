@@ -148,7 +148,7 @@ function GlassTab() {
       columns={[
         { header: t('dataWarehousePage.fields.name'), cell: (row) => row.name },
         { header: t('dataWarehousePage.fields.thickness'), cell: (row) => `${row.thickness} mm` },
-        { header: t('dataWarehousePage.fields.pricePerSqm'), cell: (row) => row.pricePerSqm },
+        { header: t('dataWarehousePage.fields.pricePerSqm'), cell: (row) => `${row.pricePerSqm.toFixed(2)} EGP` },
       ]}
       useList={useGlassQuery}
       useCreate={useCreateGlassMutation}
@@ -226,7 +226,7 @@ function ColorPricesTab() {
       columns={[
         { header: t('dataWarehousePage.fields.brand'), cell: (row) => row.brandName },
         { header: t('dataWarehousePage.fields.type'), cell: (row) => row.type },
-        { header: t('dataWarehousePage.fields.price'), cell: (row) => row.price },
+        { header: t('dataWarehousePage.fields.price'), cell: (row) => `${row.price.toFixed(2)} EGP` },
       ]}
       useList={useColorPricesQuery}
       useCreate={useCreateColorPriceMutation}

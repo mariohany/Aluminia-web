@@ -49,6 +49,25 @@ export class UsersService {
     );
   }
 
+  /**
+   * The same list, narrowed to one company. Used by the company-admin
+   * surface, where `companyId` comes from the caller's JWT and never
+   * from the request — a company admin passing another company's id
+   * must not be able to reach it.
+   */
+  async listForCompany(companyId: string): Promise<UserSummary[]> {
+    const [users, company, sessions] = await Promise.all([
+      this.users.find({ where: { companyId }, order: { createdAt: 'DESC' } }),
+      this.companies.findOne({ where: { id: companyId } }),
+      this.sessions.find(),
+    ]);
+    const sessionByUserId = new Map(sessions.map((s) => [s.userId, s]));
+
+    return users.map((user) =>
+      toUserSummary(user, company?.name ?? null, sessionByUserId.get(user.id) ?? null),
+    );
+  }
+
   async create(input: CreateUserInput, actorId: string): Promise<UserSummary> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -90,6 +109,10 @@ export class UsersService {
     }
   }
 
+  // Deliberately has no company-scoped variant: this is the route that
+  // changes a user's role and company assignment, which is super-admin
+  // work by definition. A company admin gets no editing surface here at
+  // all — see CompanyUsersController.
   async update(id: string, input: UpdateUserInput, actorId: string): Promise<UserSummary> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -156,7 +179,21 @@ export class UsersService {
     }
   }
 
-  async deactivate(id: string, actorId: string): Promise<UserSummary> {
+
+  /**
+   * Company-scoped variants take `scopeCompanyId`. When present, it is
+   * applied to the SAME query that loads the row — not checked
+   * afterwards — so there is no window between "is this user in my
+   * company?" and acting on them, and no second code path to keep in
+   * agreement with this one. A row outside the scope simply isn't
+   * found, which surfaces as a 404 rather than a 403: a company admin
+   * must not be able to learn that another company's user exists.
+   */
+  async deactivate(
+    id: string,
+    actorId: string,
+    scopeCompanyId?: string,
+  ): Promise<UserSummary> {
     if (id === actorId) throw new ForbiddenException('You cannot deactivate your own account.');
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -164,7 +201,9 @@ export class UsersService {
     await queryRunner.startTransaction();
 
     try {
-      const user = await queryRunner.manager.findOne(User, { where: { id } });
+      const user = await queryRunner.manager.findOne(User, {
+        where: scopeCompanyId ? { id, companyId: scopeCompanyId } : { id },
+      });
       if (!user) throw new NotFoundException('User not found.');
       if (user.status === UserStatus.INACTIVE) {
         throw new BadRequestException('User is already inactive.');
@@ -197,13 +236,19 @@ export class UsersService {
     }
   }
 
-  async reactivate(id: string, actorId: string): Promise<UserSummary> {
+  async reactivate(
+    id: string,
+    actorId: string,
+    scopeCompanyId?: string,
+  ): Promise<UserSummary> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      const user = await queryRunner.manager.findOne(User, { where: { id } });
+      const user = await queryRunner.manager.findOne(User, {
+        where: scopeCompanyId ? { id, companyId: scopeCompanyId } : { id },
+      });
       if (!user) throw new NotFoundException('User not found.');
       if (user.status === UserStatus.ACTIVE) {
         throw new BadRequestException('User is already active.');
@@ -231,13 +276,20 @@ export class UsersService {
     }
   }
 
-  async resetPassword(id: string, newPassword: string, actorId: string): Promise<void> {
+  async resetPassword(
+    id: string,
+    newPassword: string,
+    actorId: string,
+    scopeCompanyId?: string,
+  ): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      const user = await queryRunner.manager.findOne(User, { where: { id } });
+      const user = await queryRunner.manager.findOne(User, {
+        where: scopeCompanyId ? { id, companyId: scopeCompanyId } : { id },
+      });
       if (!user) throw new NotFoundException('User not found.');
 
       user.passwordHash = await this.passwordService.hash(newPassword);
@@ -280,7 +332,12 @@ export class UsersService {
     });
   }
 
-  async remove(id: string, confirmEmail: string, actorId: string): Promise<void> {
+  async remove(
+    id: string,
+    confirmEmail: string,
+    actorId: string,
+    scopeCompanyId?: string,
+  ): Promise<void> {
     if (id === actorId) throw new ForbiddenException('You cannot delete your own account.');
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -288,7 +345,9 @@ export class UsersService {
     await queryRunner.startTransaction();
 
     try {
-      const user = await queryRunner.manager.findOne(User, { where: { id } });
+      const user = await queryRunner.manager.findOne(User, {
+        where: scopeCompanyId ? { id, companyId: scopeCompanyId } : { id },
+      });
       if (!user) throw new NotFoundException('User not found.');
       if (confirmEmail !== user.email) {
         throw new BadRequestException('Email confirmation does not match.');

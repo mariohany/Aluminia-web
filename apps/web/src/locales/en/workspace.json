@@ -1,0 +1,153 @@
+{
+  "openMenu": "Open menu",
+  "rail": {
+    "projects": "Projects",
+    "manage": "Manage",
+    "logout": "Log out"
+  },
+  "tree": {
+    "searchPlaceholder": "Search…",
+    "loading": "Loading…",
+    "empty": "No clients yet. Add one to get started.",
+    "noMatches": "Nothing matches that search.",
+    "noProjects": "No projects yet",
+    "clientActions": "Actions for {{name}}",
+    "expand": "Expand",
+    "collapse": "Collapse"
+  },
+  "canvas": {
+    "nothingSelected": "No project selected",
+    "nothingSelectedHint": "Pick a project from the tree, or create your first client.",
+    "designerComing": "Window designer",
+    "designerHint": "The design surface for this project will live here.",
+    "clientSelectedHint": "Create a project for this client, or pick one from the tree."
+  },
+  "manage": {
+    "title": "Manage",
+    "seats": "{{used}} of {{max}} seats",
+    "addUser": "Add user",
+    "loadError": "Couldn't load the team. Try again.",
+    "fields": {
+      "email": "Email",
+      "password": "Password",
+      "newPassword": "New password"
+    },
+    "createUser": {
+      "title": "Add a colleague",
+      "description": "Adds a user to your company, within your seat limit.",
+      "submit": "Add user",
+      "submitting": "Adding…",
+      "success": "{{email}} added.",
+      "error": "Couldn't add that user. Try again."
+    },
+    "resetPassword": {
+      "title": "Reset password for {{email}}",
+      "description": "Sets a new password directly and ends their current session.",
+      "submit": "Reset password",
+      "submitting": "Resetting…",
+      "success": "Password reset.",
+      "error": "Couldn't reset the password."
+    },
+    "deleteUser": {
+      "title": "Permanently delete this user?",
+      "warning": "This permanently deletes {{email}}. This cannot be undone.",
+      "confirmLabel": "Type {{email}} to confirm",
+      "success": "{{email}} deleted.",
+      "error": "Couldn't delete that user."
+    },
+    "deactivateUser": {
+      "title": "Deactivate {{email}}?",
+      "description": "This logs them out immediately and blocks login until reactivated.",
+      "confirmAction": "Deactivate",
+      "success": "{{email}} deactivated."
+    },
+    "reactivateUser": {
+      "title": "Reactivate {{email}}?",
+      "description": "They will be able to log in again.",
+      "confirmAction": "Reactivate",
+      "success": "{{email}} reactivated."
+    },
+    "actionError": "That didn't work. Try again.",
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "actions": {
+      "resetPassword": "Reset password",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "delete": "Delete"
+    },
+    "table": {
+      "email": "Email",
+      "status": "Status",
+      "lastActivity": "Last activity",
+      "actions": "Actions",
+      "online": "Online",
+      "never": "Never",
+      "empty": "No one else on your team yet."
+    }
+  },
+  "fields": {
+    "client": "Client",
+    "clientPlaceholder": "Choose a client",
+    "clientRequired": "Pick a client, or create one.",
+    "enName": "Name (English)",
+    "arName": "Name (Arabic)",
+    "enAddress": "Site address (English)",
+    "arAddress": "Site address (Arabic)",
+    "phone": "Site contact phone",
+    "email": "Site contact email",
+    "notes": "Notes",
+    "optional": "(optional)"
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "create": "Create",
+    "save": "Save changes",
+    "edit": "Edit",
+    "delete": "Delete",
+    "newClient": "New client",
+    "newProject": "New project",
+    "editProject": "Edit project",
+    "editClient": "Edit client",
+    "deleteClient": "Delete client"
+  },
+  "clientDialog": {
+    "createTitle": "New client",
+    "editTitle": "Edit client",
+    "description": "English is required. Arabic is optional and falls back to English.",
+    "created": "Created {{name}}.",
+    "updated": "Client saved.",
+    "error": "Couldn't save the client. Try again."
+  },
+  "projectDialog": {
+    "createTitle": "New project",
+    "editTitle": "Edit project",
+    "description": "A project belongs to one client and cannot be moved later.",
+    "created": "Created {{name}}.",
+    "updated": "Project saved.",
+    "error": "Couldn't save the project. Try again."
+  },
+  "deleteClient": {
+    "title": "Delete client",
+    "warning": "This permanently deletes {{name}}. This cannot be undone.",
+    "confirmLabel": "Type {{name}} to confirm",
+    "success": "Deleted {{name}}.",
+    "error": "Couldn't delete the client.",
+    "warningWithProjects_one": "This permanently deletes {{name}} and its 1 project. This cannot be undone.",
+    "warningWithProjects_other": "This permanently deletes {{name}} and its {{count}} projects. This cannot be undone."
+  },
+  "deleteProject": {
+    "title": "Delete project",
+    "warning": "This permanently deletes {{name}}. This cannot be undone.",
+    "success": "Deleted {{name}}.",
+    "error": "Couldn't delete the project."
+  },
+  "properties": {
+    "title": "Properties",
+    "collapse": "Collapse properties",
+    "expand": "Show properties",
+    "notSet": "Not set"
+  }
+}

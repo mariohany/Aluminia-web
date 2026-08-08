@@ -12,5 +12,10 @@ import { UsersService } from './users.service';
   imports: [TypeOrmModule.forFeature([User, Company, Session]), AuditLogModule, AuthModule],
   controllers: [UsersController],
   providers: [UsersService],
+  // Exported so CompanyModule's company-admin surface reuses this exact
+  // service — above all its seat-limit transaction. A second
+  // implementation of "is there a seat free?" is a second thing to get
+  // right under concurrency.
+  exports: [UsersService],
 })
 export class UsersModule {}

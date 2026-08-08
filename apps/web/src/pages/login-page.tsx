@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router'
 import { loginRequestSchema, type LoginRequestInput } from '@repo/types/auth'
 import { useAuth } from '@/lib/auth-context'
+import { homePathForRole } from '@/lib/home-path'
 import { ApiError } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,8 +30,12 @@ export function LoginPage() {
   const onSubmit = async (data: LoginRequestInput) => {
     setServerError(false)
     try {
-      await login(data.email, data.password)
-      void navigate('/app', { replace: true })
+      const user = await login(data.email, data.password)
+      // A super admin goes to the platform console, everyone else to
+      // their company's workspace. Uses the returned user rather than
+      // the auth context's state, which has not re-rendered yet at this
+      // point in the submit handler.
+      void navigate(homePathForRole(user.role), { replace: true })
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setServerError(true)

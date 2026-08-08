@@ -94,10 +94,27 @@ describe('TenantProvisioning (e2e)', () => {
       `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 ORDER BY table_name`,
       [company.schemaName],
     );
+    // Every table in the tenant track, in alphabetical order. Asserted
+    // exhaustively rather than with `toContain`: a new tenant must come
+    // up with the FULL current schema, and this test failing when a
+    // migration is added is the point — it forces a deliberate look at
+    // whether provisioning and `migrate:tenants` still agree.
     expect(tables.map((t) => t.table_name)).toEqual([
+      'clients',
+      'projects',
       'tenant_info',
       'tenant_migrations',
     ]);
+
+    // Those tables belong to THIS schema and must not also exist in the
+    // control plane. A tenant table that leaked into `public` would let
+    // this company work while breaking the next one provisioned — the
+    // failure mode that `tenant-data-source.ts`'s search_path fixes.
+    const leaked: Array<{ table_name: string }> = await dataSource.query(
+      `SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name IN ('clients', 'projects')`,
+    );
+    expect(leaked).toEqual([]);
 
     // The tenant schema records which company owns it — the cross-check
     // that makes a mis-resolved tenant detectable rather than silent.
@@ -168,9 +185,16 @@ describe('TenantProvisioning (e2e)', () => {
 
     expect(await companyCount()).toBe(0);
 
+    // Scoped to THIS suite's company, not every schema starting with
+    // `tenant_e2e`. The broader pattern passed while this was the only
+    // e2e suite provisioning companies, then started failing when other
+    // suites — running in parallel Jest workers against the same
+    // database — had their own schemas alive at this moment. An
+    // assertion that depends on no one else existing is a flake waiting
+    // for a second test file.
     const orphanSchemas: Array<{ schema_name: string }> =
       await dataSource.query(
-        `SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'tenant_e2e%'`,
+        `SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'tenant_e2e_test_fabricators%'`,
       );
     expect(orphanSchemas).toEqual([]);
 

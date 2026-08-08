@@ -26,6 +26,8 @@ import appEn from '@/locales/en/app.json'
 import appAr from '@/locales/ar/app.json'
 import adminEn from '@/locales/en/admin.json'
 import adminAr from '@/locales/ar/admin.json'
+import workspaceEn from '@/locales/en/workspace.json'
+import workspaceAr from '@/locales/ar/workspace.json'
 
 export const supportedLanguages = ['en', 'ar'] as const
 export type SupportedLanguage = (typeof supportedLanguages)[number]
@@ -59,6 +61,7 @@ void i18n
         login: loginEn,
         app: appEn,
         admin: adminEn,
+        workspace: workspaceEn,
       },
       ar: {
         common: commonAr,
@@ -73,6 +76,7 @@ void i18n
         login: loginAr,
         app: appAr,
         admin: adminAr,
+        workspace: workspaceAr,
       },
     },
     fallbackLng: 'en',

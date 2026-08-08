@@ -14,6 +14,9 @@ import { CompaniesModule } from './modules/companies/companies.module';
 import { UsersModule } from './modules/users/users.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { LookupsModule } from './modules/lookups/lookups.module';
+import { ClientsModule } from './modules/clients/clients.module';
+import { ProjectsModule } from './modules/projects/projects.module';
+import { CompanyModule } from './modules/company/company.module';
 
 @Module({
   imports: [
@@ -30,6 +33,9 @@ import { LookupsModule } from './modules/lookups/lookups.module';
     UsersModule,
     DashboardModule,
     LookupsModule,
+    ClientsModule,
+    ProjectsModule,
+    CompanyModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

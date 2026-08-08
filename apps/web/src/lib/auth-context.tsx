@@ -5,7 +5,11 @@ import { apiFetch, setAccessToken } from '@/lib/api-client'
 interface AuthContextValue {
   user: AuthenticatedUser | null
   isLoading: boolean
-  login: (email: string, password: string) => Promise<void>
+  // Returns the authenticated user so a caller can route on it
+  // immediately. Reading `user` from the context right after awaiting
+  // this would still see the previous value — the state update has not
+  // been rendered yet at that point.
+  login: (email: string, password: string) => Promise<AuthenticatedUser>
   logout: () => Promise<void>
 }
 
@@ -48,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
     setAccessToken(data.accessToken)
     setUser(data.user)
+    return data.user
   }, [])
 
   const logout = useCallback(async () => {

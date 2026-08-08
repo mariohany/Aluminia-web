@@ -60,3 +60,25 @@ export interface UserSummary {
   online: boolean
   lastActiveAt: string | null
 }
+
+// The company-admin create form. Deliberately NOT a reuse of
+// `createUserSchema` above, which is the super admin's and accepts
+// `role` and `companyId`: here the role is hardcoded to `user`
+// server-side and the company comes from the caller's JWT. A body field
+// that is never read is safer than one that is validated — there is no
+// value an attacker can put here that the server will look at.
+export const createCompanyUserSchema = z.object({
+  email: z.email(),
+  password: z.string().min(8),
+})
+export type CreateCompanyUserInput = z.infer<typeof createCompanyUserSchema>
+
+// What the workspace needs to render "3 of 5 seats" and disable the
+// add-user button before the request fails, rather than after.
+export interface CompanyOverview {
+  id: string
+  name: string
+  plan: string
+  seatsUsed: number
+  maxUsers: number
+}

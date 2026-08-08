@@ -35,6 +35,33 @@ export function createTenantDataSource(schemaName: string): DataSource {
     type: 'postgres',
     url: env.DATABASE_URL,
     schema: schemaName,
+
+    // `schema` above is NOT enough on its own, and assuming it was cost
+    // a real incident on 2026-08-08.
+    //
+    // TypeORM's `schema` option only qualifies table names that TypeORM
+    // itself generates from entity metadata. A migration is raw SQL —
+    // `CREATE TABLE "clients"` — and TypeORM does not rewrite it. With
+    // no search_path set, Postgres resolved those unqualified names
+    // against the default path and created the tables, and the
+    // `project_status` enum, in `public`. The first tenant "migrated"
+    // successfully while writing into the control plane; the second
+    // failed only because the enum it was about to create already
+    // existed. A silent cross-schema write that announces itself as a
+    // name collision one tenant later is precisely the drift this
+    // migration track exists to prevent.
+    //
+    // Setting search_path at the connection level fixes it for every
+    // query this DataSource runs, raw or generated. `public` is
+    // deliberately excluded, matching TenantConnectionService: with it
+    // on the path, a query for a tenant table that doesn't exist yet
+    // would silently fall through to a same-named control-plane table.
+    //
+    // Safe to interpolate: `assertValidSchemaName` above constrains this
+    // to `^tenant_[a-z0-9_]{1,55}$`, which needs no quoting and cannot
+    // carry an injection payload.
+    extra: { options: `-c search_path=${schemaName}` },
+
     entities: [`${__dirname}/entities/*.entity{.ts,.js}`],
     // The explicit list, not a glob — see migrations/index.ts for why.
     migrations: tenantMigrations,

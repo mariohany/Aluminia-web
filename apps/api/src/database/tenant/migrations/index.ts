@@ -1,5 +1,6 @@
 import type { MigrationInterface } from 'typeorm';
 import { InitialTenantSchema1785971048351 } from './1785971048351-InitialTenantSchema';
+import { AddClientsAndProjects1786143076516 } from './1786143076516-AddClientsAndProjects';
 
 /**
  * The tenant migration track, explicitly ordered.
@@ -15,6 +16,7 @@ import { InitialTenantSchema1785971048351 } from './1785971048351-InitialTenantS
  */
 export const tenantMigrations: Array<new () => MigrationInterface> = [
   InitialTenantSchema1785971048351,
+  AddClientsAndProjects1786143076516,
 ];
 
 /** TypeORM records applied migrations as `{timestamp}-{ClassName}`. */

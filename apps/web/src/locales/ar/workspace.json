@@ -1,0 +1,157 @@
+{
+  "openMenu": "فتح القائمة",
+  "rail": {
+    "projects": "المشاريع",
+    "manage": "الإدارة",
+    "logout": "تسجيل الخروج"
+  },
+  "tree": {
+    "searchPlaceholder": "بحث…",
+    "loading": "جارٍ التحميل…",
+    "empty": "لا يوجد عملاء بعد. أضف عميلاً للبدء.",
+    "noMatches": "لا توجد نتائج مطابقة.",
+    "noProjects": "لا توجد مشاريع بعد",
+    "clientActions": "إجراءات {{name}}",
+    "expand": "توسيع",
+    "collapse": "طيّ"
+  },
+  "canvas": {
+    "nothingSelected": "لم يتم اختيار مشروع",
+    "nothingSelectedHint": "اختر مشروعاً من الشجرة، أو أنشئ أول عميل لك.",
+    "designerComing": "مصمم النوافذ",
+    "designerHint": "سطح التصميم الخاص بهذا المشروع سيظهر هنا.",
+    "clientSelectedHint": "أنشئ مشروعاً لهذا العميل، أو اختر مشروعاً من الشجرة."
+  },
+  "manage": {
+    "title": "الإدارة",
+    "seats": "{{used}} من {{max}} مقاعد",
+    "addUser": "إضافة مستخدم",
+    "loadError": "تعذّر تحميل الفريق. حاول مرة أخرى.",
+    "fields": {
+      "email": "البريد الإلكتروني",
+      "password": "كلمة المرور",
+      "newPassword": "كلمة المرور الجديدة"
+    },
+    "createUser": {
+      "title": "إضافة زميل",
+      "description": "يضيف مستخدماً إلى شركتك، ضمن حد المقاعد المتاح.",
+      "submit": "إضافة مستخدم",
+      "submitting": "جارٍ الإضافة…",
+      "success": "تمت إضافة {{email}}.",
+      "error": "تعذّرت إضافة المستخدم. حاول مرة أخرى."
+    },
+    "resetPassword": {
+      "title": "إعادة تعيين كلمة المرور لـ {{email}}",
+      "description": "يضبط كلمة مرور جديدة مباشرة وينهي جلسته الحالية.",
+      "submit": "إعادة تعيين كلمة المرور",
+      "submitting": "جارٍ إعادة التعيين…",
+      "success": "تمت إعادة تعيين كلمة المرور.",
+      "error": "تعذّرت إعادة تعيين كلمة المرور."
+    },
+    "deleteUser": {
+      "title": "حذف هذا المستخدم نهائياً؟",
+      "warning": "سيؤدي هذا إلى حذف {{email}} نهائياً. لا يمكن التراجع عن ذلك.",
+      "confirmLabel": "اكتب {{email}} للتأكيد",
+      "success": "تم حذف {{email}}.",
+      "error": "تعذّر حذف هذا المستخدم."
+    },
+    "deactivateUser": {
+      "title": "تعطيل {{email}}؟",
+      "description": "سيؤدي هذا إلى تسجيل خروجه فوراً ومنعه من الدخول حتى تتم إعادة تفعيله.",
+      "confirmAction": "تعطيل",
+      "success": "تم تعطيل {{email}}."
+    },
+    "reactivateUser": {
+      "title": "إعادة تفعيل {{email}}؟",
+      "description": "سيتمكن من تسجيل الدخول مرة أخرى.",
+      "confirmAction": "إعادة تفعيل",
+      "success": "تمت إعادة تفعيل {{email}}."
+    },
+    "actionError": "لم ينجح ذلك. حاول مرة أخرى.",
+    "status": {
+      "active": "نشط",
+      "inactive": "غير نشط"
+    },
+    "actions": {
+      "resetPassword": "إعادة تعيين كلمة المرور",
+      "deactivate": "تعطيل",
+      "reactivate": "إعادة تفعيل",
+      "delete": "حذف"
+    },
+    "table": {
+      "email": "البريد الإلكتروني",
+      "status": "الحالة",
+      "lastActivity": "آخر نشاط",
+      "actions": "إجراءات",
+      "online": "متصل الآن",
+      "never": "أبداً",
+      "empty": "لا يوجد أحد آخر في فريقك بعد."
+    }
+  },
+  "fields": {
+    "client": "العميل",
+    "clientPlaceholder": "اختر عميلاً",
+    "clientRequired": "اختر عميلاً أو أنشئ واحداً.",
+    "enName": "الاسم (بالإنجليزية)",
+    "arName": "الاسم (بالعربية)",
+    "enAddress": "عنوان الموقع (بالإنجليزية)",
+    "arAddress": "عنوان الموقع (بالعربية)",
+    "phone": "هاتف مسؤول الموقع",
+    "email": "بريد مسؤول الموقع",
+    "notes": "ملاحظات",
+    "optional": "(اختياري)"
+  },
+  "actions": {
+    "cancel": "إلغاء",
+    "create": "إنشاء",
+    "save": "حفظ التغييرات",
+    "edit": "تعديل",
+    "delete": "حذف",
+    "newClient": "عميل جديد",
+    "newProject": "مشروع جديد",
+    "editProject": "تعديل المشروع",
+    "editClient": "تعديل العميل",
+    "deleteClient": "حذف العميل"
+  },
+  "clientDialog": {
+    "createTitle": "عميل جديد",
+    "editTitle": "تعديل العميل",
+    "description": "الاسم بالإنجليزية مطلوب. الاسم بالعربية اختياري ويُستبدل بالإنجليزي عند غيابه.",
+    "created": "تم إنشاء {{name}}.",
+    "updated": "تم حفظ العميل.",
+    "error": "تعذّر حفظ العميل. حاول مرة أخرى."
+  },
+  "projectDialog": {
+    "createTitle": "مشروع جديد",
+    "editTitle": "تعديل المشروع",
+    "description": "المشروع يتبع عميلاً واحداً ولا يمكن نقله لاحقاً.",
+    "created": "تم إنشاء {{name}}.",
+    "updated": "تم حفظ المشروع.",
+    "error": "تعذّر حفظ المشروع. حاول مرة أخرى."
+  },
+  "deleteClient": {
+    "title": "حذف العميل",
+    "warning": "سيؤدي هذا إلى حذف {{name}} نهائياً. لا يمكن التراجع عن ذلك.",
+    "confirmLabel": "اكتب {{name}} للتأكيد",
+    "success": "تم حذف {{name}}.",
+    "error": "تعذّر حذف العميل.",
+    "warningWithProjects_zero": "سيؤدي هذا إلى حذف {{name}} نهائياً. لا يمكن التراجع عن ذلك.",
+    "warningWithProjects_one": "سيؤدي هذا إلى حذف {{name}} ومشروعه الوحيد نهائياً. لا يمكن التراجع عن ذلك.",
+    "warningWithProjects_two": "سيؤدي هذا إلى حذف {{name}} ومشروعيه نهائياً. لا يمكن التراجع عن ذلك.",
+    "warningWithProjects_few": "سيؤدي هذا إلى حذف {{name}} و{{count}} مشاريع نهائياً. لا يمكن التراجع عن ذلك.",
+    "warningWithProjects_many": "سيؤدي هذا إلى حذف {{name}} و{{count}} مشروعاً نهائياً. لا يمكن التراجع عن ذلك.",
+    "warningWithProjects_other": "سيؤدي هذا إلى حذف {{name}} و{{count}} مشروع نهائياً. لا يمكن التراجع عن ذلك."
+  },
+  "deleteProject": {
+    "title": "حذف المشروع",
+    "warning": "سيؤدي هذا إلى حذف {{name}} نهائياً. لا يمكن التراجع عن ذلك.",
+    "success": "تم حذف {{name}}.",
+    "error": "تعذّر حذف المشروع."
+  },
+  "properties": {
+    "title": "الخصائص",
+    "collapse": "طيّ الخصائص",
+    "expand": "إظهار الخصائص",
+    "notSet": "غير محدد"
+  }
+}

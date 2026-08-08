@@ -34,7 +34,7 @@
       },
       "projects": {
         "title": "Total projects",
-        "unavailable": "Not available yet — projects live in per-tenant schemas that don't exist until Phase 11."
+        "description": "Across every active company, unfiltered"
       },
       "revenue": {
         "title": "Subscription revenue",
@@ -42,14 +42,16 @@
       },
       "leads": {
         "title": "Incoming leads",
-        "unavailable": "Not available yet — needs the landing page's backend."
+        "description": "Request-a-quote submissions"
       }
     }
   },
   "companiesPage": {
     "title": "Companies",
     "createButton": "Create company",
-    "search": { "placeholder": "Search by name…" },
+    "search": {
+      "placeholder": "Search by name…"
+    },
     "filters": {
       "allStatuses": "All statuses",
       "allPlans": "All plans"
@@ -78,7 +80,10 @@
       "adminEmail": "Admin email",
       "adminPassword": "Admin password"
     },
-    "submit": { "idle": "Create company", "submitting": "Creating…" },
+    "submit": {
+      "idle": "Create company",
+      "submitting": "Creating…"
+    },
     "success": "{{name}} created.",
     "error": "Couldn't create the company. Try again."
   },
@@ -139,7 +144,9 @@
   "usersPage": {
     "title": "Users",
     "createButton": "Create user",
-    "search": { "placeholder": "Search by email…" },
+    "search": {
+      "placeholder": "Search by email…"
+    },
     "filters": {
       "allCompanies": "All companies",
       "allRoles": "All roles",
@@ -186,7 +193,10 @@
       "role": "Role",
       "company": "Company"
     },
-    "submit": { "idle": "Create user", "submitting": "Creating…" },
+    "submit": {
+      "idle": "Create user",
+      "submitting": "Creating…"
+    },
     "success": "{{email}} created.",
     "error": "Couldn't create the user. Try again."
   },
@@ -199,7 +209,10 @@
     },
     "companyMoveWarning": "Moving {{email}} to a different company does not move anything they created — their history stays with their current company.",
     "superAdminNoCompany": "A super admin doesn't belong to any company.",
-    "submit": { "idle": "Save changes", "submitting": "Saving…" },
+    "submit": {
+      "idle": "Save changes",
+      "submitting": "Saving…"
+    },
     "success": "User updated.",
     "error": "Couldn't save changes."
   },
@@ -207,7 +220,10 @@
     "title": "Reset password for {{email}}",
     "description": "Sets a new password directly and ends their current session.",
     "field": "New password",
-    "submit": { "idle": "Reset password", "submitting": "Resetting…" },
+    "submit": {
+      "idle": "Reset password",
+      "submitting": "Resetting…"
+    },
     "success": "Password reset.",
     "error": "Couldn't reset the password."
   },
@@ -289,10 +305,10 @@
       "hex": "Hex",
       "brand": "Brand",
       "type": "Finish type",
-      "price": "Price",
+      "price": "Price (EGP)",
       "thickness": "Thickness (mm)",
       "weightPerSqm": "Weight (kg/m²)",
-      "pricePerSqm": "Price (per m²)",
+      "pricePerSqm": "Price (per m², EGP)",
       "systemType": "System type",
       "maxGlassThickness": "Max glass thickness (mm)",
       "maxSashWeight": "Max sash weight (kg)",

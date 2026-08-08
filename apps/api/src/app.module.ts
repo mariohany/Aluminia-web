@@ -17,6 +17,7 @@ import { LookupsModule } from './modules/lookups/lookups.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { CompanyModule } from './modules/company/company.module';
+import { LeadsModule } from './modules/leads/leads.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { CompanyModule } from './modules/company/company.module';
     ClientsModule,
     ProjectsModule,
     CompanyModule,
+    LeadsModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
 })

@@ -4,11 +4,11 @@ import { useDashboardSummaryQuery } from '@/lib/dashboard-queries'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
-// Tiles for metrics that need work that doesn't exist yet (Phase 11
-// projects, a priced `billing` schema, the landing page's lead backend —
-// see admin_dashboard_planing.md). Shown honestly rather than omitted, so
-// the dashboard doesn't look like something's broken.
-const BLOCKED_TILES = ['projects', 'revenue', 'leads'] as const
+// Tiles for metrics that need work that doesn't exist yet — see
+// admin_dashboard_planing.md's "Remaining work" section for what each one
+// is still waiting on. Shown honestly rather than omitted, so the
+// dashboard doesn't look like something's broken.
+const BLOCKED_TILES = ['revenue'] as const
 
 export function DashboardPage() {
   const { t, i18n } = useTranslation('admin')
@@ -73,6 +73,46 @@ export function DashboardPage() {
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {t('dashboardPage.tiles.liveSessions.description')}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('dashboardPage.tiles.leads.title')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoading || !data ? (
+                  <div className="h-8 animate-pulse rounded bg-muted" />
+                ) : (
+                  <>
+                    <div className="font-heading text-2xl font-semibold text-foreground">
+                      {numberFormatter.format(data.incomingLeads.count)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {t('dashboardPage.tiles.leads.description')}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t('dashboardPage.tiles.projects.title')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoading || !data ? (
+                  <div className="h-8 animate-pulse rounded bg-muted" />
+                ) : (
+                  <>
+                    <div className="font-heading text-2xl font-semibold text-foreground">
+                      {numberFormatter.format(data.projects.count)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {t('dashboardPage.tiles.projects.description')}
                     </div>
                   </>
                 )}

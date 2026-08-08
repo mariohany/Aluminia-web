@@ -32,9 +32,25 @@ export interface LiveSessionsSummary {
   count: number
 }
 
+// Total, not "since last visit" — there's no per-admin read-state to
+// track yet, and total is still a meaningful number this early. Revisit
+// if the leads list gets built and "new" needs a real definition.
+export interface IncomingLeadsSummary {
+  count: number
+}
+
+// Unfiltered, across every active company's tenant schema. "Filtered by
+// company/date/status" is still open — see
+// admin_dashboard_planing.md's open question 2.
+export interface ProjectsSummary {
+  count: number
+}
+
 export interface DashboardSummary {
   companies: CompanyStatusCounts
   planDistribution: PlanDistributionEntry[]
   recentActivity: RecentActivityEntry[]
   liveSessions: LiveSessionsSummary
+  incomingLeads: IncomingLeadsSummary
+  projects: ProjectsSummary
 }

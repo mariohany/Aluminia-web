@@ -1,11 +1,15 @@
 import type { QuoteRequestInput, QuoteRequestResponse } from '@repo/types/quote-request'
+import { apiFetch } from '@/lib/api-client'
 
 /**
- * The only place that knows the real endpoint doesn't exist yet (Stage E
- * of docs/landing_planing.md). Swapping this body for a real `fetch` is
- * the entire integration — no caller changes.
+ * Real as of Stage E. `skipAuthRetry` because this is an anonymous,
+ * unauthenticated route — a 401 here is a real rejection, never a
+ * "refresh and retry" situation the way an expired session would be.
  */
-export async function submitQuoteRequest(_input: QuoteRequestInput): Promise<QuoteRequestResponse> {
-  await new Promise((resolve) => setTimeout(resolve, 600))
-  return { id: 'mock-lead', receivedAt: new Date().toISOString() }
+export function submitQuoteRequest(input: QuoteRequestInput): Promise<QuoteRequestResponse> {
+  return apiFetch<QuoteRequestResponse>('/leads/quote-requests', {
+    method: 'POST',
+    body: input,
+    skipAuthRetry: true,
+  })
 }

@@ -1,4 +1,9 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 
 // A request-a-quote submission from the public landing page. Control
 // plane, not tenant-scoped — the visitor has no company yet.
@@ -15,6 +20,11 @@ export class Lead {
 
   @Column({ type: 'varchar', length: 20 })
   phone: string;
+
+  // Set once, the moment an admin clicks the phone number to call this
+  // lead — see LeadsService.markContacted. Null means never called.
+  @Column({ name: 'contacted_at', type: 'timestamptz', nullable: true })
+  contactedAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

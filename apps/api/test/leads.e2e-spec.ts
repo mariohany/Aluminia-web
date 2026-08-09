@@ -66,9 +66,10 @@ describe('Leads (e2e)', () => {
     expect(new Date(body.receivedAt).toString()).not.toBe('Invalid Date');
 
     const rows: Array<{ company_name: string; phone: string }> =
-      await dataSource.query(`SELECT company_name, phone FROM leads WHERE id = $1`, [
-        body.id,
-      ]);
+      await dataSource.query(
+        `SELECT company_name, phone FROM leads WHERE id = $1`,
+        [body.id],
+      );
     expect(rows).toHaveLength(1);
     expect(rows[0].company_name).toBe(validBody.companyName);
     expect(rows[0].phone).toBe(validBody.phone);
@@ -80,9 +81,10 @@ describe('Leads (e2e)', () => {
       .send({ ...validBody, website: 'https://spambot.example' })
       .expect(400);
 
-    const rows = await dataSource.query(`SELECT id FROM leads WHERE company_name = $1`, [
-      validBody.companyName,
-    ]);
+    const rows: Array<{ id: string }> = await dataSource.query(
+      `SELECT id FROM leads WHERE company_name = $1`,
+      [validBody.companyName],
+    );
     expect(rows).toHaveLength(0);
   });
 
@@ -101,7 +103,9 @@ describe('Leads (e2e)', () => {
     // that was never wired up.
     const server = app.getHttpServer();
     const results = await Promise.all(
-      Array.from({ length: 6 }, () => request(server).post('/leads/quote-requests').send(validBody)),
+      Array.from({ length: 6 }, () =>
+        request(server).post('/leads/quote-requests').send(validBody),
+      ),
     );
 
     expect(results.some((res) => res.status === 429)).toBe(true);

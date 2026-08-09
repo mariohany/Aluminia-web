@@ -13,6 +13,7 @@ import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { UsersModule } from './modules/users/users.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { LogsModule } from './modules/admin-logs/logs.module';
 import { LookupsModule } from './modules/lookups/lookups.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ProjectsModule } from './modules/projects/projects.module';
@@ -33,6 +34,7 @@ import { LeadsModule } from './modules/leads/leads.module';
     CompaniesModule,
     UsersModule,
     DashboardModule,
+    LogsModule,
     LookupsModule,
     ClientsModule,
     ProjectsModule,

@@ -18,6 +18,7 @@ import { CompaniesPage } from '@/pages/admin/companies-page'
 import { CompanyDetailPage } from '@/pages/admin/company-detail-page'
 import { UsersPage } from '@/pages/admin/users-page'
 import { DataWarehousePage } from '@/pages/admin/data-warehouse-page'
+import { LogsPage } from '@/pages/admin/logs-page'
 import { WorkspaceLayout } from '@/pages/workspace/workspace-layout'
 import { CanvasPage } from '@/pages/workspace/canvas-page'
 import { ManagePage } from '@/pages/workspace/manage-page'
@@ -58,6 +59,7 @@ function App() {
               <Route path="companies/:id" element={<CompanyDetailPage />} />
               <Route path="users" element={<UsersPage />} />
               <Route path="data-warehouse" element={<DataWarehousePage />} />
+              <Route path="logs" element={<LogsPage />} />
             </Route>
 
             {/* The manufacturer's application. A super admin is refused

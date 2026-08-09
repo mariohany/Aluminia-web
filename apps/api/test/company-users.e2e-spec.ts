@@ -80,7 +80,11 @@ describe('Company-admin user management (e2e)', () => {
     await controlPlane.query(
       `INSERT INTO users (email, password_hash, role, company_id, status)
        VALUES ($1, $2, $3, NULL, 'active')`,
-      [superAdminEmail, await passwordService.hash(password), UserRole.SUPER_ADMIN],
+      [
+        superAdminEmail,
+        await passwordService.hash(password),
+        UserRole.SUPER_ADMIN,
+      ],
     );
 
     tokenOne = await loginAs(adminOneEmail);
@@ -97,11 +101,14 @@ describe('Company-admin user management (e2e)', () => {
     try {
       for (const name of [companyOneName, companyTwoName, seatCompanyName]) {
         const companies: Array<{ id: string; schema_name: string }> =
-          await controlPlane.query(`SELECT id, schema_name FROM companies WHERE name = $1`, [
-            name,
-          ]);
+          await controlPlane.query(
+            `SELECT id, schema_name FROM companies WHERE name = $1`,
+            [name],
+          );
         for (const company of companies) {
-          await controlPlane.query(`DROP SCHEMA IF EXISTS "${company.schema_name}" CASCADE`);
+          await controlPlane.query(
+            `DROP SCHEMA IF EXISTS "${company.schema_name}" CASCADE`,
+          );
           // Audit rows FIRST. Unlike the other e2e suites, this one
           // exercises the audited write paths (create/deactivate/
           // delete), so `admin_audit_log.actor_user_id` now references
@@ -112,9 +119,16 @@ describe('Company-admin user management (e2e)', () => {
               WHERE actor_user_id IN (SELECT id FROM users WHERE company_id = $1)`,
             [company.id],
           );
-          await controlPlane.query(`DELETE FROM users WHERE company_id = $1`, [company.id]);
-          await controlPlane.query(`DELETE FROM billing WHERE company_id = $1`, [company.id]);
-          await controlPlane.query(`DELETE FROM companies WHERE id = $1`, [company.id]);
+          await controlPlane.query(`DELETE FROM users WHERE company_id = $1`, [
+            company.id,
+          ]);
+          await controlPlane.query(
+            `DELETE FROM billing WHERE company_id = $1`,
+            [company.id],
+          );
+          await controlPlane.query(`DELETE FROM companies WHERE id = $1`, [
+            company.id,
+          ]);
         }
       }
       await controlPlane.query(
@@ -122,7 +136,9 @@ describe('Company-admin user management (e2e)', () => {
           WHERE actor_user_id IN (SELECT id FROM users WHERE email = $1)`,
         [superAdminEmail],
       );
-      await controlPlane.query(`DELETE FROM users WHERE email = $1`, [superAdminEmail]);
+      await controlPlane.query(`DELETE FROM users WHERE email = $1`, [
+        superAdminEmail,
+      ]);
     } finally {
       await app.close();
     }
@@ -158,6 +174,20 @@ describe('Company-admin user management (e2e)', () => {
     expect(emails).toContain(adminOneEmail);
     expect(emails).not.toContain(adminTwoEmail);
     expect(emails).not.toContain(superAdminEmail);
+
+    // The same boundary from the other side. Asserted in both
+    // directions on purpose: a scope bug that widened the query to
+    // every company would still satisfy the one-sided version whenever
+    // the caller happened to be the company the extra rows came from.
+    const mirror = await request(app.getHttpServer())
+      .get('/company/users')
+      .set('Authorization', `Bearer ${tokenTwo}`)
+      .expect(200);
+
+    const mirrorEmails = (mirror.body as UserSummary[]).map((u) => u.email);
+    expect(mirrorEmails).toContain(adminTwoEmail);
+    expect(mirrorEmails).not.toContain(adminOneEmail);
+    expect(mirrorEmails).not.toContain(superAdminEmail);
   });
 
   it('creates plain users only, ignoring a smuggled role and company', async () => {
@@ -234,7 +264,10 @@ describe('Company-admin user management (e2e)', () => {
     const server = app.getHttpServer();
     const auth = { Authorization: `Bearer ${tokenOne}` };
 
-    await request(server).post(`/company/users/${adminOneId}/deactivate`).set(auth).expect(403);
+    await request(server)
+      .post(`/company/users/${adminOneId}/deactivate`)
+      .set(auth)
+      .expect(403);
     await request(server)
       .delete(`/company/users/${adminOneId}`)
       .set(auth)
@@ -248,7 +281,8 @@ describe('Company-admin user management (e2e)', () => {
       .set('Authorization', `Bearer ${seatToken}`)
       .expect(200);
     const free =
-      (before.body as CompanyOverview).maxUsers - (before.body as CompanyOverview).seatsUsed;
+      (before.body as CompanyOverview).maxUsers -
+      (before.body as CompanyOverview).seatsUsed;
     expect(free).toBe(2);
 
     // Six at once for two seats. This is the test that matters: a

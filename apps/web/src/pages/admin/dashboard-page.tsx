@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDashboardSummaryQuery } from '@/lib/dashboard-queries'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { LeadsList } from '@/components/admin/leads/leads-list'
 
 // Tiles for metrics that need work that doesn't exist yet — see
 // admin_dashboard_planing.md's "Remaining work" section for what each one
@@ -15,10 +15,6 @@ export function DashboardPage() {
   const { data, isLoading, isError } = useDashboardSummaryQuery()
 
   const numberFormatter = useMemo(() => new Intl.NumberFormat(i18n.language), [i18n.language])
-  const dateFormatter = useMemo(
-    () => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }),
-    [i18n.language],
-  )
 
   return (
     <div className="flex flex-col gap-4">
@@ -81,26 +77,6 @@ export function DashboardPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>{t('dashboardPage.tiles.leads.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoading || !data ? (
-                  <div className="h-8 animate-pulse rounded bg-muted" />
-                ) : (
-                  <>
-                    <div className="font-heading text-2xl font-semibold text-foreground">
-                      {numberFormatter.format(data.incomingLeads.count)}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {t('dashboardPage.tiles.leads.description')}
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
                 <CardTitle>{t('dashboardPage.tiles.projects.title')}</CardTitle>
               </CardHeader>
               <CardContent>
@@ -133,63 +109,7 @@ export function DashboardPage() {
             ))}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('dashboardPage.tiles.planDistribution.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoading || !data ? (
-                  <div className="h-24 animate-pulse rounded bg-muted" />
-                ) : data.planDistribution.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {t('dashboardPage.tiles.planDistribution.empty')}
-                  </p>
-                ) : (
-                  <ul className="flex flex-col gap-2">
-                    {data.planDistribution.map((entry) => (
-                      <li key={entry.plan} className="flex items-center justify-between text-sm">
-                        <span className="text-foreground">{entry.plan}</span>
-                        <Badge variant="outline">{numberFormatter.format(entry.count)}</Badge>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('dashboardPage.tiles.recentActivity.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoading || !data ? (
-                  <div className="h-24 animate-pulse rounded bg-muted" />
-                ) : data.recentActivity.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {t('dashboardPage.tiles.recentActivity.empty')}
-                  </p>
-                ) : (
-                  <ul className="flex flex-col gap-3">
-                    {data.recentActivity.map((entry) => (
-                      <li key={entry.id} className="flex flex-col gap-0.5 text-sm">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium text-foreground">{entry.companyName}</span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {dateFormatter.format(new Date(entry.effectiveFrom))}
-                          </span>
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {entry.plan} · {t('dashboardPage.tiles.recentActivity.seats', { n: entry.maxUsers })}
-                          {entry.notes ? ` · ${entry.notes}` : ''}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          <LeadsList />
         </>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { LayoutDashboard, Building2, Users, Database } from 'lucide-react'
+import { LayoutDashboard, Building2, Users, Database, ScrollText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/app/companies', key: 'nav.companies', icon: Building2, end: false },
   { to: '/app/users', key: 'nav.users', icon: Users, end: false },
   { to: '/app/data-warehouse', key: 'nav.dataWarehouse', icon: Database, end: false },
+  { to: '/app/logs', key: 'nav.logs', icon: ScrollText, end: false },
 ] as const
 
 export function AdminNav({ onNavigate }: { onNavigate?: () => void }) {

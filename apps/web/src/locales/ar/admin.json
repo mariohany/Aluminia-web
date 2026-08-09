@@ -3,7 +3,8 @@
     "dashboard": "لوحة التحكم",
     "companies": "الشركات",
     "users": "المستخدمون",
-    "dataWarehouse": "مستودع البيانات"
+    "dataWarehouse": "مستودع البيانات",
+    "logs": "السجلات"
   },
   "sidebar": {
     "openMenu": "فتح القائمة",
@@ -23,15 +24,6 @@
         "title": "جلسات متصلة الآن",
         "description": "المستخدمون المسجلين دخول حاليًا"
       },
-      "planDistribution": {
-        "title": "توزيع الباقات",
-        "empty": "لا توجد شركات بعد."
-      },
-      "recentActivity": {
-        "title": "أحدث النشاطات",
-        "empty": "لا يوجد نشاط بعد.",
-        "seats": "{{n}} مقعد"
-      },
       "projects": {
         "title": "إجمالي المشاريع",
         "description": "عبر جميع الشركات النشطة، غير مُصفّى"
@@ -39,12 +31,68 @@
       "revenue": {
         "title": "إيرادات الاشتراكات",
         "unavailable": "غير متاح لسه — سجل الفوترة مفيهوش سعر."
-      },
-      "leads": {
-        "title": "العملاء المحتملون",
-        "description": "طلبات عروض الأسعار الواردة"
       }
     }
+  },
+  "logsPage": {
+    "title": "السجلات",
+    "filters": {
+      "from": "من",
+      "to": "إلى",
+      "clear": "مسح"
+    },
+    "tabs": {
+      "activity": "النشاط",
+      "audit": "سجل التدقيق"
+    },
+    "activityTab": {
+      "empty": "لا يوجد نشاط بعد.",
+      "error": "حصل خطأ أثناء تحميل النشاط. حاول تاني.",
+      "table": {
+        "company": "الشركة",
+        "plan": "الباقة",
+        "seats": "المقاعد",
+        "notes": "ملاحظات",
+        "date": "التاريخ"
+      }
+    },
+    "auditTab": {
+      "empty": "لا توجد سجلات تدقيق بعد.",
+      "error": "حصل خطأ أثناء تحميل سجل التدقيق. حاول تاني.",
+      "table": {
+        "actor": "المستخدم",
+        "action": "الإجراء",
+        "target": "الهدف",
+        "date": "التاريخ"
+      }
+    },
+    "loadingMore": "جارٍ تحميل المزيد…"
+  },
+  "leadsSection": {
+    "title": "العملاء المحتملون",
+    "empty": "لا يوجد عملاء محتملون لسه.",
+    "error": "حصل خطأ أثناء تحميل العملاء المحتملين. حاول تاني.",
+    "table": {
+      "company": "الشركة",
+      "requester": "مقدّم الطلب",
+      "phone": "الهاتف",
+      "status": "الحالة",
+      "received": "تاريخ الاستلام",
+      "actions": "إجراءات"
+    },
+    "selectAll": "تحديد كل الطلبات",
+    "selectRow": "تحديد طلب {{name}}",
+    "calledBadge": "تم الاتصال",
+    "deleteRow": "حذف الطلب",
+    "deleteConfirmTitle": "حذف طلب {{name}}؟",
+    "deleteConfirmDescription": "ده هيمسح الطلب ده نهائيًا. الإجراء ده مينفعش يتراجع فيه.",
+    "deleteConfirmAction": "حذف",
+    "deleteSuccess": "تم حذف طلب {{name}}.",
+    "deleteSelected": "حذف المحدد ({{count}})",
+    "deleteSelectedConfirmTitle": "حذف الطلبات المحددة؟",
+    "deleteSelectedConfirmDescription": "ده هيمسح {{count}} طلب نهائيًا. الإجراء ده مينفعش يتراجع فيه.",
+    "deleteSelectedConfirmAction": "حذف",
+    "deleteSelectedSuccess": "تم حذف {{count}} طلب."
   },
   "companiesPage": {
     "title": "الشركات",

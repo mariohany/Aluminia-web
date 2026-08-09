@@ -3,7 +3,8 @@
     "dashboard": "Dashboard",
     "companies": "Companies",
     "users": "Users",
-    "dataWarehouse": "Data warehouse"
+    "dataWarehouse": "Data warehouse",
+    "logs": "Logs"
   },
   "sidebar": {
     "openMenu": "Open menu",
@@ -23,15 +24,6 @@
         "title": "Live sessions",
         "description": "Users currently logged in"
       },
-      "planDistribution": {
-        "title": "Plan distribution",
-        "empty": "No companies yet."
-      },
-      "recentActivity": {
-        "title": "Recent activity",
-        "empty": "No activity yet.",
-        "seats": "{{n}} seats"
-      },
       "projects": {
         "title": "Total projects",
         "description": "Across every active company, unfiltered"
@@ -39,12 +31,68 @@
       "revenue": {
         "title": "Subscription revenue",
         "unavailable": "Not available yet — billing doesn't record a price."
-      },
-      "leads": {
-        "title": "Incoming leads",
-        "description": "Request-a-quote submissions"
       }
     }
+  },
+  "logsPage": {
+    "title": "Logs",
+    "filters": {
+      "from": "From",
+      "to": "To",
+      "clear": "Clear"
+    },
+    "tabs": {
+      "activity": "Activity",
+      "audit": "Audit"
+    },
+    "activityTab": {
+      "empty": "No activity yet.",
+      "error": "Couldn't load activity. Try again.",
+      "table": {
+        "company": "Company",
+        "plan": "Plan",
+        "seats": "Seats",
+        "notes": "Notes",
+        "date": "Date"
+      }
+    },
+    "auditTab": {
+      "empty": "No audit log entries yet.",
+      "error": "Couldn't load the audit log. Try again.",
+      "table": {
+        "actor": "Actor",
+        "action": "Action",
+        "target": "Target",
+        "date": "Date"
+      }
+    },
+    "loadingMore": "Loading more…"
+  },
+  "leadsSection": {
+    "title": "Leads",
+    "empty": "No leads yet.",
+    "error": "Couldn't load leads. Try again.",
+    "table": {
+      "company": "Company",
+      "requester": "Requester",
+      "phone": "Phone",
+      "status": "Status",
+      "received": "Received",
+      "actions": "Actions"
+    },
+    "selectAll": "Select all leads",
+    "selectRow": "Select the lead from {{name}}",
+    "calledBadge": "Called",
+    "deleteRow": "Delete lead",
+    "deleteConfirmTitle": "Delete the lead from {{name}}?",
+    "deleteConfirmDescription": "This permanently removes this submission. This cannot be undone.",
+    "deleteConfirmAction": "Delete",
+    "deleteSuccess": "Deleted the lead from {{name}}.",
+    "deleteSelected": "Delete selected ({{count}})",
+    "deleteSelectedConfirmTitle": "Delete the selected leads?",
+    "deleteSelectedConfirmDescription": "This permanently removes {{count}} leads. This cannot be undone.",
+    "deleteSelectedConfirmAction": "Delete",
+    "deleteSelectedSuccess": "Deleted {{count}} leads."
   },
   "companiesPage": {
     "title": "Companies",

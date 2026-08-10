@@ -25,6 +25,7 @@ import type {
   SystemBrandSummary,
   SystemCatalogSummary,
   SystemProfileSummary,
+  SystemsImportResult,
 } from '@repo/types/lookups';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -348,6 +349,22 @@ export class AdminLookupsController {
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<SystemBrandSummary[]> {
     return this.systemLookups.bulkDuplicateSystemBrands(dto.items, actor.id);
+  }
+
+  // Combined Brand/Catalogue/Profile import — one workbook, up to three
+  // sheets, each independently optional. Not nested under
+  // system-brands/ since it isn't brand-specific; mounted here only
+  // because SystemLookupsService owns all three tables.
+  @Post('systems/import')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
+  importSystems(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<SystemsImportResult> {
+    if (!file) throw new BadRequestException('No file uploaded.');
+    return this.systemLookups.importSystems(file.buffer, actor.id);
   }
 
   // ---- SystemCatalog ----

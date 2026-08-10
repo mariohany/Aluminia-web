@@ -421,6 +421,23 @@ export interface SystemProfileSummary {
   updatedAt: string
 }
 
+// Result of the combined Brand/Catalogue/Profile Excel import (see
+// admin-lookups.controller.ts's POST systems/import). One sub-result per
+// table since each is its own lookup_meta row/version — a sheet that
+// only touches catalogues shouldn't look like it also touched profiles.
+export interface SystemsImportEntityResult {
+  created: string[]
+  updated: string[]
+  unchangedCount: number
+  errors: string[]
+}
+
+export interface SystemsImportResult {
+  brands: SystemsImportEntityResult
+  catalogs: SystemsImportEntityResult
+  profiles: SystemsImportEntityResult
+}
+
 // ---- The tenant read API ------------------------------------------------
 
 // Keyed by LookupEntity — every entity's current version in one call,

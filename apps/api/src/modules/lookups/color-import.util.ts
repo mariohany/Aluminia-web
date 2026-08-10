@@ -1,8 +1,15 @@
 import { BadRequestException } from '@nestjs/common';
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
+import {
+  cellText,
+  findHeaderRow,
+  findSheetByName,
+  loadWorkbook,
+} from './excel-import.util';
 
 const CODE_HEADER_HINTS = ['code', 'ral'];
 const HEX_HEADER_HINTS = ['hex', 'color', 'colour'];
+const COLOR_SHEET_NAMES = ['color', 'colors', 'colour', 'colours'];
 
 export interface ParsedColorRow {
   code: string;
@@ -51,17 +58,6 @@ function normalizeHex(raw: unknown): string | null {
   return null;
 }
 
-function cellText(cell: ExcelJS.Cell | undefined): string {
-  if (!cell) return '';
-  const value = cell.value;
-  if (typeof value === 'string' || typeof value === 'number')
-    return String(value);
-  if (value && typeof value === 'object' && 'richText' in value) {
-    return value.richText.map((part) => part.text).join('');
-  }
-  return '';
-}
-
 function findHeaderColumns(
   row: ExcelJS.Row,
 ): { codeCol: number; hexCol: number } | null {
@@ -85,43 +81,28 @@ function findHeaderColumns(
   return codeCol === -1 || hexCol === -1 ? null : { codeCol, hexCol };
 }
 
-// Header row isn't assumed to be row 1 — title rows and blank rows
-// above it are common in hand-authored sheets — so the first 10 rows
-// are scanned for one that has both a code-ish and a hex-ish header.
+// A sheet named "Colors"/"Colour"/etc. is used if present — this way a
+// combined workbook (e.g. one that also has Brand/Catalogue/Profile
+// sheets for the systems importer, which matches by name too) doesn't
+// need its colour data to be in any particular position. Falls back to
+// the first sheet for older colour-only files that predate this
+// convention and were never named anything in particular.
 export async function parseColorWorkbook(
   buffer: Buffer,
 ): Promise<ParsedColorSheet> {
-  const workbook = new ExcelJS.Workbook();
-  try {
-    // exceljs's bundled type declares `load` against a differently
-    // resolved `Buffer` than @types/node's generic `Buffer<T>` here —
-    // a type-only mismatch, not a runtime one, so `any` sidesteps it.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-    await workbook.xlsx.load(buffer as any);
-  } catch {
-    throw new BadRequestException(
-      'Could not read that file as an Excel spreadsheet.',
-    );
-  }
+  const workbook = await loadWorkbook(buffer);
 
-  const sheet = workbook.worksheets[0];
+  const sheet =
+    findSheetByName(workbook, COLOR_SHEET_NAMES) ?? workbook.worksheets[0];
   if (!sheet) throw new BadRequestException('The spreadsheet has no sheets.');
 
-  let headerRowNumber = -1;
-  let columns: { codeCol: number; hexCol: number } | null = null;
-  for (let i = 1; i <= Math.min(sheet.rowCount, 10); i++) {
-    const found = findHeaderColumns(sheet.getRow(i));
-    if (found) {
-      headerRowNumber = i;
-      columns = found;
-      break;
-    }
-  }
-  if (!columns) {
+  const header = findHeaderRow(sheet, findHeaderColumns);
+  if (!header) {
     throw new BadRequestException(
       'Couldn\'t find header columns for the RAL code and hex value — the sheet needs a header row with columns like "Code"/"RAL" and "Hex"/"Color".',
     );
   }
+  const { rowNumber: headerRowNumber, columns } = header;
 
   const rows: ParsedColorRow[] = [];
   const errors: string[] = [];

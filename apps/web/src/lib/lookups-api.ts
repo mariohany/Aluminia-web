@@ -18,6 +18,7 @@ import type {
   SystemBrandSummary,
   SystemCatalogSummary,
   SystemProfileSummary,
+  SystemsImportResult,
   UpdatePaintBrandInput,
   UpdateColorInput,
   UpdatePaintingPriceInput,
@@ -216,4 +217,9 @@ export function bulkDuplicateSystemProfiles(
   items: CreateSystemProfileInput[],
 ): Promise<SystemProfileSummary[]> {
   return bulkDuplicate('/admin/lookups/system-profiles', items)
+}
+export function importSystems(file: File): Promise<SystemsImportResult> {
+  const body = new FormData()
+  body.append('file', file)
+  return apiFetch('/admin/lookups/systems/import', { method: 'POST', body })
 }

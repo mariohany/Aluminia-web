@@ -124,6 +124,7 @@ export function SimpleLookupSection<
   toEditDefaults,
   rowLabel,
   deleteWarning,
+  headerExtra,
 }: {
   title: string
   createLabel: string
@@ -146,6 +147,11 @@ export function SimpleLookupSection<
   toEditDefaults: (row: TSummary) => TUpdate
   rowLabel: (row: TSummary) => string
   deleteWarning?: string
+  // Slotted into the header row, before the create-dialog trigger —
+  // used by the three Systems tabs to mount the shared 3-sheet
+  // Brand/Catalogue/Profile importer (SystemsImportButton) without
+  // this generic component knowing anything about that feature.
+  headerExtra?: React.ReactNode
 }) {
   const { t: tCommon } = useTranslation('common')
   const { t } = useTranslation('admin')
@@ -278,37 +284,40 @@ export function SimpleLookupSection<
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-heading text-base font-semibold text-foreground">{title}</h2>
-        <Dialog
-          open={createOpen}
-          onOpenChange={(next) => {
-            setCreateOpen(next)
-            if (!next) createForm.reset(createDefaults)
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button size="sm" variant="outline">
-              <Plus className="size-4" aria-hidden="true" />
-              {createLabel}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <form
-              onSubmit={(e) => void createForm.handleSubmit(onCreate)(e)}
-              noValidate
-              className="flex flex-col gap-4"
-            >
-              <DialogHeader>
-                <DialogTitle>{createLabel}</DialogTitle>
-              </DialogHeader>
-              <LookupFormFields fields={fields} form={createForm} idPrefix="create" />
-              <DialogFooter>
-                <Button type="submit" disabled={createForm.formState.isSubmitting}>
-                  {tCommon('actions.save')}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex items-center gap-2">
+          {headerExtra}
+          <Dialog
+            open={createOpen}
+            onOpenChange={(next) => {
+              setCreateOpen(next)
+              if (!next) createForm.reset(createDefaults)
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button size="sm" variant="outline">
+                <Plus className="size-4" aria-hidden="true" />
+                {createLabel}
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <form
+                onSubmit={(e) => void createForm.handleSubmit(onCreate)(e)}
+                noValidate
+                className="flex flex-col gap-4"
+              >
+                <DialogHeader>
+                  <DialogTitle>{createLabel}</DialogTitle>
+                </DialogHeader>
+                <LookupFormFields fields={fields} form={createForm} idPrefix="create" />
+                <DialogFooter>
+                  <Button type="submit" disabled={createForm.formState.isSubmitting}>
+                    {tCommon('actions.save')}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {(search || (filters && filters.length > 0)) && (

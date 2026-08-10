@@ -44,6 +44,7 @@ import { Button } from '@/components/ui/button'
 import { SimpleLookupSection } from '@/components/admin/lookups/simple-lookup-section'
 import { GlassCombinationSection } from '@/components/admin/lookups/glass-combination-editor'
 import { ColorGridSection } from '@/components/admin/lookups/color-grid-section'
+import { SystemsImportButton } from '@/components/admin/lookups/systems-import-button'
 import { PaintingPricesSection } from '@/components/admin/lookups/painting-prices-section'
 
 // Order requested: systems (brand → catalog → profile), then glass and
@@ -196,6 +197,7 @@ function SystemBrandsTab() {
       toEditDefaults={(row) => ({ name: row.name })}
       rowLabel={(row) => row.name}
       deleteWarning={t('dataWarehousePage.deleteWarnings.systemBrand')}
+      headerExtra={<SystemsImportButton />}
     />
   )
 }
@@ -292,6 +294,7 @@ function SystemCatalogsTab() {
       })}
       rowLabel={(row) => `${row.brandName} · ${row.name}`}
       deleteWarning={t('dataWarehousePage.deleteWarnings.systemCatalog')}
+      headerExtra={<SystemsImportButton />}
     />
   )
 }
@@ -409,6 +412,7 @@ function SystemProfilesTab() {
         image: row.image,
       })}
       rowLabel={(row) => row.profileNo}
+      headerExtra={<SystemsImportButton />}
     />
   )
 }

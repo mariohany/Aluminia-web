@@ -1,25 +1,36 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
-import type {
-  BulkDeleteResult,
-  CreateSystemBrandInput,
-  CreateSystemCatalogInput,
-  CreateSystemProfileInput,
-  SystemBrandSummary,
-  SystemCatalogSummary,
-  SystemLookups,
-  SystemProfileSummary,
-  UpdateSystemBrandInput,
-  UpdateSystemCatalogInput,
-  UpdateSystemProfileInput,
+import {
+  LookupEntity,
+  type BulkDeleteResult,
+  type CreateSystemBrandInput,
+  type CreateSystemCatalogInput,
+  type CreateSystemProfileInput,
+  type SystemBrandSummary,
+  type SystemCatalogSummary,
+  type SystemLookups,
+  type SystemProfileSummary,
+  type SystemsImportEntityResult,
+  type SystemsImportResult,
+  type UpdateSystemBrandInput,
+  type UpdateSystemCatalogInput,
+  type UpdateSystemProfileInput,
 } from '@repo/types/lookups';
 import { SystemBrand } from '../../database/control-plane/entities/system-brand.entity';
 import { SystemCatalog } from '../../database/control-plane/entities/system-catalog.entity';
 import { SystemProfile } from '../../database/control-plane/entities/system-profile.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { translatePostgresError } from './pg-error.util';
-import { findBlockedIds } from './lookup-version.util';
+import {
+  findBlockedIds,
+  runWithSingleVersionBump,
+} from './lookup-version.util';
+import {
+  parseSystemsWorkbook,
+  type ParsedCatalogRow,
+  type ParsedProfileRow,
+} from './systems-import.util';
 
 // Same accepted-risk tradeoff as ColorLookupsService — see its header
 // comment. bulk* methods are the exception, same reasoning as
@@ -449,6 +460,353 @@ export class SystemLookupsService {
     } catch (error) {
       await queryRunner.rollbackTransaction();
       return translatePostgresError(error, 'That catalogue does not exist.');
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // Combined Brand/Catalogue/Profile Excel import — one sheet per table
+  // in the same workbook (tabs named "Brand"/"Catalogue"/"Profile"; a
+  // missing sheet just means that table isn't touched by this import,
+  // it isn't an error). Sequential by design: catalogues reference a
+  // brand by name and profiles reference a catalogue by name, so brands
+  // are resolved/created first, then catalogues (which a same-file
+  // profile row may need to resolve against), then profiles. Each
+  // table's version bump is independent — a sheet that only adds
+  // brands doesn't touch the catalogue or profile version.
+  async importSystems(
+    buffer: Buffer,
+    actorId: string,
+  ): Promise<SystemsImportResult> {
+    const parsed = await parseSystemsWorkbook(buffer);
+    const sheetErrors = [...parsed.errors];
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      // ---- Phase 1: brands — pure create-if-missing, nothing to
+      // update since name is the only field and also the match key.
+      const existingBrands = await queryRunner.manager.find(SystemBrand);
+      const brandIdByName = new Map(existingBrands.map((b) => [b.name, b.id]));
+
+      const dedupedBrandNames = new Set(parsed.brands.map((row) => row.name));
+      const newBrandNames = [...dedupedBrandNames].filter(
+        (name) => !brandIdByName.has(name),
+      );
+
+      const brandsResult: SystemsImportEntityResult = {
+        created: [],
+        updated: [],
+        unchangedCount: dedupedBrandNames.size - newBrandNames.length,
+        errors: [],
+      };
+
+      if (newBrandNames.length > 0) {
+        await runWithSingleVersionBump(
+          queryRunner,
+          ['system_brand'],
+          LookupEntity.SYSTEM_BRAND,
+          async () => {
+            const insertResult = await queryRunner.manager
+              .createQueryBuilder()
+              .insert()
+              .into(SystemBrand)
+              .values(newBrandNames.map((name) => ({ name })))
+              .execute();
+            const inserted = await queryRunner.manager.findBy(SystemBrand, {
+              id: In(insertResult.identifiers.map((row) => row.id as string)),
+            });
+            for (const brand of inserted)
+              brandIdByName.set(brand.name, brand.id);
+            brandsResult.created.push(...inserted.map((b) => b.name));
+            return inserted.length > 0;
+          },
+        );
+      }
+
+      // ---- Phase 2: catalogues — resolve brand by name, dedupe by
+      // (brandId, name) to the sheet's last row, then diff against
+      // what's stored. No unique constraint exists on (brand_id, name)
+      // for ON CONFLICT to target, so creates and updates are two
+      // separate statements, both inside the single version-bump wrap.
+      const catalogsResult: SystemsImportEntityResult = {
+        created: [],
+        updated: [],
+        unchangedCount: 0,
+        errors: [],
+      };
+      const resolvedCatalogRows = new Map<
+        string,
+        ParsedCatalogRow & { brandId: string }
+      >();
+      for (const row of parsed.catalogs) {
+        const brandId = brandIdByName.get(row.brandName);
+        if (!brandId) {
+          catalogsResult.errors.push(
+            `Catalogue row ${row.rowNumber}: brand "${row.brandName}" was not found (not in the Brand sheet or the database).`,
+          );
+          continue;
+        }
+        resolvedCatalogRows.set(`${brandId}::${row.name}`, { ...row, brandId });
+      }
+
+      if (resolvedCatalogRows.size > 0) {
+        const existingCatalogs = await queryRunner.manager.find(SystemCatalog);
+        const existingByKey = new Map(
+          existingCatalogs.map((c) => [`${c.brandId}::${c.name}`, c]),
+        );
+
+        const toCreate: (ParsedCatalogRow & { brandId: string })[] = [];
+        const toUpdate: {
+          id: string;
+          row: ParsedCatalogRow & { brandId: string };
+        }[] = [];
+        for (const [key, row] of resolvedCatalogRows) {
+          const existing = existingByKey.get(key);
+          if (!existing) {
+            toCreate.push(row);
+            continue;
+          }
+          const changed =
+            existing.systemType !== row.systemType ||
+            existing.maxGlassThickness !== row.maxGlassThickness ||
+            existing.maxSashWeight !== row.maxSashWeight;
+          if (changed) toUpdate.push({ id: existing.id, row });
+          else catalogsResult.unchangedCount += 1;
+        }
+
+        if (toCreate.length > 0 || toUpdate.length > 0) {
+          await runWithSingleVersionBump(
+            queryRunner,
+            ['system_catalog'],
+            LookupEntity.SYSTEM_CATALOG,
+            async () => {
+              if (toCreate.length > 0) {
+                await queryRunner.manager
+                  .createQueryBuilder()
+                  .insert()
+                  .into(SystemCatalog)
+                  .values(
+                    toCreate.map((row) => ({
+                      brandId: row.brandId,
+                      name: row.name,
+                      systemType: row.systemType,
+                      maxGlassThickness: row.maxGlassThickness,
+                      maxSashWeight: row.maxSashWeight,
+                    })),
+                  )
+                  .execute();
+                catalogsResult.created.push(
+                  ...toCreate.map((row) => `${row.brandName} / ${row.name}`),
+                );
+              }
+              if (toUpdate.length > 0) {
+                const values = toUpdate
+                  .map(
+                    (_, i) =>
+                      `($${i * 4 + 1}::uuid, $${i * 4 + 2}::system_type, $${i * 4 + 3}::integer, $${i * 4 + 4}::integer)`,
+                  )
+                  .join(', ');
+                const params = toUpdate.flatMap(({ id, row }) => [
+                  id,
+                  row.systemType,
+                  row.maxGlassThickness,
+                  row.maxSashWeight,
+                ]);
+                await queryRunner.query(
+                  `UPDATE "system_catalog" AS t
+                   SET "system_type" = v.system_type, "max_glass_thickness" = v.max_glass_thickness, "max_sash_weight" = v.max_sash_weight, "updated_at" = now()
+                   FROM (VALUES ${values}) AS v(id, system_type, max_glass_thickness, max_sash_weight)
+                   WHERE t.id = v.id`,
+                  params,
+                );
+                catalogsResult.updated.push(
+                  ...toUpdate.map(
+                    ({ row }) => `${row.brandName} / ${row.name}`,
+                  ),
+                );
+              }
+              return toCreate.length > 0 || toUpdate.length > 0;
+            },
+          );
+        }
+      }
+
+      // ---- Phase 3: profiles — resolve catalogue by name across ALL
+      // catalogues (existing + just-created), not just ones in this
+      // import's Catalogue sheet. A name matching more than one
+      // catalogue (no cross-brand uniqueness in this schema) is
+      // reported as ambiguous rather than guessed at.
+      const profilesResult: SystemsImportEntityResult = {
+        created: [],
+        updated: [],
+        unchangedCount: 0,
+        errors: [],
+      };
+      const allCatalogs = await queryRunner.manager.find(SystemCatalog);
+      const catalogIdsByName = new Map<string, string[]>();
+      for (const catalog of allCatalogs) {
+        const list = catalogIdsByName.get(catalog.name) ?? [];
+        list.push(catalog.id);
+        catalogIdsByName.set(catalog.name, list);
+      }
+
+      const resolvedProfileRows = new Map<
+        string,
+        ParsedProfileRow & { catalogId: string }
+      >();
+      for (const row of parsed.profiles) {
+        const catalogIds = catalogIdsByName.get(row.catalogName) ?? [];
+        if (catalogIds.length === 0) {
+          profilesResult.errors.push(
+            `Profile row ${row.rowNumber}: catalogue "${row.catalogName}" was not found.`,
+          );
+          continue;
+        }
+        if (catalogIds.length > 1) {
+          profilesResult.errors.push(
+            `Profile row ${row.rowNumber}: catalogue "${row.catalogName}" is ambiguous — ${catalogIds.length} catalogues share that name across different brands.`,
+          );
+          continue;
+        }
+        resolvedProfileRows.set(`${catalogIds[0]}::${row.profileNo}`, {
+          ...row,
+          catalogId: catalogIds[0],
+        });
+      }
+
+      if (resolvedProfileRows.size > 0) {
+        const existingProfiles = await queryRunner.manager.find(SystemProfile);
+        const existingByKey = new Map(
+          existingProfiles.map((p) => [`${p.catalogId}::${p.profileNo}`, p]),
+        );
+
+        const toCreate: (ParsedProfileRow & { catalogId: string })[] = [];
+        const toUpdate: {
+          id: string;
+          row: ParsedProfileRow & { catalogId: string };
+        }[] = [];
+        for (const [key, row] of resolvedProfileRows) {
+          const existing = existingByKey.get(key);
+          if (!existing) {
+            toCreate.push(row);
+            continue;
+          }
+          const numbersChanged = [
+            [existing.maxGlassThickness, row.maxGlassThickness],
+            [existing.weight, row.weight],
+            [existing.perimeter, row.perimeter],
+            [existing.inertiaIx, row.inertiaIx],
+            [existing.inertiaIy, row.inertiaIy],
+          ].some(([a, b]) => Math.abs(a - b) > 0.001);
+          const changed =
+            existing.profileType !== row.profileType ||
+            numbersChanged ||
+            (existing.image ?? null) !== (row.image ?? null);
+          if (changed) toUpdate.push({ id: existing.id, row });
+          else profilesResult.unchangedCount += 1;
+        }
+
+        if (toCreate.length > 0 || toUpdate.length > 0) {
+          await runWithSingleVersionBump(
+            queryRunner,
+            ['system_profile'],
+            LookupEntity.SYSTEM_PROFILE,
+            async () => {
+              if (toCreate.length > 0) {
+                await queryRunner.manager
+                  .createQueryBuilder()
+                  .insert()
+                  .into(SystemProfile)
+                  .values(
+                    toCreate.map((row) => ({
+                      catalogId: row.catalogId,
+                      profileNo: row.profileNo,
+                      profileType: row.profileType,
+                      maxGlassThickness: row.maxGlassThickness,
+                      weight: row.weight,
+                      perimeter: row.perimeter,
+                      inertiaIx: row.inertiaIx,
+                      inertiaIy: row.inertiaIy,
+                      image: row.image,
+                    })),
+                  )
+                  .execute();
+                profilesResult.created.push(
+                  ...toCreate.map(
+                    (row) => `${row.catalogName} / ${row.profileNo}`,
+                  ),
+                );
+              }
+              if (toUpdate.length > 0) {
+                const values = toUpdate
+                  .map(
+                    (_, i) =>
+                      `($${i * 8 + 1}::uuid, $${i * 8 + 2}::profile_type, $${i * 8 + 3}::integer, $${i * 8 + 4}::real, $${i * 8 + 5}::integer, $${i * 8 + 6}::real, $${i * 8 + 7}::real, $${i * 8 + 8}::varchar)`,
+                  )
+                  .join(', ');
+                const params = toUpdate.flatMap(({ id, row }) => [
+                  id,
+                  row.profileType,
+                  row.maxGlassThickness,
+                  row.weight,
+                  row.perimeter,
+                  row.inertiaIx,
+                  row.inertiaIy,
+                  row.image,
+                ]);
+                await queryRunner.query(
+                  `UPDATE "system_profile" AS t
+                   SET "profile_type" = v.profile_type, "max_glass_thickness" = v.max_glass_thickness, "weight" = v.weight, "perimeter" = v.perimeter, "inertia_ix" = v.inertia_ix, "inertia_iy" = v.inertia_iy, "image" = v.image, "updated_at" = now()
+                   FROM (VALUES ${values}) AS v(id, profile_type, max_glass_thickness, weight, perimeter, inertia_ix, inertia_iy, image)
+                   WHERE t.id = v.id`,
+                  params,
+                );
+                profilesResult.updated.push(
+                  ...toUpdate.map(
+                    ({ row }) => `${row.catalogName} / ${row.profileNo}`,
+                  ),
+                );
+              }
+              return toCreate.length > 0 || toUpdate.length > 0;
+            },
+          );
+        }
+      }
+
+      brandsResult.errors.push(
+        ...sheetErrors.filter((e) => e.startsWith('Brand ')),
+      );
+      catalogsResult.errors.unshift(
+        ...sheetErrors.filter((e) => e.startsWith('Catalogue ')),
+      );
+      profilesResult.errors.unshift(
+        ...sheetErrors.filter((e) => e.startsWith('Profile ')),
+      );
+
+      await this.auditLog.record(queryRunner.manager, {
+        actorUserId: actorId,
+        action: 'lookup.systems.imported',
+        targetType: 'system',
+        metadata: {
+          brandsCreated: brandsResult.created.length,
+          catalogsCreated: catalogsResult.created.length,
+          catalogsUpdated: catalogsResult.updated.length,
+          profilesCreated: profilesResult.created.length,
+          profilesUpdated: profilesResult.updated.length,
+        },
+      });
+
+      await queryRunner.commitTransaction();
+      return {
+        brands: brandsResult,
+        catalogs: catalogsResult,
+        profiles: profilesResult,
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
     } finally {
       await queryRunner.release();
     }

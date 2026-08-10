@@ -58,15 +58,19 @@ interface RequestOptions {
 }
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  // FormData (file uploads) must keep its own multipart Content-Type
+  // with browser-generated boundary — setting it manually or
+  // JSON.stringify-ing the body would break the upload.
+  const isFormData = options.body instanceof FormData
   const doFetch = (token: string | null) =>
     fetch(`${API_URL}${path}`, {
       method: options.method ?? 'GET',
       credentials: 'include',
       headers: {
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: options.body ? JSON.stringify(options.body) : undefined,
+      body: isFormData ? (options.body as FormData) : options.body ? JSON.stringify(options.body) : undefined,
     })
 
   let res = await doFetch(accessToken)

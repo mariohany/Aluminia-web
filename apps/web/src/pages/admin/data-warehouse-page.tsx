@@ -147,8 +147,8 @@ function GlassTab() {
       useCreate={useCreateGlassMutation}
       useUpdate={useUpdateGlassMutation}
       useDelete={useDeleteGlassMutation}
-      createOne={lookupsApi.createGlass}
-      deleteOne={lookupsApi.deleteGlass}
+      bulkDelete={lookupsApi.bulkDeleteGlass}
+      bulkDuplicate={lookupsApi.bulkDuplicateGlass}
       duplicate={(row) => ({
         name: `${row.name} ${copy}`,
         thickness: row.thickness,
@@ -190,8 +190,8 @@ function SystemBrandsTab() {
       useCreate={useCreateSystemBrandMutation}
       useUpdate={useUpdateSystemBrandMutation}
       useDelete={useDeleteSystemBrandMutation}
-      createOne={lookupsApi.createSystemBrand}
-      deleteOne={lookupsApi.deleteSystemBrand}
+      bulkDelete={lookupsApi.bulkDeleteSystemBrands}
+      bulkDuplicate={lookupsApi.bulkDuplicateSystemBrands}
       duplicate={(row) => ({ name: `${row.name} ${copy}` })}
       toEditDefaults={(row) => ({ name: row.name })}
       rowLabel={(row) => row.name}
@@ -274,8 +274,8 @@ function SystemCatalogsTab() {
       useCreate={useCreateSystemCatalogMutation}
       useUpdate={useUpdateSystemCatalogMutation}
       useDelete={useDeleteSystemCatalogMutation}
-      createOne={lookupsApi.createSystemCatalog}
-      deleteOne={lookupsApi.deleteSystemCatalog}
+      bulkDelete={lookupsApi.bulkDeleteSystemCatalogs}
+      bulkDuplicate={lookupsApi.bulkDuplicateSystemCatalogs}
       duplicate={(row) => ({
         brandId: row.brandId,
         name: `${row.name} ${copy}`,
@@ -379,8 +379,8 @@ function SystemProfilesTab() {
       useCreate={useCreateSystemProfileMutation}
       useUpdate={useUpdateSystemProfileMutation}
       useDelete={useDeleteSystemProfileMutation}
-      createOne={lookupsApi.createSystemProfile}
-      deleteOne={lookupsApi.deleteSystemProfile}
+      bulkDelete={lookupsApi.bulkDeleteSystemProfiles}
+      bulkDuplicate={lookupsApi.bulkDuplicateSystemProfiles}
       duplicate={(row) => ({
         // profileNo is unique per catalogue, unlike the other entities'
         // duplicated names — a plain " copy" suffix on top of another

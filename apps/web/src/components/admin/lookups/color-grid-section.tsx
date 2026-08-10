@@ -1,13 +1,14 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Copy, Plus, Trash2 } from 'lucide-react'
+import { Copy, Plus, Trash2, Upload } from 'lucide-react'
 import {
   createColorSchema,
   updateColorSchema,
+  type ColorImportResult,
   type ColorSummary,
   type CreateColorInput,
   type UpdateColorInput,
@@ -18,6 +19,7 @@ import {
   useColorsQuery,
   useCreateColorMutation,
   useDeleteColorMutation,
+  useImportColorsMutation,
   useUpdateColorMutation,
 } from '@/lib/lookups-queries'
 import { Button } from '@/components/ui/button'
@@ -62,10 +64,13 @@ export function ColorGridSection() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false)
+  const [importResult, setImportResult] = useState<ColorImportResult | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const createMutation = useCreateColorMutation()
   const updateMutation = useUpdateColorMutation(editTarget?.id ?? '')
   const deleteMutation = useDeleteColorMutation(deleteTarget?.id ?? '')
+  const importMutation = useImportColorsMutation()
 
   const createForm = useForm<CreateColorInput>({
     resolver: zodResolver(createColorSchema),
@@ -119,34 +124,54 @@ export function ColorGridSection() {
     const ids = [...selected]
     setBulkDeleteConfirmOpen(false)
     setBulkBusy(true)
-    const results = await Promise.allSettled(ids.map((id) => lookupsApi.deleteColor(id)))
-    await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-    setBulkBusy(false)
-    setSelected(new Set())
-    const failed = results.filter((r) => r.status === 'rejected').length
-    if (failed > 0) {
-      toast.error(t('dataWarehousePage.messages.bulkDeletePartial', { failed, succeeded: ids.length - failed }))
-    } else {
-      toast.success(t('dataWarehousePage.messages.bulkDeleteSuccess', { count: ids.length }))
+    try {
+      const { deletedIds, blockedIds } = await lookupsApi.bulkDeleteColors(ids)
+      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      if (blockedIds.length > 0) {
+        toast.error(
+          t('dataWarehousePage.messages.bulkDeletePartial', {
+            failed: blockedIds.length,
+            succeeded: deletedIds.length,
+          }),
+        )
+      } else {
+        toast.success(t('dataWarehousePage.messages.bulkDeleteSuccess', { count: deletedIds.length }))
+      }
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+    } finally {
+      setBulkBusy(false)
+      setSelected(new Set())
     }
   }
 
   const onBulkDuplicate = async () => {
     const targets = rows.filter((row) => selected.has(row.id))
     setBulkBusy(true)
-    const results = await Promise.allSettled(
-      targets.map((row) =>
-        lookupsApi.createColor({ code: `${row.code} ${t('dataWarehousePage.bulk.copySuffix')}`, hex: row.hex }),
-      ),
-    )
-    await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-    setBulkBusy(false)
-    setSelected(new Set())
-    const failed = results.filter((r) => r.status === 'rejected').length
-    if (failed > 0) {
-      toast.error(t('dataWarehousePage.messages.bulkDuplicatePartial', { failed, succeeded: targets.length - failed }))
-    } else {
-      toast.success(t('dataWarehousePage.messages.bulkDuplicateSuccess', { count: targets.length }))
+    try {
+      const created = await lookupsApi.bulkDuplicateColors(
+        targets.map((row) => ({ code: `${row.code} ${t('dataWarehousePage.bulk.copySuffix')}`, hex: row.hex })),
+      )
+      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      toast.success(t('dataWarehousePage.messages.bulkDuplicateSuccess', { count: created.length }))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+    } finally {
+      setBulkBusy(false)
+      setSelected(new Set())
+    }
+  }
+
+  const onImportFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const result = await importMutation.mutateAsync(file)
+      setImportResult(result)
+      toast.success(t('dataWarehousePage.colorImport.success'))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('dataWarehousePage.colorImport.error')))
     }
   }
 
@@ -161,6 +186,25 @@ export function ColorGridSection() {
               {t('dataWarehousePage.bulk.selectAll')}
             </label>
           )}
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+            className="hidden"
+            onChange={(e) => void onImportFileSelected(e)}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={importMutation.isPending}
+            title={t('dataWarehousePage.colorImport.description')}
+            onClick={() => importInputRef.current?.click()}
+          >
+            <Upload className="size-4" aria-hidden="true" />
+            {importMutation.isPending
+              ? t('dataWarehousePage.colorImport.importing')
+              : t('dataWarehousePage.createButtons.colorImport')}
+          </Button>
           <Dialog
             open={createOpen}
             onOpenChange={(next) => {
@@ -304,6 +348,117 @@ export function ColorGridSection() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!importResult} onOpenChange={(next) => !next && setImportResult(null)}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('dataWarehousePage.colorImport.resultTitle')}</DialogTitle>
+          </DialogHeader>
+          {importResult && (
+            <div className="flex flex-col gap-3 text-sm">
+              {importResult.created.length === 0 &&
+              importResult.updated.length === 0 &&
+              importResult.unchangedCount === 0 &&
+              importResult.duplicates.length === 0 &&
+              importResult.errors.length === 0 ? (
+                <p className="text-muted-foreground">{t('dataWarehousePage.colorImport.noChanges')}</p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {importResult.created.length > 0 && (
+                      <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
+                        {t('dataWarehousePage.colorImport.created', { count: importResult.created.length })}
+                      </span>
+                    )}
+                    {importResult.updated.length > 0 && (
+                      <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
+                        {t('dataWarehousePage.colorImport.updated', { count: importResult.updated.length })}
+                      </span>
+                    )}
+                    {importResult.unchangedCount > 0 && (
+                      <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                        {t('dataWarehousePage.colorImport.unchanged', { count: importResult.unchangedCount })}
+                      </span>
+                    )}
+                    {importResult.duplicates.length > 0 && (
+                      <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                        {t('dataWarehousePage.colorImport.duplicates', {
+                          count: importResult.duplicates.reduce((sum, d) => sum + d.occurrences, 0),
+                        })}
+                      </span>
+                    )}
+                  </div>
+
+                  {importResult.updated.length > 0 && (
+                    <div>
+                      <p className="mb-1 font-medium text-foreground">
+                        {t('dataWarehousePage.colorImport.updatedListTitle')}
+                      </p>
+                      <ul className="flex flex-col gap-1 text-muted-foreground">
+                        {importResult.updated.map((u) => (
+                          <li key={u.code} className="flex items-center gap-2">
+                            <span
+                              className="size-3.5 shrink-0 rounded-full border border-border"
+                              style={{ backgroundColor: u.oldHex }}
+                              aria-hidden="true"
+                            />
+                            {t('dataWarehousePage.colorImport.hexChange', {
+                              code: u.code,
+                              oldHex: u.oldHex,
+                              newHex: u.newHex,
+                            })}
+                            <span
+                              className="size-3.5 shrink-0 rounded-full border border-border"
+                              style={{ backgroundColor: u.newHex }}
+                              aria-hidden="true"
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {importResult.duplicates.length > 0 && (
+                    <div>
+                      <p className="mb-1 font-medium text-foreground">
+                        {t('dataWarehousePage.colorImport.duplicates', {
+                          count: importResult.duplicates.reduce((sum, d) => sum + d.occurrences, 0),
+                        })}
+                      </p>
+                      <ul className="flex flex-col gap-1 text-muted-foreground">
+                        {importResult.duplicates.map((d) => (
+                          <li key={d.code}>
+                            {t('dataWarehousePage.colorImport.duplicateItem', {
+                              code: d.code,
+                              occurrences: d.occurrences,
+                            })}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {importResult.errors.length > 0 && (
+                    <div>
+                      <p className="mb-1 font-medium text-destructive">
+                        {t('dataWarehousePage.colorImport.errorsTitle')}
+                      </p>
+                      <ul className="flex flex-col gap-1 text-muted-foreground">
+                        {importResult.errors.map((e) => (
+                          <li key={e}>{e}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setImportResult(null)}>{t('dataWarehousePage.colorImport.close')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

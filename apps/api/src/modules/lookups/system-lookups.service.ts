@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import type {
+  BulkDeleteResult,
   CreateSystemBrandInput,
   CreateSystemCatalogInput,
   CreateSystemProfileInput,
@@ -18,12 +19,15 @@ import { SystemCatalog } from '../../database/control-plane/entities/system-cata
 import { SystemProfile } from '../../database/control-plane/entities/system-profile.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { translatePostgresError } from './pg-error.util';
+import { findBlockedIds } from './lookup-version.util';
 
 // Same accepted-risk tradeoff as ColorLookupsService — see its header
-// comment.
+// comment. bulk* methods are the exception, same reasoning as
+// ColorLookupsService.bulkDeleteColors/bulkDuplicateColors.
 @Injectable()
 export class SystemLookupsService {
   constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(SystemBrand)
     private readonly brands: Repository<SystemBrand>,
     @InjectRepository(SystemCatalog)
@@ -93,6 +97,75 @@ export class SystemLookupsService {
       targetId: id,
       metadata: { name: brand.name },
     });
+  }
+
+  async bulkDeleteSystemBrands(
+    ids: string[],
+    actorId: string,
+  ): Promise<BulkDeleteResult> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const blockedIds = await findBlockedIds(queryRunner, ids, [
+        { table: 'system_catalog', column: 'brand_id' },
+      ]);
+      const deletableIds = ids.filter((id) => !blockedIds.has(id));
+
+      if (deletableIds.length > 0) {
+        await queryRunner.manager.delete(SystemBrand, deletableIds);
+        await this.auditLog.record(queryRunner.manager, {
+          actorUserId: actorId,
+          action: 'lookup.system_brand.bulk_deleted',
+          targetType: 'system_brand',
+          metadata: { count: deletableIds.length, ids: deletableIds },
+        });
+      }
+
+      await queryRunner.commitTransaction();
+      return { deletedIds: deletableIds, blockedIds: [...blockedIds] };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async bulkDuplicateSystemBrands(
+    items: CreateSystemBrandInput[],
+    actorId: string,
+  ): Promise<SystemBrandSummary[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const insertResult = await queryRunner.manager
+        .createQueryBuilder()
+        .insert()
+        .into(SystemBrand)
+        .values(items)
+        .execute();
+      const newIds = insertResult.identifiers.map((row) => row.id as string);
+      const created = await queryRunner.manager.findBy(SystemBrand, {
+        id: In(newIds),
+      });
+
+      await this.auditLog.record(queryRunner.manager, {
+        actorUserId: actorId,
+        action: 'lookup.system_brand.bulk_duplicated',
+        targetType: 'system_brand',
+        metadata: { count: created.length },
+      });
+
+      await queryRunner.commitTransaction();
+      return created.map(toSystemBrandSummary);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   // ---- SystemCatalog ----
@@ -174,6 +247,76 @@ export class SystemLookupsService {
     });
   }
 
+  async bulkDeleteSystemCatalogs(
+    ids: string[],
+    actorId: string,
+  ): Promise<BulkDeleteResult> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const blockedIds = await findBlockedIds(queryRunner, ids, [
+        { table: 'system_profile', column: 'catalog_id' },
+      ]);
+      const deletableIds = ids.filter((id) => !blockedIds.has(id));
+
+      if (deletableIds.length > 0) {
+        await queryRunner.manager.delete(SystemCatalog, deletableIds);
+        await this.auditLog.record(queryRunner.manager, {
+          actorUserId: actorId,
+          action: 'lookup.system_catalog.bulk_deleted',
+          targetType: 'system_catalog',
+          metadata: { count: deletableIds.length, ids: deletableIds },
+        });
+      }
+
+      await queryRunner.commitTransaction();
+      return { deletedIds: deletableIds, blockedIds: [...blockedIds] };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async bulkDuplicateSystemCatalogs(
+    items: CreateSystemCatalogInput[],
+    actorId: string,
+  ): Promise<SystemCatalogSummary[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const insertResult = await queryRunner.manager
+        .createQueryBuilder()
+        .insert()
+        .into(SystemCatalog)
+        .values(items)
+        .execute();
+      const newIds = insertResult.identifiers.map((row) => row.id as string);
+      const created = await queryRunner.manager.find(SystemCatalog, {
+        where: { id: In(newIds) },
+        relations: { brand: true },
+      });
+
+      await this.auditLog.record(queryRunner.manager, {
+        actorUserId: actorId,
+        action: 'lookup.system_catalog.bulk_duplicated',
+        targetType: 'system_catalog',
+        metadata: { count: created.length },
+      });
+
+      await queryRunner.commitTransaction();
+      return created.map(toSystemCatalogSummary);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      return translatePostgresError(error, 'That brand does not exist.');
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   // ---- SystemProfile ----
 
   listSystemProfiles(): Promise<SystemProfileSummary[]> {
@@ -244,6 +387,71 @@ export class SystemLookupsService {
       targetId: id,
       metadata: { profileNo: profile.profileNo },
     });
+  }
+
+  // No pre-check needed — nothing in this schema references a profile,
+  // so a bulk delete can never be partially blocked.
+  async bulkDeleteSystemProfiles(
+    ids: string[],
+    actorId: string,
+  ): Promise<BulkDeleteResult> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      await queryRunner.manager.delete(SystemProfile, ids);
+      await this.auditLog.record(queryRunner.manager, {
+        actorUserId: actorId,
+        action: 'lookup.system_profile.bulk_deleted',
+        targetType: 'system_profile',
+        metadata: { count: ids.length, ids },
+      });
+
+      await queryRunner.commitTransaction();
+      return { deletedIds: ids, blockedIds: [] };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async bulkDuplicateSystemProfiles(
+    items: CreateSystemProfileInput[],
+    actorId: string,
+  ): Promise<SystemProfileSummary[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const insertResult = await queryRunner.manager
+        .createQueryBuilder()
+        .insert()
+        .into(SystemProfile)
+        .values(items)
+        .execute();
+      const newIds = insertResult.identifiers.map((row) => row.id as string);
+      const created = await queryRunner.manager.find(SystemProfile, {
+        where: { id: In(newIds) },
+        relations: { catalog: true },
+      });
+
+      await this.auditLog.record(queryRunner.manager, {
+        actorUserId: actorId,
+        action: 'lookup.system_profile.bulk_duplicated',
+        targetType: 'system_profile',
+        metadata: { count: created.length },
+      });
+
+      await queryRunner.commitTransaction();
+      return created.map(toSystemProfileSummary);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      return translatePostgresError(error, 'That catalogue does not exist.');
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   // ---- Tenant read slice ----

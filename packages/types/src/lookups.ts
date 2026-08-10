@@ -69,6 +69,33 @@ export const LOOKUP_SLICE_ENTITIES: Record<LookupSlice, LookupEntity[]> = {
   [LookupSlice.SYSTEMS]: [LookupEntity.SYSTEM_BRAND, LookupEntity.SYSTEM_CATALOG, LookupEntity.SYSTEM_PROFILE],
 }
 
+// Shared shape for every lookup entity's bulk-select actions (bulk
+// delete, bulk duplicate) — see admin-lookups.controller.ts's
+// `*/bulk-delete` and `*/bulk-duplicate` routes.
+export const bulkIdsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1),
+})
+export type BulkIdsInput = z.infer<typeof bulkIdsSchema>
+
+// Wraps any entity's create schema for a bulk-duplicate request body —
+// the caller (SimpleLookupSection's `duplicate` prop, ColorGridSection's
+// bulk duplicate) already builds each row's create payload client-side,
+// same as the existing single-row create flow; this just batches them.
+export function bulkCreateSchema<T extends z.ZodTypeAny>(itemSchema: T) {
+  return z.object({ items: z.array(itemSchema).min(1).max(500) })
+}
+
+// `blockedIds` are rows the caller asked to delete but that are still
+// referenced elsewhere (e.g. a colour used by a glass combination) —
+// reported back rather than failing the whole batch, so the caller can
+// delete everything else in one shot and only re-surface the blocked
+// ones. The caller already has each row's own data locally (it's what
+// built the selection), so this only needs ids, not display labels.
+export interface BulkDeleteResult {
+  deletedIds: string[]
+  blockedIds: string[]
+}
+
 // ---- Colour cluster --------------------------------------------------
 
 export const createColorSchema = z.object({
@@ -88,6 +115,18 @@ export interface ColorSummary {
   hex: string
   createdAt: string
   updatedAt: string
+}
+
+// Result of an Excel import (admin-lookups.controller.ts's
+// POST /colors/import). Duplicate RAL codes within the sheet are
+// collapsed (last row for a code wins) rather than rejected — the count
+// here is informational, not an error.
+export interface ColorImportResult {
+  created: string[]
+  updated: { code: string; oldHex: string; newHex: string }[]
+  unchangedCount: number
+  duplicates: { code: string; occurrences: number }[]
+  errors: string[]
 }
 
 export const createPaintBrandSchema = z.object({
@@ -253,6 +292,20 @@ export const updateGlassCombinationSchema = glassCombinationBaseSchema
   .refine((data) => data.items === undefined || alternatesSheetAndGap(data.items), alternationIssue)
   .refine((data) => data.items === undefined || gapThicknessMatchesType(data.items), gapThicknessIssue)
 export type UpdateGlassCombinationInput = z.infer<typeof updateGlassCombinationSchema>
+
+// Deliberately loose shape for bulk-duplicate's request body — only
+// checks that each entry looks combination-shaped (a name + a
+// non-empty items array), not the full min-3/alternation/bounded-by-sheet
+// rules `createGlassCombinationSchema` enforces. Those run per-item in
+// GlassLookupsService.bulkDuplicateGlassCombinations via `.safeParse()`
+// instead, so one legacy or otherwise-invalid combination in a batch
+// (e.g. a pre-existing single-sheet row from before this rule existed)
+// gets skipped and reported back, rather than 400ing the whole request.
+export const looseGlassCombinationSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  items: z.array(z.unknown()).min(1),
+})
+export type LooseGlassCombinationInput = z.infer<typeof looseGlassCombinationSchema>
 
 export interface GlassCombinationItemSheetSummary {
   kind: typeof CombinationItemKind.SHEET

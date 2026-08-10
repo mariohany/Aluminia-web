@@ -3,6 +3,9 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import {
   CombinationItemKind,
+  createGlassCombinationSchema,
+  LookupEntity,
+  type BulkDeleteResult,
   type CreateGlassCombinationInput,
   type CreateGlassInput,
   GlassGapType,
@@ -11,6 +14,7 @@ import {
   type GlassCombinationSummary,
   type GlassLookups,
   type GlassSummary,
+  type LooseGlassCombinationInput,
   type UpdateGlassCombinationInput,
   type UpdateGlassInput,
 } from '@repo/types/lookups';
@@ -19,6 +23,10 @@ import { GlassCombination } from '../../database/control-plane/entities/glass-co
 import { GlassCombinationItem } from '../../database/control-plane/entities/glass-combination-item.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { translatePostgresError } from './pg-error.util';
+import {
+  findBlockedIds,
+  runWithSingleVersionBump,
+} from './lookup-version.util';
 
 const COMBINATION_ITEM_RELATIONS = {
   glass: true,
@@ -101,6 +109,77 @@ export class GlassLookupsService {
       targetId: id,
       metadata: { name: glass.name },
     });
+  }
+
+  // Bulk delete/duplicate — see ColorLookupsService's bulkDeleteColors
+  // for why a single-table op like this needs no trigger-disable dance.
+  async bulkDeleteGlass(
+    ids: string[],
+    actorId: string,
+  ): Promise<BulkDeleteResult> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const blockedIds = await findBlockedIds(queryRunner, ids, [
+        { table: 'glass_combination_item', column: 'glass_id' },
+      ]);
+      const deletableIds = ids.filter((id) => !blockedIds.has(id));
+
+      if (deletableIds.length > 0) {
+        await queryRunner.manager.delete(Glass, deletableIds);
+        await this.auditLog.record(queryRunner.manager, {
+          actorUserId: actorId,
+          action: 'lookup.glass.bulk_deleted',
+          targetType: 'glass',
+          metadata: { count: deletableIds.length, ids: deletableIds },
+        });
+      }
+
+      await queryRunner.commitTransaction();
+      return { deletedIds: deletableIds, blockedIds: [...blockedIds] };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async bulkDuplicateGlass(
+    items: CreateGlassInput[],
+    actorId: string,
+  ): Promise<GlassSummary[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const insertResult = await queryRunner.manager
+        .createQueryBuilder()
+        .insert()
+        .into(Glass)
+        .values(items)
+        .execute();
+      const newIds = insertResult.identifiers.map((i) => i.id as string);
+      const created = await queryRunner.manager.findBy(Glass, {
+        id: In(newIds),
+      });
+
+      await this.auditLog.record(queryRunner.manager, {
+        actorUserId: actorId,
+        action: 'lookup.glass.bulk_duplicated',
+        targetType: 'glass',
+        metadata: { count: created.length },
+      });
+
+      await queryRunner.commitTransaction();
+      return created.map(toGlassSummary);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   // ---- GlassCombination ----
@@ -239,6 +318,140 @@ export class GlassLookupsService {
       targetId: id,
       metadata: { name: combo.name },
     });
+  }
+
+  // Bulk delete/duplicate. Unlike every other bulk* method in this
+  // file, these two DO need runWithSingleVersionBump: a combination's
+  // cascade into glass_combination_item (delete) or its own explicit
+  // item insert (duplicate) touches a second table whose trigger also
+  // maps to the glass_combination entity — two statement-level firings
+  // for what should read as one version step.
+  async bulkDeleteGlassCombinations(
+    ids: string[],
+    actorId: string,
+  ): Promise<BulkDeleteResult> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      await runWithSingleVersionBump(
+        queryRunner,
+        ['glass_combination', 'glass_combination_item'],
+        LookupEntity.GLASS_COMBINATION,
+        async () => {
+          const result = await queryRunner.manager.delete(
+            GlassCombination,
+            ids,
+          );
+          return (result.affected ?? 0) > 0;
+        },
+      );
+
+      await this.auditLog.record(queryRunner.manager, {
+        actorUserId: actorId,
+        action: 'lookup.glass_combination.bulk_deleted',
+        targetType: 'glass_combination',
+        metadata: { count: ids.length, ids },
+      });
+
+      await queryRunner.commitTransaction();
+      return { deletedIds: ids, blockedIds: [] };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // Request body is validated loosely (BulkDuplicateGlassCombinationsDto,
+  // just "name + a non-empty items array") rather than against the full
+  // createGlassCombinationSchema — that full validation (min 3 items,
+  // sheet/gap alternation, bounded by sheet) runs per-item right here
+  // instead, via safeParse. A pre-existing combination that predates
+  // this rule (or was otherwise left in an invalid shape) fails on its
+  // own and gets skipped and counted in failedCount, rather than 400ing
+  // the whole batch and blocking every valid combination alongside it.
+  async bulkDuplicateGlassCombinations(
+    items: LooseGlassCombinationInput[],
+    actorId: string,
+  ): Promise<{ created: GlassCombinationSummary[]; failedCount: number }> {
+    const validItems: CreateGlassCombinationInput[] = [];
+    let failedCount = 0;
+    for (const item of items) {
+      const result = createGlassCombinationSchema.safeParse(item);
+      if (result.success) validItems.push(result.data);
+      else failedCount += 1;
+    }
+
+    if (validItems.length === 0) {
+      return { created: [], failedCount };
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      let newIds: string[] = [];
+      await runWithSingleVersionBump(
+        queryRunner,
+        ['glass_combination', 'glass_combination_item'],
+        LookupEntity.GLASS_COMBINATION,
+        async () => {
+          const insertResult = await queryRunner.manager
+            .createQueryBuilder()
+            .insert()
+            .into(GlassCombination)
+            .values(validItems.map((item) => ({ name: item.name })))
+            .execute();
+          newIds = insertResult.identifiers.map((row) => row.id as string);
+
+          const allItemRows = newIds.flatMap((comboId, index) =>
+            buildItemRows(comboId, validItems[index].items),
+          );
+          await queryRunner.manager.insert(GlassCombinationItem, allItemRows);
+          return newIds.length > 0;
+        },
+      );
+
+      await this.auditLog.record(queryRunner.manager, {
+        actorUserId: actorId,
+        action: 'lookup.glass_combination.bulk_duplicated',
+        targetType: 'glass_combination',
+        metadata: { count: newIds.length, failedCount },
+      });
+
+      const newCombos = await queryRunner.manager.findBy(GlassCombination, {
+        id: In(newIds),
+      });
+      const newItems = await queryRunner.manager.find(GlassCombinationItem, {
+        where: { combinationId: In(newIds) },
+        relations: COMBINATION_ITEM_RELATIONS,
+        order: { position: 'ASC' },
+      });
+      const itemsByCombo = new Map<string, GlassCombinationItem[]>();
+      for (const item of newItems) {
+        const list = itemsByCombo.get(item.combinationId) ?? [];
+        list.push(item);
+        itemsByCombo.set(item.combinationId, list);
+      }
+
+      await queryRunner.commitTransaction();
+      return {
+        created: newCombos.map((combo) =>
+          toGlassCombinationSummary(combo, itemsByCombo.get(combo.id) ?? []),
+        ),
+        failedCount,
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      return translatePostgresError(
+        error,
+        'One of the glass or colour references in this combination does not exist.',
+      );
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   // ---- Tenant read slice ----

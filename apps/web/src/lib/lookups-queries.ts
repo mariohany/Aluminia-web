@@ -74,6 +74,16 @@ export function useDeleteColorMutation(id: string) {
     },
   })
 }
+export function useImportColorsMutation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (file: File) => api.importColors(file),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: colorsKey })
+      invalidateVersion(queryClient)
+    },
+  })
+}
 
 // ---- PaintBrand ----
 export function usePaintBrandsQuery() {

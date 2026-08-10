@@ -166,30 +166,30 @@ export function GlassCombinationSection() {
     const ids = [...selected]
     setBulkDeleteConfirmOpen(false)
     setBulkBusy(true)
-    const results = await Promise.allSettled(ids.map((id) => lookupsApi.deleteGlassCombination(id)))
-    await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-    setBulkBusy(false)
-    setSelected(new Set())
-    const failed = results.filter((r) => r.status === 'rejected').length
-    if (failed > 0) {
-      toast.error(t('dataWarehousePage.messages.bulkDeletePartial', { failed, succeeded: ids.length - failed }))
-    } else {
-      toast.success(t('dataWarehousePage.messages.bulkDeleteSuccess', { count: ids.length }))
+    try {
+      const { deletedIds } = await lookupsApi.bulkDeleteGlassCombinations(ids)
+      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      toast.success(t('dataWarehousePage.messages.bulkDeleteSuccess', { count: deletedIds.length }))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+    } finally {
+      setBulkBusy(false)
+      setSelected(new Set())
     }
   }
 
   const onBulkDuplicate = async () => {
     const targets = rows.filter((row) => selected.has(row.id))
     setBulkBusy(true)
-    const results = await Promise.allSettled(
-      targets.map((combo) =>
-        lookupsApi.createGlassCombination({
+    try {
+      const created = await lookupsApi.bulkDuplicateGlassCombinations(
+        targets.map((combo) => ({
           name: `${combo.name} ${t('dataWarehousePage.bulk.copySuffix')}`,
           items: combo.items.map((item) =>
             item.kind === 'sheet'
-              ? { kind: 'sheet', glassId: item.glassId, colorId: item.colorId }
+              ? { kind: 'sheet' as const, glassId: item.glassId, colorId: item.colorId }
               : {
-                  kind: 'gap',
+                  kind: 'gap' as const,
                   gapType: item.gapType,
                   gapThickness: item.gapThickness,
                   gapColorId: item.gapColorId,
@@ -198,17 +198,24 @@ export function GlassCombinationSection() {
                   rowsCount: item.rowsCount,
                 },
           ),
-        }),
-      ),
-    )
-    await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-    setBulkBusy(false)
-    setSelected(new Set())
-    const failed = results.filter((r) => r.status === 'rejected').length
-    if (failed > 0) {
-      toast.error(t('dataWarehousePage.messages.bulkDuplicatePartial', { failed, succeeded: targets.length - failed }))
-    } else {
-      toast.success(t('dataWarehousePage.messages.bulkDuplicateSuccess', { count: targets.length }))
+        })),
+      )
+      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      if (created.failedCount > 0) {
+        toast.error(
+          t('dataWarehousePage.messages.bulkDuplicatePartial', {
+            failed: created.failedCount,
+            succeeded: created.created.length,
+          }),
+        )
+      } else {
+        toast.success(t('dataWarehousePage.messages.bulkDuplicateSuccess', { count: created.created.length }))
+      }
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+    } finally {
+      setBulkBusy(false)
+      setSelected(new Set())
     }
   }
 

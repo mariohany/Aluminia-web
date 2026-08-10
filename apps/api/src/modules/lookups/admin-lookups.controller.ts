@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,12 +9,17 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UserRole } from '@repo/types/auth';
 import type {
   PaintBrandSummary,
   PaintingPriceSummary,
   ColorSummary,
+  ColorImportResult,
+  BulkDeleteResult,
   GlassCombinationSummary,
   GlassSummary,
   SystemBrandSummary,
@@ -42,6 +48,13 @@ import { CreateSystemCatalogDto } from './dto/create-system-catalog.dto';
 import { UpdateSystemCatalogDto } from './dto/update-system-catalog.dto';
 import { CreateSystemProfileDto } from './dto/create-system-profile.dto';
 import { UpdateSystemProfileDto } from './dto/update-system-profile.dto';
+import { BulkIdsDto } from './dto/bulk-ids.dto';
+import { BulkDuplicateColorsDto } from './dto/bulk-duplicate-colors.dto';
+import { BulkDuplicateGlassDto } from './dto/bulk-duplicate-glass.dto';
+import { BulkDuplicateGlassCombinationsDto } from './dto/bulk-duplicate-glass-combinations.dto';
+import { BulkDuplicateSystemBrandsDto } from './dto/bulk-duplicate-system-brands.dto';
+import { BulkDuplicateSystemCatalogsDto } from './dto/bulk-duplicate-system-catalogs.dto';
+import { BulkDuplicateSystemProfilesDto } from './dto/bulk-duplicate-system-profiles.dto';
 
 // Every write happens here — tenants only ever read (LookupsController).
 // A DB-level FK violation on delete (ON DELETE RESTRICT throughout the
@@ -88,6 +101,37 @@ export class AdminLookupsController {
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<void> {
     return this.colorLookups.deleteColor(id, actor.id);
+  }
+
+  @Post('colors/bulk-delete')
+  bulkDeleteColors(
+    @Body() dto: BulkIdsDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<BulkDeleteResult> {
+    return this.colorLookups.bulkDeleteColors(dto.ids, actor.id);
+  }
+
+  @Post('colors/bulk-duplicate')
+  bulkDuplicateColors(
+    @Body() dto: BulkDuplicateColorsDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<ColorSummary[]> {
+    return this.colorLookups.bulkDuplicateColors(dto.items, actor.id);
+  }
+
+  // 5 MB is generous for a colour list; caps the buffer this handler
+  // holds in memory (memoryStorage, not disk — the file never needs to
+  // outlive this one request).
+  @Post('colors/import')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
+  importColors(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<ColorImportResult> {
+    if (!file) throw new BadRequestException('No file uploaded.');
+    return this.colorLookups.importColors(file.buffer, actor.id);
   }
 
   // ---- PaintBrand ----
@@ -189,6 +233,22 @@ export class AdminLookupsController {
     return this.glassLookups.deleteGlass(id, actor.id);
   }
 
+  @Post('glass/bulk-delete')
+  bulkDeleteGlass(
+    @Body() dto: BulkIdsDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<BulkDeleteResult> {
+    return this.glassLookups.bulkDeleteGlass(dto.ids, actor.id);
+  }
+
+  @Post('glass/bulk-duplicate')
+  bulkDuplicateGlass(
+    @Body() dto: BulkDuplicateGlassDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<GlassSummary[]> {
+    return this.glassLookups.bulkDuplicateGlass(dto.items, actor.id);
+  }
+
   // ---- GlassCombination ----
 
   @Get('glass-combinations')
@@ -220,6 +280,25 @@ export class AdminLookupsController {
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<void> {
     return this.glassLookups.deleteGlassCombination(id, actor.id);
+  }
+
+  @Post('glass-combinations/bulk-delete')
+  bulkDeleteGlassCombinations(
+    @Body() dto: BulkIdsDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<BulkDeleteResult> {
+    return this.glassLookups.bulkDeleteGlassCombinations(dto.ids, actor.id);
+  }
+
+  @Post('glass-combinations/bulk-duplicate')
+  bulkDuplicateGlassCombinations(
+    @Body() dto: BulkDuplicateGlassCombinationsDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<{ created: GlassCombinationSummary[]; failedCount: number }> {
+    return this.glassLookups.bulkDuplicateGlassCombinations(
+      dto.items,
+      actor.id,
+    );
   }
 
   // ---- SystemBrand ----
@@ -255,6 +334,22 @@ export class AdminLookupsController {
     return this.systemLookups.deleteSystemBrand(id, actor.id);
   }
 
+  @Post('system-brands/bulk-delete')
+  bulkDeleteSystemBrands(
+    @Body() dto: BulkIdsDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<BulkDeleteResult> {
+    return this.systemLookups.bulkDeleteSystemBrands(dto.ids, actor.id);
+  }
+
+  @Post('system-brands/bulk-duplicate')
+  bulkDuplicateSystemBrands(
+    @Body() dto: BulkDuplicateSystemBrandsDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<SystemBrandSummary[]> {
+    return this.systemLookups.bulkDuplicateSystemBrands(dto.items, actor.id);
+  }
+
   // ---- SystemCatalog ----
 
   @Get('system-catalogs')
@@ -288,6 +383,22 @@ export class AdminLookupsController {
     return this.systemLookups.deleteSystemCatalog(id, actor.id);
   }
 
+  @Post('system-catalogs/bulk-delete')
+  bulkDeleteSystemCatalogs(
+    @Body() dto: BulkIdsDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<BulkDeleteResult> {
+    return this.systemLookups.bulkDeleteSystemCatalogs(dto.ids, actor.id);
+  }
+
+  @Post('system-catalogs/bulk-duplicate')
+  bulkDuplicateSystemCatalogs(
+    @Body() dto: BulkDuplicateSystemCatalogsDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<SystemCatalogSummary[]> {
+    return this.systemLookups.bulkDuplicateSystemCatalogs(dto.items, actor.id);
+  }
+
   // ---- SystemProfile ----
 
   @Get('system-profiles')
@@ -319,5 +430,21 @@ export class AdminLookupsController {
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<void> {
     return this.systemLookups.deleteSystemProfile(id, actor.id);
+  }
+
+  @Post('system-profiles/bulk-delete')
+  bulkDeleteSystemProfiles(
+    @Body() dto: BulkIdsDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<BulkDeleteResult> {
+    return this.systemLookups.bulkDeleteSystemProfiles(dto.ids, actor.id);
+  }
+
+  @Post('system-profiles/bulk-duplicate')
+  bulkDuplicateSystemProfiles(
+    @Body() dto: BulkDuplicateSystemProfilesDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<SystemProfileSummary[]> {
+    return this.systemLookups.bulkDuplicateSystemProfiles(dto.items, actor.id);
   }
 }

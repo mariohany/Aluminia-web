@@ -325,6 +325,7 @@
     "createButtons": {
       "glass": "Add glass",
       "color": "Add colour",
+      "colorImport": "Import Excel",
       "paintBrand": "Add brand",
       "paintingPrice": "Add price",
       "systemBrand": "Add brand",
@@ -443,6 +444,25 @@
       "addGapDisabled": "Add a sheet first — a combination can't start with a gap, or have two gaps in a row.",
       "addSheetDisabled": "Add a gap first — two sheets can't sit next to each other.",
       "save": "Save combination"
+    },
+    "colorImport": {
+      "title": "Import colours from Excel",
+      "description": "Upload a spreadsheet with a header row containing a RAL code column (e.g. \"Code\" or \"RAL\") and a hex column (e.g. \"Hex\" or \"Colour\"). New codes are added; an existing code only updates when its hex actually changed. Duplicate rows for the same code are collapsed automatically.",
+      "chooseFile": "Choose file",
+      "importing": "Importing…",
+      "resultTitle": "Import results",
+      "created": "{{count}} added",
+      "updated": "{{count}} updated",
+      "unchanged": "{{count}} already up to date",
+      "duplicates": "{{count}} duplicate rows ignored",
+      "errorsTitle": "Rows skipped",
+      "updatedListTitle": "Updated codes",
+      "hexChange": "{{code}}: {{oldHex}} → {{newHex}}",
+      "duplicateItem": "{{code}} ({{occurrences}} extra rows)",
+      "noChanges": "Nothing to import — the sheet matched what's already here.",
+      "close": "Close",
+      "success": "Import finished.",
+      "error": "Couldn't import that file."
     }
   }
 }

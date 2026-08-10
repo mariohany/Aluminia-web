@@ -1,11 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import type {
   PaintBrandSummary,
   ColorLookups,
   PaintingPriceSummary,
   ColorSummary,
+  ColorImportResult,
+  BulkDeleteResult,
   CreatePaintBrandInput,
   CreateColorInput,
   CreatePaintingPriceInput,
@@ -18,16 +20,20 @@ import { PaintBrand } from '../../database/control-plane/entities/paint-brand.en
 import { PaintingPrice } from '../../database/control-plane/entities/painting-price.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { translatePostgresError } from './pg-error.util';
+import { parseColorWorkbook, type ParsedColorRow } from './color-import.util';
+import { findBlockedIds } from './lookup-version.util';
 
 // Single-table writes, not wrapped in an explicit transaction: same
 // accepted-risk tradeoff already made in CompaniesService.create() for
 // provisioning — an audit-log write lagging a successful data write by
 // one statement is a narrow risk, not worth a queryRunner per entity
 // here. GlassLookupsService.saveCombination is the exception, because a
-// combination's item list genuinely needs multi-statement atomicity.
+// combination's item list genuinely needs multi-statement atomicity —
+// importColors() below is a second exception, for the same reason.
 @Injectable()
 export class ColorLookupsService {
   constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(Color) private readonly colors: Repository<Color>,
     @InjectRepository(PaintBrand)
     private readonly brands: Repository<PaintBrand>,
@@ -96,6 +102,208 @@ export class ColorLookupsService {
       targetId: id,
       metadata: { code: color.code },
     });
+  }
+
+  // Bulk delete/duplicate. Both are a single DB statement against this
+  // one table (no cascade into another table, unlike glass_combination),
+  // so — unlike importColors() — no trigger-disable dance is needed:
+  // one statement already means one version-bump firing. Delete
+  // pre-checks which ids are still referenced by a glass combination
+  // and only deletes the rest, rather than failing the whole batch.
+  async bulkDeleteColors(
+    ids: string[],
+    actorId: string,
+  ): Promise<BulkDeleteResult> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const blockedIds = await findBlockedIds(queryRunner, ids, [
+        { table: 'glass_combination_item', column: 'color_id' },
+        { table: 'glass_combination_item', column: 'gap_color_id' },
+      ]);
+      const deletableIds = ids.filter((id) => !blockedIds.has(id));
+
+      if (deletableIds.length > 0) {
+        await queryRunner.manager.delete(Color, deletableIds);
+        await this.auditLog.record(queryRunner.manager, {
+          actorUserId: actorId,
+          action: 'lookup.color.bulk_deleted',
+          targetType: 'color',
+          metadata: { count: deletableIds.length, ids: deletableIds },
+        });
+      }
+
+      await queryRunner.commitTransaction();
+      return { deletedIds: deletableIds, blockedIds: [...blockedIds] };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async bulkDuplicateColors(
+    items: CreateColorInput[],
+    actorId: string,
+  ): Promise<ColorSummary[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const insertResult = await queryRunner.manager
+        .createQueryBuilder()
+        .insert()
+        .into(Color)
+        .values(items)
+        .execute();
+      const newIds = insertResult.identifiers.map((i) => i.id as string);
+      const created = await queryRunner.manager.findBy(Color, {
+        id: In(newIds),
+      });
+
+      await this.auditLog.record(queryRunner.manager, {
+        actorUserId: actorId,
+        action: 'lookup.color.bulk_duplicated',
+        targetType: 'color',
+        metadata: { count: created.length },
+      });
+
+      await queryRunner.commitTransaction();
+      return created.map(toColorSummary);
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      return translatePostgresError(
+        error,
+        'One or more of those colours already exist.',
+      );
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  // Excel/CSV import. Duplicate RAL codes within the sheet collapse to
+  // their last occurrence (later row = more current) rather than being
+  // rejected; existing colours are matched by code and only touched
+  // when the sheet's hex actually differs (case-insensitively) from
+  // what's stored, so a re-import of an unchanged sheet is a no-op.
+  async importColors(
+    buffer: Buffer,
+    actorId: string,
+  ): Promise<ColorImportResult> {
+    const { rows, errors } = await parseColorWorkbook(buffer);
+
+    const byCode = new Map<string, ParsedColorRow>();
+    // Counts rows collapsed away, not total occurrences — a code
+    // appearing 3 times in the sheet reports 2 here (the 2 that lost
+    // out to the last-row-wins rule), not 3.
+    const duplicateCounts = new Map<string, number>();
+    for (const row of rows) {
+      if (byCode.has(row.code)) {
+        duplicateCounts.set(row.code, (duplicateCounts.get(row.code) ?? 0) + 1);
+      }
+      byCode.set(row.code, row);
+    }
+
+    const existing = await this.colors.find();
+    const existingByCode = new Map(existing.map((c) => [c.code, c]));
+
+    const created: string[] = [];
+    const updated: { code: string; oldHex: string; newHex: string }[] = [];
+    let unchangedCount = 0;
+    const toWrite: { code: string; hex: string }[] = [];
+
+    for (const row of byCode.values()) {
+      const match = existingByCode.get(row.code);
+      if (!match) {
+        created.push(row.code);
+        toWrite.push({ code: row.code, hex: row.hex });
+        continue;
+      }
+      if (match.hex.toUpperCase() === row.hex.toUpperCase()) {
+        unchangedCount += 1;
+        continue;
+      }
+      updated.push({ code: row.code, oldHex: match.hex, newHex: row.hex });
+      toWrite.push({ code: row.code, hex: row.hex });
+    }
+
+    if (toWrite.length > 0) {
+      const queryRunner = this.dataSource.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
+      try {
+        // The version-bump trigger is FOR EACH STATEMENT (see
+        // AddLookupTables migration) — but a single INSERT ... ON
+        // CONFLICT DO UPDATE that both inserts and updates rows still
+        // fires it twice (once for the INSERT event, once for the
+        // UPDATE event), not once. Disabling the trigger for this
+        // bulk write and bumping lookup_meta by exactly 1 afterwards
+        // is the only way to guarantee one version step per import,
+        // regardless of row count or create/update mix.
+        await queryRunner.query(
+          'ALTER TABLE "color" DISABLE TRIGGER "color_bump_lookup_version"',
+        );
+        const values = toWrite
+          .map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`)
+          .join(', ');
+        const params = toWrite.flatMap((row) => [row.code, row.hex]);
+        await queryRunner.query(
+          `INSERT INTO "color" ("code", "hex") VALUES ${values}
+           ON CONFLICT ("code") DO UPDATE SET "hex" = EXCLUDED."hex", "updated_at" = now()`,
+          params,
+        );
+        await queryRunner.query(
+          'ALTER TABLE "color" ENABLE TRIGGER "color_bump_lookup_version"',
+        );
+        await queryRunner.query(
+          `UPDATE "lookup_meta" SET "version" = "version" + 1 WHERE "id" = 'color'`,
+        );
+        await this.auditLog.record(queryRunner.manager, {
+          actorUserId: actorId,
+          action: 'lookup.color.imported',
+          targetType: 'color',
+          metadata: {
+            created: created.length,
+            updated: updated.length,
+            unchanged: unchangedCount,
+            duplicates: duplicateCounts.size,
+            errors: errors.length,
+          },
+        });
+        await queryRunner.commitTransaction();
+      } catch (error) {
+        await queryRunner.rollbackTransaction();
+        throw error;
+      } finally {
+        await queryRunner.release();
+      }
+    } else {
+      await this.auditLog.record(this.colors.manager, {
+        actorUserId: actorId,
+        action: 'lookup.color.imported',
+        targetType: 'color',
+        metadata: {
+          created: 0,
+          updated: 0,
+          unchanged: unchangedCount,
+          duplicates: duplicateCounts.size,
+          errors: errors.length,
+        },
+      });
+    }
+
+    return {
+      created,
+      updated,
+      unchangedCount,
+      duplicates: [...duplicateCounts.entries()].map(([code, occurrences]) => ({
+        code,
+        occurrences,
+      })),
+      errors,
+    };
   }
 
   // ---- PaintBrand ----

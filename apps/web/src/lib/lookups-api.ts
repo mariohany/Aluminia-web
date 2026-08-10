@@ -2,6 +2,8 @@ import type {
   PaintBrandSummary,
   PaintingPriceSummary,
   ColorSummary,
+  ColorImportResult,
+  BulkDeleteResult,
   CreatePaintBrandInput,
   CreateColorInput,
   CreatePaintingPriceInput,
@@ -31,6 +33,18 @@ export function getLookupVersion(): Promise<LookupVersion> {
   return apiFetch<LookupVersion>('/lookups/version')
 }
 
+// Shared by every entity's bulk-select actions — see
+// admin-lookups.controller.ts's `*/bulk-delete` and `*/bulk-duplicate`
+// routes, both single DB statements so the lookup version advances by
+// exactly 1 per bulk action, not once per row (see
+// ColorLookupsService.bulkDeleteColors/bulkDuplicateColors).
+function bulkDelete(basePath: string, ids: string[]): Promise<BulkDeleteResult> {
+  return apiFetch(`${basePath}/bulk-delete`, { method: 'POST', body: { ids } })
+}
+function bulkDuplicate<TCreate, TSummary>(basePath: string, items: TCreate[]): Promise<TSummary[]> {
+  return apiFetch(`${basePath}/bulk-duplicate`, { method: 'POST', body: { items } })
+}
+
 // ---- Color ----
 export function listColors(): Promise<ColorSummary[]> {
   return apiFetch('/admin/lookups/colors')
@@ -43,6 +57,17 @@ export function updateColor(id: string, input: UpdateColorInput): Promise<ColorS
 }
 export function deleteColor(id: string): Promise<void> {
   return apiFetch(`/admin/lookups/colors/${id}`, { method: 'DELETE' })
+}
+export function bulkDeleteColors(ids: string[]): Promise<BulkDeleteResult> {
+  return bulkDelete('/admin/lookups/colors', ids)
+}
+export function bulkDuplicateColors(items: CreateColorInput[]): Promise<ColorSummary[]> {
+  return bulkDuplicate('/admin/lookups/colors', items)
+}
+export function importColors(file: File): Promise<ColorImportResult> {
+  const body = new FormData()
+  body.append('file', file)
+  return apiFetch('/admin/lookups/colors/import', { method: 'POST', body })
 }
 
 // ---- PaintBrand ----
@@ -86,6 +111,12 @@ export function updateGlass(id: string, input: UpdateGlassInput): Promise<GlassS
 export function deleteGlass(id: string): Promise<void> {
   return apiFetch(`/admin/lookups/glass/${id}`, { method: 'DELETE' })
 }
+export function bulkDeleteGlass(ids: string[]): Promise<BulkDeleteResult> {
+  return bulkDelete('/admin/lookups/glass', ids)
+}
+export function bulkDuplicateGlass(items: CreateGlassInput[]): Promise<GlassSummary[]> {
+  return bulkDuplicate('/admin/lookups/glass', items)
+}
 
 // ---- GlassCombination ----
 export function listGlassCombinations(): Promise<GlassCombinationSummary[]> {
@@ -105,6 +136,14 @@ export function updateGlassCombination(
 export function deleteGlassCombination(id: string): Promise<void> {
   return apiFetch(`/admin/lookups/glass-combinations/${id}`, { method: 'DELETE' })
 }
+export function bulkDeleteGlassCombinations(ids: string[]): Promise<BulkDeleteResult> {
+  return bulkDelete('/admin/lookups/glass-combinations', ids)
+}
+export function bulkDuplicateGlassCombinations(
+  items: CreateGlassCombinationInput[],
+): Promise<{ created: GlassCombinationSummary[]; failedCount: number }> {
+  return apiFetch('/admin/lookups/glass-combinations/bulk-duplicate', { method: 'POST', body: { items } })
+}
 
 // ---- SystemBrand ----
 export function listSystemBrands(): Promise<SystemBrandSummary[]> {
@@ -121,6 +160,12 @@ export function updateSystemBrand(
 }
 export function deleteSystemBrand(id: string): Promise<void> {
   return apiFetch(`/admin/lookups/system-brands/${id}`, { method: 'DELETE' })
+}
+export function bulkDeleteSystemBrands(ids: string[]): Promise<BulkDeleteResult> {
+  return bulkDelete('/admin/lookups/system-brands', ids)
+}
+export function bulkDuplicateSystemBrands(items: CreateSystemBrandInput[]): Promise<SystemBrandSummary[]> {
+  return bulkDuplicate('/admin/lookups/system-brands', items)
 }
 
 // ---- SystemCatalog ----
@@ -139,6 +184,14 @@ export function updateSystemCatalog(
 export function deleteSystemCatalog(id: string): Promise<void> {
   return apiFetch(`/admin/lookups/system-catalogs/${id}`, { method: 'DELETE' })
 }
+export function bulkDeleteSystemCatalogs(ids: string[]): Promise<BulkDeleteResult> {
+  return bulkDelete('/admin/lookups/system-catalogs', ids)
+}
+export function bulkDuplicateSystemCatalogs(
+  items: CreateSystemCatalogInput[],
+): Promise<SystemCatalogSummary[]> {
+  return bulkDuplicate('/admin/lookups/system-catalogs', items)
+}
 
 // ---- SystemProfile ----
 export function listSystemProfiles(): Promise<SystemProfileSummary[]> {
@@ -155,4 +208,12 @@ export function updateSystemProfile(
 }
 export function deleteSystemProfile(id: string): Promise<void> {
   return apiFetch(`/admin/lookups/system-profiles/${id}`, { method: 'DELETE' })
+}
+export function bulkDeleteSystemProfiles(ids: string[]): Promise<BulkDeleteResult> {
+  return bulkDelete('/admin/lookups/system-profiles', ids)
+}
+export function bulkDuplicateSystemProfiles(
+  items: CreateSystemProfileInput[],
+): Promise<SystemProfileSummary[]> {
+  return bulkDuplicate('/admin/lookups/system-profiles', items)
 }

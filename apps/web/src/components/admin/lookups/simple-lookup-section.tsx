@@ -93,10 +93,11 @@ interface MutationLike<TInput, TOutput> {
 //
 // Bulk actions deliberately bypass those single-target hooks — a
 // `useDelete(id)` hook bound to one id at call time can't serve an
-// arbitrary set of selected ids — and instead call the raw `createOne`/
-// `deleteOne` api functions directly in a `Promise.allSettled` batch,
-// followed by one broad `['lookups']` cache invalidation rather than
-// per-call invalidation from N individual mutations.
+// arbitrary set of selected ids — and instead call the raw `bulkDelete`/
+// `bulkDuplicate` api functions, each a single backend request (and a
+// single DB statement, so the lookup version advances by exactly 1 —
+// see ColorLookupsService.bulkDeleteColors), followed by one broad
+// `['lookups']` cache invalidation.
 export function SimpleLookupSection<
   TSummary extends { id: string },
   TCreate extends FieldValues,
@@ -117,8 +118,8 @@ export function SimpleLookupSection<
   useCreate,
   useUpdate,
   useDelete,
-  createOne,
-  deleteOne,
+  bulkDelete,
+  bulkDuplicate,
   duplicate,
   toEditDefaults,
   rowLabel,
@@ -139,8 +140,8 @@ export function SimpleLookupSection<
   useCreate: () => MutationLike<TCreate, TSummary>
   useUpdate: (id: string) => MutationLike<TUpdate, TSummary>
   useDelete: (id: string) => MutationLike<void, void>
-  createOne: (input: TCreate) => Promise<TSummary>
-  deleteOne: (id: string) => Promise<void>
+  bulkDelete: (ids: string[]) => Promise<{ deletedIds: string[]; blockedIds: string[] }>
+  bulkDuplicate: (items: TCreate[]) => Promise<TSummary[]>
   duplicate: (row: TSummary) => TCreate
   toEditDefaults: (row: TSummary) => TUpdate
   rowLabel: (row: TSummary) => string
@@ -237,30 +238,39 @@ export function SimpleLookupSection<
     const ids = [...selected]
     setBulkDeleteConfirmOpen(false)
     setBulkBusy(true)
-    const results = await Promise.allSettled(ids.map((id) => deleteOne(id)))
-    await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-    setBulkBusy(false)
-    setSelected(new Set())
-    const failed = results.filter((r) => r.status === 'rejected').length
-    if (failed > 0) {
-      toast.error(t('dataWarehousePage.messages.bulkDeletePartial', { failed, succeeded: ids.length - failed }))
-    } else {
-      toast.success(t('dataWarehousePage.messages.bulkDeleteSuccess', { count: ids.length }))
+    try {
+      const { deletedIds, blockedIds } = await bulkDelete(ids)
+      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      if (blockedIds.length > 0) {
+        toast.error(
+          t('dataWarehousePage.messages.bulkDeletePartial', {
+            failed: blockedIds.length,
+            succeeded: deletedIds.length,
+          }),
+        )
+      } else {
+        toast.success(t('dataWarehousePage.messages.bulkDeleteSuccess', { count: deletedIds.length }))
+      }
+    } catch (err) {
+      toast.error(apiErrorMessage(err, errorLabel))
+    } finally {
+      setBulkBusy(false)
+      setSelected(new Set())
     }
   }
 
   const onBulkDuplicate = async () => {
     const targets = rows.filter((row) => selected.has(row.id))
     setBulkBusy(true)
-    const results = await Promise.allSettled(targets.map((row) => createOne(duplicate(row))))
-    await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-    setBulkBusy(false)
-    setSelected(new Set())
-    const failed = results.filter((r) => r.status === 'rejected').length
-    if (failed > 0) {
-      toast.error(t('dataWarehousePage.messages.bulkDuplicatePartial', { failed, succeeded: targets.length - failed }))
-    } else {
-      toast.success(t('dataWarehousePage.messages.bulkDuplicateSuccess', { count: targets.length }))
+    try {
+      const created = await bulkDuplicate(targets.map((row) => duplicate(row)))
+      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      toast.success(t('dataWarehousePage.messages.bulkDuplicateSuccess', { count: created.length }))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, errorLabel))
+    } finally {
+      setBulkBusy(false)
+      setSelected(new Set())
     }
   }
 

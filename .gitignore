@@ -43,6 +43,7 @@ docs
 .github
 .mcp.json
 CLAUDE.md
+.wolf
 
 # Local API reference (kept up to date by hand, not shared via git)
 apps/api/postman

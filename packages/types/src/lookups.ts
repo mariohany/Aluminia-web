@@ -51,8 +51,8 @@ export type LookupSlice = (typeof LookupSlice)[keyof typeof LookupSlice]
 // to them bumps GLASS_COMBINATION's row instead (see the migration).
 export const LookupEntity = {
   COLOR: 'color',
-  COLOR_BRAND: 'color_brand',
-  COLOR_PRICE: 'color_price',
+  PAINT_BRAND: 'paint_brand',
+  PAINTING_PRICE: 'painting_price',
   GLASS: 'glass',
   GLASS_COMBINATION: 'glass_combination',
   SYSTEM_BRAND: 'system_brand',
@@ -65,7 +65,7 @@ export type LookupEntity = (typeof LookupEntity)[keyof typeof LookupEntity]
 // composite of these entities' versions (see LookupCacheService).
 export const LOOKUP_SLICE_ENTITIES: Record<LookupSlice, LookupEntity[]> = {
   [LookupSlice.GLASS]: [LookupEntity.GLASS, LookupEntity.GLASS_COMBINATION],
-  [LookupSlice.COLORS]: [LookupEntity.COLOR, LookupEntity.COLOR_BRAND, LookupEntity.COLOR_PRICE],
+  [LookupSlice.COLORS]: [LookupEntity.COLOR, LookupEntity.PAINT_BRAND, LookupEntity.PAINTING_PRICE],
   [LookupSlice.SYSTEMS]: [LookupEntity.SYSTEM_BRAND, LookupEntity.SYSTEM_CATALOG, LookupEntity.SYSTEM_PROFILE],
 }
 
@@ -90,14 +90,14 @@ export interface ColorSummary {
   updatedAt: string
 }
 
-export const createColorBrandSchema = z.object({
+export const createPaintBrandSchema = z.object({
   name: z.string().trim().min(1).max(255),
 })
-export type CreateColorBrandInput = z.infer<typeof createColorBrandSchema>
-export const updateColorBrandSchema = createColorBrandSchema.partial()
-export type UpdateColorBrandInput = z.infer<typeof updateColorBrandSchema>
+export type CreatePaintBrandInput = z.infer<typeof createPaintBrandSchema>
+export const updatePaintBrandSchema = createPaintBrandSchema.partial()
+export type UpdatePaintBrandInput = z.infer<typeof updatePaintBrandSchema>
 
-export interface ColorBrandSummary {
+export interface PaintBrandSummary {
   id: string
   name: string
   createdAt: string
@@ -106,16 +106,16 @@ export interface ColorBrandSummary {
 
 // `type` stays a free string — the actual finish values (powder coat,
 // anodised, wood-grain, ...) are still an open question (Section 4).
-export const createColorPriceSchema = z.object({
+export const createPaintingPriceSchema = z.object({
   brandId: z.string().min(1),
   type: z.string().trim().min(1).max(50),
   price: z.number().nonnegative(),
 })
-export type CreateColorPriceInput = z.infer<typeof createColorPriceSchema>
-export const updateColorPriceSchema = createColorPriceSchema.partial()
-export type UpdateColorPriceInput = z.infer<typeof updateColorPriceSchema>
+export type CreatePaintingPriceInput = z.infer<typeof createPaintingPriceSchema>
+export const updatePaintingPriceSchema = createPaintingPriceSchema.partial()
+export type UpdatePaintingPriceInput = z.infer<typeof updatePaintingPriceSchema>
 
-export interface ColorPriceSummary {
+export interface PaintingPriceSummary {
   id: string
   brandId: string
   brandName: string
@@ -158,10 +158,15 @@ const glassCombinationSheetSchema = z.object({
   colorId: z.string().min(1).nullable().optional(),
 })
 
+// gapThickness allows 0 here (not .positive()) because a laminated
+// interlayer doesn't track a thickness at all — it's stored as 0 and
+// left out of the build-up description entirely (see
+// gapThicknessMatchesType below for the rule that keeps that 0 meaningful:
+// spacers must be >0, laminated must be exactly 0).
 const glassCombinationGapSchema = z.object({
   kind: z.literal(CombinationItemKind.GAP),
   gapType: z.enum([GlassGapType.LAMINATED, GlassGapType.SPACER]),
-  gapThickness: z.number().positive(),
+  gapThickness: z.number().nonnegative(),
   gapColorId: z.string().min(1).nullable().optional(),
   isGeorgian: z.boolean().nullable().optional(),
   columnsCount: z.number().int().positive().nullable().optional(),
@@ -177,9 +182,14 @@ export type GlassCombinationItemInput = z.infer<typeof glassCombinationItemSchem
 // Combinations are written whole: the editor adds/removes/reorders items
 // client-side and saves the full ordered list in one request, which is
 // also what keeps `position` consistent without a separate reorder call.
+// min(3): a single sheet isn't a combination — the smallest real build-up
+// is sheet, gap, sheet (bounded-by-sheet + alternation below then forces
+// every valid length to be odd: 3, 5, 7, ...).
 const glassCombinationBaseSchema = z.object({
   name: z.string().trim().min(1).max(255),
-  items: z.array(glassCombinationItemSchema).min(1),
+  items: z
+    .array(glassCombinationItemSchema)
+    .min(3, 'A combination needs at least two glass sheets (sheet, gap, sheet) — a single layer is not a combination.'),
 })
 
 // A build-up has to be bounded by glass, not by a gap — there's nothing
@@ -199,16 +209,49 @@ const boundedBySheetIssue = {
   path: ['items'],
 }
 
-export const createGlassCombinationSchema = glassCombinationBaseSchema.refine(
-  (data) => startsAndEndsWithSheet(data.items),
-  boundedBySheetIssue,
-)
+// Same rationale as startsAndEndsWithSheet above — adjacency is a
+// cross-item property, not something the discriminated-union item schema
+// can express on its own, so it's checked once over the full array here.
+// Combined with startsAndEndsWithSheet this forces strict alternation:
+// sheet, gap, sheet, gap, ..., sheet.
+const alternatesSheetAndGap = (items: GlassCombinationItemInput[]) =>
+  items.every((item, i) => i === 0 || item.kind !== items[i - 1]?.kind)
+
+const alternationIssue = {
+  message: 'A combination must alternate sheet and gap — no two sheets or two gaps next to each other.',
+  path: ['items'],
+}
+
+// A laminated interlayer's thickness isn't tracked (the editor doesn't
+// even show the field) — it's always stored as exactly 0 so it drops out
+// of totalThickness on its own, without the summing logic needing to know
+// about gap type at all. A spacer air gap, conversely, must have a real
+// thickness — 0 there would silently zero out the build-up.
+const gapThicknessMatchesType = (items: GlassCombinationItemInput[]) =>
+  items.every((item) =>
+    item.kind !== CombinationItemKind.GAP
+      ? true
+      : item.gapType === GlassGapType.SPACER
+        ? item.gapThickness > 0
+        : item.gapThickness === 0,
+  )
+
+const gapThicknessIssue = {
+  message: 'A spacer gap needs a thickness greater than 0; a laminated interlayer has no thickness field and must be 0.',
+  path: ['items'],
+}
+
+export const createGlassCombinationSchema = glassCombinationBaseSchema
+  .refine((data) => startsAndEndsWithSheet(data.items), boundedBySheetIssue)
+  .refine((data) => alternatesSheetAndGap(data.items), alternationIssue)
+  .refine((data) => gapThicknessMatchesType(data.items), gapThicknessIssue)
 export type CreateGlassCombinationInput = z.infer<typeof createGlassCombinationSchema>
 
-export const updateGlassCombinationSchema = glassCombinationBaseSchema.partial().refine(
-  (data) => data.items === undefined || startsAndEndsWithSheet(data.items),
-  boundedBySheetIssue,
-)
+export const updateGlassCombinationSchema = glassCombinationBaseSchema
+  .partial()
+  .refine((data) => data.items === undefined || startsAndEndsWithSheet(data.items), boundedBySheetIssue)
+  .refine((data) => data.items === undefined || alternatesSheetAndGap(data.items), alternationIssue)
+  .refine((data) => data.items === undefined || gapThicknessMatchesType(data.items), gapThicknessIssue)
 export type UpdateGlassCombinationInput = z.infer<typeof updateGlassCombinationSchema>
 
 export interface GlassCombinationItemSheetSummary {
@@ -340,8 +383,8 @@ export interface GlassLookups {
 
 export interface ColorLookups {
   colors: ColorSummary[]
-  brands: ColorBrandSummary[]
-  prices: ColorPriceSummary[]
+  brands: PaintBrandSummary[]
+  prices: PaintingPriceSummary[]
 }
 
 export interface SystemLookups {

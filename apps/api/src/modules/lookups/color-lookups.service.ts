@@ -2,20 +2,20 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type {
-  ColorBrandSummary,
+  PaintBrandSummary,
   ColorLookups,
-  ColorPriceSummary,
+  PaintingPriceSummary,
   ColorSummary,
-  CreateColorBrandInput,
+  CreatePaintBrandInput,
   CreateColorInput,
-  CreateColorPriceInput,
-  UpdateColorBrandInput,
+  CreatePaintingPriceInput,
+  UpdatePaintBrandInput,
   UpdateColorInput,
-  UpdateColorPriceInput,
+  UpdatePaintingPriceInput,
 } from '@repo/types/lookups';
 import { Color } from '../../database/control-plane/entities/color.entity';
-import { ColorBrand } from '../../database/control-plane/entities/color-brand.entity';
-import { ColorPrice } from '../../database/control-plane/entities/color-price.entity';
+import { PaintBrand } from '../../database/control-plane/entities/paint-brand.entity';
+import { PaintingPrice } from '../../database/control-plane/entities/painting-price.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { translatePostgresError } from './pg-error.util';
 
@@ -29,10 +29,10 @@ import { translatePostgresError } from './pg-error.util';
 export class ColorLookupsService {
   constructor(
     @InjectRepository(Color) private readonly colors: Repository<Color>,
-    @InjectRepository(ColorBrand)
-    private readonly brands: Repository<ColorBrand>,
-    @InjectRepository(ColorPrice)
-    private readonly prices: Repository<ColorPrice>,
+    @InjectRepository(PaintBrand)
+    private readonly brands: Repository<PaintBrand>,
+    @InjectRepository(PaintingPrice)
+    private readonly prices: Repository<PaintingPrice>,
     private readonly auditLog: AuditLogService,
   ) {}
 
@@ -98,51 +98,51 @@ export class ColorLookupsService {
     });
   }
 
-  // ---- ColorBrand ----
+  // ---- PaintBrand ----
 
-  listColorBrands(): Promise<ColorBrandSummary[]> {
+  listPaintBrands(): Promise<PaintBrandSummary[]> {
     return this.brands
       .find({ order: { name: 'ASC' } })
-      .then((rows) => rows.map(toColorBrandSummary));
+      .then((rows) => rows.map(toPaintBrandSummary));
   }
 
-  async createColorBrand(
-    input: CreateColorBrandInput,
+  async createPaintBrand(
+    input: CreatePaintBrandInput,
     actorId: string,
-  ): Promise<ColorBrandSummary> {
+  ): Promise<PaintBrandSummary> {
     const brand = await this.brands.save(this.brands.create(input));
     await this.auditLog.record(this.brands.manager, {
       actorUserId: actorId,
-      action: 'lookup.color_brand.created',
-      targetType: 'color_brand',
+      action: 'lookup.paint_brand.created',
+      targetType: 'paint_brand',
       targetId: brand.id,
       metadata: { name: brand.name },
     });
-    return toColorBrandSummary(brand);
+    return toPaintBrandSummary(brand);
   }
 
-  async updateColorBrand(
+  async updatePaintBrand(
     id: string,
-    input: UpdateColorBrandInput,
+    input: UpdatePaintBrandInput,
     actorId: string,
-  ): Promise<ColorBrandSummary> {
+  ): Promise<PaintBrandSummary> {
     const brand = await this.brands.findOneBy({ id });
-    if (!brand) throw new NotFoundException('Colour brand not found.');
+    if (!brand) throw new NotFoundException('Paint brand not found.');
     Object.assign(brand, input);
     await this.brands.save(brand);
     await this.auditLog.record(this.brands.manager, {
       actorUserId: actorId,
-      action: 'lookup.color_brand.updated',
-      targetType: 'color_brand',
+      action: 'lookup.paint_brand.updated',
+      targetType: 'paint_brand',
       targetId: brand.id,
       metadata: { name: brand.name },
     });
-    return toColorBrandSummary(brand);
+    return toPaintBrandSummary(brand);
   }
 
-  async deleteColorBrand(id: string, actorId: string): Promise<void> {
+  async deletePaintBrand(id: string, actorId: string): Promise<void> {
     const brand = await this.brands.findOneBy({ id });
-    if (!brand) throw new NotFoundException('Colour brand not found.');
+    if (!brand) throw new NotFoundException('Paint brand not found.');
     try {
       await this.brands.delete({ id });
     } catch (error) {
@@ -153,26 +153,26 @@ export class ColorLookupsService {
     }
     await this.auditLog.record(this.brands.manager, {
       actorUserId: actorId,
-      action: 'lookup.color_brand.deleted',
-      targetType: 'color_brand',
+      action: 'lookup.paint_brand.deleted',
+      targetType: 'paint_brand',
       targetId: id,
       metadata: { name: brand.name },
     });
   }
 
-  // ---- ColorPrice ----
+  // ---- PaintingPrice ----
 
-  listColorPrices(): Promise<ColorPriceSummary[]> {
+  listPaintingPrices(): Promise<PaintingPriceSummary[]> {
     return this.prices
       .find({ relations: { brand: true }, order: { type: 'ASC' } })
-      .then((rows) => rows.map(toColorPriceSummary));
+      .then((rows) => rows.map(toPaintingPriceSummary));
   }
 
-  async createColorPrice(
-    input: CreateColorPriceInput,
+  async createPaintingPrice(
+    input: CreatePaintingPriceInput,
     actorId: string,
-  ): Promise<ColorPriceSummary> {
-    let price: ColorPrice;
+  ): Promise<PaintingPriceSummary> {
+    let price: PaintingPrice;
     try {
       price = await this.prices.save(this.prices.create(input));
     } catch (error) {
@@ -180,8 +180,8 @@ export class ColorLookupsService {
     }
     await this.auditLog.record(this.prices.manager, {
       actorUserId: actorId,
-      action: 'lookup.color_price.created',
-      targetType: 'color_price',
+      action: 'lookup.painting_price.created',
+      targetType: 'painting_price',
       targetId: price.id,
       metadata: {
         brandId: price.brandId,
@@ -193,16 +193,16 @@ export class ColorLookupsService {
       where: { id: price.id },
       relations: { brand: true },
     });
-    return toColorPriceSummary(withBrand);
+    return toPaintingPriceSummary(withBrand);
   }
 
-  async updateColorPrice(
+  async updatePaintingPrice(
     id: string,
-    input: UpdateColorPriceInput,
+    input: UpdatePaintingPriceInput,
     actorId: string,
-  ): Promise<ColorPriceSummary> {
+  ): Promise<PaintingPriceSummary> {
     const price = await this.prices.findOneBy({ id });
-    if (!price) throw new NotFoundException('Colour price not found.');
+    if (!price) throw new NotFoundException('Painting price not found.');
     Object.assign(price, input);
     try {
       await this.prices.save(price);
@@ -211,8 +211,8 @@ export class ColorLookupsService {
     }
     await this.auditLog.record(this.prices.manager, {
       actorUserId: actorId,
-      action: 'lookup.color_price.updated',
-      targetType: 'color_price',
+      action: 'lookup.painting_price.updated',
+      targetType: 'painting_price',
       targetId: price.id,
       metadata: {
         brandId: price.brandId,
@@ -224,17 +224,17 @@ export class ColorLookupsService {
       where: { id },
       relations: { brand: true },
     });
-    return toColorPriceSummary(withBrand);
+    return toPaintingPriceSummary(withBrand);
   }
 
-  async deleteColorPrice(id: string, actorId: string): Promise<void> {
+  async deletePaintingPrice(id: string, actorId: string): Promise<void> {
     const price = await this.prices.findOneBy({ id });
-    if (!price) throw new NotFoundException('Colour price not found.');
+    if (!price) throw new NotFoundException('Painting price not found.');
     await this.prices.delete({ id });
     await this.auditLog.record(this.prices.manager, {
       actorUserId: actorId,
-      action: 'lookup.color_price.deleted',
-      targetType: 'color_price',
+      action: 'lookup.painting_price.deleted',
+      targetType: 'painting_price',
       targetId: id,
       metadata: { brandId: price.brandId, type: price.type },
     });
@@ -250,8 +250,8 @@ export class ColorLookupsService {
     ]);
     return {
       colors: colors.map(toColorSummary),
-      brands: brands.map(toColorBrandSummary),
-      prices: prices.map(toColorPriceSummary),
+      brands: brands.map(toPaintBrandSummary),
+      prices: prices.map(toPaintingPriceSummary),
     };
   }
 }
@@ -266,7 +266,7 @@ function toColorSummary(color: Color): ColorSummary {
   };
 }
 
-function toColorBrandSummary(brand: ColorBrand): ColorBrandSummary {
+function toPaintBrandSummary(brand: PaintBrand): PaintBrandSummary {
   return {
     id: brand.id,
     name: brand.name,
@@ -275,7 +275,7 @@ function toColorBrandSummary(brand: ColorBrand): ColorBrandSummary {
   };
 }
 
-function toColorPriceSummary(price: ColorPrice): ColorPriceSummary {
+function toPaintingPriceSummary(price: PaintingPrice): PaintingPriceSummary {
   return {
     id: price.id,
     brandId: price.brandId,

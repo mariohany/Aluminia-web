@@ -4,22 +4,16 @@ import {
   LookupEntity,
   ProfileType,
   SystemType,
-  type CreateColorBrandInput,
-  type CreateColorPriceInput,
   type CreateGlassInput,
   type CreateSystemBrandInput,
   type CreateSystemCatalogInput,
   type CreateSystemProfileInput,
 } from '@repo/types/lookups'
 import {
-  createColorBrandSchema,
-  createColorPriceSchema,
   createGlassSchema,
   createSystemBrandSchema,
   createSystemCatalogSchema,
   createSystemProfileSchema,
-  updateColorBrandSchema,
-  updateColorPriceSchema,
   updateGlassSchema,
   updateSystemBrandSchema,
   updateSystemCatalogSchema,
@@ -27,16 +21,10 @@ import {
 } from '@repo/types/lookups'
 import * as lookupsApi from '@/lib/lookups-api'
 import {
-  useColorBrandsQuery,
-  useColorPricesQuery,
-  useCreateColorBrandMutation,
-  useCreateColorPriceMutation,
   useCreateGlassMutation,
   useCreateSystemBrandMutation,
   useCreateSystemCatalogMutation,
   useCreateSystemProfileMutation,
-  useDeleteColorBrandMutation,
-  useDeleteColorPriceMutation,
   useDeleteGlassMutation,
   useDeleteSystemBrandMutation,
   useDeleteSystemCatalogMutation,
@@ -46,8 +34,6 @@ import {
   useSystemBrandsQuery,
   useSystemCatalogsQuery,
   useSystemProfilesQuery,
-  useUpdateColorBrandMutation,
-  useUpdateColorPriceMutation,
   useUpdateGlassMutation,
   useUpdateSystemBrandMutation,
   useUpdateSystemCatalogMutation,
@@ -58,10 +44,13 @@ import { Button } from '@/components/ui/button'
 import { SimpleLookupSection } from '@/components/admin/lookups/simple-lookup-section'
 import { GlassCombinationSection } from '@/components/admin/lookups/glass-combination-editor'
 import { ColorGridSection } from '@/components/admin/lookups/color-grid-section'
+import { PaintingPricesSection } from '@/components/admin/lookups/painting-prices-section'
 
 // Order requested: systems (brand → catalog → profile), then glass and
-// its combinations, then colour (grid, brand, price) — each table gets
-// its own tab rather than being grouped under a cluster.
+// its combinations, then colour (grid, then the merged brand+price tab)
+// — each table gets its own tab rather than being grouped under a
+// cluster. Brands and prices share one tab, "Painting prices", grouped
+// by brand within it, rather than two separate tabs.
 const TABS = [
   'systemBrands',
   'systemCatalogs',
@@ -69,22 +58,22 @@ const TABS = [
   'glass',
   'glassCombinations',
   'colors',
-  'colorBrands',
-  'colorPrices',
+  'paintingPrices',
 ] as const
 type Tab = (typeof TABS)[number]
 
 // Versions are per-entity now (Section 4), not one global counter, so
-// the badge shows whichever entity the visible tab actually writes to.
-const TAB_ENTITY: Record<Tab, LookupEntity> = {
-  systemBrands: LookupEntity.SYSTEM_BRAND,
-  systemCatalogs: LookupEntity.SYSTEM_CATALOG,
-  systemProfiles: LookupEntity.SYSTEM_PROFILE,
-  glass: LookupEntity.GLASS,
-  glassCombinations: LookupEntity.GLASS_COMBINATION,
-  colors: LookupEntity.COLOR,
-  colorBrands: LookupEntity.COLOR_BRAND,
-  colorPrices: LookupEntity.COLOR_PRICE,
+// the badge shows whichever entity(ies) the visible tab actually writes
+// to — most tabs write to one entity, but the merged "Painting prices"
+// tab writes to both PaintBrand and PaintingPrice, so it shows two.
+const TAB_ENTITIES: Record<Tab, LookupEntity[]> = {
+  systemBrands: [LookupEntity.SYSTEM_BRAND],
+  systemCatalogs: [LookupEntity.SYSTEM_CATALOG],
+  systemProfiles: [LookupEntity.SYSTEM_PROFILE],
+  glass: [LookupEntity.GLASS],
+  glassCombinations: [LookupEntity.GLASS_COMBINATION],
+  colors: [LookupEntity.COLOR],
+  paintingPrices: [LookupEntity.PAINT_BRAND, LookupEntity.PAINTING_PRICE],
 }
 
 export function DataWarehousePage() {
@@ -96,9 +85,13 @@ export function DataWarehousePage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-heading text-xl font-semibold text-foreground">{t('dataWarehousePage.title')}</h1>
-        <Badge variant="outline">
-          {t('dataWarehousePage.version', { version: versions?.[TAB_ENTITY[tab]] ?? '—' })}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {TAB_ENTITIES[tab].map((entity) => (
+            <Badge key={entity} variant="outline">
+              {t('dataWarehousePage.version', { version: versions?.[entity] ?? '—' })}
+            </Badge>
+          ))}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1 border-b border-border pb-2">
@@ -120,8 +113,7 @@ export function DataWarehousePage() {
       {tab === 'glass' && <GlassTab />}
       {tab === 'glassCombinations' && <GlassCombinationSection />}
       {tab === 'colors' && <ColorGridSection />}
-      {tab === 'colorBrands' && <ColorBrandsTab />}
-      {tab === 'colorPrices' && <ColorPricesTab />}
+      {tab === 'paintingPrices' && <PaintingPricesSection />}
     </div>
   )
 }
@@ -148,6 +140,7 @@ function GlassTab() {
       columns={[
         { header: t('dataWarehousePage.fields.name'), cell: (row) => row.name },
         { header: t('dataWarehousePage.fields.thickness'), cell: (row) => `${row.thickness} mm` },
+        { header: t('dataWarehousePage.fields.weightPerSqm'), cell: (row) => `${row.weightPerSqm.toFixed(2)} kg/m²` },
         { header: t('dataWarehousePage.fields.pricePerSqm'), cell: (row) => `${row.pricePerSqm.toFixed(2)} EGP` },
       ]}
       useList={useGlassQuery}
@@ -174,73 +167,6 @@ function GlassTab() {
   )
 }
 
-function ColorBrandsTab() {
-  const { t } = useTranslation('admin')
-  const copy = t('dataWarehousePage.bulk.copySuffix')
-
-  return (
-    <SimpleLookupSection
-      title={t('dataWarehousePage.tables.colorBrands')}
-      createLabel={t('dataWarehousePage.createButtons.colorBrand')}
-      emptyLabel={t('dataWarehousePage.empty.colorBrand')}
-      errorLabel={t('dataWarehousePage.messages.error')}
-      createSchema={createColorBrandSchema}
-      updateSchema={updateColorBrandSchema}
-      createDefaults={{ name: '' } as CreateColorBrandInput}
-      fields={[{ name: 'name', label: t('dataWarehousePage.fields.name'), type: 'text' }]}
-      columns={[{ header: t('dataWarehousePage.fields.name'), cell: (row) => row.name }]}
-      useList={useColorBrandsQuery}
-      useCreate={useCreateColorBrandMutation}
-      useUpdate={useUpdateColorBrandMutation}
-      useDelete={useDeleteColorBrandMutation}
-      createOne={lookupsApi.createColorBrand}
-      deleteOne={lookupsApi.deleteColorBrand}
-      duplicate={(row) => ({ name: `${row.name} ${copy}` })}
-      toEditDefaults={(row) => ({ name: row.name })}
-      rowLabel={(row) => row.name}
-      deleteWarning={t('dataWarehousePage.deleteWarnings.colorBrand')}
-    />
-  )
-}
-
-function ColorPricesTab() {
-  const { t } = useTranslation('admin')
-  const copy = t('dataWarehousePage.bulk.copySuffix')
-  const { data: brands } = useColorBrandsQuery()
-  const brandOptions = (brands ?? []).map((b) => ({ value: b.id, label: b.name }))
-
-  return (
-    <SimpleLookupSection
-      title={t('dataWarehousePage.tables.colorPrices')}
-      createLabel={t('dataWarehousePage.createButtons.colorPrice')}
-      emptyLabel={t('dataWarehousePage.empty.colorPrice')}
-      errorLabel={t('dataWarehousePage.messages.error')}
-      createSchema={createColorPriceSchema}
-      updateSchema={updateColorPriceSchema}
-      createDefaults={{ brandId: '', type: '', price: 0 } as CreateColorPriceInput}
-      fields={[
-        { name: 'brandId', label: t('dataWarehousePage.fields.brand'), type: 'select', options: brandOptions },
-        { name: 'type', label: t('dataWarehousePage.fields.type'), type: 'text' },
-        { name: 'price', label: t('dataWarehousePage.fields.price'), type: 'number', step: 0.01, min: 0 },
-      ]}
-      columns={[
-        { header: t('dataWarehousePage.fields.brand'), cell: (row) => row.brandName },
-        { header: t('dataWarehousePage.fields.type'), cell: (row) => row.type },
-        { header: t('dataWarehousePage.fields.price'), cell: (row) => `${row.price.toFixed(2)} EGP` },
-      ]}
-      useList={useColorPricesQuery}
-      useCreate={useCreateColorPriceMutation}
-      useUpdate={useUpdateColorPriceMutation}
-      useDelete={useDeleteColorPriceMutation}
-      createOne={lookupsApi.createColorPrice}
-      deleteOne={lookupsApi.deleteColorPrice}
-      duplicate={(row) => ({ brandId: row.brandId, type: `${row.type} ${copy}`, price: row.price })}
-      toEditDefaults={(row) => ({ brandId: row.brandId, type: row.type, price: row.price })}
-      rowLabel={(row) => `${row.brandName} · ${row.type}`}
-    />
-  )
-}
-
 function SystemBrandsTab() {
   const { t } = useTranslation('admin')
   const copy = t('dataWarehousePage.bulk.copySuffix')
@@ -256,6 +182,10 @@ function SystemBrandsTab() {
       createDefaults={{ name: '' } as CreateSystemBrandInput}
       fields={[{ name: 'name', label: t('dataWarehousePage.fields.name'), type: 'text' }]}
       columns={[{ header: t('dataWarehousePage.fields.name'), cell: (row) => row.name }]}
+      search={{
+        placeholder: t('dataWarehousePage.search.systemBrands'),
+        match: (row, query) => row.name.toLowerCase().includes(query.toLowerCase()),
+      }}
       useList={useSystemBrandsQuery}
       useCreate={useCreateSystemBrandMutation}
       useUpdate={useUpdateSystemBrandMutation}
@@ -315,6 +245,29 @@ function SystemCatalogsTab() {
         {
           header: t('dataWarehousePage.fields.systemType'),
           cell: (row) => t(`dataWarehousePage.systemType.${row.systemType}`),
+        },
+        { header: t('dataWarehousePage.fields.maxGlassThickness'), cell: (row) => `${row.maxGlassThickness} mm` },
+        { header: t('dataWarehousePage.fields.maxSashWeight'), cell: (row) => `${row.maxSashWeight} kg` },
+      ]}
+      search={{
+        placeholder: t('dataWarehousePage.search.systemCatalogs'),
+        match: (row, query) => {
+          const q = query.toLowerCase()
+          return row.name.toLowerCase().includes(q) || row.brandName.toLowerCase().includes(q)
+        },
+      }}
+      filters={[
+        {
+          key: 'brand',
+          allLabel: t('dataWarehousePage.filters.allBrands'),
+          options: brandOptions,
+          match: (row, value) => row.brandId === value,
+        },
+        {
+          key: 'systemType',
+          allLabel: t('dataWarehousePage.filters.allTypes'),
+          options: systemTypeOptions,
+          match: (row, value) => row.systemType === value,
         },
       ]}
       useList={useSystemCatalogsQuery}
@@ -394,6 +347,32 @@ function SystemProfilesTab() {
         {
           header: t('dataWarehousePage.fields.profileType'),
           cell: (row) => t(`dataWarehousePage.profileType.${row.profileType}`),
+        },
+        { header: t('dataWarehousePage.fields.maxGlassThickness'), cell: (row) => `${row.maxGlassThickness} mm` },
+        { header: t('dataWarehousePage.fields.weight'), cell: (row) => `${row.weight.toFixed(2)} kg/m` },
+        { header: t('dataWarehousePage.fields.perimeter'), cell: (row) => `${row.perimeter} mm` },
+        { header: t('dataWarehousePage.fields.inertiaIx'), cell: (row) => `${row.inertiaIx.toFixed(2)} cm⁴` },
+        { header: t('dataWarehousePage.fields.inertiaIy'), cell: (row) => `${row.inertiaIy.toFixed(2)} cm⁴` },
+      ]}
+      search={{
+        placeholder: t('dataWarehousePage.search.systemProfiles'),
+        match: (row, query) => {
+          const q = query.toLowerCase()
+          return row.profileNo.toLowerCase().includes(q) || row.catalogName.toLowerCase().includes(q)
+        },
+      }}
+      filters={[
+        {
+          key: 'catalog',
+          allLabel: t('dataWarehousePage.filters.allCatalogs'),
+          options: catalogOptions,
+          match: (row, value) => row.catalogId === value,
+        },
+        {
+          key: 'profileType',
+          allLabel: t('dataWarehousePage.filters.allTypes'),
+          options: profileTypeOptions,
+          match: (row, value) => row.profileType === value,
         },
       ]}
       useList={useSystemProfilesQuery}

@@ -1,16 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
-  CreateColorBrandInput,
+  CreatePaintBrandInput,
   CreateColorInput,
-  CreateColorPriceInput,
+  CreatePaintingPriceInput,
   CreateGlassCombinationInput,
   CreateGlassInput,
   CreateSystemBrandInput,
   CreateSystemCatalogInput,
   CreateSystemProfileInput,
-  UpdateColorBrandInput,
+  UpdatePaintBrandInput,
   UpdateColorInput,
-  UpdateColorPriceInput,
+  UpdatePaintingPriceInput,
   UpdateGlassCombinationInput,
   UpdateGlassInput,
   UpdateSystemBrandInput,
@@ -21,8 +21,8 @@ import * as api from '@/lib/lookups-api'
 
 const versionKey = ['lookups', 'version'] as const
 const colorsKey = ['lookups', 'colors'] as const
-const colorBrandsKey = ['lookups', 'color-brands'] as const
-const colorPricesKey = ['lookups', 'color-prices'] as const
+const paintBrandsKey = ['lookups', 'paint-brands'] as const
+const paintingPricesKey = ['lookups', 'painting-prices'] as const
 const glassKey = ['lookups', 'glass'] as const
 const glassCombinationsKey = ['lookups', 'glass-combinations'] as const
 const systemBrandsKey = ['lookups', 'system-brands'] as const
@@ -75,73 +75,73 @@ export function useDeleteColorMutation(id: string) {
   })
 }
 
-// ---- ColorBrand ----
-export function useColorBrandsQuery() {
-  return useQuery({ queryKey: colorBrandsKey, queryFn: api.listColorBrands })
+// ---- PaintBrand ----
+export function usePaintBrandsQuery() {
+  return useQuery({ queryKey: paintBrandsKey, queryFn: api.listPaintBrands })
 }
-export function useCreateColorBrandMutation() {
+export function useCreatePaintBrandMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: CreateColorBrandInput) => api.createColorBrand(input),
+    mutationFn: (input: CreatePaintBrandInput) => api.createPaintBrand(input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: colorBrandsKey })
+      void queryClient.invalidateQueries({ queryKey: paintBrandsKey })
       invalidateVersion(queryClient)
     },
   })
 }
-export function useUpdateColorBrandMutation(id: string) {
+export function useUpdatePaintBrandMutation(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: UpdateColorBrandInput) => api.updateColorBrand(id, input),
+    mutationFn: (input: UpdatePaintBrandInput) => api.updatePaintBrand(id, input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: colorBrandsKey })
+      void queryClient.invalidateQueries({ queryKey: paintBrandsKey })
       // Prices display brandName, so a brand rename should refresh them too.
-      void queryClient.invalidateQueries({ queryKey: colorPricesKey })
+      void queryClient.invalidateQueries({ queryKey: paintingPricesKey })
       invalidateVersion(queryClient)
     },
   })
 }
-export function useDeleteColorBrandMutation(id: string) {
+export function useDeletePaintBrandMutation(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => api.deleteColorBrand(id),
+    mutationFn: () => api.deletePaintBrand(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: colorBrandsKey })
+      void queryClient.invalidateQueries({ queryKey: paintBrandsKey })
       invalidateVersion(queryClient)
     },
   })
 }
 
-// ---- ColorPrice ----
-export function useColorPricesQuery() {
-  return useQuery({ queryKey: colorPricesKey, queryFn: api.listColorPrices })
+// ---- PaintingPrice ----
+export function usePaintingPricesQuery() {
+  return useQuery({ queryKey: paintingPricesKey, queryFn: api.listPaintingPrices })
 }
-export function useCreateColorPriceMutation() {
+export function useCreatePaintingPriceMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: CreateColorPriceInput) => api.createColorPrice(input),
+    mutationFn: (input: CreatePaintingPriceInput) => api.createPaintingPrice(input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: colorPricesKey })
+      void queryClient.invalidateQueries({ queryKey: paintingPricesKey })
       invalidateVersion(queryClient)
     },
   })
 }
-export function useUpdateColorPriceMutation(id: string) {
+export function useUpdatePaintingPriceMutation(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: UpdateColorPriceInput) => api.updateColorPrice(id, input),
+    mutationFn: (input: UpdatePaintingPriceInput) => api.updatePaintingPrice(id, input),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: colorPricesKey })
+      void queryClient.invalidateQueries({ queryKey: paintingPricesKey })
       invalidateVersion(queryClient)
     },
   })
 }
-export function useDeleteColorPriceMutation(id: string) {
+export function useDeletePaintingPriceMutation(id: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => api.deleteColorPrice(id),
+    mutationFn: () => api.deletePaintingPrice(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: colorPricesKey })
+      void queryClient.invalidateQueries({ queryKey: paintingPricesKey })
       invalidateVersion(queryClient)
     },
   })

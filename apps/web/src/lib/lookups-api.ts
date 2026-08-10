@@ -1,10 +1,10 @@
 import type {
-  ColorBrandSummary,
-  ColorPriceSummary,
+  PaintBrandSummary,
+  PaintingPriceSummary,
   ColorSummary,
-  CreateColorBrandInput,
+  CreatePaintBrandInput,
   CreateColorInput,
-  CreateColorPriceInput,
+  CreatePaintingPriceInput,
   CreateGlassCombinationInput,
   CreateGlassInput,
   CreateSystemBrandInput,
@@ -16,9 +16,9 @@ import type {
   SystemBrandSummary,
   SystemCatalogSummary,
   SystemProfileSummary,
-  UpdateColorBrandInput,
+  UpdatePaintBrandInput,
   UpdateColorInput,
-  UpdateColorPriceInput,
+  UpdatePaintingPriceInput,
   UpdateGlassCombinationInput,
   UpdateGlassInput,
   UpdateSystemBrandInput,
@@ -45,32 +45,32 @@ export function deleteColor(id: string): Promise<void> {
   return apiFetch(`/admin/lookups/colors/${id}`, { method: 'DELETE' })
 }
 
-// ---- ColorBrand ----
-export function listColorBrands(): Promise<ColorBrandSummary[]> {
-  return apiFetch('/admin/lookups/color-brands')
+// ---- PaintBrand ----
+export function listPaintBrands(): Promise<PaintBrandSummary[]> {
+  return apiFetch('/admin/lookups/paint-brands')
 }
-export function createColorBrand(input: CreateColorBrandInput): Promise<ColorBrandSummary> {
-  return apiFetch('/admin/lookups/color-brands', { method: 'POST', body: input })
+export function createPaintBrand(input: CreatePaintBrandInput): Promise<PaintBrandSummary> {
+  return apiFetch('/admin/lookups/paint-brands', { method: 'POST', body: input })
 }
-export function updateColorBrand(id: string, input: UpdateColorBrandInput): Promise<ColorBrandSummary> {
-  return apiFetch(`/admin/lookups/color-brands/${id}`, { method: 'PATCH', body: input })
+export function updatePaintBrand(id: string, input: UpdatePaintBrandInput): Promise<PaintBrandSummary> {
+  return apiFetch(`/admin/lookups/paint-brands/${id}`, { method: 'PATCH', body: input })
 }
-export function deleteColorBrand(id: string): Promise<void> {
-  return apiFetch(`/admin/lookups/color-brands/${id}`, { method: 'DELETE' })
+export function deletePaintBrand(id: string): Promise<void> {
+  return apiFetch(`/admin/lookups/paint-brands/${id}`, { method: 'DELETE' })
 }
 
-// ---- ColorPrice ----
-export function listColorPrices(): Promise<ColorPriceSummary[]> {
-  return apiFetch('/admin/lookups/color-prices')
+// ---- PaintingPrice ----
+export function listPaintingPrices(): Promise<PaintingPriceSummary[]> {
+  return apiFetch('/admin/lookups/painting-prices')
 }
-export function createColorPrice(input: CreateColorPriceInput): Promise<ColorPriceSummary> {
-  return apiFetch('/admin/lookups/color-prices', { method: 'POST', body: input })
+export function createPaintingPrice(input: CreatePaintingPriceInput): Promise<PaintingPriceSummary> {
+  return apiFetch('/admin/lookups/painting-prices', { method: 'POST', body: input })
 }
-export function updateColorPrice(id: string, input: UpdateColorPriceInput): Promise<ColorPriceSummary> {
-  return apiFetch(`/admin/lookups/color-prices/${id}`, { method: 'PATCH', body: input })
+export function updatePaintingPrice(id: string, input: UpdatePaintingPriceInput): Promise<PaintingPriceSummary> {
+  return apiFetch(`/admin/lookups/painting-prices/${id}`, { method: 'PATCH', body: input })
 }
-export function deleteColorPrice(id: string): Promise<void> {
-  return apiFetch(`/admin/lookups/color-prices/${id}`, { method: 'DELETE' })
+export function deletePaintingPrice(id: string): Promise<void> {
+  return apiFetch(`/admin/lookups/painting-prices/${id}`, { method: 'DELETE' })
 }
 
 // ---- Glass ----

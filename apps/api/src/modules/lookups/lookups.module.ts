@@ -2,8 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LookupMeta } from '../../database/control-plane/entities/lookup-meta.entity';
 import { Color } from '../../database/control-plane/entities/color.entity';
-import { ColorBrand } from '../../database/control-plane/entities/color-brand.entity';
-import { ColorPrice } from '../../database/control-plane/entities/color-price.entity';
+import { PaintBrand } from '../../database/control-plane/entities/paint-brand.entity';
+import { PaintingPrice } from '../../database/control-plane/entities/painting-price.entity';
 import { Glass } from '../../database/control-plane/entities/glass.entity';
 import { GlassCombination } from '../../database/control-plane/entities/glass-combination.entity';
 import { GlassCombinationItem } from '../../database/control-plane/entities/glass-combination-item.entity';
@@ -23,8 +23,8 @@ import { SystemLookupsService } from './system-lookups.service';
     TypeOrmModule.forFeature([
       LookupMeta,
       Color,
-      ColorBrand,
-      ColorPrice,
+      PaintBrand,
+      PaintingPrice,
       Glass,
       GlassCombination,
       GlassCombinationItem,

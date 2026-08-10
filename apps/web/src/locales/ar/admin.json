@@ -316,8 +316,8 @@
       "glass": "الزجاج",
       "glassCombinations": "تركيبات الزجاج",
       "colors": "الألوان",
-      "colorBrands": "ماركات الألوان",
-      "colorPrices": "أسعار الألوان",
+      "paintingPrices": "أسعار الدهان",
+      "paintBrands": "ماركات الدهان",
       "systemBrands": "ماركات السكاشن",
       "systemCatalogs": "كتالوجات السكاشن",
       "systemProfiles": "بروفايلات السكاشن"
@@ -325,8 +325,8 @@
     "createButtons": {
       "glass": "إضافة زجاج",
       "color": "إضافة لون",
-      "colorBrand": "إضافة ماركة",
-      "colorPrice": "إضافة سعر",
+      "paintBrand": "إضافة ماركة",
+      "paintingPrice": "إضافة سعر",
       "systemBrand": "إضافة ماركة",
       "systemCatalog": "إضافة كتالوج",
       "systemProfile": "إضافة بروفايل"
@@ -334,8 +334,8 @@
     "empty": {
       "glass": "لا يوجد زجاج بعد.",
       "color": "لا توجد ألوان بعد.",
-      "colorBrand": "لا توجد ماركات بعد.",
-      "colorPrice": "لا توجد أسعار بعد.",
+      "paintBrand": "لا توجد ماركات بعد.",
+      "paintingPrice": "لا توجد أسعار بعد.",
       "systemBrand": "لا توجد ماركات بعد.",
       "systemCatalog": "لا توجد كتالوجات بعد.",
       "systemProfile": "لا توجد بروفايلات بعد."
@@ -343,7 +343,7 @@
     "deleteWarnings": {
       "glass": "الحذف هيتمنع لو أي تركيبة زجاج لسه مستخدماه.",
       "color": "الحذف هيتمنع لو أي تركيبة زجاج لسه مستخدماه.",
-      "colorBrand": "الحذف هيتمنع لو لسه ليها أسعار.",
+      "paintBrand": "الحذف هيتمنع لو لسه ليها أسعار.",
       "systemBrand": "الحذف هيتمنع لو لسه ليها كتالوجات.",
       "systemCatalog": "الحذف هيتمنع لو لسه ليه بروفايلات."
     },
@@ -356,7 +356,7 @@
       "price": "السعر (جنيه مصري)",
       "thickness": "السمك (مم)",
       "weightPerSqm": "الوزن (كجم/م²)",
-      "pricePerSqm": "السعر (للمتر المربع، جنيه مصري)",
+      "pricePerSqm": "السعر (جنيه مصري/م²)",
       "systemType": "نوع السكة",
       "maxGlassThickness": "أقصى سمك زجاج (مم)",
       "maxSashWeight": "أقصى وزن للدفة (كجم)",
@@ -391,7 +391,8 @@
       "bulkDeleteSuccess": "اتحذف {{count}}.",
       "bulkDeletePartial": "اتحذف {{succeeded}}، لكن {{failed}} متقدرش يتحذف (غالبًا لسه مستخدم).",
       "bulkDuplicateSuccess": "اتعمل نسخ لـ {{count}}.",
-      "bulkDuplicatePartial": "اتعمل نسخ لـ {{succeeded}}، لكن {{failed}} فشل."
+      "bulkDuplicatePartial": "اتعمل نسخ لـ {{succeeded}}، لكن {{failed}} فشل.",
+      "noResults": "مفيش نتائج مطابقة للبحث أو الفلاتر."
     },
     "bulk": {
       "selectAll": "تحديد الكل",
@@ -402,21 +403,35 @@
       "copySuffix": "نسخة",
       "deleteConfirmTitle": "حذف {{count}} عناصر محددة؟"
     },
+    "search": {
+      "systemBrands": "دور على ماركة...",
+      "systemCatalogs": "دور على كتالوج...",
+      "systemProfiles": "دور على بروفايل...",
+      "glassCombinations": "دور على تركيبة..."
+    },
+    "filters": {
+      "allBrands": "كل الماركات",
+      "allTypes": "كل الأنواع",
+      "allCatalogs": "كل الكتالوجات"
+    },
     "combinationEditor": {
       "createButton": "إضافة تركيبة",
       "editButton": "تعديل",
       "name": "الاسم",
       "totalThickness": "إجمالي السمك",
       "items": "الطبقات",
+      "buildUp": "وصف التركيبة",
       "empty": "لا توجد تركيبات بعد.",
       "description": "كوّن طبقات الزجاج بالترتيب — شرائح وفراغات.",
       "runningTotal": "الإجمالي: {{total}} مم",
       "noItems": "لا توجد طبقات بعد. ضيف شريحة أو فراغ للبدء.",
+      "singleLayerHint": "شريحة واحدة لوحدها مش تركيبة — ضيف فراغ وشريحة تانية.",
       "kindSheet": "شريحة زجاج",
       "kindGap": "فراغ",
       "selectGlass": "اختر الزجاج",
       "selectColorOptional": "اللون (اختياري)",
       "noColor": "بدون لون",
+      "clear": "شفاف",
       "gapTypeSpacer": "سبيسر (فراغ هوائي)",
       "gapTypeLaminated": "لامينيتد (طبقة لاصقة)",
       "gapThickness": "السمك (مم)",
@@ -425,7 +440,8 @@
       "rows": "صفوف",
       "addSheet": "إضافة شريحة",
       "addGap": "إضافة فراغ",
-      "addGapDisabled": "ضيف شريحة زجاج الأول — التركيبة مينفعش تبدأ بفراغ.",
+      "addGapDisabled": "ضيف شريحة زجاج الأول — التركيبة مينفعش تبدأ بفراغ أو يبقى فيها فراغين ورا بعض.",
+      "addSheetDisabled": "ضيف فراغ الأول — مينفعش يبقى فيه شريحتين ورا بعض.",
       "save": "حفظ التركيبة"
     }
   }

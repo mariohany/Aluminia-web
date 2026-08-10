@@ -11,8 +11,8 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@repo/types/auth';
 import type {
-  ColorBrandSummary,
-  ColorPriceSummary,
+  PaintBrandSummary,
+  PaintingPriceSummary,
   ColorSummary,
   GlassCombinationSummary,
   GlassSummary,
@@ -28,10 +28,10 @@ import { GlassLookupsService } from './glass-lookups.service';
 import { SystemLookupsService } from './system-lookups.service';
 import { CreateColorDto } from './dto/create-color.dto';
 import { UpdateColorDto } from './dto/update-color.dto';
-import { CreateColorBrandDto } from './dto/create-color-brand.dto';
-import { UpdateColorBrandDto } from './dto/update-color-brand.dto';
-import { CreateColorPriceDto } from './dto/create-color-price.dto';
-import { UpdateColorPriceDto } from './dto/update-color-price.dto';
+import { CreatePaintBrandDto } from './dto/create-paint-brand.dto';
+import { UpdatePaintBrandDto } from './dto/update-paint-brand.dto';
+import { CreatePaintingPriceDto } from './dto/create-painting-price.dto';
+import { UpdatePaintingPriceDto } from './dto/update-painting-price.dto';
 import { CreateGlassDto } from './dto/create-glass.dto';
 import { UpdateGlassDto } from './dto/update-glass.dto';
 import { CreateGlassCombinationDto } from './dto/create-glass-combination.dto';
@@ -90,70 +90,70 @@ export class AdminLookupsController {
     return this.colorLookups.deleteColor(id, actor.id);
   }
 
-  // ---- ColorBrand ----
+  // ---- PaintBrand ----
 
-  @Get('color-brands')
-  listColorBrands(): Promise<ColorBrandSummary[]> {
-    return this.colorLookups.listColorBrands();
+  @Get('paint-brands')
+  listPaintBrands(): Promise<PaintBrandSummary[]> {
+    return this.colorLookups.listPaintBrands();
   }
 
-  @Post('color-brands')
-  createColorBrand(
-    @Body() dto: CreateColorBrandDto,
+  @Post('paint-brands')
+  createPaintBrand(
+    @Body() dto: CreatePaintBrandDto,
     @CurrentUser() actor: AuthenticatedRequestUser,
-  ): Promise<ColorBrandSummary> {
-    return this.colorLookups.createColorBrand(dto, actor.id);
+  ): Promise<PaintBrandSummary> {
+    return this.colorLookups.createPaintBrand(dto, actor.id);
   }
 
-  @Patch('color-brands/:id')
-  updateColorBrand(
+  @Patch('paint-brands/:id')
+  updatePaintBrand(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateColorBrandDto,
+    @Body() dto: UpdatePaintBrandDto,
     @CurrentUser() actor: AuthenticatedRequestUser,
-  ): Promise<ColorBrandSummary> {
-    return this.colorLookups.updateColorBrand(id, dto, actor.id);
+  ): Promise<PaintBrandSummary> {
+    return this.colorLookups.updatePaintBrand(id, dto, actor.id);
   }
 
-  @Delete('color-brands/:id')
+  @Delete('paint-brands/:id')
   @HttpCode(204)
-  deleteColorBrand(
+  deletePaintBrand(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<void> {
-    return this.colorLookups.deleteColorBrand(id, actor.id);
+    return this.colorLookups.deletePaintBrand(id, actor.id);
   }
 
-  // ---- ColorPrice ----
+  // ---- PaintingPrice ----
 
-  @Get('color-prices')
-  listColorPrices(): Promise<ColorPriceSummary[]> {
-    return this.colorLookups.listColorPrices();
+  @Get('painting-prices')
+  listPaintingPrices(): Promise<PaintingPriceSummary[]> {
+    return this.colorLookups.listPaintingPrices();
   }
 
-  @Post('color-prices')
-  createColorPrice(
-    @Body() dto: CreateColorPriceDto,
+  @Post('painting-prices')
+  createPaintingPrice(
+    @Body() dto: CreatePaintingPriceDto,
     @CurrentUser() actor: AuthenticatedRequestUser,
-  ): Promise<ColorPriceSummary> {
-    return this.colorLookups.createColorPrice(dto, actor.id);
+  ): Promise<PaintingPriceSummary> {
+    return this.colorLookups.createPaintingPrice(dto, actor.id);
   }
 
-  @Patch('color-prices/:id')
-  updateColorPrice(
+  @Patch('painting-prices/:id')
+  updatePaintingPrice(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateColorPriceDto,
+    @Body() dto: UpdatePaintingPriceDto,
     @CurrentUser() actor: AuthenticatedRequestUser,
-  ): Promise<ColorPriceSummary> {
-    return this.colorLookups.updateColorPrice(id, dto, actor.id);
+  ): Promise<PaintingPriceSummary> {
+    return this.colorLookups.updatePaintingPrice(id, dto, actor.id);
   }
 
-  @Delete('color-prices/:id')
+  @Delete('painting-prices/:id')
   @HttpCode(204)
-  deleteColorPrice(
+  deletePaintingPrice(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<void> {
-    return this.colorLookups.deleteColorPrice(id, actor.id);
+    return this.colorLookups.deletePaintingPrice(id, actor.id);
   }
 
   // ---- Glass ----

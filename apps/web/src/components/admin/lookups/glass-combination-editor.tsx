@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, Plus, Search, Trash2 } from 'lucide-react'
 import {
   createGlassCombinationSchema,
   GlassGapType,
@@ -61,6 +61,35 @@ type DraftItem =
       rowsCount: number | null
     }
 
+// Human-readable build-up for the list table, e.g. "6mm Clear + Spacer
+// (air gap) 12mm + 6mm Clear" — derived straight from the combination's
+// own items rather than duplicating that shape in a separate field.
+// Deliberately shows thickness + colour, not the glass catalogue name —
+// name is a free-text label (e.g. "Clear 6mm" or a supplier SKU) that
+// doesn't reliably tell you what's actually installed at a glance.
+function describeCombination(combo: GlassCombinationSummary, t: (key: string) => string): string {
+  return combo.items
+    .slice()
+    .sort((a, b) => a.position - b.position)
+    .map((item) => {
+      if (item.kind === 'sheet') {
+        const colorLabel = item.colorCode ?? t('dataWarehousePage.combinationEditor.clear')
+        return `${item.glassThickness}mm ${colorLabel}`
+      }
+      // Laminated interlayers don't track a thickness (stored as 0, not
+      // shown in the editor) so it's left out of the description too —
+      // "Laminated (interlayer) 0mm" would misleadingly imply a real value.
+      if (item.gapType === GlassGapType.LAMINATED) {
+        return t('dataWarehousePage.combinationEditor.gapTypeLaminated')
+      }
+      const georgianSuffix = item.isGeorgian
+        ? ` · ${t('dataWarehousePage.combinationEditor.isGeorgian')} ${item.columnsCount ?? ''}×${item.rowsCount ?? ''}`
+        : ''
+      return `${t('dataWarehousePage.combinationEditor.gapTypeSpacer')} ${item.gapThickness}mm${georgianSuffix}`
+    })
+    .join(' + ')
+}
+
 function fromSummary(combo: GlassCombinationSummary): DraftItem[] {
   return combo.items.map((item) =>
     item.kind === 'sheet'
@@ -91,6 +120,7 @@ export function GlassCombinationSection() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const createMutation = useCreateGlassCombinationMutation()
   const updateMutation = useUpdateGlassCombinationMutation(editTarget?.id ?? '')
@@ -100,9 +130,20 @@ export function GlassCombinationSection() {
   const colorOptions = (colors ?? []).map((c) => ({ value: c.id, label: c.code }))
 
   const rows = combos ?? []
-  const allSelected = rows.length > 0 && rows.every((row) => selected.has(row.id))
+  // Matches on name and the same build-up text the table shows, so
+  // searching "clear" or "spacer" finds combinations by what's in them,
+  // not just by name.
+  const trimmedQuery = searchQuery.trim().toLowerCase()
+  const visibleRows = trimmedQuery
+    ? rows.filter(
+        (row) =>
+          row.name.toLowerCase().includes(trimmedQuery) ||
+          describeCombination(row, t).toLowerCase().includes(trimmedQuery),
+      )
+    : rows
+  const allSelected = visibleRows.length > 0 && visibleRows.every((row) => selected.has(row.id))
   const someSelected = selected.size > 0
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((row) => row.id)))
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(visibleRows.map((row) => row.id)))
   const toggleOne = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev)
@@ -183,6 +224,19 @@ export function GlassCombinationSection() {
         </Button>
       </div>
 
+      <div className="relative w-full max-w-xs">
+        <Search
+          className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <Input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder={t('dataWarehousePage.search.glassCombinations')}
+          className="ps-8"
+        />
+      </div>
+
       {someSelected && (
         <div className="flex items-center justify-between gap-3 rounded-md bg-muted/60 px-3 py-2">
           <span className="text-sm font-medium text-foreground">
@@ -215,7 +269,7 @@ export function GlassCombinationSection() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
-                {rows.length > 0 && (
+                {visibleRows.length > 0 && (
                   <Checkbox
                     checked={allSelected}
                     onCheckedChange={toggleAll}
@@ -226,6 +280,7 @@ export function GlassCombinationSection() {
               <TableHead>{t('dataWarehousePage.combinationEditor.name')}</TableHead>
               <TableHead>{t('dataWarehousePage.combinationEditor.totalThickness')}</TableHead>
               <TableHead>{t('dataWarehousePage.combinationEditor.items')}</TableHead>
+              <TableHead>{t('dataWarehousePage.combinationEditor.buildUp')}</TableHead>
               <TableHead className="w-32" />
             </TableRow>
           </TableHeader>
@@ -233,16 +288,23 @@ export function GlassCombinationSection() {
             {(isLoading || isError || rows.length === 0) && (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={6}
                   className={isError ? 'text-center text-destructive' : 'text-center text-muted-foreground'}
                 >
                   {isError ? t('dataWarehousePage.messages.error') : t('dataWarehousePage.combinationEditor.empty')}
                 </TableCell>
               </TableRow>
             )}
+            {!isLoading && !isError && rows.length > 0 && visibleRows.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  {t('dataWarehousePage.messages.noResults')}
+                </TableCell>
+              </TableRow>
+            )}
             {!isLoading &&
               !isError &&
-              rows.map((combo) => (
+              visibleRows.map((combo) => (
                 <TableRow key={combo.id}>
                   <TableCell>
                     <Checkbox
@@ -254,6 +316,9 @@ export function GlassCombinationSection() {
                   <TableCell className="font-medium text-foreground">{combo.name}</TableCell>
                   <TableCell>{combo.totalThickness} mm</TableCell>
                   <TableCell>{combo.items.length}</TableCell>
+                  <TableCell className="max-w-xs truncate text-muted-foreground" title={describeCombination(combo, t)}>
+                    {describeCombination(combo, t)}
+                  </TableCell>
                   <TableCell className="flex justify-end gap-2">
                     <Button variant="outline" size="sm" onClick={() => setEditTarget(combo)}>
                       {t('dataWarehousePage.combinationEditor.editButton')}
@@ -373,6 +438,10 @@ function CombinationDialog({
   const runningTotal = items
     .reduce((sum, item) => sum + (item.kind === 'sheet' ? glassThickness(item.glassId) : item.gapThickness), 0)
     .toFixed(2)
+  // A combination must strictly alternate sheet/gap (enforced for real by
+  // createGlassCombinationSchema's alternation refine at save time — this
+  // is just the add-button guard that stops the obvious mistake at entry).
+  const lastItemKind = items[items.length - 1]?.kind
 
   const addSheet = () => setItems((prev) => [...prev, { kind: 'sheet', glassId: '', colorId: null }])
   const addGap = () =>
@@ -462,6 +531,9 @@ function CombinationDialog({
             {items.length === 0 && (
               <p className="text-sm text-muted-foreground">{t('dataWarehousePage.combinationEditor.noItems')}</p>
             )}
+            {items.length === 1 && (
+              <p className="text-sm text-muted-foreground">{t('dataWarehousePage.combinationEditor.singleLayerHint')}</p>
+            )}
             {items.map((item, index) => (
               <div key={index} className="flex flex-col gap-2 rounded-md border border-border p-3">
                 <div className="flex items-center justify-between">
@@ -534,10 +606,21 @@ function CombinationDialog({
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className={item.gapType === GlassGapType.SPACER ? 'grid grid-cols-2 gap-2' : ''}>
                       <Select
                         value={item.gapType}
-                        onValueChange={(v) => updateItem(index, { gapType: v as GlassGapType })}
+                        onValueChange={(v) => {
+                          const nextType = v as GlassGapType
+                          updateItem(index, {
+                            gapType: nextType,
+                            // Laminated doesn't track a thickness (the field
+                            // disappears below) — always store 0 for it, and
+                            // restore a sensible default when switching back
+                            // to spacer, since 0 there would silently zero
+                            // the build-up.
+                            gapThickness: nextType === GlassGapType.LAMINATED ? 0 : item.gapThickness || 16,
+                          })
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -551,14 +634,16 @@ function CombinationDialog({
                           </SelectItem>
                         </SelectContent>
                       </Select>
-                      <Input
-                        type="number"
-                        step={0.01}
-                        min={0}
-                        value={item.gapThickness}
-                        placeholder={t('dataWarehousePage.combinationEditor.gapThickness')}
-                        onChange={(e) => updateItem(index, { gapThickness: Number(e.target.value) })}
-                      />
+                      {item.gapType === GlassGapType.SPACER && (
+                        <Input
+                          type="number"
+                          step={0.01}
+                          min={0}
+                          value={item.gapThickness}
+                          placeholder={t('dataWarehousePage.combinationEditor.gapThickness')}
+                          onChange={(e) => updateItem(index, { gapThickness: Number(e.target.value) })}
+                        />
+                      )}
                     </div>
                     {item.gapType === GlassGapType.SPACER && (
                       <div className="flex flex-col gap-2 rounded-md bg-muted/50 p-2">
@@ -596,7 +681,14 @@ function CombinationDialog({
           </div>
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={addSheet}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={lastItemKind === 'sheet'}
+              title={lastItemKind === 'sheet' ? t('dataWarehousePage.combinationEditor.addSheetDisabled') : undefined}
+              onClick={addSheet}
+            >
               <Plus className="size-4" aria-hidden="true" />
               {t('dataWarehousePage.combinationEditor.addSheet')}
             </Button>
@@ -604,8 +696,12 @@ function CombinationDialog({
               type="button"
               variant="outline"
               size="sm"
-              disabled={items.length === 0}
-              title={items.length === 0 ? t('dataWarehousePage.combinationEditor.addGapDisabled') : undefined}
+              disabled={lastItemKind === 'gap' || lastItemKind === undefined}
+              title={
+                lastItemKind === 'gap' || lastItemKind === undefined
+                  ? t('dataWarehousePage.combinationEditor.addGapDisabled')
+                  : undefined
+              }
               onClick={addGap}
             >
               <Plus className="size-4" aria-hidden="true" />
@@ -617,7 +713,7 @@ function CombinationDialog({
         </div>
 
         <DialogFooter>
-          <Button type="button" disabled={saving || items.length === 0 || !name.trim()} onClick={() => void handleSave()}>
+          <Button type="button" disabled={saving || items.length < 3 || !name.trim()} onClick={() => void handleSave()}>
             {t('dataWarehousePage.combinationEditor.save')}
           </Button>
         </DialogFooter>

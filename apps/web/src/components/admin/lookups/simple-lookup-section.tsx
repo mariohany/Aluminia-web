@@ -11,7 +11,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Copy, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Copy, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import type { ZodType } from 'zod'
 import { apiErrorMessage } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
@@ -59,18 +59,31 @@ export interface LookupColumnSpec<TSummary> {
   cell: (row: TSummary) => React.ReactNode
 }
 
+export interface LookupSearchSpec<TSummary> {
+  placeholder: string
+  match: (row: TSummary, query: string) => boolean
+}
+
+export interface LookupFilterSpec<TSummary> {
+  key: string
+  allLabel: string
+  options: { value: string; label: string }[]
+  match: (row: TSummary, value: string) => boolean
+}
+
 interface MutationLike<TInput, TOutput> {
   mutateAsync: (input: TInput) => Promise<TOutput>
   isPending: boolean
 }
 
 // Config-driven CRUD block (table + create dialog + edit dialog + delete
-// confirm + bulk select/duplicate/delete) shared by the seven lookup
-// entities that are plain field-in/field-out forms (Color, ColorBrand,
-// ColorPrice, Glass, SystemBrand, SystemCatalog, SystemProfile).
-// GlassCombination is the one entity that doesn't fit this shape — its
-// item list needs a dedicated editor, not a form generated from a field
-// list — and Color gets its own grid presentation, not this table.
+// confirm + bulk select/duplicate/delete) shared by the lookup entities
+// that are plain field-in/field-out forms (Glass, SystemBrand,
+// SystemCatalog, SystemProfile). GlassCombination is the one entity that
+// doesn't fit this shape — its item list needs a dedicated editor, not a
+// form generated from a field list — Color gets its own grid
+// presentation, and PaintBrand/PaintingPrice get a brand-grouped
+// accordion (PaintingPricesSection) instead of this flat table.
 //
 // Follows the one-dialog-instance-per-section pattern from
 // UserActionDialog: a single edit/delete dialog is mounted once, driven
@@ -98,6 +111,8 @@ export function SimpleLookupSection<
   createDefaults,
   fields,
   columns,
+  search,
+  filters,
   useList,
   useCreate,
   useUpdate,
@@ -118,6 +133,8 @@ export function SimpleLookupSection<
   createDefaults: TCreate
   fields: LookupFieldSpec<TCreate>[]
   columns: LookupColumnSpec<TSummary>[]
+  search?: LookupSearchSpec<TSummary>
+  filters?: LookupFilterSpec<TSummary>[]
   useList: () => { data: TSummary[] | undefined; isLoading: boolean; isError: boolean }
   useCreate: () => MutationLike<TCreate, TSummary>
   useUpdate: (id: string) => MutationLike<TUpdate, TSummary>
@@ -139,6 +156,8 @@ export function SimpleLookupSection<
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterValues, setFilterValues] = useState<Record<string, string>>({})
 
   const createMutation = useCreate()
   const updateMutation = useUpdate(editTarget?.id ?? '')
@@ -157,10 +176,22 @@ export function SimpleLookupSection<
   })
 
   const rows = data ?? []
-  const allSelected = rows.length > 0 && rows.every((row) => selected.has(row.id))
+  // Search/filters narrow what's shown and what "select all" acts on —
+  // bulk duplicate/delete still resolve selected ids against the full
+  // `rows`, so a selection made before narrowing the view isn't lost.
+  const trimmedQuery = searchQuery.trim()
+  const visibleRows = rows.filter((row) => {
+    if (search && trimmedQuery && !search.match(row, trimmedQuery)) return false
+    for (const filter of filters ?? []) {
+      const value = filterValues[filter.key]
+      if (value && value !== '__all' && !filter.match(row, value)) return false
+    }
+    return true
+  })
+  const allSelected = visibleRows.length > 0 && visibleRows.every((row) => selected.has(row.id))
   const someSelected = selected.size > 0
 
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((row) => row.id)))
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(visibleRows.map((row) => row.id)))
   const toggleOne = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev)
@@ -270,6 +301,44 @@ export function SimpleLookupSection<
         </Dialog>
       </div>
 
+      {(search || (filters && filters.length > 0)) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {search && (
+            <div className="relative w-full max-w-xs">
+              <Search
+                className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={search.placeholder}
+                className="ps-8"
+              />
+            </div>
+          )}
+          {filters?.map((filter) => (
+            <Select
+              key={filter.key}
+              value={filterValues[filter.key] ?? '__all'}
+              onValueChange={(v) => setFilterValues((prev) => ({ ...prev, [filter.key]: v }))}
+            >
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">{filter.allLabel}</SelectItem>
+                {filter.options.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ))}
+        </div>
+      )}
+
       {someSelected && (
         <div className="flex items-center justify-between gap-3 rounded-md bg-muted/60 px-3 py-2">
           <span className="text-sm font-medium text-foreground">
@@ -302,7 +371,7 @@ export function SimpleLookupSection<
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
-                {rows.length > 0 && (
+                {visibleRows.length > 0 && (
                   <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label={t('dataWarehousePage.bulk.selectAll')} />
                 )}
               </TableHead>
@@ -323,9 +392,16 @@ export function SimpleLookupSection<
                 </TableCell>
               </TableRow>
             )}
+            {!isLoading && !isError && rows.length > 0 && visibleRows.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={columns.length + 2} className="text-center text-muted-foreground">
+                  {t('dataWarehousePage.messages.noResults')}
+                </TableCell>
+              </TableRow>
+            )}
             {!isLoading &&
               !isError &&
-              rows.map((row) => (
+              visibleRows.map((row) => (
                 <TableRow key={row.id} data-state={selected.has(row.id) ? 'selected' : undefined}>
                   <TableCell>
                     <Checkbox

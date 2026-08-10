@@ -316,8 +316,8 @@
       "glass": "Glass",
       "glassCombinations": "Glass combinations",
       "colors": "Colours",
-      "colorBrands": "Colour brands",
-      "colorPrices": "Colour prices",
+      "paintingPrices": "Painting prices",
+      "paintBrands": "Paint brands",
       "systemBrands": "System brands",
       "systemCatalogs": "System catalogues",
       "systemProfiles": "System profiles"
@@ -325,8 +325,8 @@
     "createButtons": {
       "glass": "Add glass",
       "color": "Add colour",
-      "colorBrand": "Add brand",
-      "colorPrice": "Add price",
+      "paintBrand": "Add brand",
+      "paintingPrice": "Add price",
       "systemBrand": "Add brand",
       "systemCatalog": "Add catalogue",
       "systemProfile": "Add profile"
@@ -334,8 +334,8 @@
     "empty": {
       "glass": "No glass yet.",
       "color": "No colours yet.",
-      "colorBrand": "No brands yet.",
-      "colorPrice": "No prices yet.",
+      "paintBrand": "No brands yet.",
+      "paintingPrice": "No prices yet.",
       "systemBrand": "No brands yet.",
       "systemCatalog": "No catalogues yet.",
       "systemProfile": "No profiles yet."
@@ -343,7 +343,7 @@
     "deleteWarnings": {
       "glass": "Blocked if any glass combination still uses it.",
       "color": "Blocked if any glass combination still uses it.",
-      "colorBrand": "Blocked if it still has prices.",
+      "paintBrand": "Blocked if it still has prices.",
       "systemBrand": "Blocked if it still has catalogues.",
       "systemCatalog": "Blocked if it still has profiles."
     },
@@ -356,7 +356,7 @@
       "price": "Price (EGP)",
       "thickness": "Thickness (mm)",
       "weightPerSqm": "Weight (kg/m²)",
-      "pricePerSqm": "Price (per m², EGP)",
+      "pricePerSqm": "Price (EGP/m²)",
       "systemType": "System type",
       "maxGlassThickness": "Max glass thickness (mm)",
       "maxSashWeight": "Max sash weight (kg)",
@@ -391,7 +391,8 @@
       "bulkDeleteSuccess": "Deleted {{count}}.",
       "bulkDeletePartial": "Deleted {{succeeded}}, but {{failed}} couldn't be deleted (likely still in use).",
       "bulkDuplicateSuccess": "Duplicated {{count}}.",
-      "bulkDuplicatePartial": "Duplicated {{succeeded}}, but {{failed}} failed."
+      "bulkDuplicatePartial": "Duplicated {{succeeded}}, but {{failed}} failed.",
+      "noResults": "No results match your search or filters."
     },
     "bulk": {
       "selectAll": "Select all",
@@ -402,21 +403,35 @@
       "copySuffix": "copy",
       "deleteConfirmTitle": "Delete {{count}} selected?"
     },
+    "search": {
+      "systemBrands": "Search brands...",
+      "systemCatalogs": "Search catalogues...",
+      "systemProfiles": "Search profiles...",
+      "glassCombinations": "Search combinations..."
+    },
+    "filters": {
+      "allBrands": "All brands",
+      "allTypes": "All types",
+      "allCatalogs": "All catalogues"
+    },
     "combinationEditor": {
       "createButton": "Add combination",
       "editButton": "Edit",
       "name": "Name",
       "totalThickness": "Total thickness",
       "items": "Items",
+      "buildUp": "Build-up",
       "empty": "No combinations yet.",
       "description": "Build the ordered layer stack — sheets and gaps, in order.",
       "runningTotal": "Total: {{total}} mm",
       "noItems": "No items yet. Add a sheet or a gap to start.",
+      "singleLayerHint": "A single sheet isn't a combination — add a gap and another sheet.",
       "kindSheet": "Sheet",
       "kindGap": "Gap",
       "selectGlass": "Select glass",
       "selectColorOptional": "Colour (optional)",
       "noColor": "No colour",
+      "clear": "Clear",
       "gapTypeSpacer": "Spacer (air gap)",
       "gapTypeLaminated": "Laminated (interlayer)",
       "gapThickness": "Thickness (mm)",
@@ -425,7 +440,8 @@
       "rows": "Rows",
       "addSheet": "Add sheet",
       "addGap": "Add gap",
-      "addGapDisabled": "Add a sheet first — a combination can't start with a gap.",
+      "addGapDisabled": "Add a sheet first — a combination can't start with a gap, or have two gaps in a row.",
+      "addSheetDisabled": "Add a gap first — two sheets can't sit next to each other.",
       "save": "Save combination"
     }
   }

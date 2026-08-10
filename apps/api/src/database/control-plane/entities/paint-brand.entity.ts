@@ -8,8 +8,8 @@ import {
 
 // A coating supplier. Named *Brand, not *Company — `company` already
 // means a tenant everywhere else in this codebase (see CLAUDE.md).
-@Entity('color_brand')
-export class ColorBrand {
+@Entity('paint_brand')
+export class PaintBrand {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

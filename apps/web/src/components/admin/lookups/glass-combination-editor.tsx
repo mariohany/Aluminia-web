@@ -220,8 +220,8 @@ export function GlassCombinationSection() {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 items-center justify-between gap-3">
         <h2 className="font-heading text-base font-semibold text-foreground">
           {t('dataWarehousePage.tables.glassCombinations')}
         </h2>
@@ -231,119 +231,119 @@ export function GlassCombinationSection() {
         </Button>
       </div>
 
-      <div className="relative w-full max-w-xs">
-        <Search
-          className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          aria-hidden="true"
-        />
-        <Input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={t('dataWarehousePage.search.glassCombinations')}
-          className="ps-8"
-        />
-      </div>
-
-      {someSelected && (
-        <div className="flex items-center justify-between gap-3 rounded-md bg-muted/60 px-3 py-2">
-          <span className="text-sm font-medium text-foreground">
-            {t('dataWarehousePage.bulk.selectedCount', { count: selected.size })}
-          </span>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onBulkDuplicate()}>
-              <Copy className="size-4" aria-hidden="true" />
-              {t('dataWarehousePage.bulk.duplicate')}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-destructive hover:text-destructive"
-              disabled={bulkBusy}
-              onClick={() => setBulkDeleteConfirmOpen(true)}
-            >
-              <Trash2 className="size-4" aria-hidden="true" />
-              {t('dataWarehousePage.bulk.delete')}
-            </Button>
-            <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
-              {t('dataWarehousePage.bulk.clear')}
-            </Button>
-          </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+        <div className="relative w-full max-w-xs">
+          <Search
+            className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('dataWarehousePage.search.glassCombinations')}
+            className="ps-8"
+          />
         </div>
-      )}
 
-      <div className="rounded-lg border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10">
-                {visibleRows.length > 0 && (
-                  <Checkbox
-                    checked={allSelected}
-                    onCheckedChange={toggleAll}
-                    aria-label={t('dataWarehousePage.bulk.selectAll')}
-                  />
-                )}
-              </TableHead>
-              <TableHead>{t('dataWarehousePage.combinationEditor.name')}</TableHead>
-              <TableHead>{t('dataWarehousePage.combinationEditor.totalThickness')}</TableHead>
-              <TableHead>{t('dataWarehousePage.combinationEditor.items')}</TableHead>
-              <TableHead>{t('dataWarehousePage.combinationEditor.buildUp')}</TableHead>
-              <TableHead className="w-32" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(isLoading || isError || rows.length === 0) && (
-              <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className={isError ? 'text-center text-destructive' : 'text-center text-muted-foreground'}
-                >
-                  {isError ? t('dataWarehousePage.messages.error') : t('dataWarehousePage.combinationEditor.empty')}
-                </TableCell>
-              </TableRow>
-            )}
-            {!isLoading && !isError && rows.length > 0 && visibleRows.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  {t('dataWarehousePage.messages.noResults')}
-                </TableCell>
-              </TableRow>
-            )}
-            {!isLoading &&
-              !isError &&
-              visibleRows.map((combo) => (
-                <TableRow key={combo.id}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selected.has(combo.id)}
-                      onCheckedChange={() => toggleOne(combo.id)}
-                      aria-label={combo.name}
-                    />
-                  </TableCell>
-                  <TableCell className="font-medium text-foreground">{combo.name}</TableCell>
-                  <TableCell>{combo.totalThickness} mm</TableCell>
-                  <TableCell>{combo.items.length}</TableCell>
-                  <TableCell className="max-w-xs truncate text-muted-foreground" title={describeCombination(combo, t)}>
-                    {describeCombination(combo, t)}
-                  </TableCell>
-                  <TableCell className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setEditTarget(combo)}>
-                      {t('dataWarehousePage.combinationEditor.editButton')}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 text-destructive hover:text-destructive"
-                      onClick={() => setDeleteTarget(combo)}
-                    >
-                      <Trash2 className="size-3.5" aria-hidden="true" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
+        {someSelected && (
+          <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted/60 px-3 py-0.5">
+            <span className="text-sm font-medium text-foreground">
+              {t('dataWarehousePage.bulk.selectedCount', { count: selected.size })}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onBulkDuplicate()}>
+                <Copy className="size-4" aria-hidden="true" />
+                {t('dataWarehousePage.bulk.duplicate')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                disabled={bulkBusy}
+                onClick={() => setBulkDeleteConfirmOpen(true)}
+              >
+                <Trash2 className="size-4" aria-hidden="true" />
+                {t('dataWarehousePage.bulk.delete')}
+              </Button>
+              <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
+                {t('dataWarehousePage.bulk.clear')}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
+
+      <Table containerClassName="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
+        <TableHeader className="sticky top-0 z-10 bg-background">
+          <TableRow>
+            <TableHead className="w-10">
+              {visibleRows.length > 0 && (
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={toggleAll}
+                  aria-label={t('dataWarehousePage.bulk.selectAll')}
+                />
+              )}
+            </TableHead>
+            <TableHead>{t('dataWarehousePage.combinationEditor.name')}</TableHead>
+            <TableHead>{t('dataWarehousePage.combinationEditor.totalThickness')}</TableHead>
+            <TableHead>{t('dataWarehousePage.combinationEditor.items')}</TableHead>
+            <TableHead>{t('dataWarehousePage.combinationEditor.buildUp')}</TableHead>
+            <TableHead className="w-32" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {(isLoading || isError || rows.length === 0) && (
+            <TableRow>
+              <TableCell
+                colSpan={6}
+                className={isError ? 'text-center text-destructive' : 'text-center text-muted-foreground'}
+              >
+                {isError ? t('dataWarehousePage.messages.error') : t('dataWarehousePage.combinationEditor.empty')}
+              </TableCell>
+            </TableRow>
+          )}
+          {!isLoading && !isError && rows.length > 0 && visibleRows.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={6} className="text-center text-muted-foreground">
+                {t('dataWarehousePage.messages.noResults')}
+              </TableCell>
+            </TableRow>
+          )}
+          {!isLoading &&
+            !isError &&
+            visibleRows.map((combo) => (
+              <TableRow key={combo.id}>
+                <TableCell>
+                  <Checkbox
+                    checked={selected.has(combo.id)}
+                    onCheckedChange={() => toggleOne(combo.id)}
+                    aria-label={combo.name}
+                  />
+                </TableCell>
+                <TableCell className="font-medium text-foreground">{combo.name}</TableCell>
+                <TableCell>{combo.totalThickness}</TableCell>
+                <TableCell>{combo.items.length}</TableCell>
+                <TableCell className="max-w-xs truncate text-muted-foreground" title={describeCombination(combo, t)}>
+                  {describeCombination(combo, t)}
+                </TableCell>
+                <TableCell className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setEditTarget(combo)}>
+                    {t('dataWarehousePage.combinationEditor.editButton')}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-destructive hover:text-destructive"
+                    onClick={() => setDeleteTarget(combo)}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+        </TableBody>
+      </Table>
 
       {createOpen && (
         <CombinationDialog

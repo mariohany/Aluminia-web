@@ -35,6 +35,8 @@ const PROFILE_TYPE_LABELS: Record<string, ProfileType> = {
   sliding_insert: ProfileType.SLIDING_INSERT,
   'control rod': ProfileType.CONTROL_ROD,
   control_rod: ProfileType.CONTROL_ROD,
+  'bottom rail': ProfileType.BOTTOM_RAIL,
+  bottom_rail: ProfileType.BOTTOM_RAIL,
 };
 
 function normalizeEnumLabel(text: string): string {

@@ -281,8 +281,8 @@ export function SimpleLookupSection<
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 items-center justify-between gap-3">
         <h2 className="font-heading text-base font-semibold text-foreground">{title}</h2>
         <div className="flex items-center gap-2">
           {headerExtra}
@@ -320,144 +320,144 @@ export function SimpleLookupSection<
         </div>
       </div>
 
-      {(search || (filters && filters.length > 0)) && (
-        <div className="flex flex-wrap items-center gap-2">
-          {search && (
-            <div className="relative w-full max-w-xs">
-              <Search
-                className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={search.placeholder}
-                className="ps-8"
-              />
+      {(search || (filters && filters.length > 0) || someSelected) && (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {search && (
+              <div className="relative w-full max-w-xs">
+                <Search
+                  className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={search.placeholder}
+                  className="ps-8"
+                />
+              </div>
+            )}
+            {filters?.map((filter) => (
+              <Select
+                key={filter.key}
+                value={filterValues[filter.key] ?? '__all'}
+                onValueChange={(v) => setFilterValues((prev) => ({ ...prev, [filter.key]: v }))}
+              >
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">{filter.allLabel}</SelectItem>
+                  {filter.options.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ))}
+          </div>
+
+          {someSelected && (
+            <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted/60 px-3 py-0.5">
+              <span className="text-sm font-medium text-foreground">
+                {t('dataWarehousePage.bulk.selectedCount', { count: selected.size })}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onBulkDuplicate()}>
+                  <Copy className="size-4" aria-hidden="true" />
+                  {t('dataWarehousePage.bulk.duplicate')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:text-destructive"
+                  disabled={bulkBusy}
+                  onClick={() => setBulkDeleteConfirmOpen(true)}
+                >
+                  <Trash2 className="size-4" aria-hidden="true" />
+                  {t('dataWarehousePage.bulk.delete')}
+                </Button>
+                <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
+                  {t('dataWarehousePage.bulk.clear')}
+                </Button>
+              </div>
             </div>
           )}
-          {filters?.map((filter) => (
-            <Select
-              key={filter.key}
-              value={filterValues[filter.key] ?? '__all'}
-              onValueChange={(v) => setFilterValues((prev) => ({ ...prev, [filter.key]: v }))}
-            >
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">{filter.allLabel}</SelectItem>
-                {filter.options.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ))}
         </div>
       )}
 
-      {someSelected && (
-        <div className="flex items-center justify-between gap-3 rounded-md bg-muted/60 px-3 py-2">
-          <span className="text-sm font-medium text-foreground">
-            {t('dataWarehousePage.bulk.selectedCount', { count: selected.size })}
-          </span>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onBulkDuplicate()}>
-              <Copy className="size-4" aria-hidden="true" />
-              {t('dataWarehousePage.bulk.duplicate')}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-destructive hover:text-destructive"
-              disabled={bulkBusy}
-              onClick={() => setBulkDeleteConfirmOpen(true)}
-            >
-              <Trash2 className="size-4" aria-hidden="true" />
-              {t('dataWarehousePage.bulk.delete')}
-            </Button>
-            <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
-              {t('dataWarehousePage.bulk.clear')}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <div className="rounded-lg border border-border">
-        <Table>
-          <TableHeader>
+      <Table containerClassName="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
+        <TableHeader className="sticky top-0 z-10 bg-background">
+          <TableRow>
+            <TableHead className="w-10">
+              {visibleRows.length > 0 && (
+                <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label={t('dataWarehousePage.bulk.selectAll')} />
+              )}
+            </TableHead>
+            {columns.map((col) => (
+              <TableHead key={col.header}>{col.header}</TableHead>
+            ))}
+            <TableHead className="w-20" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {(isLoading || isError || rows.length === 0) && (
             <TableRow>
-              <TableHead className="w-10">
-                {visibleRows.length > 0 && (
-                  <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label={t('dataWarehousePage.bulk.selectAll')} />
-                )}
-              </TableHead>
-              {columns.map((col) => (
-                <TableHead key={col.header}>{col.header}</TableHead>
-              ))}
-              <TableHead className="w-20" />
+              <TableCell
+                colSpan={columns.length + 2}
+                className={isError ? 'text-center text-destructive' : 'text-center text-muted-foreground'}
+              >
+                {isError ? errorLabel : emptyLabel}
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(isLoading || isError || rows.length === 0) && (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length + 2}
-                  className={isError ? 'text-center text-destructive' : 'text-center text-muted-foreground'}
-                >
-                  {isError ? errorLabel : emptyLabel}
+          )}
+          {!isLoading && !isError && rows.length > 0 && visibleRows.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={columns.length + 2} className="text-center text-muted-foreground">
+                {t('dataWarehousePage.messages.noResults')}
+              </TableCell>
+            </TableRow>
+          )}
+          {!isLoading &&
+            !isError &&
+            visibleRows.map((row) => (
+              <TableRow key={row.id} data-state={selected.has(row.id) ? 'selected' : undefined}>
+                <TableCell>
+                  <Checkbox
+                    checked={selected.has(row.id)}
+                    onCheckedChange={() => toggleOne(row.id)}
+                    aria-label={rowLabel(row)}
+                  />
+                </TableCell>
+                {columns.map((col) => (
+                  <TableCell key={col.header}>{col.cell(row)}</TableCell>
+                ))}
+                <TableCell className="flex justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => {
+                      setEditTarget(row)
+                      editForm.reset(toEditDefaults(row))
+                    }}
+                  >
+                    <Pencil className="size-3.5" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-destructive hover:text-destructive"
+                    onClick={() => setDeleteTarget(row)}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                  </Button>
                 </TableCell>
               </TableRow>
-            )}
-            {!isLoading && !isError && rows.length > 0 && visibleRows.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={columns.length + 2} className="text-center text-muted-foreground">
-                  {t('dataWarehousePage.messages.noResults')}
-                </TableCell>
-              </TableRow>
-            )}
-            {!isLoading &&
-              !isError &&
-              visibleRows.map((row) => (
-                <TableRow key={row.id} data-state={selected.has(row.id) ? 'selected' : undefined}>
-                  <TableCell>
-                    <Checkbox
-                      checked={selected.has(row.id)}
-                      onCheckedChange={() => toggleOne(row.id)}
-                      aria-label={rowLabel(row)}
-                    />
-                  </TableCell>
-                  {columns.map((col) => (
-                    <TableCell key={col.header}>{col.cell(row)}</TableCell>
-                  ))}
-                  <TableCell className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8"
-                      onClick={() => {
-                        setEditTarget(row)
-                        editForm.reset(toEditDefaults(row))
-                      }}
-                    >
-                      <Pencil className="size-3.5" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 text-destructive hover:text-destructive"
-                      onClick={() => setDeleteTarget(row)}
-                    >
-                      <Trash2 className="size-3.5" aria-hidden="true" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
-      </div>
+            ))}
+        </TableBody>
+      </Table>
 
       <Dialog
         open={!!editTarget}

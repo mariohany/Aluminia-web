@@ -32,6 +32,7 @@ export const ProfileType = {
   INSERT: 'insert',
   SLIDING_INSERT: 'sliding_insert',
   CONTROL_ROD: 'control_rod',
+  BOTTOM_RAIL: 'bottom_rail'
 } as const
 export type ProfileType = (typeof ProfileType)[keyof typeof ProfileType]
 
@@ -393,6 +394,7 @@ export const createSystemProfileSchema = z.object({
     ProfileType.INSERT,
     ProfileType.SLIDING_INSERT,
     ProfileType.CONTROL_ROD,
+    ProfileType.BOTTOM_RAIL,
   ]),
   maxGlassThickness: z.number().int().positive(),
   weight: z.number().positive(),

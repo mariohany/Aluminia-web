@@ -32,6 +32,17 @@
         "title": "إيرادات الاشتراكات",
         "unavailable": "غير متاح لسه — سجل الفوترة مفيهوش سعر."
       }
+    },
+    "chart": {
+      "title": "الشركات الجديدة",
+      "description": "الشركات اللي اتضافت، شهر بشهر",
+      "error": "حصل خطأ أثناء تحميل الرسم البياني. حاول تاني.",
+      "tooltipCount": "{{count}} شركة اتضافت",
+      "filters": {
+        "from": "من",
+        "to": "إلى",
+        "clear": "مسح"
+      }
     }
   },
   "logsPage": {
@@ -381,7 +392,8 @@
       "glass_beading": "ليسة تثبيت الزجاج",
       "insert": "إنسرت",
       "sliding_insert": "إنسرت سحاب",
-      "control_rod": "ذراع تحكم"
+      "control_rod": "ذراع تحكم",
+      "bottom_rail": "القضيب السفلي"
     },
     "messages": {
       "createSuccess": "تم الإنشاء.",
@@ -408,6 +420,7 @@
       "systemBrands": "دور على ماركة...",
       "systemCatalogs": "دور على كتالوج...",
       "systemProfiles": "دور على بروفايل...",
+      "glass": "دور على زجاج...",
       "glassCombinations": "دور على تركيبة..."
     },
     "filters": {
@@ -419,7 +432,7 @@
       "createButton": "إضافة تركيبة",
       "editButton": "تعديل",
       "name": "الاسم",
-      "totalThickness": "إجمالي السمك",
+      "totalThickness": "(مم) إجمالي السمك",
       "items": "الطبقات",
       "buildUp": "وصف التركيبة",
       "empty": "لا توجد تركيبات بعد.",

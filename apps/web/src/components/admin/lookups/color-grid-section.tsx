@@ -176,8 +176,8 @@ export function ColorGridSection() {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 items-center justify-between gap-3">
         <h2 className="font-heading text-base font-semibold text-foreground">{t('dataWarehousePage.tables.colors')}</h2>
         <div className="flex items-center gap-2">
           {rows.length > 0 && (
@@ -236,7 +236,7 @@ export function ColorGridSection() {
       </div>
 
       {someSelected && (
-        <div className="flex items-center justify-between gap-3 rounded-md bg-muted/60 px-3 py-2">
+        <div className="flex shrink-0 items-center justify-between gap-3 rounded-md bg-muted/60 px-3 py-0.5">
           <span className="text-sm font-medium text-foreground">
             {t('dataWarehousePage.bulk.selectedCount', { count: selected.size })}
           </span>
@@ -267,35 +267,37 @@ export function ColorGridSection() {
           {isError ? t('dataWarehousePage.messages.error') : t('dataWarehousePage.empty.color')}
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-4">
-          {rows.map((color) => (
-            <div key={color.id} className="flex flex-col items-center gap-1.5">
-              <div className="relative w-full">
-                <button
-                  type="button"
-                  className="aspect-square w-full rounded-lg border border-border shadow-sm transition-transform hover:scale-105"
-                  style={{ backgroundColor: color.hex }}
-                  onClick={() => {
-                    setEditTarget(color)
-                    editForm.reset({ code: color.code, hex: color.hex })
-                  }}
-                  aria-label={color.code}
-                />
-                <span className="absolute start-1 top-1 rounded bg-background/80 p-0.5">
-                  <Checkbox checked={selected.has(color.id)} onCheckedChange={() => toggleOne(color.id)} />
-                </span>
-                <button
-                  type="button"
-                  className="absolute end-1 top-1 rounded bg-background/80 p-1 text-destructive hover:bg-background"
-                  onClick={() => setDeleteTarget(color)}
-                  aria-label={tCommon('actions.delete')}
-                >
-                  <Trash2 className="size-3" aria-hidden="true" />
-                </button>
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border p-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-4">
+            {rows.map((color) => (
+              <div key={color.id} className="flex flex-col items-center gap-1.5">
+                <div className="relative w-full">
+                  <button
+                    type="button"
+                    className="aspect-square w-full rounded-lg border border-border shadow-sm transition-transform hover:scale-105"
+                    style={{ backgroundColor: color.hex }}
+                    onClick={() => {
+                      setEditTarget(color)
+                      editForm.reset({ code: color.code, hex: color.hex })
+                    }}
+                    aria-label={color.code}
+                  />
+                  <span className="absolute start-1 top-1 rounded bg-background/80 p-0.5">
+                    <Checkbox checked={selected.has(color.id)} onCheckedChange={() => toggleOne(color.id)} />
+                  </span>
+                  <button
+                    type="button"
+                    className="absolute end-1 top-1 rounded bg-background/80 p-1 text-destructive hover:bg-background"
+                    onClick={() => setDeleteTarget(color)}
+                    aria-label={tCommon('actions.delete')}
+                  >
+                    <Trash2 className="size-3" aria-hidden="true" />
+                  </button>
+                </div>
+                <span className="text-xs font-medium text-foreground">{color.code}</span>
               </div>
-              <span className="text-xs font-medium text-foreground">{color.code}</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 

@@ -176,14 +176,14 @@ export function PaintingPricesSection() {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <h2 className="font-heading text-base font-semibold text-foreground">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      <h2 className="shrink-0 font-heading text-base font-semibold text-foreground">
         {t('dataWarehousePage.tables.paintingPrices')}
       </h2>
 
-      <div className="flex flex-col gap-4 lg:flex-row">
-        <div className="flex flex-col gap-3 lg:w-72 lg:shrink-0">
-          <div className="flex items-center justify-between gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+        <div className="flex min-h-0 flex-col gap-3 lg:w-72 lg:shrink-0">
+          <div className="flex shrink-0 items-center justify-between gap-3">
             <h3 className="text-sm font-medium text-muted-foreground">
               {t('dataWarehousePage.tables.paintBrands')}
             </h3>
@@ -238,58 +238,56 @@ export function PaintingPricesSection() {
             <p className="text-sm text-muted-foreground">{t('dataWarehousePage.empty.paintBrand')}</p>
           )}
           {(brands?.length ?? 0) > 0 && (
-            <div className="rounded-lg border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('dataWarehousePage.fields.name')}</TableHead>
-                    <TableHead className="w-16" />
+            <Table containerClassName="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
+              <TableHeader className="sticky top-0 z-10 bg-background">
+                <TableRow>
+                  <TableHead>{t('dataWarehousePage.fields.name')}</TableHead>
+                  <TableHead className="w-16" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(brands ?? []).map((brand) => (
+                  <TableRow
+                    key={brand.id}
+                    data-state={selectedBrand?.id === brand.id ? 'selected' : undefined}
+                    className="cursor-pointer"
+                    onClick={() => setSelectedBrandId(brand.id)}
+                  >
+                    <TableCell>{brand.name}</TableCell>
+                    <TableCell className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditBrand(brand)
+                          editBrandForm.reset({ name: brand.name })
+                        }}
+                      >
+                        <Pencil className="size-3.5" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-destructive hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeleteBrand(brand)
+                        }}
+                      >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(brands ?? []).map((brand) => (
-                    <TableRow
-                      key={brand.id}
-                      data-state={selectedBrand?.id === brand.id ? 'selected' : undefined}
-                      className="cursor-pointer"
-                      onClick={() => setSelectedBrandId(brand.id)}
-                    >
-                      <TableCell>{brand.name}</TableCell>
-                      <TableCell className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setEditBrand(brand)
-                            editBrandForm.reset({ name: brand.name })
-                          }}
-                        >
-                          <Pencil className="size-3.5" aria-hidden="true" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive hover:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDeleteBrand(brand)
-                          }}
-                        >
-                          <Trash2 className="size-3.5" aria-hidden="true" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </div>
 
-        <div className="flex flex-1 flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <div className="flex shrink-0 items-center justify-between gap-3">
             <h3 className="text-sm font-medium text-muted-foreground">
               {selectedBrand ? selectedBrand.name : t('dataWarehousePage.tables.paintingPrices')}
             </h3>
@@ -313,50 +311,48 @@ export function PaintingPricesSection() {
           ) : selectedBrandPrices.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('dataWarehousePage.empty.paintingPrice')}</p>
           ) : (
-            <div className="rounded-lg border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('dataWarehousePage.fields.type')}</TableHead>
-                    <TableHead>{t('dataWarehousePage.fields.price')}</TableHead>
-                    <TableHead className="w-20" />
+            <Table containerClassName="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
+              <TableHeader className="sticky top-0 z-10 bg-background">
+                <TableRow>
+                  <TableHead>{t('dataWarehousePage.fields.type')}</TableHead>
+                  <TableHead>{t('dataWarehousePage.fields.price')}</TableHead>
+                  <TableHead className="w-20" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {selectedBrandPrices.map((price) => (
+                  <TableRow key={price.id}>
+                    <TableCell>{price.type}</TableCell>
+                    <TableCell>{price.price.toFixed(2)} EGP</TableCell>
+                    <TableCell className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        onClick={() => {
+                          setEditPrice(price)
+                          editPriceForm.reset({
+                            brandId: price.brandId,
+                            type: price.type,
+                            price: price.price,
+                          })
+                        }}
+                      >
+                        <Pencil className="size-3.5" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-destructive hover:text-destructive"
+                        onClick={() => setDeletePrice(price)}
+                      >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {selectedBrandPrices.map((price) => (
-                    <TableRow key={price.id}>
-                      <TableCell>{price.type}</TableCell>
-                      <TableCell>{price.price.toFixed(2)} EGP</TableCell>
-                      <TableCell className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          onClick={() => {
-                            setEditPrice(price)
-                            editPriceForm.reset({
-                              brandId: price.brandId,
-                              type: price.type,
-                              price: price.price,
-                            })
-                          }}
-                        >
-                          <Pencil className="size-3.5" aria-hidden="true" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive hover:text-destructive"
-                          onClick={() => setDeletePrice(price)}
-                        >
-                          <Trash2 className="size-3.5" aria-hidden="true" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </div>
       </div>

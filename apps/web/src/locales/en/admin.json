@@ -32,6 +32,17 @@
         "title": "Subscription revenue",
         "unavailable": "Not available yet — billing doesn't record a price."
       }
+    },
+    "chart": {
+      "title": "New companies",
+      "description": "Companies added, by month",
+      "error": "Couldn't load the chart. Try again.",
+      "tooltipCount": "{{count}} companies added",
+      "filters": {
+        "from": "From",
+        "to": "To",
+        "clear": "Clear"
+      }
     }
   },
   "logsPage": {
@@ -381,7 +392,8 @@
       "glass_beading": "Glass beading",
       "insert": "Insert",
       "sliding_insert": "Sliding insert",
-      "control_rod": "Control rod"
+      "control_rod": "Control rod",
+      "bottom_rail": "Bottom Rail"
     },
     "messages": {
       "createSuccess": "Created.",
@@ -408,6 +420,7 @@
       "systemBrands": "Search brands...",
       "systemCatalogs": "Search catalogues...",
       "systemProfiles": "Search profiles...",
+      "glass": "Search glass...",
       "glassCombinations": "Search combinations..."
     },
     "filters": {
@@ -419,7 +432,7 @@
       "createButton": "Add combination",
       "editButton": "Edit",
       "name": "Name",
-      "totalThickness": "Total thickness",
+      "totalThickness": "Total thickness (mm)",
       "items": "Items",
       "buildUp": "Build-up",
       "empty": "No combinations yet.",

@@ -83,8 +83,8 @@ export function DataWarehousePage() {
   const { data: versions } = useLookupVersionQuery()
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <h1 className="font-heading text-xl font-semibold text-foreground">{t('dataWarehousePage.title')}</h1>
         <div className="flex items-center gap-2">
           {TAB_ENTITIES[tab].map((entity) => (
@@ -95,7 +95,7 @@ export function DataWarehousePage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 border-b border-border pb-2">
+      <div className="flex shrink-0 flex-wrap gap-1 border-b border-border pb-2">
         {TABS.map((tabId) => (
           <Button
             key={tabId}
@@ -108,13 +108,15 @@ export function DataWarehousePage() {
         ))}
       </div>
 
-      {tab === 'systemBrands' && <SystemBrandsTab />}
-      {tab === 'systemCatalogs' && <SystemCatalogsTab />}
-      {tab === 'systemProfiles' && <SystemProfilesTab />}
-      {tab === 'glass' && <GlassTab />}
-      {tab === 'glassCombinations' && <GlassCombinationSection />}
-      {tab === 'colors' && <ColorGridSection />}
-      {tab === 'paintingPrices' && <PaintingPricesSection />}
+      <div className="min-h-0 flex-1">
+        {tab === 'systemBrands' && <SystemBrandsTab />}
+        {tab === 'systemCatalogs' && <SystemCatalogsTab />}
+        {tab === 'systemProfiles' && <SystemProfilesTab />}
+        {tab === 'glass' && <GlassTab />}
+        {tab === 'glassCombinations' && <GlassCombinationSection />}
+        {tab === 'colors' && <ColorGridSection />}
+        {tab === 'paintingPrices' && <PaintingPricesSection />}
+      </div>
     </div>
   )
 }
@@ -140,10 +142,14 @@ function GlassTab() {
       ]}
       columns={[
         { header: t('dataWarehousePage.fields.name'), cell: (row) => row.name },
-        { header: t('dataWarehousePage.fields.thickness'), cell: (row) => `${row.thickness} mm` },
-        { header: t('dataWarehousePage.fields.weightPerSqm'), cell: (row) => `${row.weightPerSqm.toFixed(2)} kg/m²` },
-        { header: t('dataWarehousePage.fields.pricePerSqm'), cell: (row) => `${row.pricePerSqm.toFixed(2)} EGP` },
+        { header: t('dataWarehousePage.fields.thickness'), cell: (row) => row.thickness },
+        { header: t('dataWarehousePage.fields.weightPerSqm'), cell: (row) => row.weightPerSqm.toFixed(2) },
+        { header: t('dataWarehousePage.fields.pricePerSqm'), cell: (row) => row.pricePerSqm.toFixed(2) },
       ]}
+      search={{
+        placeholder: t('dataWarehousePage.search.glass'),
+        match: (row, query) => row.name.toLowerCase().includes(query.toLowerCase()),
+      }}
       useList={useGlassQuery}
       useCreate={useCreateGlassMutation}
       useUpdate={useUpdateGlassMutation}
@@ -248,8 +254,8 @@ function SystemCatalogsTab() {
           header: t('dataWarehousePage.fields.systemType'),
           cell: (row) => t(`dataWarehousePage.systemType.${row.systemType}`),
         },
-        { header: t('dataWarehousePage.fields.maxGlassThickness'), cell: (row) => `${row.maxGlassThickness} mm` },
-        { header: t('dataWarehousePage.fields.maxSashWeight'), cell: (row) => `${row.maxSashWeight} kg` },
+        { header: t('dataWarehousePage.fields.maxGlassThickness'), cell: (row) => row.maxGlassThickness },
+        { header: t('dataWarehousePage.fields.maxSashWeight'), cell: (row) => row.maxSashWeight },
       ]}
       search={{
         placeholder: t('dataWarehousePage.search.systemCatalogs'),
@@ -351,11 +357,11 @@ function SystemProfilesTab() {
           header: t('dataWarehousePage.fields.profileType'),
           cell: (row) => t(`dataWarehousePage.profileType.${row.profileType}`),
         },
-        { header: t('dataWarehousePage.fields.maxGlassThickness'), cell: (row) => `${row.maxGlassThickness} mm` },
-        { header: t('dataWarehousePage.fields.weight'), cell: (row) => `${row.weight.toFixed(2)} kg/m` },
-        { header: t('dataWarehousePage.fields.perimeter'), cell: (row) => `${row.perimeter} mm` },
-        { header: t('dataWarehousePage.fields.inertiaIx'), cell: (row) => `${row.inertiaIx.toFixed(2)} cm⁴` },
-        { header: t('dataWarehousePage.fields.inertiaIy'), cell: (row) => `${row.inertiaIy.toFixed(2)} cm⁴` },
+        { header: t('dataWarehousePage.fields.maxGlassThickness'), cell: (row) => row.maxGlassThickness },
+        { header: t('dataWarehousePage.fields.weight'), cell: (row) => row.weight.toFixed(2) },
+        { header: t('dataWarehousePage.fields.perimeter'), cell: (row) => row.perimeter },
+        { header: t('dataWarehousePage.fields.inertiaIx'), cell: (row) => row.inertiaIx.toFixed(2) },
+        { header: t('dataWarehousePage.fields.inertiaIy'), cell: (row) => row.inertiaIy.toFixed(2) },
       ]}
       search={{
         placeholder: t('dataWarehousePage.search.systemProfiles'),

@@ -57,7 +57,7 @@ export function LeadsList() {
   }
 
   return (
-    <Card>
+    <Card size="sm">
       <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
         <CardTitle>{t('leadsSection.title')}</CardTitle>
         {selectedIds.length > 0 && (

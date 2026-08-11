@@ -315,7 +315,7 @@ export function PaintingPricesSection() {
               <TableHeader className="sticky top-0 z-10 bg-background">
                 <TableRow>
                   <TableHead>{t('dataWarehousePage.fields.type')}</TableHead>
-                  <TableHead>{t('dataWarehousePage.fields.price')}</TableHead>
+                  <TableHead>{t('dataWarehousePage.fields.pricePerKg')}</TableHead>
                   <TableHead className="w-20" />
                 </TableRow>
               </TableHeader>
@@ -323,7 +323,7 @@ export function PaintingPricesSection() {
                 {selectedBrandPrices.map((price) => (
                   <TableRow key={price.id}>
                     <TableCell>{price.type}</TableCell>
-                    <TableCell>{price.price.toFixed(2)} EGP</TableCell>
+                    <TableCell>{price.price.toFixed(2)}</TableCell>
                     <TableCell className="flex justify-end gap-1">
                       <Button
                         variant="ghost"
@@ -428,7 +428,7 @@ export function PaintingPricesSection() {
               )}
             </div>
             <div>
-              <Label htmlFor="create-price-price">{t('dataWarehousePage.fields.price')}</Label>
+              <Label htmlFor="create-price-price">{t('dataWarehousePage.fields.pricePerKg')}</Label>
               <Input
                 id="create-price-price"
                 type="number"
@@ -495,7 +495,7 @@ export function PaintingPricesSection() {
               )}
             </div>
             <div>
-              <Label htmlFor="edit-price-price">{t('dataWarehousePage.fields.price')}</Label>
+              <Label htmlFor="edit-price-price">{t('dataWarehousePage.fields.pricePerKg')}</Label>
               <Input
                 id="edit-price-price"
                 type="number"

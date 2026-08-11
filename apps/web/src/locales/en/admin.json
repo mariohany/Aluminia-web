@@ -365,7 +365,7 @@
       "hex": "Hex",
       "brand": "Brand",
       "type": "Finish type",
-      "price": "Price (EGP)",
+      "pricePerKg": "Price (EGP/kg)",
       "thickness": "Thickness (mm)",
       "weightPerSqm": "Weight (kg/m²)",
       "pricePerSqm": "Price (EGP/m²)",

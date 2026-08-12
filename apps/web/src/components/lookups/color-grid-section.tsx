@@ -50,12 +50,30 @@ const CREATE_DEFAULTS: CreateColorInput = { code: '', hex: '#' }
 // Colours read as a swatch wall, not a data table — the point of a RAL
 // code is what it looks like, so the hex value gets shown as a colour,
 // not as a string in a column. Same CRUD + bulk-select shape as
-// SimpleLookupSection, just a different layout for the list.
-export function ColorGridSection() {
-  const { t } = useTranslation('admin')
+// LookupTableSection, just a different layout for the list.
+//
+// `readOnly` is the workspace Data section's Phase 1 mode: import,
+// create, bulk actions, and every per-swatch action (edit, delete,
+// select) disappear, leaving a plain swatch wall. Phase 2 will need a
+// scope-aware version of this component the way LookupTableSection
+// already has one — not built yet, since there's no company-owned
+// colour data to show.
+//
+// `useList` defaults to the admin-only `useColorsQuery` (hits
+// /admin/lookups/colors, SUPER_ADMIN-gated) — the workspace Data page
+// overrides it with a slice-sourced read instead, since a company user
+// would otherwise 403 against the admin endpoint just by opening the tab.
+export function ColorGridSection({
+  readOnly,
+  useList = useColorsQuery,
+}: {
+  readOnly?: boolean
+  useList?: () => { data: ColorSummary[] | undefined; isLoading: boolean; isError: boolean }
+} = {}) {
+  const { t } = useTranslation('lookups')
   const { t: tCommon } = useTranslation('common')
   const queryClient = useQueryClient()
-  const { data, isLoading, isError } = useColorsQuery()
+  const { data, isLoading, isError } = useList()
   const rows = data ?? []
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -92,31 +110,31 @@ export function ColorGridSection() {
   const onCreate = async (values: CreateColorInput) => {
     try {
       await createMutation.mutateAsync(values)
-      toast.success(t('dataWarehousePage.messages.createSuccess'))
+      toast.success(t('messages.createSuccess'))
       createForm.reset(CREATE_DEFAULTS)
       setCreateOpen(false)
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+      toast.error(apiErrorMessage(err, t('messages.error')))
     }
   }
 
   const onEdit = async (values: UpdateColorInput) => {
     try {
       await updateMutation.mutateAsync(values)
-      toast.success(t('dataWarehousePage.messages.updateSuccess'))
+      toast.success(t('messages.updateSuccess'))
       setEditTarget(null)
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+      toast.error(apiErrorMessage(err, t('messages.error')))
     }
   }
 
   const onDelete = async () => {
     try {
       await deleteMutation.mutateAsync()
-      toast.success(t('dataWarehousePage.messages.deleteSuccess'))
+      toast.success(t('messages.deleteSuccess'))
       setDeleteTarget(null)
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+      toast.error(apiErrorMessage(err, t('messages.error')))
     }
   }
 
@@ -129,16 +147,16 @@ export function ColorGridSection() {
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
       if (blockedIds.length > 0) {
         toast.error(
-          t('dataWarehousePage.messages.bulkDeletePartial', {
+          t('messages.bulkDeletePartial', {
             failed: blockedIds.length,
             succeeded: deletedIds.length,
           }),
         )
       } else {
-        toast.success(t('dataWarehousePage.messages.bulkDeleteSuccess', { count: deletedIds.length }))
+        toast.success(t('messages.bulkDeleteSuccess', { count: deletedIds.length }))
       }
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+      toast.error(apiErrorMessage(err, t('messages.error')))
     } finally {
       setBulkBusy(false)
       setSelected(new Set())
@@ -150,12 +168,12 @@ export function ColorGridSection() {
     setBulkBusy(true)
     try {
       const created = await lookupsApi.bulkDuplicateColors(
-        targets.map((row) => ({ code: `${row.code} ${t('dataWarehousePage.bulk.copySuffix')}`, hex: row.hex })),
+        targets.map((row) => ({ code: `${row.code} ${t('bulk.copySuffix')}`, hex: row.hex })),
       )
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      toast.success(t('dataWarehousePage.messages.bulkDuplicateSuccess', { count: created.length }))
+      toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+      toast.error(apiErrorMessage(err, t('messages.error')))
     } finally {
       setBulkBusy(false)
       setSelected(new Set())
@@ -169,23 +187,25 @@ export function ColorGridSection() {
     try {
       const result = await importMutation.mutateAsync(file)
       setImportResult(result)
-      toast.success(t('dataWarehousePage.colorImport.success'))
+      toast.success(t('colorImport.success'))
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('dataWarehousePage.colorImport.error')))
+      toast.error(apiErrorMessage(err, t('colorImport.error')))
     }
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex shrink-0 items-center justify-between gap-3">
-        <h2 className="font-heading text-base font-semibold text-foreground">{t('dataWarehousePage.tables.colors')}</h2>
+        <h2 className="font-heading text-base font-semibold text-foreground">{t('tables.colors')}</h2>
         <div className="flex items-center gap-2">
-          {rows.length > 0 && (
+          {!readOnly && rows.length > 0 && (
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
-              {t('dataWarehousePage.bulk.selectAll')}
+              {t('bulk.selectAll')}
             </label>
           )}
+          {!readOnly && (
+            <>
           <input
             ref={importInputRef}
             type="file"
@@ -197,13 +217,13 @@ export function ColorGridSection() {
             size="sm"
             variant="outline"
             disabled={importMutation.isPending}
-            title={t('dataWarehousePage.colorImport.description')}
+            title={t('colorImport.description')}
             onClick={() => importInputRef.current?.click()}
           >
             <Upload className="size-4" aria-hidden="true" />
             {importMutation.isPending
-              ? t('dataWarehousePage.colorImport.importing')
-              : t('dataWarehousePage.createButtons.colorImport')}
+              ? t('colorImport.importing')
+              : t('createButtons.colorImport')}
           </Button>
           <Dialog
             open={createOpen}
@@ -215,13 +235,13 @@ export function ColorGridSection() {
             <DialogTrigger asChild>
               <Button size="sm" variant="outline">
                 <Plus className="size-4" aria-hidden="true" />
-                {t('dataWarehousePage.createButtons.color')}
+                {t('createButtons.color')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <form onSubmit={(e) => void createForm.handleSubmit(onCreate)(e)} noValidate className="flex flex-col gap-4">
                 <DialogHeader>
-                  <DialogTitle>{t('dataWarehousePage.createButtons.color')}</DialogTitle>
+                  <DialogTitle>{t('createButtons.color')}</DialogTitle>
                 </DialogHeader>
                 <ColorFormFields form={createForm} idPrefix="create" />
                 <DialogFooter>
@@ -232,18 +252,20 @@ export function ColorGridSection() {
               </form>
             </DialogContent>
           </Dialog>
+            </>
+          )}
         </div>
       </div>
 
-      {someSelected && (
+      {!readOnly && someSelected && (
         <div className="flex shrink-0 items-center justify-between gap-3 rounded-md bg-muted/60 px-3 py-0.5">
           <span className="text-sm font-medium text-foreground">
-            {t('dataWarehousePage.bulk.selectedCount', { count: selected.size })}
+            {t('bulk.selectedCount', { count: selected.size })}
           </span>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onBulkDuplicate()}>
               <Copy className="size-4" aria-hidden="true" />
-              {t('dataWarehousePage.bulk.duplicate')}
+              {t('bulk.duplicate')}
             </Button>
             <Button
               size="sm"
@@ -253,10 +275,10 @@ export function ColorGridSection() {
               onClick={() => setBulkDeleteConfirmOpen(true)}
             >
               <Trash2 className="size-4" aria-hidden="true" />
-              {t('dataWarehousePage.bulk.delete')}
+              {t('bulk.delete')}
             </Button>
             <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
-              {t('dataWarehousePage.bulk.clear')}
+              {t('bulk.clear')}
             </Button>
           </div>
         </div>
@@ -264,12 +286,22 @@ export function ColorGridSection() {
 
       {isLoading || isError || rows.length === 0 ? (
         <div className={`rounded-lg border border-border p-6 text-center text-sm ${isError ? 'text-destructive' : 'text-muted-foreground'}`}>
-          {isError ? t('dataWarehousePage.messages.error') : t('dataWarehousePage.empty.color')}
+          {isError ? t('messages.error') : t('empty.color')}
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border p-4">
           <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-4">
-            {rows.map((color) => (
+            {rows.map((color) =>
+              readOnly ? (
+                <div key={color.id} className="flex flex-col items-center gap-1.5">
+                  <div
+                    className="aspect-square w-full rounded-lg border border-border shadow-sm"
+                    style={{ backgroundColor: color.hex }}
+                    aria-label={color.code}
+                  />
+                  <span className="text-xs font-medium text-foreground">{color.code}</span>
+                </div>
+              ) : (
               <div key={color.id} className="flex flex-col items-center gap-1.5">
                 <div className="relative w-full">
                   <button
@@ -296,7 +328,8 @@ export function ColorGridSection() {
                 </div>
                 <span className="text-xs font-medium text-foreground">{color.code}</span>
               </div>
-            ))}
+              ),
+            )}
           </div>
         </div>
       )}
@@ -321,9 +354,9 @@ export function ColorGridSection() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {deleteTarget ? t('dataWarehousePage.messages.deleteConfirmTitle', { name: deleteTarget.code }) : ''}
+              {deleteTarget ? t('messages.deleteConfirmTitle', { name: deleteTarget.code }) : ''}
             </AlertDialogTitle>
-            <AlertDialogDescription>{t('dataWarehousePage.deleteWarnings.color')}</AlertDialogDescription>
+            <AlertDialogDescription>{t('deleteWarnings.color')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
@@ -338,9 +371,9 @@ export function ColorGridSection() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t('dataWarehousePage.bulk.deleteConfirmTitle', { count: selected.size })}
+              {t('bulk.deleteConfirmTitle', { count: selected.size })}
             </AlertDialogTitle>
-            <AlertDialogDescription>{t('dataWarehousePage.deleteWarnings.color')}</AlertDialogDescription>
+            <AlertDialogDescription>{t('deleteWarnings.color')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
@@ -354,7 +387,7 @@ export function ColorGridSection() {
       <Dialog open={!!importResult} onOpenChange={(next) => !next && setImportResult(null)}>
         <DialogContent className="max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{t('dataWarehousePage.colorImport.resultTitle')}</DialogTitle>
+            <DialogTitle>{t('colorImport.resultTitle')}</DialogTitle>
           </DialogHeader>
           {importResult && (
             <div className="flex flex-col gap-3 text-sm">
@@ -363,28 +396,28 @@ export function ColorGridSection() {
               importResult.unchangedCount === 0 &&
               importResult.duplicates.length === 0 &&
               importResult.errors.length === 0 ? (
-                <p className="text-muted-foreground">{t('dataWarehousePage.colorImport.noChanges')}</p>
+                <p className="text-muted-foreground">{t('colorImport.noChanges')}</p>
               ) : (
                 <>
                   <div className="flex flex-wrap gap-2">
                     {importResult.created.length > 0 && (
                       <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
-                        {t('dataWarehousePage.colorImport.created', { count: importResult.created.length })}
+                        {t('colorImport.created', { count: importResult.created.length })}
                       </span>
                     )}
                     {importResult.updated.length > 0 && (
                       <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
-                        {t('dataWarehousePage.colorImport.updated', { count: importResult.updated.length })}
+                        {t('colorImport.updated', { count: importResult.updated.length })}
                       </span>
                     )}
                     {importResult.unchangedCount > 0 && (
                       <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                        {t('dataWarehousePage.colorImport.unchanged', { count: importResult.unchangedCount })}
+                        {t('colorImport.unchanged', { count: importResult.unchangedCount })}
                       </span>
                     )}
                     {importResult.duplicates.length > 0 && (
                       <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                        {t('dataWarehousePage.colorImport.duplicates', {
+                        {t('colorImport.duplicates', {
                           count: importResult.duplicates.reduce((sum, d) => sum + d.occurrences, 0),
                         })}
                       </span>
@@ -394,7 +427,7 @@ export function ColorGridSection() {
                   {importResult.updated.length > 0 && (
                     <div>
                       <p className="mb-1 font-medium text-foreground">
-                        {t('dataWarehousePage.colorImport.updatedListTitle')}
+                        {t('colorImport.updatedListTitle')}
                       </p>
                       <ul className="flex flex-col gap-1 text-muted-foreground">
                         {importResult.updated.map((u) => (
@@ -404,7 +437,7 @@ export function ColorGridSection() {
                               style={{ backgroundColor: u.oldHex }}
                               aria-hidden="true"
                             />
-                            {t('dataWarehousePage.colorImport.hexChange', {
+                            {t('colorImport.hexChange', {
                               code: u.code,
                               oldHex: u.oldHex,
                               newHex: u.newHex,
@@ -423,14 +456,14 @@ export function ColorGridSection() {
                   {importResult.duplicates.length > 0 && (
                     <div>
                       <p className="mb-1 font-medium text-foreground">
-                        {t('dataWarehousePage.colorImport.duplicates', {
+                        {t('colorImport.duplicates', {
                           count: importResult.duplicates.reduce((sum, d) => sum + d.occurrences, 0),
                         })}
                       </p>
                       <ul className="flex flex-col gap-1 text-muted-foreground">
                         {importResult.duplicates.map((d) => (
                           <li key={d.code}>
-                            {t('dataWarehousePage.colorImport.duplicateItem', {
+                            {t('colorImport.duplicateItem', {
                               code: d.code,
                               occurrences: d.occurrences,
                             })}
@@ -443,7 +476,7 @@ export function ColorGridSection() {
                   {importResult.errors.length > 0 && (
                     <div>
                       <p className="mb-1 font-medium text-destructive">
-                        {t('dataWarehousePage.colorImport.errorsTitle')}
+                        {t('colorImport.errorsTitle')}
                       </p>
                       <ul className="flex flex-col gap-1 text-muted-foreground">
                         {importResult.errors.map((e) => (
@@ -457,7 +490,7 @@ export function ColorGridSection() {
             </div>
           )}
           <DialogFooter>
-            <Button onClick={() => setImportResult(null)}>{t('dataWarehousePage.colorImport.close')}</Button>
+            <Button onClick={() => setImportResult(null)}>{t('colorImport.close')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -472,7 +505,7 @@ function ColorFormFields({
   form: ReturnType<typeof useForm<CreateColorInput>> | ReturnType<typeof useForm<UpdateColorInput>>
   idPrefix: string
 }) {
-  const { t } = useTranslation('admin')
+  const { t } = useTranslation('lookups')
   const {
     register,
     control,
@@ -491,12 +524,12 @@ function ColorFormFields({
   return (
     <div className="flex flex-col gap-3">
       <div>
-        <Label htmlFor={`${idPrefix}-code`}>{t('dataWarehousePage.fields.code')}</Label>
+        <Label htmlFor={`${idPrefix}-code`}>{t('fields.code')}</Label>
         <Input id={`${idPrefix}-code`} className="mt-1.5" aria-invalid={!!errors.code} {...register('code')} />
         {errors.code && <p className="mt-1 text-xs text-destructive">{String(errors.code.message ?? '')}</p>}
       </div>
       <div>
-        <Label htmlFor={`${idPrefix}-hex`}>{t('dataWarehousePage.fields.hex')}</Label>
+        <Label htmlFor={`${idPrefix}-hex`}>{t('fields.hex')}</Label>
         <div className="mt-1.5 flex items-center gap-2">
           <span
             className="size-9 shrink-0 rounded-md border border-border"

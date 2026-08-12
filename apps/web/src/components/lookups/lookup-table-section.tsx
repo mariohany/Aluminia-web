@@ -71,6 +71,11 @@ export interface LookupFilterSpec<TSummary> {
   match: (row: TSummary, value: string) => boolean
 }
 
+// A row's origin: the shared platform catalogue, or a row this company
+// added itself. Only meaningful once a caller passes `rowScope` — the
+// four admin tabs never do, since every row they show is platform-owned.
+export type LookupRowScope = 'platform' | 'company'
+
 interface MutationLike<TInput, TOutput> {
   mutateAsync: (input: TInput) => Promise<TOutput>
   isPending: boolean
@@ -85,6 +90,13 @@ interface MutationLike<TInput, TOutput> {
 // presentation, and PaintBrand/PaintingPrice get a brand-grouped
 // accordion (PaintingPricesSection) instead of this flat table.
 //
+// Shared by two consoles: the admin Data Warehouse (every row is
+// platform-owned, every row is editable, `readOnly`/`rowScope`/
+// `canEdit`/`copyToScope` are all left at their defaults) and the
+// workspace Data section (platform rows read-only, this company's own
+// rows editable, once Phase 2 wires `canEdit`/`rowScope`/`copyToScope`
+// — Phase 1 only ever passes `readOnly`).
+//
 // Follows the one-dialog-instance-per-section pattern from
 // UserActionDialog: a single edit/delete dialog is mounted once, driven
 // by `editTarget`/`deleteTarget` state, with the mutation hook called
@@ -98,7 +110,7 @@ interface MutationLike<TInput, TOutput> {
 // single DB statement, so the lookup version advances by exactly 1 —
 // see ColorLookupsService.bulkDeleteColors), followed by one broad
 // `['lookups']` cache invalidation.
-export function SimpleLookupSection<
+export function LookupTableSection<
   TSummary extends { id: string },
   TCreate extends FieldValues,
   TUpdate extends FieldValues,
@@ -125,6 +137,10 @@ export function SimpleLookupSection<
   rowLabel,
   deleteWarning,
   headerExtra,
+  rowScope,
+  canEdit,
+  readOnly,
+  copyToScope,
 }: {
   title: string
   createLabel: string
@@ -152,9 +168,24 @@ export function SimpleLookupSection<
   // Brand/Catalogue/Profile importer (SystemsImportButton) without
   // this generic component knowing anything about that feature.
   headerExtra?: React.ReactNode
+  // When present, renders an Origin badge column and a scope filter
+  // chip — the workspace Data section's merged platform+company view.
+  rowScope?: (row: TSummary) => LookupRowScope
+  // Gates a row's edit/delete buttons and its bulk-select checkbox.
+  // Defaults to "every row" — today's admin behaviour. Ignored (treated
+  // as false for every row) when `readOnly` is set.
+  canEdit?: (row: TSummary) => boolean
+  // Hides the create button and every row action outright, regardless
+  // of `canEdit` — the workspace Data section's Phase 1 mode, before
+  // company-owned rows exist to make any of this editable.
+  readOnly?: boolean
+  // Lets a non-editable row seed a new row in the caller's own scope —
+  // "Copy to our data". Rendered in place of the (absent) edit/delete
+  // buttons on a row `canEdit` refuses. Not used until Phase 2.
+  copyToScope?: { label: string; toDefaults: (row: TSummary) => TCreate }
 }) {
   const { t: tCommon } = useTranslation('common')
-  const { t } = useTranslation('admin')
+  const { t } = useTranslation('lookups')
   const queryClient = useQueryClient()
   const { data, isLoading, isError } = useList()
   const [createOpen, setCreateOpen] = useState(false)
@@ -165,6 +196,7 @@ export function SimpleLookupSection<
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterValues, setFilterValues] = useState<Record<string, string>>({})
+  const [scopeFilter, setScopeFilter] = useState<'__all' | LookupRowScope>('__all')
 
   const createMutation = useCreate()
   const updateMutation = useUpdate(editTarget?.id ?? '')
@@ -182,6 +214,11 @@ export function SimpleLookupSection<
     resolver: zodResolver(updateSchema as never) as Resolver<TUpdate>,
   })
 
+  // `readOnly` overrides `canEdit` entirely rather than combining with
+  // it — a caller in read-only mode has no business asking "but which
+  // rows" at the same time.
+  const rowIsEditable = (row: TSummary) => !readOnly && (canEdit ? canEdit(row) : true)
+
   const rows = data ?? []
   // Search/filters narrow what's shown and what "select all" acts on —
   // bulk duplicate/delete still resolve selected ids against the full
@@ -189,16 +226,21 @@ export function SimpleLookupSection<
   const trimmedQuery = searchQuery.trim()
   const visibleRows = rows.filter((row) => {
     if (search && trimmedQuery && !search.match(row, trimmedQuery)) return false
+    if (rowScope && scopeFilter !== '__all' && rowScope(row) !== scopeFilter) return false
     for (const filter of filters ?? []) {
       const value = filterValues[filter.key]
       if (value && value !== '__all' && !filter.match(row, value)) return false
     }
     return true
   })
-  const allSelected = visibleRows.length > 0 && visibleRows.every((row) => selected.has(row.id))
+  // "Select all" only ever selects rows this caller is allowed to act
+  // on — a merged platform+company table would otherwise let "select
+  // all" grab platform rows that bulk delete/duplicate can't touch.
+  const selectableVisibleRows = visibleRows.filter(rowIsEditable)
+  const allSelected = selectableVisibleRows.length > 0 && selectableVisibleRows.every((row) => selected.has(row.id))
   const someSelected = selected.size > 0
 
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(visibleRows.map((row) => row.id)))
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableVisibleRows.map((row) => row.id)))
   const toggleOne = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev)
@@ -210,7 +252,7 @@ export function SimpleLookupSection<
   const onCreate = async (values: TCreate) => {
     try {
       await createMutation.mutateAsync(values)
-      toast.success(t('dataWarehousePage.messages.createSuccess'))
+      toast.success(t('messages.createSuccess'))
       createForm.reset(createDefaults)
       setCreateOpen(false)
     } catch (err) {
@@ -221,7 +263,7 @@ export function SimpleLookupSection<
   const onEdit = async (values: TUpdate) => {
     try {
       await updateMutation.mutateAsync(values)
-      toast.success(t('dataWarehousePage.messages.updateSuccess'))
+      toast.success(t('messages.updateSuccess'))
       setEditTarget(null)
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -231,7 +273,7 @@ export function SimpleLookupSection<
   const onDelete = async () => {
     try {
       await deleteMutation.mutateAsync()
-      toast.success(t('dataWarehousePage.messages.deleteSuccess'))
+      toast.success(t('messages.deleteSuccess'))
       setDeleteTarget(null)
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -249,13 +291,13 @@ export function SimpleLookupSection<
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
       if (blockedIds.length > 0) {
         toast.error(
-          t('dataWarehousePage.messages.bulkDeletePartial', {
+          t('messages.bulkDeletePartial', {
             failed: blockedIds.length,
             succeeded: deletedIds.length,
           }),
         )
       } else {
-        toast.success(t('dataWarehousePage.messages.bulkDeleteSuccess', { count: deletedIds.length }))
+        toast.success(t('messages.bulkDeleteSuccess', { count: deletedIds.length }))
       }
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -271,7 +313,7 @@ export function SimpleLookupSection<
     try {
       const created = await bulkDuplicate(targets.map((row) => duplicate(row)))
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      toast.success(t('dataWarehousePage.messages.bulkDuplicateSuccess', { count: created.length }))
+      toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
     } finally {
@@ -280,12 +322,19 @@ export function SimpleLookupSection<
     }
   }
 
+  const onCopyToScope = (row: TSummary) => {
+    if (!copyToScope) return
+    createForm.reset(copyToScope.toDefaults(row) as DefaultValues<TCreate>)
+    setCreateOpen(true)
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex shrink-0 items-center justify-between gap-3">
         <h2 className="font-heading text-base font-semibold text-foreground">{title}</h2>
         <div className="flex items-center gap-2">
           {headerExtra}
+          {!readOnly && (
           <Dialog
             open={createOpen}
             onOpenChange={(next) => {
@@ -317,10 +366,11 @@ export function SimpleLookupSection<
               </form>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </div>
 
-      {(search || (filters && filters.length > 0) || someSelected) && (
+      {(search || (filters && filters.length > 0) || rowScope || someSelected) && (
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             {search && (
@@ -336,6 +386,18 @@ export function SimpleLookupSection<
                   className="ps-8"
                 />
               </div>
+            )}
+            {rowScope && (
+              <Select value={scopeFilter} onValueChange={(v) => setScopeFilter(v as typeof scopeFilter)}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">{t('scope.all')}</SelectItem>
+                  <SelectItem value="platform">{t('scope.platform')}</SelectItem>
+                  <SelectItem value="company">{t('scope.ours')}</SelectItem>
+                </SelectContent>
+              </Select>
             )}
             {filters?.map((filter) => (
               <Select
@@ -361,12 +423,12 @@ export function SimpleLookupSection<
           {someSelected && (
             <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted/60 px-3 py-0.5">
               <span className="text-sm font-medium text-foreground">
-                {t('dataWarehousePage.bulk.selectedCount', { count: selected.size })}
+                {t('bulk.selectedCount', { count: selected.size })}
               </span>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onBulkDuplicate()}>
                   <Copy className="size-4" aria-hidden="true" />
-                  {t('dataWarehousePage.bulk.duplicate')}
+                  {t('bulk.duplicate')}
                 </Button>
                 <Button
                   size="sm"
@@ -376,10 +438,10 @@ export function SimpleLookupSection<
                   onClick={() => setBulkDeleteConfirmOpen(true)}
                 >
                   <Trash2 className="size-4" aria-hidden="true" />
-                  {t('dataWarehousePage.bulk.delete')}
+                  {t('bulk.delete')}
                 </Button>
                 <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
-                  {t('dataWarehousePage.bulk.clear')}
+                  {t('bulk.clear')}
                 </Button>
               </div>
             </div>
@@ -387,25 +449,31 @@ export function SimpleLookupSection<
         </div>
       )}
 
+      {(() => {
+        const colCount = columns.length + (readOnly ? 0 : 1) + (rowScope ? 1 : 0) + (readOnly ? 0 : 1)
+        return (
       <Table containerClassName="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
         <TableHeader className="sticky top-0 z-10 bg-background">
           <TableRow>
-            <TableHead className="w-10">
-              {visibleRows.length > 0 && (
-                <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label={t('dataWarehousePage.bulk.selectAll')} />
-              )}
-            </TableHead>
+            {!readOnly && (
+              <TableHead className="w-10">
+                {selectableVisibleRows.length > 0 && (
+                  <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label={t('bulk.selectAll')} />
+                )}
+              </TableHead>
+            )}
             {columns.map((col) => (
               <TableHead key={col.header}>{col.header}</TableHead>
             ))}
-            <TableHead className="w-20" />
+            {rowScope && <TableHead className="w-24">{t('scope.columnHeader')}</TableHead>}
+            {!readOnly && <TableHead className="w-20" />}
           </TableRow>
         </TableHeader>
         <TableBody>
           {(isLoading || isError || rows.length === 0) && (
             <TableRow>
               <TableCell
-                colSpan={columns.length + 2}
+                colSpan={colCount}
                 className={isError ? 'text-center text-destructive' : 'text-center text-muted-foreground'}
               >
                 {isError ? errorLabel : emptyLabel}
@@ -414,50 +482,84 @@ export function SimpleLookupSection<
           )}
           {!isLoading && !isError && rows.length > 0 && visibleRows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={columns.length + 2} className="text-center text-muted-foreground">
-                {t('dataWarehousePage.messages.noResults')}
+              <TableCell colSpan={colCount} className="text-center text-muted-foreground">
+                {t('messages.noResults')}
               </TableCell>
             </TableRow>
           )}
           {!isLoading &&
             !isError &&
-            visibleRows.map((row) => (
+            visibleRows.map((row) => {
+              const editable = rowIsEditable(row)
+              return (
               <TableRow key={row.id} data-state={selected.has(row.id) ? 'selected' : undefined}>
-                <TableCell>
-                  <Checkbox
-                    checked={selected.has(row.id)}
-                    onCheckedChange={() => toggleOne(row.id)}
-                    aria-label={rowLabel(row)}
-                  />
-                </TableCell>
+                {!readOnly && (
+                  <TableCell>
+                    {editable && (
+                      <Checkbox
+                        checked={selected.has(row.id)}
+                        onCheckedChange={() => toggleOne(row.id)}
+                        aria-label={rowLabel(row)}
+                      />
+                    )}
+                  </TableCell>
+                )}
                 {columns.map((col) => (
                   <TableCell key={col.header}>{col.cell(row)}</TableCell>
                 ))}
-                <TableCell className="flex justify-end gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-8"
-                    onClick={() => {
-                      setEditTarget(row)
-                      editForm.reset(toEditDefaults(row))
-                    }}
-                  >
-                    <Pencil className="size-3.5" aria-hidden="true" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 text-destructive hover:text-destructive"
-                    onClick={() => setDeleteTarget(row)}
-                  >
-                    <Trash2 className="size-3.5" aria-hidden="true" />
-                  </Button>
-                </TableCell>
+                {rowScope && (
+                  <TableCell>
+                    <span
+                      className={
+                        rowScope(row) === 'company'
+                          ? 'rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary'
+                          : 'rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
+                      }
+                    >
+                      {rowScope(row) === 'company' ? t('scope.ours') : t('scope.platform')}
+                    </span>
+                  </TableCell>
+                )}
+                {!readOnly && (
+                  <TableCell className="flex justify-end gap-1">
+                    {editable ? (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          onClick={() => {
+                            setEditTarget(row)
+                            editForm.reset(toEditDefaults(row))
+                          }}
+                        >
+                          <Pencil className="size-3.5" aria-hidden="true" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-destructive hover:text-destructive"
+                          onClick={() => setDeleteTarget(row)}
+                        >
+                          <Trash2 className="size-3.5" aria-hidden="true" />
+                        </Button>
+                      </>
+                    ) : (
+                      copyToScope && (
+                        <Button size="sm" variant="ghost" onClick={() => onCopyToScope(row)}>
+                          {copyToScope.label}
+                        </Button>
+                      )
+                    )}
+                  </TableCell>
+                )}
               </TableRow>
-            ))}
+              )
+            })}
         </TableBody>
       </Table>
+        )
+      })()}
 
       <Dialog
         open={!!editTarget}
@@ -484,7 +586,7 @@ export function SimpleLookupSection<
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {deleteTarget ? t('dataWarehousePage.messages.deleteConfirmTitle', { name: rowLabel(deleteTarget) }) : ''}
+              {deleteTarget ? t('messages.deleteConfirmTitle', { name: rowLabel(deleteTarget) }) : ''}
             </AlertDialogTitle>
             {deleteWarning && <AlertDialogDescription>{deleteWarning}</AlertDialogDescription>}
           </AlertDialogHeader>
@@ -501,7 +603,7 @@ export function SimpleLookupSection<
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t('dataWarehousePage.bulk.deleteConfirmTitle', { count: selected.size })}
+              {t('bulk.deleteConfirmTitle', { count: selected.size })}
             </AlertDialogTitle>
             {deleteWarning && <AlertDialogDescription>{deleteWarning}</AlertDialogDescription>}
           </AlertDialogHeader>

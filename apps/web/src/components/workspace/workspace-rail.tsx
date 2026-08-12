@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { LayoutGrid, LogOut, Menu, Settings } from 'lucide-react'
+import { Database, LayoutGrid, LogOut, Menu, Settings } from 'lucide-react'
 import { UserRole } from '@repo/types/auth'
 import { useAuth } from '@/lib/auth-context'
 import { Button } from '@/components/ui/button'
@@ -37,21 +37,30 @@ export function WorkspaceRail({
   // Not NavLink's own `isActive`, deliberately. `end` would switch the
   // Projects item off as soon as a project is selected — the rail would
   // claim you had left the section you were plainly still in — while
-  // dropping `end` would light it up on the Manage route too, since
-  // /workspace prefixes everything here. The rail has exactly two
-  // destinations, so state it directly.
-  const onManage = pathname.startsWith('/workspace/manage')
+  // dropping `end` would light it up on the Data/Manage routes too,
+  // since /workspace prefixes everything here. The rail has exactly
+  // three destinations, so state the active one directly rather than
+  // deriving three separate booleans.
+  const section = pathname.startsWith('/workspace/manage')
+    ? 'manage'
+    : pathname.startsWith('/workspace/data')
+      ? 'data'
+      : 'projects'
 
+  // Fixed square footprint, not padding sized to the label — "Projects"
+  // and "Data" are different lengths, and without a fixed size each
+  // pill was only as wide as its own text, so the three destinations
+  // didn't line up as matching squares.
   const itemClass = (isActive: boolean) =>
     cn(
-      'flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium',
+      'flex size-14 shrink-0 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-medium',
       isActive
         ? 'bg-primary text-primary-foreground'
         : 'text-muted-foreground hover:bg-accent hover:text-foreground',
     )
 
   return (
-    <nav className="flex h-full w-20 shrink-0 flex-col items-center gap-2 border-e border-border bg-background py-3">
+    <nav className="flex h-full w-17 shrink-0 flex-col items-center gap-1.5 border-e border-border bg-background py-3">
       {onOpenTree && (
         <Button
           variant="ghost"
@@ -66,12 +75,22 @@ export function WorkspaceRail({
 
       <Link
         to="/workspace"
-        className={itemClass(!onManage)}
-        aria-current={!onManage ? 'page' : undefined}
+        className={itemClass(section === 'projects')}
+        aria-current={section === 'projects' ? 'page' : undefined}
         onClick={onNavigate}
       >
         <LayoutGrid className="size-5" aria-hidden="true" />
         {t('rail.projects')}
+      </Link>
+
+      <Link
+        to="/workspace/data"
+        className={itemClass(section === 'data')}
+        aria-current={section === 'data' ? 'page' : undefined}
+        onClick={onNavigate}
+      >
+        <Database className="size-5" aria-hidden="true" />
+        {t('rail.data')}
       </Link>
 
       {/* Hidden for plain users. The server guard is the real boundary —
@@ -81,8 +100,8 @@ export function WorkspaceRail({
       {user?.role === UserRole.COMPANY_ADMIN && (
         <Link
           to="/workspace/manage"
-          className={itemClass(onManage)}
-          aria-current={onManage ? 'page' : undefined}
+          className={itemClass(section === 'manage')}
+          aria-current={section === 'manage' ? 'page' : undefined}
           onClick={onNavigate}
         >
           <Settings className="size-5" aria-hidden="true" />

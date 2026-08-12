@@ -21,6 +21,7 @@ import { DataWarehousePage } from '@/pages/admin/data-warehouse-page'
 import { LogsPage } from '@/pages/admin/logs-page'
 import { WorkspaceLayout } from '@/pages/workspace/workspace-layout'
 import { CanvasPage } from '@/pages/workspace/canvas-page'
+import { DataPage } from '@/pages/workspace/data-page'
 import { ManagePage } from '@/pages/workspace/manage-page'
 
 function App() {
@@ -82,6 +83,10 @@ function App() {
               <Route index element={<CanvasPage />} />
               <Route path="projects/:projectId" element={<CanvasPage />} />
               <Route path="clients/:clientId" element={<CanvasPage />} />
+              {/* No RoleRoute — both COMPANY_ADMIN and USER get the
+                  platform catalogue read-only in Phase 1 (see
+                  docs/company_lookups_planing.md). */}
+              <Route path="data" element={<DataPage />} />
               <Route
                 path="manage"
                 element={

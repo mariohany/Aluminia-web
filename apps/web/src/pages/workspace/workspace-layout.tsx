@@ -158,14 +158,17 @@ export function WorkspaceLayout() {
   const clientMatch = useMatch('/workspace/clients/:clientId')
   const selectedClientId = clientMatch?.params.clientId
 
-  // The toolbar and properties panel act on the Projects section —
-  // they create/edit/select clients and projects. `Manage` replaces the
-  // tree's CONTENT area entirely rather than sitting beside it (see
-  // §3), so both must be suppressed there. Without this the toolbar's
-  // absolute positioning floats on top of the Manage page regardless of
-  // what it renders underneath.
+  // The tree, toolbar, and properties panel all act on the Projects
+  // section — they create/edit/select clients and projects. `Manage`
+  // and `Data` each replace the tree's CONTENT area entirely rather
+  // than sitting beside it (see §3), so all three must be suppressed on
+  // both. Without this the toolbar's absolute positioning floats on top
+  // of whatever those pages render underneath — exactly what happened
+  // when Data first shipped without being added here.
   const { pathname } = useLocation()
   const onManage = pathname.startsWith('/workspace/manage')
+  const onData = pathname.startsWith('/workspace/data')
+  const outsideProjectsSection = onManage || onData
 
   // Loaded once here, at the shell, rather than per page: the tree is
   // permanent chrome, so a page-level fetch would refetch it on every
@@ -305,12 +308,10 @@ export function WorkspaceLayout() {
           border rather than floating as an inset card — matching the
           admin sidebar's own treatment (`admin-layout.tsx`). Width is
           user-resizable (drag handle below) rather than a fixed w-72.
-          Hidden on Manage, which replaces the tree's content area
-          entirely rather than sitting beside it (see the comment on
-          `onManage` above) — the toolbar and properties panel were
-          already gated on this; the tree itself wasn't, which is why it
-          kept showing there. */}
-      {!onManage && (
+          Hidden on Manage and Data, both of which replace the tree's
+          content area entirely rather than sitting beside it (see the
+          comment on `outsideProjectsSection` above). */}
+      {!outsideProjectsSection && (
         <>
           <aside
             style={{ width: treeWidth }}
@@ -359,7 +360,7 @@ export function WorkspaceLayout() {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex min-h-0 flex-1">
           <main className="relative min-w-0 flex-1 overflow-y-auto">
-            {!onManage && (
+            {!outsideProjectsSection && (
               <WorkspaceToolbar
                 hasSelection={!!selectedProjectId}
                 onNewClient={() => {
@@ -373,7 +374,7 @@ export function WorkspaceLayout() {
             <Outlet />
           </main>
 
-          {!onManage && (
+          {!outsideProjectsSection && (
             <div className="hidden lg:flex">
               <PropertiesPanel
                 project={selectedProjectId ? projectQuery.data : undefined}

@@ -1,15 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  LookupEntity,
   ProfileType,
   SystemType,
-  type CreateGlassInput,
-  type CreateSystemBrandInput,
-  type CreateSystemCatalogInput,
-  type CreateSystemProfileInput,
-} from '@repo/types/lookups'
-import {
   createGlassSchema,
   createSystemBrandSchema,
   createSystemCatalogSchema,
@@ -18,6 +11,10 @@ import {
   updateSystemBrandSchema,
   updateSystemCatalogSchema,
   updateSystemProfileSchema,
+  type CreateGlassInput,
+  type CreateSystemBrandInput,
+  type CreateSystemCatalogInput,
+  type CreateSystemProfileInput,
 } from '@repo/types/lookups'
 import * as lookupsApi from '@/lib/lookups-api'
 import {
@@ -29,29 +26,63 @@ import {
   useDeleteSystemBrandMutation,
   useDeleteSystemCatalogMutation,
   useDeleteSystemProfileMutation,
-  useGlassQuery,
-  useLookupVersionQuery,
-  useSystemBrandsQuery,
-  useSystemCatalogsQuery,
-  useSystemProfilesQuery,
   useUpdateGlassMutation,
   useUpdateSystemBrandMutation,
   useUpdateSystemCatalogMutation,
   useUpdateSystemProfileMutation,
 } from '@/lib/lookups-queries'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { useColorsSliceQuery, useGlassSliceQuery, useSystemsSliceQuery } from '@/lib/lookup-slices-queries'
 import { LookupTableSection } from '@/components/lookups/lookup-table-section'
 import { GlassCombinationSection } from '@/components/lookups/glass-combination-editor'
 import { ColorGridSection } from '@/components/lookups/color-grid-section'
-import { SystemsImportButton } from '@/components/admin/lookups/systems-import-button'
 import { PaintingPricesSection } from '@/components/lookups/painting-prices-section'
 
-// Order requested: systems (brand → catalog → profile), then glass and
-// its combinations, then colour (grid, then the merged brand+price tab)
-// — each table gets its own tab rather than being grouped under a
-// cluster. Brands and prices share one tab, "Painting prices", grouped
-// by brand within it, rather than two separate tabs.
+// The Data section's read model: GET /lookups/:slice, the endpoint any
+// authenticated user can call (lookups.controller.ts has no @Roles
+// guard). Every list below is derived from one of the three cached
+// slices rather than the admin-only /admin/lookups/* fetchers those
+// same table/section components default to — see lookup-slices-api.ts's
+// comment. Phase 2's merged platform+company read model will replace
+// these adapters; nothing here assumes company-owned rows exist yet.
+function useGlassListFromSlice() {
+  const q = useGlassSliceQuery()
+  return { data: q.data?.data.glass, isLoading: q.isLoading, isError: q.isError }
+}
+function useGlassCombinationsFromSlice() {
+  const q = useGlassSliceQuery()
+  return { data: q.data?.data.combinations, isLoading: q.isLoading, isError: q.isError }
+}
+function useColorsFromSlice() {
+  const q = useColorsSliceQuery()
+  return { data: q.data?.data.colors, isLoading: q.isLoading, isError: q.isError }
+}
+function usePaintBrandsFromSlice() {
+  const q = useColorsSliceQuery()
+  return { data: q.data?.data.brands, isLoading: q.isLoading, isError: q.isError }
+}
+function usePaintingPricesFromSlice() {
+  const q = useColorsSliceQuery()
+  return { data: q.data?.data.prices, isLoading: q.isLoading, isError: q.isError }
+}
+function useSystemBrandsFromSlice() {
+  const q = useSystemsSliceQuery()
+  return { data: q.data?.data.brands, isLoading: q.isLoading, isError: q.isError }
+}
+function useSystemCatalogsFromSlice() {
+  const q = useSystemsSliceQuery()
+  return { data: q.data?.data.catalogs, isLoading: q.isLoading, isError: q.isError }
+}
+function useSystemProfilesFromSlice() {
+  const q = useSystemsSliceQuery()
+  return { data: q.data?.data.profiles, isLoading: q.isLoading, isError: q.isError }
+}
+
+// Same tab set and order as the admin Data Warehouse
+// (data-warehouse-page.tsx) — one catalogue, two consoles. No version
+// badges (there's no version concept for a plain read) and no Excel
+// import (admin-only, not asked for here). Every tab is `readOnly`:
+// Phase 1 shows the platform catalogue only, nothing here is yet
+// company-owned or writable — see docs/company_lookups_planing.md.
 const TABS = [
   'systemBrands',
   'systemCatalogs',
@@ -63,48 +94,31 @@ const TABS = [
 ] as const
 type Tab = (typeof TABS)[number]
 
-// Versions are per-entity now (Section 4), not one global counter, so
-// the badge shows whichever entity(ies) the visible tab actually writes
-// to — most tabs write to one entity, but the merged "Painting prices"
-// tab writes to both PaintBrand and PaintingPrice, so it shows two.
-const TAB_ENTITIES: Record<Tab, LookupEntity[]> = {
-  systemBrands: [LookupEntity.SYSTEM_BRAND],
-  systemCatalogs: [LookupEntity.SYSTEM_CATALOG],
-  systemProfiles: [LookupEntity.SYSTEM_PROFILE],
-  glass: [LookupEntity.GLASS],
-  glassCombinations: [LookupEntity.GLASS_COMBINATION],
-  colors: [LookupEntity.COLOR],
-  paintingPrices: [LookupEntity.PAINT_BRAND, LookupEntity.PAINTING_PRICE],
-}
-
-export function DataWarehousePage() {
+export function DataPage() {
   const { t } = useTranslation('lookups')
+  const { t: tWorkspace } = useTranslation('workspace')
   const [tab, setTab] = useState<Tab>('systemBrands')
-  const { data: versions } = useLookupVersionQuery()
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-4 p-4 md:p-6">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <h1 className="font-heading text-xl font-semibold text-foreground">{t('title')}</h1>
-        <div className="flex items-center gap-2">
-          {TAB_ENTITIES[tab].map((entity) => (
-            <Badge key={entity} variant="outline">
-              {t('version', { version: versions?.[entity] ?? '—' })}
-            </Badge>
-          ))}
-        </div>
+        <h1 className="font-heading text-xl font-semibold text-foreground">{tWorkspace('dataPage.title')}</h1>
       </div>
 
       <div className="flex shrink-0 flex-wrap gap-1 border-b border-border pb-2">
         {TABS.map((tabId) => (
-          <Button
+          <button
             key={tabId}
-            variant={tab === tabId ? 'default' : 'ghost'}
-            size="sm"
+            type="button"
+            className={
+              tab === tabId
+                ? 'rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground'
+                : 'rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground'
+            }
             onClick={() => setTab(tabId)}
           >
             {t(`tables.${tabId}`)}
-          </Button>
+          </button>
         ))}
       </div>
 
@@ -113,13 +127,38 @@ export function DataWarehousePage() {
         {tab === 'systemCatalogs' && <SystemCatalogsTab />}
         {tab === 'systemProfiles' && <SystemProfilesTab />}
         {tab === 'glass' && <GlassTab />}
-        {tab === 'glassCombinations' && <GlassCombinationSection />}
-        {tab === 'colors' && <ColorGridSection />}
-        {tab === 'paintingPrices' && <PaintingPricesSection />}
+        {tab === 'glassCombinations' && (
+          <GlassCombinationSection
+            readOnly
+            useList={useGlassCombinationsFromSlice}
+            useGlassList={useGlassListFromSlice}
+            useColorList={useColorsFromSlice}
+          />
+        )}
+        {tab === 'colors' && <ColorGridSection readOnly useList={useColorsFromSlice} />}
+        {tab === 'paintingPrices' && (
+          <PaintingPricesSection
+            readOnly
+            useBrandsList={usePaintBrandsFromSlice}
+            usePricesList={usePaintingPricesFromSlice}
+          />
+        )}
       </div>
     </div>
   )
 }
+
+// The four LookupTableSection tabs below mirror data-warehouse-page.tsx's
+// GlassTab/SystemBrandsTab/SystemCatalogsTab/SystemProfilesTab schema-
+// for-schema — same fields, columns, search, and filters, since a glass
+// row looks the same in both consoles. `useCreate`/`useUpdate`/`useDelete`/
+// `bulkDelete`/`bulkDuplicate`/`duplicate`/`toEditDefaults` still point at
+// the admin-only mutations: `readOnly` means none of them are ever
+// invoked (no dialog or button that would call them ever renders), so
+// reusing the real hooks here is harmless — calling a mutation hook only
+// registers it, it doesn't fire a request until `.mutateAsync()` is
+// called. Only `useList` is swapped for the slice-sourced read, since
+// that one actually runs on every render.
 
 function GlassTab() {
   const { t } = useTranslation('lookups')
@@ -127,6 +166,7 @@ function GlassTab() {
 
   return (
     <LookupTableSection
+      readOnly
       title={t('tables.glass')}
       createLabel={t('createButtons.glass')}
       emptyLabel={t('empty.glass')}
@@ -150,7 +190,7 @@ function GlassTab() {
         placeholder: t('search.glass'),
         match: (row, query) => row.name.toLowerCase().includes(query.toLowerCase()),
       }}
-      useList={useGlassQuery}
+      useList={useGlassListFromSlice}
       useCreate={useCreateGlassMutation}
       useUpdate={useUpdateGlassMutation}
       useDelete={useDeleteGlassMutation}
@@ -180,6 +220,7 @@ function SystemBrandsTab() {
 
   return (
     <LookupTableSection
+      readOnly
       title={t('tables.systemBrands')}
       createLabel={t('createButtons.systemBrand')}
       emptyLabel={t('empty.systemBrand')}
@@ -193,7 +234,7 @@ function SystemBrandsTab() {
         placeholder: t('search.systemBrands'),
         match: (row, query) => row.name.toLowerCase().includes(query.toLowerCase()),
       }}
-      useList={useSystemBrandsQuery}
+      useList={useSystemBrandsFromSlice}
       useCreate={useCreateSystemBrandMutation}
       useUpdate={useUpdateSystemBrandMutation}
       useDelete={useDeleteSystemBrandMutation}
@@ -203,7 +244,6 @@ function SystemBrandsTab() {
       toEditDefaults={(row) => ({ name: row.name })}
       rowLabel={(row) => row.name}
       deleteWarning={t('deleteWarnings.systemBrand')}
-      headerExtra={<SystemsImportButton />}
     />
   )
 }
@@ -211,7 +251,7 @@ function SystemBrandsTab() {
 function SystemCatalogsTab() {
   const { t } = useTranslation('lookups')
   const copy = t('bulk.copySuffix')
-  const { data: brands } = useSystemBrandsQuery()
+  const { data: brands } = useSystemBrandsFromSlice()
   const brandOptions = (brands ?? []).map((b) => ({ value: b.id, label: b.name }))
   const systemTypeOptions = Object.values(SystemType).map((v) => ({
     value: v,
@@ -220,6 +260,7 @@ function SystemCatalogsTab() {
 
   return (
     <LookupTableSection
+      readOnly
       title={t('tables.systemCatalogs')}
       createLabel={t('createButtons.systemCatalog')}
       emptyLabel={t('empty.systemCatalog')}
@@ -278,7 +319,7 @@ function SystemCatalogsTab() {
           match: (row, value) => row.systemType === value,
         },
       ]}
-      useList={useSystemCatalogsQuery}
+      useList={useSystemCatalogsFromSlice}
       useCreate={useCreateSystemCatalogMutation}
       useUpdate={useUpdateSystemCatalogMutation}
       useDelete={useDeleteSystemCatalogMutation}
@@ -300,14 +341,13 @@ function SystemCatalogsTab() {
       })}
       rowLabel={(row) => `${row.brandName} · ${row.name}`}
       deleteWarning={t('deleteWarnings.systemCatalog')}
-      headerExtra={<SystemsImportButton />}
     />
   )
 }
 
 function SystemProfilesTab() {
   const { t } = useTranslation('lookups')
-  const { data: catalogs } = useSystemCatalogsQuery()
+  const { data: catalogs } = useSystemCatalogsFromSlice()
   const catalogOptions = (catalogs ?? []).map((c) => ({ value: c.id, label: `${c.brandName} · ${c.name}` }))
   const profileTypeOptions = Object.values(ProfileType).map((v) => ({
     value: v,
@@ -316,6 +356,7 @@ function SystemProfilesTab() {
 
   return (
     <LookupTableSection
+      readOnly
       title={t('tables.systemProfiles')}
       createLabel={t('createButtons.systemProfile')}
       emptyLabel={t('empty.systemProfile')}
@@ -384,18 +425,13 @@ function SystemProfilesTab() {
           match: (row, value) => row.profileType === value,
         },
       ]}
-      useList={useSystemProfilesQuery}
+      useList={useSystemProfilesFromSlice}
       useCreate={useCreateSystemProfileMutation}
       useUpdate={useUpdateSystemProfileMutation}
       useDelete={useDeleteSystemProfileMutation}
       bulkDelete={lookupsApi.bulkDeleteSystemProfiles}
       bulkDuplicate={lookupsApi.bulkDuplicateSystemProfiles}
       duplicate={(row) => ({
-        // profileNo is unique per catalogue, unlike the other entities'
-        // duplicated names — a plain " copy" suffix on top of another
-        // suffix would compound on repeated duplicates, so this uses a
-        // hyphenated form matching how profile numbers are normally
-        // varied (P-100, P-100-copy).
         catalogId: row.catalogId,
         profileNo: `${row.profileNo}-copy`,
         profileType: row.profileType,
@@ -418,7 +454,6 @@ function SystemProfilesTab() {
         image: row.image,
       })}
       rowLabel={(row) => row.profileNo}
-      headerExtra={<SystemsImportButton />}
     />
   )
 }

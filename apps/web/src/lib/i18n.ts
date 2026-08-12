@@ -28,6 +28,8 @@ import adminEn from '@/locales/en/admin.json'
 import adminAr from '@/locales/ar/admin.json'
 import workspaceEn from '@/locales/en/workspace.json'
 import workspaceAr from '@/locales/ar/workspace.json'
+import lookupsEn from '@/locales/en/lookups.json'
+import lookupsAr from '@/locales/ar/lookups.json'
 
 export const supportedLanguages = ['en', 'ar'] as const
 export type SupportedLanguage = (typeof supportedLanguages)[number]
@@ -62,6 +64,7 @@ void i18n
         app: appEn,
         admin: adminEn,
         workspace: workspaceEn,
+        lookups: lookupsEn,
       },
       ar: {
         common: commonAr,
@@ -77,6 +80,7 @@ void i18n
         app: appAr,
         admin: adminAr,
         workspace: workspaceAr,
+        lookups: lookupsAr,
       },
     },
     fallbackLng: 'en',
@@ -94,6 +98,7 @@ void i18n
       'login',
       'app',
       'admin',
+      'lookups',
     ],
     defaultNS: 'common',
     detection: {

@@ -1,0 +1,181 @@
+{
+  "title": "مستودع البيانات",
+  "version": "الإصدار {{version}}",
+  "clusters": {
+    "glass": "الزجاج",
+    "colors": "الألوان",
+    "systems": "السكاشن"
+  },
+  "tables": {
+    "glass": "الزجاج",
+    "glassCombinations": "تركيبات الزجاج",
+    "colors": "الألوان",
+    "paintingPrices": "أسعار الدهان",
+    "paintBrands": "ماركات الدهان",
+    "systemBrands": "ماركات السكاشن",
+    "systemCatalogs": "كتالوجات السكاشن",
+    "systemProfiles": "بروفايلات السكاشن"
+  },
+  "createButtons": {
+    "glass": "إضافة زجاج",
+    "color": "إضافة لون",
+    "colorImport": "استيراد من إكسل",
+    "paintBrand": "إضافة ماركة",
+    "paintingPrice": "إضافة سعر",
+    "systemBrand": "إضافة ماركة",
+    "systemCatalog": "إضافة كتالوج",
+    "systemProfile": "إضافة بروفايل"
+  },
+  "empty": {
+    "glass": "لا يوجد زجاج بعد.",
+    "color": "لا توجد ألوان بعد.",
+    "paintBrand": "لا توجد ماركات بعد.",
+    "paintingPrice": "لا توجد أسعار بعد.",
+    "systemBrand": "لا توجد ماركات بعد.",
+    "systemCatalog": "لا توجد كتالوجات بعد.",
+    "systemProfile": "لا توجد بروفايلات بعد."
+  },
+  "deleteWarnings": {
+    "glass": "الحذف هيتمنع لو أي تركيبة زجاج لسه مستخدماه.",
+    "color": "الحذف هيتمنع لو أي تركيبة زجاج لسه مستخدماه.",
+    "paintBrand": "الحذف هيتمنع لو لسه ليها أسعار.",
+    "systemBrand": "الحذف هيتمنع لو لسه ليها كتالوجات.",
+    "systemCatalog": "الحذف هيتمنع لو لسه ليه بروفايلات."
+  },
+  "fields": {
+    "name": "الاسم",
+    "code": "الكود",
+    "hex": "كود اللون (Hex)",
+    "brand": "الماركة",
+    "type": "نوع التشطيب",
+    "price": "السعر (جنيه مصري)",
+    "thickness": "السمك (مم)",
+    "weightPerSqm": "الوزن (كجم/م²)",
+    "pricePerSqm": "السعر (جنيه مصري/م²)",
+    "systemType": "نوع السكة",
+    "maxGlassThickness": "أقصى سمك زجاج (مم)",
+    "maxSashWeight": "أقصى وزن للدفة (كجم)",
+    "catalog": "الكتالوج",
+    "profileNo": "رقم البروفايل",
+    "profileType": "نوع البروفايل",
+    "weight": "الوزن (كجم/م)",
+    "perimeter": "المحيط (مم)",
+    "inertiaIx": "عزم القصور Ix (سم⁴)",
+    "inertiaIy": "عزم القصور Iy (سم⁴)"
+  },
+  "systemType": {
+    "sliding": "سحاب",
+    "hinged": "مفصلي",
+    "curtain_wall": "واجهة زجاجية"
+  },
+  "profileType": {
+    "frame": "برواز",
+    "leaf": "دفة",
+    "transom": "عارضة",
+    "glass_beading": "ليسة تثبيت الزجاج",
+    "insert": "إنسرت",
+    "sliding_insert": "إنسرت سحاب",
+    "control_rod": "ذراع تحكم",
+    "bottom_rail": "القضيب السفلي"
+  },
+  "messages": {
+    "createSuccess": "تم الإنشاء.",
+    "updateSuccess": "تم الحفظ.",
+    "deleteSuccess": "تم الحذف.",
+    "deleteConfirmTitle": "حذف {{name}}؟",
+    "error": "حصل خطأ. حاول تاني.",
+    "bulkDeleteSuccess": "اتحذف {{count}}.",
+    "bulkDeletePartial": "اتحذف {{succeeded}}، لكن {{failed}} متقدرش يتحذف (غالبًا لسه مستخدم).",
+    "bulkDuplicateSuccess": "اتعمل نسخ لـ {{count}}.",
+    "bulkDuplicatePartial": "اتعمل نسخ لـ {{succeeded}}، لكن {{failed}} فشل.",
+    "noResults": "مفيش نتائج مطابقة للبحث أو الفلاتر."
+  },
+  "bulk": {
+    "selectAll": "تحديد الكل",
+    "selectedCount": "متحدد {{count}}",
+    "duplicate": "نسخ",
+    "delete": "حذف",
+    "clear": "إلغاء التحديد",
+    "copySuffix": "نسخة",
+    "deleteConfirmTitle": "حذف {{count}} عناصر محددة؟"
+  },
+  "search": {
+    "systemBrands": "دور على ماركة...",
+    "systemCatalogs": "دور على كتالوج...",
+    "systemProfiles": "دور على بروفايل...",
+    "glass": "دور على زجاج...",
+    "glassCombinations": "دور على تركيبة..."
+  },
+  "filters": {
+    "allBrands": "كل الماركات",
+    "allTypes": "كل الأنواع",
+    "allCatalogs": "كل الكتالوجات"
+  },
+  "combinationEditor": {
+    "createButton": "إضافة تركيبة",
+    "editButton": "تعديل",
+    "name": "الاسم",
+    "totalThickness": "(مم) إجمالي السمك",
+    "items": "الطبقات",
+    "buildUp": "وصف التركيبة",
+    "empty": "لا توجد تركيبات بعد.",
+    "description": "كوّن طبقات الزجاج بالترتيب — شرائح وفراغات.",
+    "runningTotal": "الإجمالي: {{total}} مم",
+    "noItems": "لا توجد طبقات بعد. ضيف شريحة أو فراغ للبدء.",
+    "singleLayerHint": "شريحة واحدة لوحدها مش تركيبة — ضيف فراغ وشريحة تانية.",
+    "kindSheet": "شريحة زجاج",
+    "kindGap": "فراغ",
+    "selectGlass": "اختر الزجاج",
+    "selectColorOptional": "اللون (اختياري)",
+    "noColor": "بدون لون",
+    "clear": "شفاف",
+    "gapTypeSpacer": "سبيسر (فراغ هوائي)",
+    "gapTypeLaminated": "لامينيتد (طبقة لاصقة)",
+    "gapThickness": "السمك (مم)",
+    "isGeorgian": "قوائم جورجية",
+    "columns": "أعمدة",
+    "rows": "صفوف",
+    "addSheet": "إضافة شريحة",
+    "addGap": "إضافة فراغ",
+    "addGapDisabled": "ضيف شريحة زجاج الأول — التركيبة مينفعش تبدأ بفراغ أو يبقى فيها فراغين ورا بعض.",
+    "addSheetDisabled": "ضيف فراغ الأول — مينفعش يبقى فيه شريحتين ورا بعض.",
+    "save": "حفظ التركيبة"
+  },
+  "colorImport": {
+    "title": "استيراد الألوان من إكسل",
+    "description": "ارفع شيت فيه صف عناوين يحتوي على عمود لكود الـ RAL (زي \"Code\" أو \"RAL\") وعمود للون الست عشري (زي \"Hex\" أو \"Colour\"). لو الملف فيه أكتر من شيت (مثلاً فيه كمان شيتات Brand/Catalogue/Profile لاستيراد الـ Systems)، سمّي شيت الألوان \"Colors\" أو \"Colours\" — لو مفيش شيت بالاسم ده هياخد أول شيت في الملف. الأكواد الجديدة بتتضاف، والكود الموجود بيتحدّث بس لو قيمته الست عشرية اتغيرت فعلاً. الصفوف المكررة لنفس الكود بيتم تجاهلها تلقائيًا.",
+    "chooseFile": "اختر ملف",
+    "importing": "جاري الاستيراد…",
+    "resultTitle": "نتيجة الاستيراد",
+    "created": "{{count}} تمت إضافتهم",
+    "updated": "{{count}} تم تحديثهم",
+    "unchanged": "{{count}} كانوا محدّثين بالفعل",
+    "duplicates": "{{count}} صف مكرر تم تجاهله",
+    "errorsTitle": "صفوف تم تجاهلها",
+    "updatedListTitle": "الأكواد المحدّثة",
+    "hexChange": "{{code}}: {{oldHex}} ← {{newHex}}",
+    "duplicateItem": "{{code}} ({{occurrences}} صف إضافي)",
+    "noChanges": "مفيش حاجة للاستيراد — الشيت مطابق للموجود بالفعل.",
+    "close": "إغلاق",
+    "success": "تم الاستيراد.",
+    "error": "تعذّر استيراد الملف."
+  },
+  "systemsImport": {
+    "button": "استيراد من إكسل",
+    "description": "ارفع شيت فيه لغاية ثلاث ورقات لازم تتسمى بالظبط \"Brand\" و\"Catalogue\" و\"Profile\" — تقدر تسيب أي واحدة فيهم. Brand: عمود \"Name\". Catalogue: \"Brand\" و\"Name\" و\"System type\" و\"Max glass thickness\" و\"Max sash weight\" — الـ Brand لازم يطابق اسم موجود في شيت الـ Brand. Profile: \"Catalogue\" و\"Profile no.\" و\"Profile type\" و\"Max glass thickness\" و\"Weight\" و\"Perimeter\" و\"Inertia Ix\" و\"Inertia Iy\" وعمود اختياري \"Image\" — الـ Catalogue لازم يطابق اسم موجود في شيت الـ Catalogue. الصفوف الموجودة بتتحدّث بس لو قيمة فعلاً اتغيرت.",
+    "importing": "جاري الاستيراد…",
+    "resultTitle": "نتيجة الاستيراد",
+    "created": "{{count}} تمت إضافتهم",
+    "updated": "{{count}} تم تحديثهم",
+    "unchanged": "{{count}} كانوا محدّثين بالفعل",
+    "close": "إغلاق",
+    "success": "تم الاستيراد.",
+    "error": "تعذّر استيراد الملف."
+  },
+  "scope": {
+    "all": "الكل",
+    "platform": "المنصة",
+    "ours": "بتاعتنا",
+    "columnHeader": "المصدر"
+  }
+}

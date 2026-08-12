@@ -67,13 +67,29 @@ import {
 // (available on the old flat price table) is deliberately dropped —
 // single-row create/edit/delete for both brands and prices is fully
 // preserved.
-export function PaintingPricesSection() {
+//
+// `readOnly` is the workspace Data section's Phase 1 mode — see the
+// matching comment on ColorGridSection. No scope-aware version exists
+// yet since there's no company-owned paint brand/price data to show.
+//
+// `useBrandsList`/`usePricesList` default to the admin-only hooks
+// (/admin/lookups/*, SUPER_ADMIN-gated) — same override rationale as
+// ColorGridSection's `useList`.
+export function PaintingPricesSection({
+  readOnly,
+  useBrandsList = usePaintBrandsQuery,
+  usePricesList = usePaintingPricesQuery,
+}: {
+  readOnly?: boolean
+  useBrandsList?: () => { data: PaintBrandSummary[] | undefined; isLoading: boolean; isError: boolean }
+  usePricesList?: () => { data: PaintingPriceSummary[] | undefined }
+} = {}) {
   const { t: tCommon } = useTranslation('common')
-  const { t } = useTranslation('admin')
-  const errorLabel = t('dataWarehousePage.messages.error')
+  const { t } = useTranslation('lookups')
+  const errorLabel = t('messages.error')
 
-  const { data: brands, isLoading: brandsLoading, isError: brandsError } = usePaintBrandsQuery()
-  const { data: prices } = usePaintingPricesQuery()
+  const { data: brands, isLoading: brandsLoading, isError: brandsError } = useBrandsList()
+  const { data: prices } = usePricesList()
 
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null)
   const [createBrandOpen, setCreateBrandOpen] = useState(false)
@@ -116,7 +132,7 @@ export function PaintingPricesSection() {
   const onCreateBrand = async (values: CreatePaintBrandInput) => {
     try {
       const brand = await createBrandMutation.mutateAsync(values)
-      toast.success(t('dataWarehousePage.messages.createSuccess'))
+      toast.success(t('messages.createSuccess'))
       createBrandForm.reset({ name: '' })
       setCreateBrandOpen(false)
       setSelectedBrandId(brand.id)
@@ -128,7 +144,7 @@ export function PaintingPricesSection() {
   const onEditBrand = async (values: UpdatePaintBrandInput) => {
     try {
       await updateBrandMutation.mutateAsync(values)
-      toast.success(t('dataWarehousePage.messages.updateSuccess'))
+      toast.success(t('messages.updateSuccess'))
       setEditBrand(null)
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -138,7 +154,7 @@ export function PaintingPricesSection() {
   const onDeleteBrand = async () => {
     try {
       await deleteBrandMutation.mutateAsync()
-      toast.success(t('dataWarehousePage.messages.deleteSuccess'))
+      toast.success(t('messages.deleteSuccess'))
       setDeleteBrand(null)
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -148,7 +164,7 @@ export function PaintingPricesSection() {
   const onCreatePrice = async (values: CreatePaintingPriceInput) => {
     try {
       await createPriceMutation.mutateAsync(values)
-      toast.success(t('dataWarehousePage.messages.createSuccess'))
+      toast.success(t('messages.createSuccess'))
       setCreatePriceOpen(false)
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -158,7 +174,7 @@ export function PaintingPricesSection() {
   const onEditPrice = async (values: UpdatePaintingPriceInput) => {
     try {
       await updatePriceMutation.mutateAsync(values)
-      toast.success(t('dataWarehousePage.messages.updateSuccess'))
+      toast.success(t('messages.updateSuccess'))
       setEditPrice(null)
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -168,7 +184,7 @@ export function PaintingPricesSection() {
   const onDeletePrice = async () => {
     try {
       await deletePriceMutation.mutateAsync()
-      toast.success(t('dataWarehousePage.messages.deleteSuccess'))
+      toast.success(t('messages.deleteSuccess'))
       setDeletePrice(null)
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -178,15 +194,16 @@ export function PaintingPricesSection() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <h2 className="shrink-0 font-heading text-base font-semibold text-foreground">
-        {t('dataWarehousePage.tables.paintingPrices')}
+        {t('tables.paintingPrices')}
       </h2>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <div className="flex min-h-0 flex-col gap-3 lg:w-72 lg:shrink-0">
           <div className="flex shrink-0 items-center justify-between gap-3">
             <h3 className="text-sm font-medium text-muted-foreground">
-              {t('dataWarehousePage.tables.paintBrands')}
+              {t('tables.paintBrands')}
             </h3>
+            {!readOnly && (
             <Dialog
               open={createBrandOpen}
               onOpenChange={(next) => {
@@ -197,7 +214,7 @@ export function PaintingPricesSection() {
               <DialogTrigger asChild>
                 <Button size="sm" variant="outline">
                   <Plus className="size-4" aria-hidden="true" />
-                  {t('dataWarehousePage.createButtons.paintBrand')}
+                  {t('createButtons.paintBrand')}
                 </Button>
               </DialogTrigger>
               <DialogContent>
@@ -207,10 +224,10 @@ export function PaintingPricesSection() {
                   className="flex flex-col gap-4"
                 >
                   <DialogHeader>
-                    <DialogTitle>{t('dataWarehousePage.createButtons.paintBrand')}</DialogTitle>
+                    <DialogTitle>{t('createButtons.paintBrand')}</DialogTitle>
                   </DialogHeader>
                   <div>
-                    <Label htmlFor="create-brand-name">{t('dataWarehousePage.fields.name')}</Label>
+                    <Label htmlFor="create-brand-name">{t('fields.name')}</Label>
                     <Input
                       id="create-brand-name"
                       className="mt-1.5"
@@ -231,18 +248,19 @@ export function PaintingPricesSection() {
                 </form>
               </DialogContent>
             </Dialog>
+            )}
           </div>
 
           {brandsError && <p className="text-sm text-destructive">{errorLabel}</p>}
           {!brandsLoading && !brandsError && (brands?.length ?? 0) === 0 && (
-            <p className="text-sm text-muted-foreground">{t('dataWarehousePage.empty.paintBrand')}</p>
+            <p className="text-sm text-muted-foreground">{t('empty.paintBrand')}</p>
           )}
           {(brands?.length ?? 0) > 0 && (
             <Table containerClassName="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
               <TableHeader className="sticky top-0 z-10 bg-background">
                 <TableRow>
-                  <TableHead>{t('dataWarehousePage.fields.name')}</TableHead>
-                  <TableHead className="w-16" />
+                  <TableHead>{t('fields.name')}</TableHead>
+                  {!readOnly && <TableHead className="w-16" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -254,31 +272,33 @@ export function PaintingPricesSection() {
                     onClick={() => setSelectedBrandId(brand.id)}
                   >
                     <TableCell>{brand.name}</TableCell>
-                    <TableCell className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setEditBrand(brand)
-                          editBrandForm.reset({ name: brand.name })
-                        }}
-                      >
-                        <Pencil className="size-3.5" aria-hidden="true" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-destructive hover:text-destructive"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setDeleteBrand(brand)
-                        }}
-                      >
-                        <Trash2 className="size-3.5" aria-hidden="true" />
-                      </Button>
-                    </TableCell>
+                    {!readOnly && (
+                      <TableCell className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setEditBrand(brand)
+                            editBrandForm.reset({ name: brand.name })
+                          }}
+                        >
+                          <Pencil className="size-3.5" aria-hidden="true" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-destructive hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDeleteBrand(brand)
+                          }}
+                        >
+                          <Trash2 className="size-3.5" aria-hidden="true" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -289,34 +309,36 @@ export function PaintingPricesSection() {
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           <div className="flex shrink-0 items-center justify-between gap-3">
             <h3 className="text-sm font-medium text-muted-foreground">
-              {selectedBrand ? selectedBrand.name : t('dataWarehousePage.tables.paintingPrices')}
+              {selectedBrand ? selectedBrand.name : t('tables.paintingPrices')}
             </h3>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!selectedBrand}
-              onClick={() => {
-                if (!selectedBrand) return
-                createPriceForm.reset({ brandId: selectedBrand.id, type: '', price: 0 })
-                setCreatePriceOpen(true)
-              }}
-            >
-              <Plus className="size-4" aria-hidden="true" />
-              {t('dataWarehousePage.createButtons.paintingPrice')}
-            </Button>
+            {!readOnly && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!selectedBrand}
+                onClick={() => {
+                  if (!selectedBrand) return
+                  createPriceForm.reset({ brandId: selectedBrand.id, type: '', price: 0 })
+                  setCreatePriceOpen(true)
+                }}
+              >
+                <Plus className="size-4" aria-hidden="true" />
+                {t('createButtons.paintingPrice')}
+              </Button>
+            )}
           </div>
 
           {!selectedBrand ? (
-            <p className="text-sm text-muted-foreground">{t('dataWarehousePage.empty.paintBrand')}</p>
+            <p className="text-sm text-muted-foreground">{t('empty.paintBrand')}</p>
           ) : selectedBrandPrices.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('dataWarehousePage.empty.paintingPrice')}</p>
+            <p className="text-sm text-muted-foreground">{t('empty.paintingPrice')}</p>
           ) : (
             <Table containerClassName="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
               <TableHeader className="sticky top-0 z-10 bg-background">
                 <TableRow>
-                  <TableHead>{t('dataWarehousePage.fields.type')}</TableHead>
-                  <TableHead>{t('dataWarehousePage.fields.pricePerKg')}</TableHead>
-                  <TableHead className="w-20" />
+                  <TableHead>{t('fields.type')}</TableHead>
+                  <TableHead>{t('fields.pricePerKg')}</TableHead>
+                  {!readOnly && <TableHead className="w-20" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -324,31 +346,33 @@ export function PaintingPricesSection() {
                   <TableRow key={price.id}>
                     <TableCell>{price.type}</TableCell>
                     <TableCell>{price.price.toFixed(2)}</TableCell>
-                    <TableCell className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
-                        onClick={() => {
-                          setEditPrice(price)
-                          editPriceForm.reset({
-                            brandId: price.brandId,
-                            type: price.type,
-                            price: price.price,
-                          })
-                        }}
-                      >
-                        <Pencil className="size-3.5" aria-hidden="true" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-destructive hover:text-destructive"
-                        onClick={() => setDeletePrice(price)}
-                      >
-                        <Trash2 className="size-3.5" aria-hidden="true" />
-                      </Button>
-                    </TableCell>
+                    {!readOnly && (
+                      <TableCell className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          onClick={() => {
+                            setEditPrice(price)
+                            editPriceForm.reset({
+                              brandId: price.brandId,
+                              type: price.type,
+                              price: price.price,
+                            })
+                          }}
+                        >
+                          <Pencil className="size-3.5" aria-hidden="true" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-destructive hover:text-destructive"
+                          onClick={() => setDeletePrice(price)}
+                        >
+                          <Trash2 className="size-3.5" aria-hidden="true" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -364,7 +388,7 @@ export function PaintingPricesSection() {
               <DialogTitle>{editBrand?.name ?? ''}</DialogTitle>
             </DialogHeader>
             <div>
-              <Label htmlFor="edit-brand-name">{t('dataWarehousePage.fields.name')}</Label>
+              <Label htmlFor="edit-brand-name">{t('fields.name')}</Label>
               <Input
                 id="edit-brand-name"
                 className="mt-1.5"
@@ -390,9 +414,9 @@ export function PaintingPricesSection() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {deleteBrand ? t('dataWarehousePage.messages.deleteConfirmTitle', { name: deleteBrand.name }) : ''}
+              {deleteBrand ? t('messages.deleteConfirmTitle', { name: deleteBrand.name }) : ''}
             </AlertDialogTitle>
-            <AlertDialogDescription>{t('dataWarehousePage.deleteWarnings.paintBrand')}</AlertDialogDescription>
+            <AlertDialogDescription>{t('deleteWarnings.paintBrand')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
@@ -409,12 +433,12 @@ export function PaintingPricesSection() {
             <DialogHeader>
               <DialogTitle>
                 {selectedBrand
-                  ? `${t('dataWarehousePage.createButtons.paintingPrice')} · ${selectedBrand.name}`
+                  ? `${t('createButtons.paintingPrice')} · ${selectedBrand.name}`
                   : ''}
               </DialogTitle>
             </DialogHeader>
             <div>
-              <Label htmlFor="create-price-type">{t('dataWarehousePage.fields.type')}</Label>
+              <Label htmlFor="create-price-type">{t('fields.type')}</Label>
               <Input
                 id="create-price-type"
                 className="mt-1.5"
@@ -428,7 +452,7 @@ export function PaintingPricesSection() {
               )}
             </div>
             <div>
-              <Label htmlFor="create-price-price">{t('dataWarehousePage.fields.pricePerKg')}</Label>
+              <Label htmlFor="create-price-price">{t('fields.pricePerKg')}</Label>
               <Input
                 id="create-price-price"
                 type="number"
@@ -460,7 +484,7 @@ export function PaintingPricesSection() {
               <DialogTitle>{editPrice ? `${editPrice.brandName} · ${editPrice.type}` : ''}</DialogTitle>
             </DialogHeader>
             <div>
-              <Label htmlFor="edit-price-brand">{t('dataWarehousePage.fields.brand')}</Label>
+              <Label htmlFor="edit-price-brand">{t('fields.brand')}</Label>
               <Controller
                 name="brandId"
                 control={editPriceForm.control}
@@ -481,7 +505,7 @@ export function PaintingPricesSection() {
               />
             </div>
             <div>
-              <Label htmlFor="edit-price-type">{t('dataWarehousePage.fields.type')}</Label>
+              <Label htmlFor="edit-price-type">{t('fields.type')}</Label>
               <Input
                 id="edit-price-type"
                 className="mt-1.5"
@@ -495,7 +519,7 @@ export function PaintingPricesSection() {
               )}
             </div>
             <div>
-              <Label htmlFor="edit-price-price">{t('dataWarehousePage.fields.pricePerKg')}</Label>
+              <Label htmlFor="edit-price-price">{t('fields.pricePerKg')}</Label>
               <Input
                 id="edit-price-price"
                 type="number"
@@ -525,7 +549,7 @@ export function PaintingPricesSection() {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {deletePrice
-                ? t('dataWarehousePage.messages.deleteConfirmTitle', {
+                ? t('messages.deleteConfirmTitle', {
                     name: `${deletePrice.brandName} · ${deletePrice.type}`,
                   })
                 : ''}

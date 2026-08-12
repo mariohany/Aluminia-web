@@ -2,6 +2,7 @@
   "openMenu": "Open menu",
   "rail": {
     "projects": "Projects",
+    "data": "Data",
     "manage": "Manage",
     "logout": "Log out"
   },
@@ -21,6 +22,9 @@
     "designerComing": "Window designer",
     "designerHint": "The design surface for this project will live here.",
     "clientSelectedHint": "Create a project for this client, or pick one from the tree."
+  },
+  "dataPage": {
+    "title": "Data"
   },
   "manage": {
     "title": "Manage",

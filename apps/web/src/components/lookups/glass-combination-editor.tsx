@@ -73,19 +73,19 @@ function describeCombination(combo: GlassCombinationSummary, t: (key: string) =>
     .sort((a, b) => a.position - b.position)
     .map((item) => {
       if (item.kind === 'sheet') {
-        const colorLabel = item.colorCode ?? t('dataWarehousePage.combinationEditor.clear')
+        const colorLabel = item.colorCode ?? t('combinationEditor.clear')
         return `${item.glassThickness}mm ${colorLabel}`
       }
       // Laminated interlayers don't track a thickness (stored as 0, not
       // shown in the editor) so it's left out of the description too —
       // "Laminated (interlayer) 0mm" would misleadingly imply a real value.
       if (item.gapType === GlassGapType.LAMINATED) {
-        return t('dataWarehousePage.combinationEditor.gapTypeLaminated')
+        return t('combinationEditor.gapTypeLaminated')
       }
       const georgianSuffix = item.isGeorgian
-        ? ` · ${t('dataWarehousePage.combinationEditor.isGeorgian')} ${item.columnsCount ?? ''}×${item.rowsCount ?? ''}`
+        ? ` · ${t('combinationEditor.isGeorgian')} ${item.columnsCount ?? ''}×${item.rowsCount ?? ''}`
         : ''
-      return `${t('dataWarehousePage.combinationEditor.gapTypeSpacer')} ${item.gapThickness}mm${georgianSuffix}`
+      return `${t('combinationEditor.gapTypeSpacer')} ${item.gapThickness}mm${georgianSuffix}`
     })
     .join(' + ')
 }
@@ -106,13 +106,30 @@ function fromSummary(combo: GlassCombinationSummary): DraftItem[] {
   )
 }
 
-export function GlassCombinationSection() {
-  const { t } = useTranslation('admin')
+// `readOnly` is the workspace Data section's Phase 1 mode — see the
+// matching comment on ColorGridSection. No scope-aware version exists
+// yet since there's no company-owned combination data to show.
+//
+// `useList`/`useGlassList`/`useColorList` default to the admin-only
+// hooks (/admin/lookups/*, SUPER_ADMIN-gated) — same override rationale
+// as ColorGridSection's `useList`.
+export function GlassCombinationSection({
+  readOnly,
+  useList = useGlassCombinationsQuery,
+  useGlassList = useGlassQuery,
+  useColorList = useColorsQuery,
+}: {
+  readOnly?: boolean
+  useList?: () => { data: GlassCombinationSummary[] | undefined; isLoading: boolean; isError: boolean }
+  useGlassList?: () => { data: { id: string; name: string; thickness: number }[] | undefined }
+  useColorList?: () => { data: { id: string; code: string }[] | undefined }
+} = {}) {
+  const { t } = useTranslation('lookups')
   const { t: tCommon } = useTranslation('common')
   const queryClient = useQueryClient()
-  const { data: combos, isLoading, isError } = useGlassCombinationsQuery()
-  const { data: glassList } = useGlassQuery()
-  const { data: colors } = useColorsQuery()
+  const { data: combos, isLoading, isError } = useList()
+  const { data: glassList } = useGlassList()
+  const { data: colors } = useColorList()
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<GlassCombinationSummary | null>(null)
@@ -155,10 +172,10 @@ export function GlassCombinationSection() {
   const onDelete = async () => {
     try {
       await deleteMutation.mutateAsync()
-      toast.success(t('dataWarehousePage.messages.deleteSuccess'))
+      toast.success(t('messages.deleteSuccess'))
       setDeleteTarget(null)
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+      toast.error(apiErrorMessage(err, t('messages.error')))
     }
   }
 
@@ -169,9 +186,9 @@ export function GlassCombinationSection() {
     try {
       const { deletedIds } = await lookupsApi.bulkDeleteGlassCombinations(ids)
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      toast.success(t('dataWarehousePage.messages.bulkDeleteSuccess', { count: deletedIds.length }))
+      toast.success(t('messages.bulkDeleteSuccess', { count: deletedIds.length }))
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+      toast.error(apiErrorMessage(err, t('messages.error')))
     } finally {
       setBulkBusy(false)
       setSelected(new Set())
@@ -184,7 +201,7 @@ export function GlassCombinationSection() {
     try {
       const created = await lookupsApi.bulkDuplicateGlassCombinations(
         targets.map((combo) => ({
-          name: `${combo.name} ${t('dataWarehousePage.bulk.copySuffix')}`,
+          name: `${combo.name} ${t('bulk.copySuffix')}`,
           items: combo.items.map((item) =>
             item.kind === 'sheet'
               ? { kind: 'sheet' as const, glassId: item.glassId, colorId: item.colorId }
@@ -203,16 +220,16 @@ export function GlassCombinationSection() {
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
       if (created.failedCount > 0) {
         toast.error(
-          t('dataWarehousePage.messages.bulkDuplicatePartial', {
+          t('messages.bulkDuplicatePartial', {
             failed: created.failedCount,
             succeeded: created.created.length,
           }),
         )
       } else {
-        toast.success(t('dataWarehousePage.messages.bulkDuplicateSuccess', { count: created.created.length }))
+        toast.success(t('messages.bulkDuplicateSuccess', { count: created.created.length }))
       }
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+      toast.error(apiErrorMessage(err, t('messages.error')))
     } finally {
       setBulkBusy(false)
       setSelected(new Set())
@@ -223,12 +240,14 @@ export function GlassCombinationSection() {
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex shrink-0 items-center justify-between gap-3">
         <h2 className="font-heading text-base font-semibold text-foreground">
-          {t('dataWarehousePage.tables.glassCombinations')}
+          {t('tables.glassCombinations')}
         </h2>
-        <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
-          <Plus className="size-4" aria-hidden="true" />
-          {t('dataWarehousePage.combinationEditor.createButton')}
-        </Button>
+        {!readOnly && (
+          <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" aria-hidden="true" />
+            {t('combinationEditor.createButton')}
+          </Button>
+        )}
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
@@ -240,20 +259,20 @@ export function GlassCombinationSection() {
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('dataWarehousePage.search.glassCombinations')}
+            placeholder={t('search.glassCombinations')}
             className="ps-8"
           />
         </div>
 
-        {someSelected && (
+        {!readOnly && someSelected && (
           <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted/60 px-3 py-0.5">
             <span className="text-sm font-medium text-foreground">
-              {t('dataWarehousePage.bulk.selectedCount', { count: selected.size })}
+              {t('bulk.selectedCount', { count: selected.size })}
             </span>
             <div className="flex items-center gap-2">
               <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onBulkDuplicate()}>
                 <Copy className="size-4" aria-hidden="true" />
-                {t('dataWarehousePage.bulk.duplicate')}
+                {t('bulk.duplicate')}
               </Button>
               <Button
                 size="sm"
@@ -263,10 +282,10 @@ export function GlassCombinationSection() {
                 onClick={() => setBulkDeleteConfirmOpen(true)}
               >
                 <Trash2 className="size-4" aria-hidden="true" />
-                {t('dataWarehousePage.bulk.delete')}
+                {t('bulk.delete')}
               </Button>
               <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
-                {t('dataWarehousePage.bulk.clear')}
+                {t('bulk.clear')}
               </Button>
             </div>
           </div>
@@ -276,37 +295,39 @@ export function GlassCombinationSection() {
       <Table containerClassName="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
         <TableHeader className="sticky top-0 z-10 bg-background">
           <TableRow>
-            <TableHead className="w-10">
-              {visibleRows.length > 0 && (
-                <Checkbox
-                  checked={allSelected}
-                  onCheckedChange={toggleAll}
-                  aria-label={t('dataWarehousePage.bulk.selectAll')}
-                />
-              )}
-            </TableHead>
-            <TableHead>{t('dataWarehousePage.combinationEditor.name')}</TableHead>
-            <TableHead>{t('dataWarehousePage.combinationEditor.totalThickness')}</TableHead>
-            <TableHead>{t('dataWarehousePage.combinationEditor.items')}</TableHead>
-            <TableHead>{t('dataWarehousePage.combinationEditor.buildUp')}</TableHead>
-            <TableHead className="w-32" />
+            {!readOnly && (
+              <TableHead className="w-10">
+                {visibleRows.length > 0 && (
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={toggleAll}
+                    aria-label={t('bulk.selectAll')}
+                  />
+                )}
+              </TableHead>
+            )}
+            <TableHead>{t('combinationEditor.name')}</TableHead>
+            <TableHead>{t('combinationEditor.totalThickness')}</TableHead>
+            <TableHead>{t('combinationEditor.items')}</TableHead>
+            <TableHead>{t('combinationEditor.buildUp')}</TableHead>
+            {!readOnly && <TableHead className="w-32" />}
           </TableRow>
         </TableHeader>
         <TableBody>
           {(isLoading || isError || rows.length === 0) && (
             <TableRow>
               <TableCell
-                colSpan={6}
+                colSpan={readOnly ? 4 : 6}
                 className={isError ? 'text-center text-destructive' : 'text-center text-muted-foreground'}
               >
-                {isError ? t('dataWarehousePage.messages.error') : t('dataWarehousePage.combinationEditor.empty')}
+                {isError ? t('messages.error') : t('combinationEditor.empty')}
               </TableCell>
             </TableRow>
           )}
           {!isLoading && !isError && rows.length > 0 && visibleRows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
-                {t('dataWarehousePage.messages.noResults')}
+              <TableCell colSpan={readOnly ? 4 : 6} className="text-center text-muted-foreground">
+                {t('messages.noResults')}
               </TableCell>
             </TableRow>
           )}
@@ -314,32 +335,36 @@ export function GlassCombinationSection() {
             !isError &&
             visibleRows.map((combo) => (
               <TableRow key={combo.id}>
-                <TableCell>
-                  <Checkbox
-                    checked={selected.has(combo.id)}
-                    onCheckedChange={() => toggleOne(combo.id)}
-                    aria-label={combo.name}
-                  />
-                </TableCell>
+                {!readOnly && (
+                  <TableCell>
+                    <Checkbox
+                      checked={selected.has(combo.id)}
+                      onCheckedChange={() => toggleOne(combo.id)}
+                      aria-label={combo.name}
+                    />
+                  </TableCell>
+                )}
                 <TableCell className="font-medium text-foreground">{combo.name}</TableCell>
                 <TableCell>{combo.totalThickness}</TableCell>
                 <TableCell>{combo.items.length}</TableCell>
                 <TableCell className="max-w-xs truncate text-muted-foreground" title={describeCombination(combo, t)}>
                   {describeCombination(combo, t)}
                 </TableCell>
-                <TableCell className="flex justify-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setEditTarget(combo)}>
-                    {t('dataWarehousePage.combinationEditor.editButton')}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 text-destructive hover:text-destructive"
-                    onClick={() => setDeleteTarget(combo)}
-                  >
-                    <Trash2 className="size-3.5" aria-hidden="true" />
-                  </Button>
-                </TableCell>
+                {!readOnly && (
+                  <TableCell className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setEditTarget(combo)}>
+                      {t('combinationEditor.editButton')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 text-destructive hover:text-destructive"
+                      onClick={() => setDeleteTarget(combo)}
+                    >
+                      <Trash2 className="size-3.5" aria-hidden="true" />
+                    </Button>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
         </TableBody>
@@ -347,7 +372,7 @@ export function GlassCombinationSection() {
 
       {createOpen && (
         <CombinationDialog
-          title={t('dataWarehousePage.combinationEditor.createButton')}
+          title={t('combinationEditor.createButton')}
           initialName=""
           initialItems={[]}
           glassOptions={glassOptions}
@@ -356,7 +381,7 @@ export function GlassCombinationSection() {
           onClose={() => setCreateOpen(false)}
           onSave={async (values) => {
             await createMutation.mutateAsync(values)
-            toast.success(t('dataWarehousePage.messages.createSuccess'))
+            toast.success(t('messages.createSuccess'))
             setCreateOpen(false)
           }}
         />
@@ -373,7 +398,7 @@ export function GlassCombinationSection() {
           onClose={() => setEditTarget(null)}
           onSave={async (values) => {
             await updateMutation.mutateAsync(values)
-            toast.success(t('dataWarehousePage.messages.updateSuccess'))
+            toast.success(t('messages.updateSuccess'))
             setEditTarget(null)
           }}
         />
@@ -384,7 +409,7 @@ export function GlassCombinationSection() {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {deleteTarget
-                ? t('dataWarehousePage.messages.deleteConfirmTitle', { name: deleteTarget.name })
+                ? t('messages.deleteConfirmTitle', { name: deleteTarget.name })
                 : ''}
             </AlertDialogTitle>
           </AlertDialogHeader>
@@ -401,7 +426,7 @@ export function GlassCombinationSection() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t('dataWarehousePage.bulk.deleteConfirmTitle', { count: selected.size })}
+              {t('bulk.deleteConfirmTitle', { count: selected.size })}
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -435,7 +460,7 @@ function CombinationDialog({
   onClose: () => void
   onSave: (values: CreateGlassCombinationInput) => Promise<void>
 }) {
-  const { t } = useTranslation('admin')
+  const { t } = useTranslation('lookups')
   const [name, setName] = useState(initialName)
   const [items, setItems] = useState<DraftItem[]>(initialItems)
   const [error, setError] = useState<string | null>(null)
@@ -495,14 +520,14 @@ function CombinationDialog({
       ),
     })
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? t('dataWarehousePage.messages.error'))
+      setError(parsed.error.issues[0]?.message ?? t('messages.error'))
       return
     }
     setSaving(true)
     try {
       await onSave(parsed.data)
     } catch (err) {
-      setError(apiErrorMessage(err, t('dataWarehousePage.messages.error')))
+      setError(apiErrorMessage(err, t('messages.error')))
     } finally {
       setSaving(false)
     }
@@ -513,12 +538,12 @@ function CombinationDialog({
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{t('dataWarehousePage.combinationEditor.description')}</DialogDescription>
+          <DialogDescription>{t('combinationEditor.description')}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div>
-            <Label htmlFor="combination-name">{t('dataWarehousePage.combinationEditor.name')}</Label>
+            <Label htmlFor="combination-name">{t('combinationEditor.name')}</Label>
             <Input
               id="combination-name"
               className="mt-1.5"
@@ -528,24 +553,24 @@ function CombinationDialog({
           </div>
 
           <div className="flex items-center justify-between">
-            <Label>{t('dataWarehousePage.combinationEditor.items')}</Label>
+            <Label>{t('combinationEditor.items')}</Label>
             <span className="text-sm font-medium text-foreground">
-              {t('dataWarehousePage.combinationEditor.runningTotal', { total: runningTotal })}
+              {t('combinationEditor.runningTotal', { total: runningTotal })}
             </span>
           </div>
 
           <div className="flex flex-col gap-2">
             {items.length === 0 && (
-              <p className="text-sm text-muted-foreground">{t('dataWarehousePage.combinationEditor.noItems')}</p>
+              <p className="text-sm text-muted-foreground">{t('combinationEditor.noItems')}</p>
             )}
             {items.length === 1 && (
-              <p className="text-sm text-muted-foreground">{t('dataWarehousePage.combinationEditor.singleLayerHint')}</p>
+              <p className="text-sm text-muted-foreground">{t('combinationEditor.singleLayerHint')}</p>
             )}
             {items.map((item, index) => (
               <div key={index} className="flex flex-col gap-2 rounded-md border border-border p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {index + 1}. {item.kind === 'sheet' ? t('dataWarehousePage.combinationEditor.kindSheet') : t('dataWarehousePage.combinationEditor.kindGap')}
+                    {index + 1}. {item.kind === 'sheet' ? t('combinationEditor.kindSheet') : t('combinationEditor.kindGap')}
                   </span>
                   <div className="flex gap-1">
                     <Button
@@ -584,7 +609,7 @@ function CombinationDialog({
                   <div className="grid grid-cols-2 gap-2">
                     <Select value={item.glassId} onValueChange={(v) => updateItem(index, { glassId: v })}>
                       <SelectTrigger>
-                        <SelectValue placeholder={t('dataWarehousePage.combinationEditor.selectGlass')} />
+                        <SelectValue placeholder={t('combinationEditor.selectGlass')} />
                       </SelectTrigger>
                       <SelectContent>
                         {glassOptions.map((opt) => (
@@ -599,10 +624,10 @@ function CombinationDialog({
                       onValueChange={(v) => updateItem(index, { colorId: v === '__none' ? null : v })}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder={t('dataWarehousePage.combinationEditor.selectColorOptional')} />
+                        <SelectValue placeholder={t('combinationEditor.selectColorOptional')} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none">{t('dataWarehousePage.combinationEditor.noColor')}</SelectItem>
+                        <SelectItem value="__none">{t('combinationEditor.noColor')}</SelectItem>
                         {colorOptions.map((opt) => (
                           <SelectItem key={opt.value} value={opt.value}>
                             {opt.label}
@@ -634,10 +659,10 @@ function CombinationDialog({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value={GlassGapType.SPACER}>
-                            {t('dataWarehousePage.combinationEditor.gapTypeSpacer')}
+                            {t('combinationEditor.gapTypeSpacer')}
                           </SelectItem>
                           <SelectItem value={GlassGapType.LAMINATED}>
-                            {t('dataWarehousePage.combinationEditor.gapTypeLaminated')}
+                            {t('combinationEditor.gapTypeLaminated')}
                           </SelectItem>
                         </SelectContent>
                       </Select>
@@ -647,7 +672,7 @@ function CombinationDialog({
                           step={0.01}
                           min={0}
                           value={item.gapThickness}
-                          placeholder={t('dataWarehousePage.combinationEditor.gapThickness')}
+                          placeholder={t('combinationEditor.gapThickness')}
                           onChange={(e) => updateItem(index, { gapThickness: Number(e.target.value) })}
                         />
                       )}
@@ -659,21 +684,21 @@ function CombinationDialog({
                             checked={item.isGeorgian}
                             onCheckedChange={(checked) => updateItem(index, { isGeorgian: !!checked })}
                           />
-                          {t('dataWarehousePage.combinationEditor.isGeorgian')}
+                          {t('combinationEditor.isGeorgian')}
                         </label>
                         {item.isGeorgian && (
                           <div className="grid grid-cols-2 gap-2">
                             <Input
                               type="number"
                               min={1}
-                              placeholder={t('dataWarehousePage.combinationEditor.columns')}
+                              placeholder={t('combinationEditor.columns')}
                               value={item.columnsCount ?? ''}
                               onChange={(e) => updateItem(index, { columnsCount: Number(e.target.value) })}
                             />
                             <Input
                               type="number"
                               min={1}
-                              placeholder={t('dataWarehousePage.combinationEditor.rows')}
+                              placeholder={t('combinationEditor.rows')}
                               value={item.rowsCount ?? ''}
                               onChange={(e) => updateItem(index, { rowsCount: Number(e.target.value) })}
                             />
@@ -693,11 +718,11 @@ function CombinationDialog({
               variant="outline"
               size="sm"
               disabled={lastItemKind === 'sheet'}
-              title={lastItemKind === 'sheet' ? t('dataWarehousePage.combinationEditor.addSheetDisabled') : undefined}
+              title={lastItemKind === 'sheet' ? t('combinationEditor.addSheetDisabled') : undefined}
               onClick={addSheet}
             >
               <Plus className="size-4" aria-hidden="true" />
-              {t('dataWarehousePage.combinationEditor.addSheet')}
+              {t('combinationEditor.addSheet')}
             </Button>
             <Button
               type="button"
@@ -706,13 +731,13 @@ function CombinationDialog({
               disabled={lastItemKind === 'gap' || lastItemKind === undefined}
               title={
                 lastItemKind === 'gap' || lastItemKind === undefined
-                  ? t('dataWarehousePage.combinationEditor.addGapDisabled')
+                  ? t('combinationEditor.addGapDisabled')
                   : undefined
               }
               onClick={addGap}
             >
               <Plus className="size-4" aria-hidden="true" />
-              {t('dataWarehousePage.combinationEditor.addGap')}
+              {t('combinationEditor.addGap')}
             </Button>
           </div>
 
@@ -721,7 +746,7 @@ function CombinationDialog({
 
         <DialogFooter>
           <Button type="button" disabled={saving || items.length < 3 || !name.trim()} onClick={() => void handleSave()}>
-            {t('dataWarehousePage.combinationEditor.save')}
+            {t('combinationEditor.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

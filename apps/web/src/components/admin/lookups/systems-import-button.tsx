@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 // import. Each table's result is independent since each is its own
 // lookup_meta version (see SystemLookupsService.importSystems).
 export function SystemsImportButton() {
-  const { t } = useTranslation('admin')
+  const { t } = useTranslation('lookups')
   const queryClient = useQueryClient()
   const [result, setResult] = useState<SystemsImportResult | null>(null)
   const [busy, setBusy] = useState(false)
@@ -30,9 +30,9 @@ export function SystemsImportButton() {
       const importResult = await lookupsApi.importSystems(file)
       setResult(importResult)
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      toast.success(t('dataWarehousePage.systemsImport.success'))
+      toast.success(t('systemsImport.success'))
     } catch (err) {
-      toast.error(apiErrorMessage(err, t('dataWarehousePage.systemsImport.error')))
+      toast.error(apiErrorMessage(err, t('systemsImport.error')))
     } finally {
       setBusy(false)
     }
@@ -51,27 +51,27 @@ export function SystemsImportButton() {
         size="sm"
         variant="outline"
         disabled={busy}
-        title={t('dataWarehousePage.systemsImport.description')}
+        title={t('systemsImport.description')}
         onClick={() => inputRef.current?.click()}
       >
         <Upload className="size-4" aria-hidden="true" />
-        {busy ? t('dataWarehousePage.systemsImport.importing') : t('dataWarehousePage.systemsImport.button')}
+        {busy ? t('systemsImport.importing') : t('systemsImport.button')}
       </Button>
 
       <Dialog open={!!result} onOpenChange={(next) => !next && setResult(null)}>
         <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{t('dataWarehousePage.systemsImport.resultTitle')}</DialogTitle>
+            <DialogTitle>{t('systemsImport.resultTitle')}</DialogTitle>
           </DialogHeader>
           {result && (
             <div className="flex flex-col gap-4 text-sm">
-              <EntitySection title={t('dataWarehousePage.tables.systemBrands')} result={result.brands} />
-              <EntitySection title={t('dataWarehousePage.tables.systemCatalogs')} result={result.catalogs} />
-              <EntitySection title={t('dataWarehousePage.tables.systemProfiles')} result={result.profiles} />
+              <EntitySection title={t('tables.systemBrands')} result={result.brands} />
+              <EntitySection title={t('tables.systemCatalogs')} result={result.catalogs} />
+              <EntitySection title={t('tables.systemProfiles')} result={result.profiles} />
             </div>
           )}
           <DialogFooter>
-            <Button onClick={() => setResult(null)}>{t('dataWarehousePage.systemsImport.close')}</Button>
+            <Button onClick={() => setResult(null)}>{t('systemsImport.close')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -80,7 +80,7 @@ export function SystemsImportButton() {
 }
 
 function EntitySection({ title, result }: { title: string; result: SystemsImportEntityResult }) {
-  const { t } = useTranslation('admin')
+  const { t } = useTranslation('lookups')
   const untouched =
     result.created.length === 0 &&
     result.updated.length === 0 &&
@@ -94,17 +94,17 @@ function EntitySection({ title, result }: { title: string; result: SystemsImport
       <div className="flex flex-wrap gap-2">
         {result.created.length > 0 && (
           <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
-            {t('dataWarehousePage.systemsImport.created', { count: result.created.length })}
+            {t('systemsImport.created', { count: result.created.length })}
           </span>
         )}
         {result.updated.length > 0 && (
           <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
-            {t('dataWarehousePage.systemsImport.updated', { count: result.updated.length })}
+            {t('systemsImport.updated', { count: result.updated.length })}
           </span>
         )}
         {result.unchangedCount > 0 && (
           <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-            {t('dataWarehousePage.systemsImport.unchanged', { count: result.unchangedCount })}
+            {t('systemsImport.unchanged', { count: result.unchangedCount })}
           </span>
         )}
       </div>

@@ -11,9 +11,9 @@
     "empty": "لا يوجد عملاء بعد. أضف عميلاً للبدء.",
     "noMatches": "لا توجد نتائج مطابقة.",
     "noProjects": "لا توجد مشاريع بعد",
-    "clientActions": "إجراءات {{name}}",
     "expand": "توسيع",
-    "collapse": "طيّ"
+    "collapse": "طيّ",
+    "resizeLabel": "تغيير حجم لوحة العملاء والمشاريع"
   },
   "canvas": {
     "nothingSelected": "لم يتم اختيار مشروع",
@@ -111,7 +111,8 @@
     "newProject": "مشروع جديد",
     "editProject": "تعديل المشروع",
     "editClient": "تعديل العميل",
-    "deleteClient": "حذف العميل"
+    "deleteClient": "حذف العميل",
+    "deleteProject": "حذف المشروع"
   },
   "clientDialog": {
     "createTitle": "عميل جديد",

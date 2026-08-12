@@ -11,9 +11,9 @@
     "empty": "No clients yet. Add one to get started.",
     "noMatches": "Nothing matches that search.",
     "noProjects": "No projects yet",
-    "clientActions": "Actions for {{name}}",
     "expand": "Expand",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "resizeLabel": "Resize the client and project panel"
   },
   "canvas": {
     "nothingSelected": "No project selected",
@@ -111,7 +111,8 @@
     "newProject": "New project",
     "editProject": "Edit project",
     "editClient": "Edit client",
-    "deleteClient": "Delete client"
+    "deleteClient": "Delete client",
+    "deleteProject": "Delete project"
   },
   "clientDialog": {
     "createTitle": "New client",

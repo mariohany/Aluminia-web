@@ -41,14 +41,23 @@ export function PropertiesPanel({
   if (!project && !isLoading) return null
 
   if (collapsed) {
+    // No rail — collapsing gives the canvas that width back entirely.
+    // The button floats instead, fixed to the viewport corner so it
+    // lands in the same spot the panel's own collapse button occupied
+    // (top end edge), matching the floating toolbar's treatment on the
+    // canvas's other corner.
     return (
-      <div className="shrink-0 border-s border-border p-2">
-        <Button variant="ghost" size="icon" aria-label={t('properties.expand')} onClick={() => setCollapsed(false)}>
-          {/* Mirrors in RTL: the panel is on the other side there, so a
-              fixed "right" glyph would point away from it. */}
-          <PanelRightOpen className="size-5 rtl:rotate-180" aria-hidden="true" />
-        </Button>
-      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="fixed end-3 top-3 z-10 border border-border bg-card/95 shadow-sm backdrop-blur"
+        aria-label={t('properties.expand')}
+        onClick={() => setCollapsed(false)}
+      >
+        {/* Mirrors in RTL: the panel is on the other side there, so a
+            fixed "right" glyph would point away from it. */}
+        <PanelRightOpen className="size-5 rtl:rotate-180" aria-hidden="true" />
+      </Button>
     )
   }
 

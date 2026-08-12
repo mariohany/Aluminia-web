@@ -1,10 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useMatch, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Menu } from 'lucide-react'
 import type { ClientWithProjects } from '@repo/types/clients'
-import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { WorkspaceRail } from '@/components/workspace/workspace-rail'
 import { ProjectTree } from '@/components/workspace/project-tree'
 import { WorkspaceToolbar } from '@/components/workspace/workspace-toolbar'
@@ -12,11 +10,59 @@ import { PropertiesPanel } from '@/components/workspace/properties-panel'
 import { ClientDialog } from '@/components/workspace/client-dialog'
 import { ProjectDialog } from '@/components/workspace/project-dialog'
 import { DeleteClientDialog, DeleteProjectDialog } from '@/components/workspace/delete-dialogs'
-import { LanguageSwitcher } from '@/components/language-switcher'
 import { useClientTreeQuery } from '@/lib/clients-queries'
 import { useProjectQuery } from '@/lib/projects-queries'
 import { displayName } from '@/lib/bilingual'
 import { isRtlLanguage } from '@/lib/i18n'
+import { cn } from '@/lib/utils'
+
+// Stable reference so the keyboard-delete effect below doesn't see a
+// "new" clients array (and re-subscribe its listener) on every render
+// before the tree query has data.
+const EMPTY_CLIENTS: ClientWithProjects[] = []
+
+const TREE_WIDTH_STORAGE_KEY = 'aluminia.workspace.treeWidth'
+const DEFAULT_TREE_WIDTH = 288 // matches the old static w-72
+const MIN_TREE_WIDTH = 224 // 14rem — the floor it can shrink to; it never collapses to hidden
+const MAX_TREE_WIDTH = 480
+const TREE_WIDTH_STEP = 16 // px per arrow-key press when resizing via keyboard
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function readStoredTreeWidth() {
+  const raw = localStorage.getItem(TREE_WIDTH_STORAGE_KEY)
+  const parsed = raw ? Number(raw) : NaN
+  return Number.isFinite(parsed) ? clamp(parsed, MIN_TREE_WIDTH, MAX_TREE_WIDTH) : DEFAULT_TREE_WIDTH
+}
+
+// Selection lives in the URL (see the comment below), but the URL
+// itself is forgotten the moment the user navigates to Manage or lands
+// on the bare `/workspace` root — this is what lets a return trip put
+// them back where they were instead of an empty canvas.
+const LAST_SELECTION_STORAGE_KEY = 'aluminia.workspace.lastSelection'
+
+type LastSelection = { type: 'client' | 'project'; id: string }
+
+function readLastSelection(): LastSelection | null {
+  try {
+    const raw = localStorage.getItem(LAST_SELECTION_STORAGE_KEY)
+    if (!raw) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      ((parsed as LastSelection).type === 'client' || (parsed as LastSelection).type === 'project') &&
+      typeof (parsed as LastSelection).id === 'string'
+    ) {
+      return parsed as LastSelection
+    }
+  } catch {
+    // Malformed or foreign value under this key — treat as absent.
+  }
+  return null
+}
 
 /**
  * The workspace shell — a persistent frame, not a page.
@@ -38,8 +84,69 @@ import { isRtlLanguage } from '@/lib/i18n'
 export function WorkspaceLayout() {
   const { t, i18n } = useTranslation('workspace')
   const language = i18n.resolvedLanguage ?? 'en'
+  const rtl = isRtlLanguage(language)
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  const [treeWidth, setTreeWidth] = useState(readStoredTreeWidth)
+  const [isResizingTree, setIsResizingTree] = useState(false)
+  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+  useEffect(() => {
+    localStorage.setItem(TREE_WIDTH_STORAGE_KEY, String(treeWidth))
+  }, [treeWidth])
+
+  // Dragging is tracked via window listeners (not onPointerMove on the
+  // handle) so the drag keeps tracking even when the pointer leaves the
+  // thin handle itself mid-move.
+  useEffect(() => {
+    if (!isResizingTree) return
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!resizeStateRef.current) return
+      const dx = event.clientX - resizeStateRef.current.startX
+      // In RTL the panel's drag edge is visually on the left (flex row
+      // mirrors under dir="rtl"), so growing it means dragging left.
+      const signedDx = rtl ? -dx : dx
+      setTreeWidth(clamp(resizeStateRef.current.startWidth + signedDx, MIN_TREE_WIDTH, MAX_TREE_WIDTH))
+    }
+
+    const stopResizing = () => {
+      resizeStateRef.current = null
+      setIsResizingTree(false)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', stopResizing)
+    document.body.style.cursor = 'ew-resize'
+    document.body.style.userSelect = 'none'
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', stopResizing)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizingTree, rtl])
+
+  const handleResizePointerDown = (event: React.PointerEvent) => {
+    resizeStateRef.current = { startX: event.clientX, startWidth: treeWidth }
+    setIsResizingTree(true)
+  }
+
+  const handleResizeKeyDown = (event: React.KeyboardEvent) => {
+    // "Forward" grows the panel in reading order — same left/right flip
+    // as the tree's own chevron under RTL.
+    const growKey = rtl ? 'ArrowLeft' : 'ArrowRight'
+    const shrinkKey = rtl ? 'ArrowRight' : 'ArrowLeft'
+    if (event.key === growKey) {
+      event.preventDefault()
+      setTreeWidth((width) => clamp(width + TREE_WIDTH_STEP, MIN_TREE_WIDTH, MAX_TREE_WIDTH))
+    } else if (event.key === shrinkKey) {
+      event.preventDefault()
+      setTreeWidth((width) => clamp(width - TREE_WIDTH_STEP, MIN_TREE_WIDTH, MAX_TREE_WIDTH))
+    }
+  }
 
   // The layout is not the route that declares `:projectId`/`:clientId`,
   // so it reads the selection back off the path rather than from
@@ -65,7 +172,35 @@ export function WorkspaceLayout() {
   // navigation between projects.
   const treeQuery = useClientTreeQuery()
   const projectQuery = useProjectQuery(selectedProjectId)
-  const clients = treeQuery.data ?? []
+  const clients = treeQuery.data ?? EMPTY_CLIENTS
+
+  // Remember whichever of the two is currently selected...
+  useEffect(() => {
+    if (selectedProjectId) {
+      localStorage.setItem(LAST_SELECTION_STORAGE_KEY, JSON.stringify({ type: 'project', id: selectedProjectId }))
+    } else if (selectedClientId) {
+      localStorage.setItem(LAST_SELECTION_STORAGE_KEY, JSON.stringify({ type: 'client', id: selectedClientId }))
+    }
+  }, [selectedProjectId, selectedClientId])
+
+  // ...and restore it on the bare `/workspace` root — reached both by
+  // returning from Manage and by the rail's own "Projects" link, which
+  // always points there rather than at whatever was last open. Checked
+  // against the loaded tree first: a stale id (its client or project
+  // got deleted elsewhere, or in another tab) must fall through to the
+  // ordinary empty state instead of navigating to a 404.
+  useEffect(() => {
+    if (pathname !== '/workspace' || treeQuery.isLoading) return
+
+    const last = readLastSelection()
+    if (!last) return
+
+    if (last.type === 'project' && clients.some((client) => client.projects.some((p) => p.id === last.id))) {
+      void navigate(`/workspace/projects/${last.id}`, { replace: true })
+    } else if (last.type === 'client' && clients.some((client) => client.id === last.id)) {
+      void navigate(`/workspace/clients/${last.id}`, { replace: true })
+    }
+  }, [pathname, clients, treeQuery.isLoading, navigate])
 
   const [clientDialogOpen, setClientDialogOpen] = useState(false)
   const [editingClient, setEditingClient] = useState<ClientWithProjects | undefined>()
@@ -74,11 +209,58 @@ export function WorkspaceLayout() {
   const [deletingClient, setDeletingClient] = useState<ClientWithProjects | undefined>()
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
 
+  // A selected client or project can be deleted with the keyboard, not
+  // only via the tree's right-click menu / properties panel button —
+  // both routes open the same confirmation dialog, this just opens it.
+  // Bound to both keys: Mac keyboards send "Backspace" for the physical
+  // delete key, Windows/Linux forward-delete sends "Delete".
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return
+
+      // Don't hijack the key while the user is typing — a search term,
+      // a dialog's confirm-name field, anything editable.
+      const target = event.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return
+      }
+
+      // Don't stack a second delete dialog on top of a dialog already open.
+      if (clientDialogOpen || projectDialogOpen || deletingClient || deleteProjectOpen) return
+
+      if (selectedProjectId && projectQuery.data) {
+        event.preventDefault()
+        setDeleteProjectOpen(true)
+        return
+      }
+
+      if (selectedClientId) {
+        const client = clients.find((candidate) => candidate.id === selectedClientId)
+        if (client) {
+          event.preventDefault()
+          setDeletingClient(client)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [
+    selectedProjectId,
+    selectedClientId,
+    clients,
+    projectQuery.data,
+    clientDialogOpen,
+    projectDialogOpen,
+    deletingClient,
+    deleteProjectOpen,
+  ])
+
   // The Sheet primitive only understands physical sides, so this one
   // spot translates direction by hand — unlike the layout itself, which
   // mirrors through logical properties. Opens from the reading start
   // edge: left in English, right in Arabic.
-  const mobileSheetSide = isRtlLanguage(language) ? 'right' : 'left'
+  const mobileSheetSide = rtl ? 'right' : 'left'
 
   // What "New project" should default its client to: the client that's
   // directly selected, or — if a project is selected instead — that
@@ -107,42 +289,74 @@ export function WorkspaceLayout() {
         setClientDialogOpen(true)
       }}
       onDeleteClient={(client) => setDeletingClient(client)}
+      onEditProject={openEditProject}
+      onDeleteProject={() => setDeleteProjectOpen(true)}
     />
   )
 
   return (
     <div className="flex h-svh overflow-hidden">
-      <div className="hidden md:flex">
-        <WorkspaceRail />
-      </div>
+      {/* No top bar — the rail is the whole persistent chrome, at every
+          breakpoint. Below `lg` it also carries the tree's only access
+          point, via `onOpenTree`'s Sheet below. */}
+      <WorkspaceRail onOpenTree={() => setMobileOpen(true)} />
 
       {/* The tree panel: flush against the rail and canvas, divided by a
           border rather than floating as an inset card — matching the
-          admin sidebar's own treatment (`admin-layout.tsx`). */}
-      <aside className="hidden w-72 shrink-0 border-e border-border bg-background p-3 lg:block">
-        {tree()}
-      </aside>
+          admin sidebar's own treatment (`admin-layout.tsx`). Width is
+          user-resizable (drag handle below) rather than a fixed w-72.
+          Hidden on Manage, which replaces the tree's content area
+          entirely rather than sitting beside it (see the comment on
+          `onManage` above) — the toolbar and properties panel were
+          already gated on this; the tree itself wasn't, which is why it
+          kept showing there. */}
+      {!onManage && (
+        <>
+          <aside
+            style={{ width: treeWidth }}
+            className="hidden shrink-0 overflow-hidden border-e border-border bg-background p-3 lg:block"
+          >
+            {tree()}
+          </aside>
+
+          {/* Drag handle: a slim hit area with a 1px line at rest, matching
+              the aside's own border-e — so resizing doesn't add visual
+              weight beyond what was already there. Placed on the logical
+              end edge (not a hardcoded "right") so it stays on the border
+              between tree and canvas in both languages, same as every other
+              side in this layout. */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t('tree.resizeLabel')}
+            aria-valuenow={Math.round(treeWidth)}
+            aria-valuemin={MIN_TREE_WIDTH}
+            aria-valuemax={MAX_TREE_WIDTH}
+            tabIndex={0}
+            onPointerDown={handleResizePointerDown}
+            onKeyDown={handleResizeKeyDown}
+            className="group hidden w-0.5 shrink-0 cursor-ew-resize touch-none select-none items-center justify-center focus-visible:outline-none lg:flex"
+          >
+            <div
+              className={cn(
+                'h-full w-px bg-border transition-colors group-hover:bg-primary group-focus-visible:bg-primary',
+                isResizingTree && 'bg-primary',
+              )}
+            />
+          </div>
+        </>
+      )}
+
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side={mobileSheetSide} className="w-80 p-3">
+          <SheetHeader className="sr-only">
+            <SheetTitle>{t('openMenu')}</SheetTitle>
+          </SheetHeader>
+          {tree(() => setMobileOpen(false))}
+        </SheetContent>
+      </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3 lg:justify-end">
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="lg:hidden" aria-label={t('openMenu')}>
-                <Menu className="size-5" aria-hidden="true" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side={mobileSheetSide} className="flex w-80 gap-0 p-0">
-              <SheetHeader className="sr-only">
-                <SheetTitle>{t('openMenu')}</SheetTitle>
-              </SheetHeader>
-              <WorkspaceRail onNavigate={() => setMobileOpen(false)} />
-              <div className="min-w-0 flex-1 p-3">{tree(() => setMobileOpen(false))}</div>
-            </SheetContent>
-          </Sheet>
-
-          <LanguageSwitcher />
-        </header>
-
         <div className="flex min-h-0 flex-1">
           <main className="relative min-w-0 flex-1 overflow-y-auto">
             {!onManage && (
@@ -210,7 +424,13 @@ export function WorkspaceLayout() {
               selectedClientId === deletingClient.id ||
               (!!selectedProjectId &&
                 deletingClient.projects.some((project) => project.id === selectedProjectId))
-            if (lostSelection) void navigate('/workspace')
+            if (lostSelection) {
+              // Otherwise the bare-`/workspace` restore effect above
+              // would immediately navigate right back to what was just
+              // deleted.
+              localStorage.removeItem(LAST_SELECTION_STORAGE_KEY)
+              void navigate('/workspace')
+            }
           }}
         />
       )}
@@ -221,7 +441,10 @@ export function WorkspaceLayout() {
           projectName={displayName(projectQuery.data, language)}
           open={deleteProjectOpen}
           onOpenChange={setDeleteProjectOpen}
-          onDeleted={() => void navigate('/workspace')}
+          onDeleted={() => {
+            localStorage.removeItem(LAST_SELECTION_STORAGE_KEY)
+            void navigate('/workspace')
+          }}
         />
       )}
     </div>

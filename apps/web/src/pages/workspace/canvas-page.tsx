@@ -12,8 +12,9 @@ import { displayName } from '@/lib/bilingual'
  * a designer that doesn't exist: a fake preview is a promise the code
  * can't keep, and it makes the gap harder to see rather than easier.
  *
- * The grid is drawn with a CSS gradient rather than an image asset, so
- * it costs nothing to load and adapts to the theme's border colour.
+ * The grid is drawn with CSS gradients rather than an image asset, so
+ * it costs nothing to load: white background, light gray lines, two
+ * densities layered (fine + a bolder line every 6th cell).
  *
  * Reads whichever of `projectId` / `clientId` the current route
  * declares — both are selectable in the tree, and each gets its own
@@ -49,9 +50,14 @@ export function CanvasPage() {
     <div
       className="relative h-full w-full"
       style={{
-        backgroundImage:
-          'linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px)',
-        backgroundSize: '24px 24px',
+        backgroundColor: '#ffffff',
+        backgroundImage: [
+          'linear-gradient(to right, rgba(0,0,0,0.12) 1px, transparent 1px)',
+          'linear-gradient(to bottom, rgba(0,0,0,0.12) 1px, transparent 1px)',
+          'linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px)',
+          'linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)',
+        ].join(', '),
+        backgroundSize: '120px 120px, 120px 120px, 20px 20px, 20px 20px',
       }}
     >
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">

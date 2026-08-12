@@ -1,17 +1,29 @@
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { LayoutGrid, LogOut, Settings } from 'lucide-react'
+import { LayoutGrid, LogOut, Menu, Settings } from 'lucide-react'
 import { UserRole } from '@repo/types/auth'
 import { useAuth } from '@/lib/auth-context'
 import { Button } from '@/components/ui/button'
+import { LanguageSwitcher } from '@/components/language-switcher'
 import { cn } from '@/lib/utils'
 
 /**
  * The workspace's top-level navigation: an icon rail, not a sidebar.
  * `Manage` replaces the tree and canvas entirely rather than sitting
  * beside them, so these are destinations, not filters.
+ *
+ * Always visible, at every breakpoint — there is no separate top bar.
+ * Below `lg`, where the client/project tree panel is hidden, the rail
+ * is the tree's only way back: `onOpenTree` (when provided) renders a
+ * menu button that opens it in a Sheet.
  */
-export function WorkspaceRail({ onNavigate }: { onNavigate?: () => void }) {
+export function WorkspaceRail({
+  onNavigate,
+  onOpenTree,
+}: {
+  onNavigate?: () => void
+  onOpenTree?: () => void
+}) {
   const { t } = useTranslation('workspace')
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -40,6 +52,18 @@ export function WorkspaceRail({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <nav className="flex h-full w-20 shrink-0 flex-col items-center gap-2 border-e border-border bg-background py-3">
+      {onOpenTree && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden"
+          aria-label={t('openMenu')}
+          onClick={onOpenTree}
+        >
+          <Menu className="size-5" aria-hidden="true" />
+        </Button>
+      )}
+
       <Link
         to="/workspace"
         className={itemClass(!onManage)}
@@ -66,15 +90,18 @@ export function WorkspaceRail({ onNavigate }: { onNavigate?: () => void }) {
         </Link>
       )}
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="mt-auto"
-        aria-label={t('rail.logout')}
-        onClick={() => void handleLogout()}
-      >
-        <LogOut className="size-5" aria-hidden="true" />
-      </Button>
+      <div className="mt-auto flex flex-col items-center gap-2">
+        <LanguageSwitcher compact />
+
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={t('rail.logout')}
+          onClick={() => void handleLogout()}
+        >
+          <LogOut className="size-5" aria-hidden="true" />
+        </Button>
+      </div>
     </nav>
   )
 }

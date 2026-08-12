@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 
 // Postgres foreign_key_violation. Every lookup table's references use
 // ON DELETE RESTRICT (see the migration), so Postgres itself refuses a
@@ -16,6 +16,29 @@ export function translatePostgresError(error: unknown, message: string): never {
     error.code === '23503'
   ) {
     throw new BadRequestException(message);
+  }
+  throw error as Error;
+}
+
+// Postgres unique_violation — none of the platform lookup tables trip
+// this today (nothing pre-checks a duplicate colour code before
+// inserting), but the company lookup tables' case-insensitive unique
+// indexes (docs/company_lookups_planing.md's company-vs-company identity
+// rule) do, on every create/update/bulk-duplicate. Kept alongside
+// translatePostgresError rather than duplicated in company-lookups/
+// since both translate the same driver error shape into a readable
+// exception, just to a different HTTP status.
+export function translateUniqueViolation(
+  error: unknown,
+  message: string,
+): never {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === '23505'
+  ) {
+    throw new ConflictException(message);
   }
   throw error as Error;
 }

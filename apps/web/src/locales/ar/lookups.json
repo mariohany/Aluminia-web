@@ -176,6 +176,7 @@
     "all": "الكل",
     "platform": "المنصة",
     "ours": "بتاعتنا",
-    "columnHeader": "المصدر"
+    "columnHeader": "المصدر",
+    "copyToOurs": "انسخ لبياناتنا"
   }
 }

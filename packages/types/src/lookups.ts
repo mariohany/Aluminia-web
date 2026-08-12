@@ -240,11 +240,25 @@ const glassCombinationBaseSchema = z.object({
 // the full array. Applying `.refine()` to the DTO (not just the editor's
 // client-side check) means the backend rejects this shape too, since
 // AdminLookupsController's DTOs wrap these same schemas.
-const startsAndEndsWithSheet = (items: GlassCombinationItemInput[]) =>
+//
+// Structural (not nominal) shape — only the fields these three
+// predicates actually inspect. `GlassCombinationItemInput` satisfies
+// this already; `company-lookups.ts`'s combination-item schema (whose
+// glass/colour references are `ScopedRef` strings, not plain ids) does
+// too, which is what lets Phase 2 reuse these same three rules —
+// alternation, sheet-bounding, gap-thickness-by-type — instead of
+// redefining them and risking the two schemas drifting apart.
+export interface CombinationItemShapeInput {
+  kind: CombinationItemKind
+  gapType?: GlassGapType
+  gapThickness?: number
+}
+
+export const startsAndEndsWithSheet = (items: CombinationItemShapeInput[]) =>
   items[0]?.kind === CombinationItemKind.SHEET &&
   items[items.length - 1]?.kind === CombinationItemKind.SHEET
 
-const boundedBySheetIssue = {
+export const boundedBySheetIssue = {
   message: 'A combination must start and end with a glass sheet, not a gap.',
   path: ['items'],
 }
@@ -254,10 +268,10 @@ const boundedBySheetIssue = {
 // can express on its own, so it's checked once over the full array here.
 // Combined with startsAndEndsWithSheet this forces strict alternation:
 // sheet, gap, sheet, gap, ..., sheet.
-const alternatesSheetAndGap = (items: GlassCombinationItemInput[]) =>
+export const alternatesSheetAndGap = (items: CombinationItemShapeInput[]) =>
   items.every((item, i) => i === 0 || item.kind !== items[i - 1]?.kind)
 
-const alternationIssue = {
+export const alternationIssue = {
   message: 'A combination must alternate sheet and gap — no two sheets or two gaps next to each other.',
   path: ['items'],
 }
@@ -267,16 +281,16 @@ const alternationIssue = {
 // of totalThickness on its own, without the summing logic needing to know
 // about gap type at all. A spacer air gap, conversely, must have a real
 // thickness — 0 there would silently zero out the build-up.
-const gapThicknessMatchesType = (items: GlassCombinationItemInput[]) =>
+export const gapThicknessMatchesType = (items: CombinationItemShapeInput[]) =>
   items.every((item) =>
     item.kind !== CombinationItemKind.GAP
       ? true
       : item.gapType === GlassGapType.SPACER
-        ? item.gapThickness > 0
-        : item.gapThickness === 0,
+        ? (item.gapThickness ?? 0) > 0
+        : (item.gapThickness ?? 0) === 0,
   )
 
-const gapThicknessIssue = {
+export const gapThicknessIssue = {
   message: 'A spacer gap needs a thickness greater than 0; a laminated interlayer has no thickness field and must be 0.',
   path: ['items'],
 }

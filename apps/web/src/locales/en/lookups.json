@@ -176,6 +176,7 @@
     "all": "All",
     "platform": "Platform",
     "ours": "Ours",
-    "columnHeader": "Origin"
+    "columnHeader": "Origin",
+    "copyToOurs": "Copy to our data"
   }
 }

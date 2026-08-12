@@ -101,6 +101,15 @@ describe('TenantProvisioning (e2e)', () => {
     // whether provisioning and `migrate:tenants` still agree.
     expect(tables.map((t) => t.table_name)).toEqual([
       'clients',
+      'company_color',
+      'company_glass',
+      'company_glass_combination',
+      'company_glass_combination_item',
+      'company_paint_brand',
+      'company_painting_price',
+      'company_system_brand',
+      'company_system_catalog',
+      'company_system_profile',
       'projects',
       'tenant_info',
       'tenant_migrations',
@@ -112,7 +121,7 @@ describe('TenantProvisioning (e2e)', () => {
     // failure mode that `tenant-data-source.ts`'s search_path fixes.
     const leaked: Array<{ table_name: string }> = await dataSource.query(
       `SELECT table_name FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name IN ('clients', 'projects')`,
+        WHERE table_schema = 'public' AND table_name IN ('clients', 'projects', 'company_color', 'company_glass')`,
     );
     expect(leaked).toEqual([]);
 

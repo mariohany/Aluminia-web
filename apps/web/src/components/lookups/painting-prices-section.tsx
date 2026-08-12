@@ -1,21 +1,25 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Copy, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   createPaintBrandSchema,
   updatePaintBrandSchema,
-  createPaintingPriceSchema,
-  updatePaintingPriceSchema,
   type CreatePaintBrandInput,
   type UpdatePaintBrandInput,
-  type CreatePaintingPriceInput,
-  type UpdatePaintingPriceInput,
-  type PaintBrandSummary,
-  type PaintingPriceSummary,
 } from '@repo/types/lookups'
+import {
+  LookupScope,
+  createCompanyPaintingPriceSchema,
+  formatScopedRef,
+  parseScopedRef,
+  updateCompanyPaintingPriceSchema,
+  type CreateCompanyPaintingPriceInput,
+  type ScopedRef,
+  type UpdateCompanyPaintingPriceInput,
+} from '@repo/types/company-lookups'
 import { apiErrorMessage } from '@/lib/api-client'
 import {
   usePaintBrandsQuery,
@@ -27,6 +31,21 @@ import {
   useUpdatePaintingPriceMutation,
   useDeletePaintingPriceMutation,
 } from '@/lib/lookups-queries'
+import {
+  useCreateCompanyPaintBrandMutation,
+  useUpdateCompanyPaintBrandMutation,
+  useDeleteCompanyPaintBrandMutation,
+  useCreateCompanyPaintingPriceMutation,
+  useUpdateCompanyPaintingPriceMutation,
+  useDeleteCompanyPaintingPriceMutation,
+} from '@/lib/company-lookups-queries'
+import {
+  platformBrandToMerged,
+  platformPriceToMerged,
+  type MergedPaintBrandSummary,
+  type MergedPaintingPriceSummary,
+} from '@/lib/lookup-merge'
+import type { LookupRowScope } from './lookup-table-section'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -57,54 +76,88 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 
+function usePlatformPaintBrandsQuery(): {
+  data: MergedPaintBrandSummary[] | undefined
+  isLoading: boolean
+  isError: boolean
+} {
+  const { data, isLoading, isError } = usePaintBrandsQuery()
+  const rows = useMemo(() => data?.map(platformBrandToMerged), [data])
+  return { data: rows, isLoading, isError }
+}
+function usePlatformPaintingPricesQuery(): { data: MergedPaintingPriceSummary[] | undefined } {
+  const { data } = usePaintingPricesQuery()
+  const rows = useMemo(() => data?.map(platformPriceToMerged), [data])
+  return { data: rows }
+}
+
 // Merged brand + price screen, side by side: a brand table on the left,
 // a price table for the selected brand on the right (master-detail,
 // rather than a stacked/accordion layout) — clicking a brand "groups"
 // the right-hand table down to just that brand's prices. Doesn't reuse
-// SimpleLookupSection — that component is shared by four other tabs and
-// is built around a single flat table with bulk actions; this is a
-// two-table master-detail view instead. Bulk select/duplicate/delete
-// (available on the old flat price table) is deliberately dropped —
-// single-row create/edit/delete for both brands and prices is fully
-// preserved.
+// LookupTableSection — that component is built around a single flat
+// table with bulk actions; this is a two-table master-detail view
+// instead. Bulk select/duplicate/delete is deliberately dropped for both
+// brands and prices, in both consoles.
 //
-// `readOnly` is the workspace Data section's Phase 1 mode — see the
-// matching comment on ColorGridSection. No scope-aware version exists
-// yet since there's no company-owned paint brand/price data to show.
+// A price's parent brand is a ScopedRef internally (same reasoning as
+// GlassCombinationSection) — the admin console's default list hooks wrap
+// its plain platform-only queries through the same platformBrandToMerged/
+// platformPriceToMerged transforms lookup-merge.ts uses for the
+// workspace, so there's one internal shape and one `toAdminPriceInput`
+// translation right at the mutation boundary, not two parallel
+// implementations.
 //
-// `useBrandsList`/`usePricesList` default to the admin-only hooks
-// (/admin/lookups/*, SUPER_ADMIN-gated) — same override rationale as
-// ColorGridSection's `useList`.
+// `scoped` switches every mutation to the company-lookups endpoints —
+// the workspace Data page is the only caller that sets it. `canEdit`/
+// `rowScope` apply to both the brand and price tables (both merged rows
+// carry `scope`); `copyToScope` covers both "copy a platform brand" and
+// "copy a platform price" (which may keep referencing a platform brand —
+// cross-scope references are allowed).
 export function PaintingPricesSection({
-  readOnly,
-  useBrandsList = usePaintBrandsQuery,
-  usePricesList = usePaintingPricesQuery,
+  useBrandsList = usePlatformPaintBrandsQuery,
+  usePricesList = usePlatformPaintingPricesQuery,
+  scoped = false,
+  rowScope,
+  canEdit,
+  copyToScope,
 }: {
-  readOnly?: boolean
-  useBrandsList?: () => { data: PaintBrandSummary[] | undefined; isLoading: boolean; isError: boolean }
-  usePricesList?: () => { data: PaintingPriceSummary[] | undefined }
+  useBrandsList?: () => { data: MergedPaintBrandSummary[] | undefined; isLoading: boolean; isError: boolean }
+  usePricesList?: () => { data: MergedPaintingPriceSummary[] | undefined }
+  scoped?: boolean
+  rowScope?: (row: { scope: LookupRowScope }) => LookupRowScope
+  canEdit?: (row: { scope: LookupRowScope }) => boolean
+  copyToScope?: { label: string }
 } = {}) {
   const { t: tCommon } = useTranslation('common')
   const { t } = useTranslation('lookups')
   const errorLabel = t('messages.error')
+  const copySuffix = t('bulk.copySuffix')
+  const rowIsEditable = (row: { scope: LookupRowScope }) => (canEdit ? canEdit(row) : true)
 
   const { data: brands, isLoading: brandsLoading, isError: brandsError } = useBrandsList()
   const { data: prices } = usePricesList()
 
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null)
   const [createBrandOpen, setCreateBrandOpen] = useState(false)
-  const [editBrand, setEditBrand] = useState<PaintBrandSummary | null>(null)
-  const [deleteBrand, setDeleteBrand] = useState<PaintBrandSummary | null>(null)
+  const [editBrand, setEditBrand] = useState<MergedPaintBrandSummary | null>(null)
+  const [deleteBrand, setDeleteBrand] = useState<MergedPaintBrandSummary | null>(null)
   const [createPriceOpen, setCreatePriceOpen] = useState(false)
-  const [editPrice, setEditPrice] = useState<PaintingPriceSummary | null>(null)
-  const [deletePrice, setDeletePrice] = useState<PaintingPriceSummary | null>(null)
+  const [editPrice, setEditPrice] = useState<MergedPaintingPriceSummary | null>(null)
+  const [deletePrice, setDeletePrice] = useState<MergedPaintingPriceSummary | null>(null)
 
-  const createBrandMutation = useCreatePaintBrandMutation()
-  const updateBrandMutation = useUpdatePaintBrandMutation(editBrand?.id ?? '')
-  const deleteBrandMutation = useDeletePaintBrandMutation(deleteBrand?.id ?? '')
-  const createPriceMutation = useCreatePaintingPriceMutation()
-  const updatePriceMutation = useUpdatePaintingPriceMutation(editPrice?.id ?? '')
-  const deletePriceMutation = useDeletePaintingPriceMutation(deletePrice?.id ?? '')
+  const adminCreateBrand = useCreatePaintBrandMutation()
+  const companyCreateBrand = useCreateCompanyPaintBrandMutation()
+  const adminUpdateBrand = useUpdatePaintBrandMutation(editBrand?.id ?? '')
+  const companyUpdateBrand = useUpdateCompanyPaintBrandMutation(editBrand?.id ?? '')
+  const adminDeleteBrand = useDeletePaintBrandMutation(deleteBrand?.id ?? '')
+  const companyDeleteBrand = useDeleteCompanyPaintBrandMutation(deleteBrand?.id ?? '')
+  const adminCreatePrice = useCreatePaintingPriceMutation()
+  const companyCreatePrice = useCreateCompanyPaintingPriceMutation()
+  const adminUpdatePrice = useUpdatePaintingPriceMutation(editPrice?.id ?? '')
+  const companyUpdatePrice = useUpdateCompanyPaintingPriceMutation(editPrice?.id ?? '')
+  const adminDeletePrice = useDeletePaintingPriceMutation(deletePrice?.id ?? '')
+  const companyDeletePrice = useDeleteCompanyPaintingPriceMutation(deletePrice?.id ?? '')
 
   const createBrandForm = useForm<CreatePaintBrandInput>({
     resolver: zodResolver(createPaintBrandSchema),
@@ -113,25 +166,31 @@ export function PaintingPricesSection({
   const editBrandForm = useForm<UpdatePaintBrandInput>({
     resolver: zodResolver(updatePaintBrandSchema),
   })
-  const createPriceForm = useForm<CreatePaintingPriceInput>({
-    resolver: zodResolver(createPaintingPriceSchema),
-    defaultValues: { brandId: '', type: '', price: 0 },
+  const createPriceForm = useForm<CreateCompanyPaintingPriceInput>({
+    resolver: zodResolver(createCompanyPaintingPriceSchema),
+    defaultValues: { brand: '' as ScopedRef, type: '', price: 0 },
   })
-  const editPriceForm = useForm<UpdatePaintingPriceInput>({
-    resolver: zodResolver(updatePaintingPriceSchema),
+  const editPriceForm = useForm<UpdateCompanyPaintingPriceInput>({
+    resolver: zodResolver(updateCompanyPaintingPriceSchema),
   })
 
-  const brandOptions = (brands ?? []).map((b) => ({ value: b.id, label: b.name }))
+  const brandOptions = (brands ?? []).map((b) => ({
+    value: formatScopedRef(b.scope, b.id),
+    label: b.scope === LookupScope.COMPANY ? `${b.name} · ${t('scope.ours')}` : b.name,
+  }))
   // Falls back to the first brand whenever nothing is selected yet, or the
   // previously-selected brand no longer exists (e.g. it was just deleted)
   // — avoids a stale id in state without needing a useEffect to reconcile it.
   const selectedBrand =
     (brands ?? []).find((b) => b.id === selectedBrandId) ?? (brands ?? [])[0] ?? null
-  const selectedBrandPrices = (prices ?? []).filter((p) => p.brandId === selectedBrand?.id)
+  const selectedBrandRef = selectedBrand ? formatScopedRef(selectedBrand.scope, selectedBrand.id) : null
+  const selectedBrandPrices = (prices ?? []).filter((p) => p.brand === selectedBrandRef)
 
   const onCreateBrand = async (values: CreatePaintBrandInput) => {
     try {
-      const brand = await createBrandMutation.mutateAsync(values)
+      const brand = scoped
+        ? await companyCreateBrand.mutateAsync(values)
+        : await adminCreateBrand.mutateAsync(values)
       toast.success(t('messages.createSuccess'))
       createBrandForm.reset({ name: '' })
       setCreateBrandOpen(false)
@@ -143,7 +202,8 @@ export function PaintingPricesSection({
 
   const onEditBrand = async (values: UpdatePaintBrandInput) => {
     try {
-      await updateBrandMutation.mutateAsync(values)
+      if (scoped) await companyUpdateBrand.mutateAsync(values)
+      else await adminUpdateBrand.mutateAsync(values)
       toast.success(t('messages.updateSuccess'))
       setEditBrand(null)
     } catch (err) {
@@ -153,7 +213,8 @@ export function PaintingPricesSection({
 
   const onDeleteBrand = async () => {
     try {
-      await deleteBrandMutation.mutateAsync()
+      if (scoped) await companyDeleteBrand.mutateAsync()
+      else await adminDeleteBrand.mutateAsync()
       toast.success(t('messages.deleteSuccess'))
       setDeleteBrand(null)
     } catch (err) {
@@ -161,9 +222,13 @@ export function PaintingPricesSection({
     }
   }
 
-  const onCreatePrice = async (values: CreatePaintingPriceInput) => {
+  const onCreatePrice = async (values: CreateCompanyPaintingPriceInput) => {
     try {
-      await createPriceMutation.mutateAsync(values)
+      if (scoped) {
+        await companyCreatePrice.mutateAsync(values)
+      } else {
+        await adminCreatePrice.mutateAsync({ brandId: parseScopedRef(values.brand).id, type: values.type, price: values.price })
+      }
       toast.success(t('messages.createSuccess'))
       setCreatePriceOpen(false)
     } catch (err) {
@@ -171,9 +236,17 @@ export function PaintingPricesSection({
     }
   }
 
-  const onEditPrice = async (values: UpdatePaintingPriceInput) => {
+  const onEditPrice = async (values: UpdateCompanyPaintingPriceInput) => {
     try {
-      await updatePriceMutation.mutateAsync(values)
+      if (scoped) {
+        await companyUpdatePrice.mutateAsync(values)
+      } else {
+        await adminUpdatePrice.mutateAsync({
+          brandId: values.brand ? parseScopedRef(values.brand).id : undefined,
+          type: values.type,
+          price: values.price,
+        })
+      }
       toast.success(t('messages.updateSuccess'))
       setEditPrice(null)
     } catch (err) {
@@ -183,12 +256,52 @@ export function PaintingPricesSection({
 
   const onDeletePrice = async () => {
     try {
-      await deletePriceMutation.mutateAsync()
+      if (scoped) await companyDeletePrice.mutateAsync()
+      else await adminDeletePrice.mutateAsync()
       toast.success(t('messages.deleteSuccess'))
       setDeletePrice(null)
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
     }
+  }
+
+  const onDuplicateBrand = async (brand: MergedPaintBrandSummary) => {
+    try {
+      if (scoped) await companyCreateBrand.mutateAsync({ name: `${brand.name} ${copySuffix}` })
+      else await adminCreateBrand.mutateAsync({ name: `${brand.name} ${copySuffix}` })
+      toast.success(t('messages.createSuccess'))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, errorLabel))
+    }
+  }
+
+  const onDuplicatePrice = async (price: MergedPaintingPriceSummary) => {
+    try {
+      if (scoped) {
+        await companyCreatePrice.mutateAsync({ brand: price.brand, type: `${price.type} ${copySuffix}`, price: price.price })
+      } else {
+        await adminCreatePrice.mutateAsync({
+          brandId: parseScopedRef(price.brand).id,
+          type: `${price.type} ${copySuffix}`,
+          price: price.price,
+        })
+      }
+      toast.success(t('messages.createSuccess'))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, errorLabel))
+    }
+  }
+
+  const onCopyBrand = (brand: MergedPaintBrandSummary) => {
+    if (!copyToScope) return
+    createBrandForm.reset({ name: `${brand.name} ${copySuffix}` })
+    setCreateBrandOpen(true)
+  }
+  const onCopyPrice = (price: MergedPaintingPriceSummary) => {
+    if (!copyToScope) return
+    if (!selectedBrand) return
+    createPriceForm.reset({ brand: price.brand, type: `${price.type} ${copySuffix}`, price: price.price })
+    setCreatePriceOpen(true)
   }
 
   return (
@@ -203,7 +316,6 @@ export function PaintingPricesSection({
             <h3 className="text-sm font-medium text-muted-foreground">
               {t('tables.paintBrands')}
             </h3>
-            {!readOnly && (
             <Dialog
               open={createBrandOpen}
               onOpenChange={(next) => {
@@ -248,7 +360,6 @@ export function PaintingPricesSection({
                 </form>
               </DialogContent>
             </Dialog>
-            )}
           </div>
 
           {brandsError && <p className="text-sm text-destructive">{errorLabel}</p>}
@@ -260,11 +371,14 @@ export function PaintingPricesSection({
               <TableHeader className="sticky top-0 z-10 bg-background">
                 <TableRow>
                   <TableHead>{t('fields.name')}</TableHead>
-                  {!readOnly && <TableHead className="w-16" />}
+                  {rowScope && <TableHead className="w-20">{t('scope.columnHeader')}</TableHead>}
+                  <TableHead className="w-28" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(brands ?? []).map((brand) => (
+                {(brands ?? []).map((brand) => {
+                  const editable = rowIsEditable(brand)
+                  return (
                   <TableRow
                     key={brand.id}
                     data-state={selectedBrand?.id === brand.id ? 'selected' : undefined}
@@ -272,35 +386,78 @@ export function PaintingPricesSection({
                     onClick={() => setSelectedBrandId(brand.id)}
                   >
                     <TableCell>{brand.name}</TableCell>
-                    {!readOnly && (
-                      <TableCell className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setEditBrand(brand)
-                            editBrandForm.reset({ name: brand.name })
-                          }}
+                    {rowScope && (
+                      <TableCell>
+                        <span
+                          className={
+                            rowScope(brand) === 'company'
+                              ? 'rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary'
+                              : 'rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
+                          }
                         >
-                          <Pencil className="size-3.5" aria-hidden="true" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive hover:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDeleteBrand(brand)
-                          }}
-                        >
-                          <Trash2 className="size-3.5" aria-hidden="true" />
-                        </Button>
+                          {rowScope(brand) === 'company' ? t('scope.ours') : t('scope.platform')}
+                        </span>
                       </TableCell>
                     )}
+                    <TableCell className="flex justify-end gap-1">
+                      {editable ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditBrand(brand)
+                              editBrandForm.reset({ name: brand.name })
+                            }}
+                          >
+                            <Pencil className="size-3.5" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            title={t('bulk.duplicate')}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void onDuplicateBrand(brand)
+                            }}
+                          >
+                            <Copy className="size-3.5" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-destructive hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setDeleteBrand(brand)
+                            }}
+                          >
+                            <Trash2 className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        </>
+                      ) : (
+                        copyToScope && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onCopyBrand(brand)
+                            }}
+                            title={copyToScope.label}
+                          >
+                            <Copy className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        )
+                      )}
+                    </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           )}
@@ -311,21 +468,19 @@ export function PaintingPricesSection({
             <h3 className="text-sm font-medium text-muted-foreground">
               {selectedBrand ? selectedBrand.name : t('tables.paintingPrices')}
             </h3>
-            {!readOnly && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!selectedBrand}
-                onClick={() => {
-                  if (!selectedBrand) return
-                  createPriceForm.reset({ brandId: selectedBrand.id, type: '', price: 0 })
-                  setCreatePriceOpen(true)
-                }}
-              >
-                <Plus className="size-4" aria-hidden="true" />
-                {t('createButtons.paintingPrice')}
-              </Button>
-            )}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!selectedBrand}
+              onClick={() => {
+                if (!selectedBrand) return
+                createPriceForm.reset({ brand: formatScopedRef(selectedBrand.scope, selectedBrand.id), type: '', price: 0 })
+                setCreatePriceOpen(true)
+              }}
+            >
+              <Plus className="size-4" aria-hidden="true" />
+              {t('createButtons.paintingPrice')}
+            </Button>
           </div>
 
           {!selectedBrand ? (
@@ -338,43 +493,83 @@ export function PaintingPricesSection({
                 <TableRow>
                   <TableHead>{t('fields.type')}</TableHead>
                   <TableHead>{t('fields.pricePerKg')}</TableHead>
-                  {!readOnly && <TableHead className="w-20" />}
+                  {rowScope && <TableHead className="w-20">{t('scope.columnHeader')}</TableHead>}
+                  <TableHead className="w-28" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {selectedBrandPrices.map((price) => (
+                {selectedBrandPrices.map((price) => {
+                  const editable = rowIsEditable(price)
+                  return (
                   <TableRow key={price.id}>
                     <TableCell>{price.type}</TableCell>
                     <TableCell>{price.price.toFixed(2)}</TableCell>
-                    {!readOnly && (
-                      <TableCell className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          onClick={() => {
-                            setEditPrice(price)
-                            editPriceForm.reset({
-                              brandId: price.brandId,
-                              type: price.type,
-                              price: price.price,
-                            })
-                          }}
+                    {rowScope && (
+                      <TableCell>
+                        <span
+                          className={
+                            rowScope(price) === 'company'
+                              ? 'rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary'
+                              : 'rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
+                          }
                         >
-                          <Pencil className="size-3.5" aria-hidden="true" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive hover:text-destructive"
-                          onClick={() => setDeletePrice(price)}
-                        >
-                          <Trash2 className="size-3.5" aria-hidden="true" />
-                        </Button>
+                          {rowScope(price) === 'company' ? t('scope.ours') : t('scope.platform')}
+                        </span>
                       </TableCell>
                     )}
+                    <TableCell className="flex justify-end gap-1">
+                      {editable ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            onClick={() => {
+                              setEditPrice(price)
+                              editPriceForm.reset({
+                                brand: price.brand,
+                                type: price.type,
+                                price: price.price,
+                              })
+                            }}
+                          >
+                            <Pencil className="size-3.5" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            title={t('bulk.duplicate')}
+                            onClick={() => void onDuplicatePrice(price)}
+                          >
+                            <Copy className="size-3.5" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-destructive hover:text-destructive"
+                            onClick={() => setDeletePrice(price)}
+                          >
+                            <Trash2 className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        </>
+                      ) : (
+                        copyToScope && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            onClick={() => onCopyPrice(price)}
+                            title={copyToScope.label}
+                          >
+                            <Copy className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        )
+                      )}
+                    </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           )}
@@ -420,7 +615,10 @@ export function PaintingPricesSection({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
-            <AlertDialogAction disabled={deleteBrandMutation.isPending} onClick={() => void onDeleteBrand()}>
+            <AlertDialogAction
+              disabled={scoped ? companyDeleteBrand.isPending : adminDeleteBrand.isPending}
+              onClick={() => void onDeleteBrand()}
+            >
               {tCommon('actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -437,6 +635,27 @@ export function PaintingPricesSection({
                   : ''}
               </DialogTitle>
             </DialogHeader>
+            <div>
+              <Label htmlFor="create-price-brand">{t('fields.brand')}</Label>
+              <Controller
+                name="brand"
+                control={createPriceForm.control}
+                render={({ field }) => (
+                  <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                    <SelectTrigger id="create-price-brand" className="mt-1.5 w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {brandOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
             <div>
               <Label htmlFor="create-price-type">{t('fields.type')}</Label>
               <Input
@@ -486,7 +705,7 @@ export function PaintingPricesSection({
             <div>
               <Label htmlFor="edit-price-brand">{t('fields.brand')}</Label>
               <Controller
-                name="brandId"
+                name="brand"
                 control={editPriceForm.control}
                 render={({ field }) => (
                   <Select value={field.value ?? ''} onValueChange={field.onChange}>
@@ -557,7 +776,10 @@ export function PaintingPricesSection({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
-            <AlertDialogAction disabled={deletePriceMutation.isPending} onClick={() => void onDeletePrice()}>
+            <AlertDialogAction
+              disabled={scoped ? companyDeletePrice.isPending : adminDeletePrice.isPending}
+              onClick={() => void onDeletePrice()}
+            >
               {tCommon('actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>

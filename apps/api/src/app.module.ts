@@ -15,6 +15,7 @@ import { UsersModule } from './modules/users/users.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { LogsModule } from './modules/admin-logs/logs.module';
 import { LookupsModule } from './modules/lookups/lookups.module';
+import { CompanyLookupsModule } from './modules/company-lookups/company-lookups.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { CompanyModule } from './modules/company/company.module';
@@ -36,6 +37,7 @@ import { LeadsModule } from './modules/leads/leads.module';
     DashboardModule,
     LogsModule,
     LookupsModule,
+    CompanyLookupsModule,
     ClientsModule,
     ProjectsModule,
     CompanyModule,

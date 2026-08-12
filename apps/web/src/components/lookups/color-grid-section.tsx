@@ -8,6 +8,7 @@ import { Copy, Plus, Trash2, Upload } from 'lucide-react'
 import {
   createColorSchema,
   updateColorSchema,
+  type BulkDeleteResult,
   type ColorImportResult,
   type ColorSummary,
   type CreateColorInput,
@@ -22,6 +23,7 @@ import {
   useImportColorsMutation,
   useUpdateColorMutation,
 } from '@/lib/lookups-queries'
+import type { LookupRowScope } from './lookup-table-section'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -47,47 +49,76 @@ import {
 
 const CREATE_DEFAULTS: CreateColorInput = { code: '', hex: '#' }
 
+interface MutationLike<TInput, TOutput> {
+  mutateAsync: (input: TInput) => Promise<TOutput>
+  isPending: boolean
+}
+
+// `scope` is optional here (rather than pulled from a merged-row type)
+// so this component can stay generic over both consoles' plain row
+// shapes — admin's ColorSummary rows carry no `scope` at all, the
+// workspace's merged rows always do. `rowIsEditable` and the scope
+// badge both tolerate its absence by treating a scope-less row as
+// unconditionally editable / unbadged, matching today's admin behaviour.
+type ColorRow = ColorSummary & { scope?: LookupRowScope }
+
 // Colours read as a swatch wall, not a data table — the point of a RAL
 // code is what it looks like, so the hex value gets shown as a colour,
 // not as a string in a column. Same CRUD + bulk-select shape as
 // LookupTableSection, just a different layout for the list.
 //
-// `readOnly` is the workspace Data section's Phase 1 mode: import,
-// create, bulk actions, and every per-swatch action (edit, delete,
-// select) disappear, leaving a plain swatch wall. Phase 2 will need a
-// scope-aware version of this component the way LookupTableSection
-// already has one — not built yet, since there's no company-owned
-// colour data to show.
-//
-// `useList` defaults to the admin-only `useColorsQuery` (hits
-// /admin/lookups/colors, SUPER_ADMIN-gated) — the workspace Data page
-// overrides it with a slice-sourced read instead, since a company user
-// would otherwise 403 against the admin endpoint just by opening the tab.
+// Every mutation-shaped prop defaults to the admin-only hook/fetcher
+// (hits /admin/lookups/colors, SUPER_ADMIN-gated) so the four admin
+// call sites need no changes; the workspace Data page overrides all of
+// them with the company-scoped equivalents. `canEdit`/`rowScope`/
+// `copyToScope` mirror LookupTableSection's own props — see that
+// file's comments for the shared reasoning. `showImport` is separate
+// from edit-ability: company data has no Excel import this phase
+// (docs/company_lookups_planing.md, "Open questions"), so the workspace
+// page turns it off even though colours ARE otherwise editable there.
 export function ColorGridSection({
-  readOnly,
   useList = useColorsQuery,
+  useCreate = useCreateColorMutation,
+  useUpdate = useUpdateColorMutation,
+  useDelete = useDeleteColorMutation,
+  bulkDelete = lookupsApi.bulkDeleteColors,
+  bulkDuplicate = lookupsApi.bulkDuplicateColors,
+  showImport = true,
+  rowScope,
+  canEdit,
+  copyToScope,
 }: {
-  readOnly?: boolean
-  useList?: () => { data: ColorSummary[] | undefined; isLoading: boolean; isError: boolean }
+  useList?: () => { data: ColorRow[] | undefined; isLoading: boolean; isError: boolean }
+  useCreate?: () => MutationLike<CreateColorInput, ColorSummary>
+  useUpdate?: (id: string) => MutationLike<UpdateColorInput, ColorSummary>
+  useDelete?: (id: string) => MutationLike<void, void>
+  bulkDelete?: (ids: string[]) => Promise<BulkDeleteResult>
+  bulkDuplicate?: (items: CreateColorInput[]) => Promise<ColorSummary[]>
+  showImport?: boolean
+  rowScope?: (row: ColorRow) => LookupRowScope
+  canEdit?: (row: ColorRow) => boolean
+  copyToScope?: { label: string; toDefaults: (row: ColorRow) => CreateColorInput }
 } = {}) {
   const { t } = useTranslation('lookups')
   const { t: tCommon } = useTranslation('common')
   const queryClient = useQueryClient()
   const { data, isLoading, isError } = useList()
   const rows = data ?? []
+  const rowIsEditable = (row: ColorRow) => (canEdit ? canEdit(row) : true)
+  const editableRows = rows.filter(rowIsEditable)
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [editTarget, setEditTarget] = useState<ColorSummary | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<ColorSummary | null>(null)
+  const [editTarget, setEditTarget] = useState<ColorRow | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ColorRow | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false)
   const [importResult, setImportResult] = useState<ColorImportResult | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
 
-  const createMutation = useCreateColorMutation()
-  const updateMutation = useUpdateColorMutation(editTarget?.id ?? '')
-  const deleteMutation = useDeleteColorMutation(deleteTarget?.id ?? '')
+  const createMutation = useCreate()
+  const updateMutation = useUpdate(editTarget?.id ?? '')
+  const deleteMutation = useDelete(deleteTarget?.id ?? '')
   const importMutation = useImportColorsMutation()
 
   const createForm = useForm<CreateColorInput>({
@@ -96,9 +127,9 @@ export function ColorGridSection({
   })
   const editForm = useForm<UpdateColorInput>({ resolver: zodResolver(updateColorSchema) })
 
-  const allSelected = rows.length > 0 && rows.every((row) => selected.has(row.id))
+  const allSelected = editableRows.length > 0 && editableRows.every((row) => selected.has(row.id))
   const someSelected = selected.size > 0
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((row) => row.id)))
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(editableRows.map((row) => row.id)))
   const toggleOne = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev)
@@ -143,8 +174,9 @@ export function ColorGridSection({
     setBulkDeleteConfirmOpen(false)
     setBulkBusy(true)
     try {
-      const { deletedIds, blockedIds } = await lookupsApi.bulkDeleteColors(ids)
+      const { deletedIds, blockedIds } = await bulkDelete(ids)
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
       if (blockedIds.length > 0) {
         toast.error(
           t('messages.bulkDeletePartial', {
@@ -167,10 +199,11 @@ export function ColorGridSection({
     const targets = rows.filter((row) => selected.has(row.id))
     setBulkBusy(true)
     try {
-      const created = await lookupsApi.bulkDuplicateColors(
+      const created = await bulkDuplicate(
         targets.map((row) => ({ code: `${row.code} ${t('bulk.copySuffix')}`, hex: row.hex })),
       )
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
       toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
     } catch (err) {
       toast.error(apiErrorMessage(err, t('messages.error')))
@@ -193,38 +226,55 @@ export function ColorGridSection({
     }
   }
 
+  const onCopyToScope = (row: ColorRow) => {
+    if (!copyToScope) return
+    createForm.reset(copyToScope.toDefaults(row))
+    setCreateOpen(true)
+  }
+
+  const onDuplicateRow = async (row: ColorRow) => {
+    try {
+      const created = await bulkDuplicate([{ code: `${row.code} ${t('bulk.copySuffix')}`, hex: row.hex }])
+      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('messages.error')))
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex shrink-0 items-center justify-between gap-3">
         <h2 className="font-heading text-base font-semibold text-foreground">{t('tables.colors')}</h2>
         <div className="flex items-center gap-2">
-          {!readOnly && rows.length > 0 && (
+          {editableRows.length > 0 && (
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
               {t('bulk.selectAll')}
             </label>
           )}
-          {!readOnly && (
+          {showImport && (
             <>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-            className="hidden"
-            onChange={(e) => void onImportFileSelected(e)}
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={importMutation.isPending}
-            title={t('colorImport.description')}
-            onClick={() => importInputRef.current?.click()}
-          >
-            <Upload className="size-4" aria-hidden="true" />
-            {importMutation.isPending
-              ? t('colorImport.importing')
-              : t('createButtons.colorImport')}
-          </Button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                className="hidden"
+                onChange={(e) => void onImportFileSelected(e)}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={importMutation.isPending}
+                title={t('colorImport.description')}
+                onClick={() => importInputRef.current?.click()}
+              >
+                <Upload className="size-4" aria-hidden="true" />
+                {importMutation.isPending ? t('colorImport.importing') : t('createButtons.colorImport')}
+              </Button>
+            </>
+          )}
           <Dialog
             open={createOpen}
             onOpenChange={(next) => {
@@ -252,12 +302,10 @@ export function ColorGridSection({
               </form>
             </DialogContent>
           </Dialog>
-            </>
-          )}
         </div>
       </div>
 
-      {!readOnly && someSelected && (
+      {someSelected && (
         <div className="flex shrink-0 items-center justify-between gap-3 rounded-md bg-muted/60 px-3 py-0.5">
           <span className="text-sm font-medium text-foreground">
             {t('bulk.selectedCount', { count: selected.size })}
@@ -291,45 +339,81 @@ export function ColorGridSection({
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border p-4">
           <div className="grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-4">
-            {rows.map((color) =>
-              readOnly ? (
+            {rows.map((color) => {
+              const editable = rowIsEditable(color)
+              const scope = rowScope?.(color)
+              return (
                 <div key={color.id} className="flex flex-col items-center gap-1.5">
-                  <div
-                    className="aspect-square w-full rounded-lg border border-border shadow-sm"
-                    style={{ backgroundColor: color.hex }}
-                    aria-label={color.code}
-                  />
+                  <div className="relative w-full">
+                    <button
+                      type="button"
+                      className={
+                        editable
+                          ? 'aspect-square w-full rounded-lg border border-border shadow-sm transition-transform hover:scale-105'
+                          : 'aspect-square w-full rounded-lg border border-border shadow-sm'
+                      }
+                      style={{ backgroundColor: color.hex }}
+                      onClick={
+                        editable
+                          ? () => {
+                              setEditTarget(color)
+                              editForm.reset({ code: color.code, hex: color.hex })
+                            }
+                          : undefined
+                      }
+                      aria-label={color.code}
+                    />
+                    {editable && (
+                      <span className="absolute start-1 top-1 flex size-5 items-center justify-center rounded bg-background/80">
+                        <Checkbox
+                          checked={selected.has(color.id)}
+                          onCheckedChange={() => toggleOne(color.id)}
+                        />
+                      </span>
+                    )}
+                    {editable ? (
+                      <span className="absolute end-1 top-1 flex gap-0.5">
+                        <button
+                          type="button"
+                          className="rounded bg-background/80 p-1 text-foreground hover:bg-background"
+                          onClick={() => void onDuplicateRow(color)}
+                          aria-label={t('bulk.duplicate')}
+                          title={t('bulk.duplicate')}
+                        >
+                          <Copy className="size-3" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded bg-background/80 p-1 text-destructive hover:bg-background"
+                          onClick={() => setDeleteTarget(color)}
+                          aria-label={tCommon('actions.delete')}
+                        >
+                          <Trash2 className="size-3" aria-hidden="true" />
+                        </button>
+                      </span>
+                    ) : (
+                      copyToScope && (
+                        <button
+                          type="button"
+                          className="absolute end-1 top-1 rounded bg-background/80 p-1 text-foreground hover:bg-background"
+                          onClick={() => onCopyToScope(color)}
+                          aria-label={copyToScope.label}
+                          title={copyToScope.label}
+                        >
+                          <Copy className="size-3" aria-hidden="true" />
+                        </button>
+                      )
+                    )}
+                  </div>
                   <span className="text-xs font-medium text-foreground">{color.code}</span>
+                  {scope === 'company' && (
+                    <span className="rounded-full bg-primary/10 px-1.5 py-0 text-[10px] font-medium text-primary">
+                      {t('scope.ours')}
+                    </span>
+                  )}
                 </div>
-              ) : (
-              <div key={color.id} className="flex flex-col items-center gap-1.5">
-                <div className="relative w-full">
-                  <button
-                    type="button"
-                    className="aspect-square w-full rounded-lg border border-border shadow-sm transition-transform hover:scale-105"
-                    style={{ backgroundColor: color.hex }}
-                    onClick={() => {
-                      setEditTarget(color)
-                      editForm.reset({ code: color.code, hex: color.hex })
-                    }}
-                    aria-label={color.code}
-                  />
-                  <span className="absolute start-1 top-1 rounded bg-background/80 p-0.5">
-                    <Checkbox checked={selected.has(color.id)} onCheckedChange={() => toggleOne(color.id)} />
-                  </span>
-                  <button
-                    type="button"
-                    className="absolute end-1 top-1 rounded bg-background/80 p-1 text-destructive hover:bg-background"
-                    onClick={() => setDeleteTarget(color)}
-                    aria-label={tCommon('actions.delete')}
-                  >
-                    <Trash2 className="size-3" aria-hidden="true" />
-                  </button>
-                </div>
-                <span className="text-xs font-medium text-foreground">{color.code}</span>
-              </div>
-              ),
-            )}
+              )
+            })}
           </div>
         </div>
       )}

@@ -1,16 +1,24 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowDown, ArrowUp, Copy, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import {
-  createGlassCombinationSchema,
+  CombinationItemKind,
   GlassGapType,
   type CreateGlassCombinationInput,
-  type GlassCombinationSummary,
 } from '@repo/types/lookups'
+import {
+  LookupScope,
+  createCompanyGlassCombinationSchema,
+  formatScopedRef,
+  parseScopedRef,
+  type CreateCompanyGlassCombinationInput,
+  type ScopedRef,
+} from '@repo/types/company-lookups'
 import { apiErrorMessage } from '@/lib/api-client'
 import * as lookupsApi from '@/lib/lookups-api'
+import * as companyLookupsApi from '@/lib/company-lookups-api'
 import {
   useColorsQuery,
   useCreateGlassCombinationMutation,
@@ -19,6 +27,17 @@ import {
   useGlassQuery,
   useUpdateGlassCombinationMutation,
 } from '@/lib/lookups-queries'
+import {
+  useCreateCompanyGlassCombinationMutation,
+  useDeleteCompanyGlassCombinationMutation,
+  useUpdateCompanyGlassCombinationMutation,
+} from '@/lib/company-lookups-queries'
+import {
+  platformComboToMerged,
+  type MergedGlassCombinationItemSummary,
+  type MergedGlassCombinationSummary,
+} from '@/lib/lookup-merge'
+import type { LookupRowScope } from './lookup-table-section'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -50,35 +69,36 @@ import {
 } from '@/components/ui/alert-dialog'
 
 type DraftItem =
-  | { kind: 'sheet'; glassId: string; colorId: string | null }
+  | { kind: 'sheet'; glass: ScopedRef | ''; color: ScopedRef | null }
   | {
       kind: 'gap'
       gapType: GlassGapType
       gapThickness: number
-      gapColorId: string | null
+      gapColor: ScopedRef | null
       isGeorgian: boolean
       columnsCount: number | null
       rowsCount: number | null
     }
 
-// Human-readable build-up for the list table, e.g. "6mm Clear + Spacer
-// (air gap) 12mm + 6mm Clear" — derived straight from the combination's
-// own items rather than duplicating that shape in a separate field.
-// Deliberately shows thickness + colour, not the glass catalogue name —
-// name is a free-text label (e.g. "Clear 6mm" or a supplier SKU) that
-// doesn't reliably tell you what's actually installed at a glance.
-function describeCombination(combo: GlassCombinationSummary, t: (key: string) => string): string {
+// Every reference (glass sheet, sheet colour, gap colour) is a ScopedRef
+// string internally — the same "platform:<uuid>" / "company:<uuid>"
+// encoding lookup-merge.ts's summaries already use — so the dialog and
+// its save-time validation (createCompanyGlassCombinationSchema) are one
+// code path for both consoles. The admin console never has a
+// company-owned glass/colour to reference, but wrapping its
+// platform-only rows in the same shape (platformComboToMerged, imported
+// from lookup-merge.ts) means it doesn't need a second implementation
+// — `toAdminInput` below is the only place the two consoles' wire
+// formats actually diverge, right at the mutation boundary.
+function describeCombination(combo: MergedGlassCombinationSummary, t: (key: string) => string): string {
   return combo.items
     .slice()
     .sort((a, b) => a.position - b.position)
     .map((item) => {
-      if (item.kind === 'sheet') {
+      if (item.kind === CombinationItemKind.SHEET) {
         const colorLabel = item.colorCode ?? t('combinationEditor.clear')
         return `${item.glassThickness}mm ${colorLabel}`
       }
-      // Laminated interlayers don't track a thickness (stored as 0, not
-      // shown in the editor) so it's left out of the description too —
-      // "Laminated (interlayer) 0mm" would misleadingly imply a real value.
       if (item.gapType === GlassGapType.LAMINATED) {
         return t('combinationEditor.gapTypeLaminated')
       }
@@ -90,15 +110,15 @@ function describeCombination(combo: GlassCombinationSummary, t: (key: string) =>
     .join(' + ')
 }
 
-function fromSummary(combo: GlassCombinationSummary): DraftItem[] {
-  return combo.items.map((item) =>
-    item.kind === 'sheet'
-      ? { kind: 'sheet', glassId: item.glassId, colorId: item.colorId }
+function fromSummary(items: MergedGlassCombinationItemSummary[]): DraftItem[] {
+  return items.map((item) =>
+    item.kind === CombinationItemKind.SHEET
+      ? { kind: 'sheet', glass: item.glass, color: item.color }
       : {
           kind: 'gap',
           gapType: item.gapType,
           gapThickness: item.gapThickness,
-          gapColorId: item.gapColorId,
+          gapColor: item.gapColor,
           isGeorgian: item.isGeorgian ?? false,
           columnsCount: item.columnsCount,
           rowsCount: item.rowsCount,
@@ -106,23 +126,66 @@ function fromSummary(combo: GlassCombinationSummary): DraftItem[] {
   )
 }
 
-// `readOnly` is the workspace Data section's Phase 1 mode — see the
-// matching comment on ColorGridSection. No scope-aware version exists
-// yet since there's no company-owned combination data to show.
+// Translates the dialog's ScopedRef-based output down to the admin
+// endpoint's plain-uuid shape — safe unconditionally, since every option
+// the admin console ever offers is itself platform-scoped (there is no
+// company data for a super admin to reference).
+function toAdminItems(items: CreateCompanyGlassCombinationInput['items']): CreateGlassCombinationInput['items'] {
+  return items.map((item) =>
+    item.kind === CombinationItemKind.SHEET
+      ? {
+          kind: CombinationItemKind.SHEET,
+          glassId: parseScopedRef(item.glass).id,
+          colorId: item.color ? parseScopedRef(item.color).id : null,
+        }
+      : {
+          kind: CombinationItemKind.GAP,
+          gapType: item.gapType,
+          gapThickness: item.gapThickness,
+          gapColorId: item.gapColor ? parseScopedRef(item.gapColor).id : null,
+          isGeorgian: item.isGeorgian ?? null,
+          columnsCount: item.columnsCount ?? null,
+          rowsCount: item.rowsCount ?? null,
+        },
+  )
+}
+
+function usePlatformGlassCombinationsQuery(): {
+  data: MergedGlassCombinationSummary[] | undefined
+  isLoading: boolean
+  isError: boolean
+} {
+  const { data, isLoading, isError } = useGlassCombinationsQuery()
+  const rows = useMemo(() => data?.map(platformComboToMerged), [data])
+  return { data: rows, isLoading, isError }
+}
+
+// `useGlassList`/`useColorList` default to the admin-only hooks; their
+// plain `{id,name,thickness}`/`{id,code}` rows have no `scope` field,
+// which the option-builder below treats as `platform` — so the
+// workspace override (lookup-merge.ts's useMergedGlassQuery/
+// useMergedColorsQuery, whose rows DO carry `scope`) needs no separate
+// code path either.
 //
-// `useList`/`useGlassList`/`useColorList` default to the admin-only
-// hooks (/admin/lookups/*, SUPER_ADMIN-gated) — same override rationale
-// as ColorGridSection's `useList`.
+// `scoped` switches every mutation/bulk-action to the company-lookups
+// endpoints and skips the admin translation step — the workspace Data
+// page is the only caller that sets it.
 export function GlassCombinationSection({
-  readOnly,
-  useList = useGlassCombinationsQuery,
+  useList = usePlatformGlassCombinationsQuery,
   useGlassList = useGlassQuery,
   useColorList = useColorsQuery,
+  scoped = false,
+  rowScope,
+  canEdit,
+  copyToScope,
 }: {
-  readOnly?: boolean
-  useList?: () => { data: GlassCombinationSummary[] | undefined; isLoading: boolean; isError: boolean }
-  useGlassList?: () => { data: { id: string; name: string; thickness: number }[] | undefined }
-  useColorList?: () => { data: { id: string; code: string }[] | undefined }
+  useList?: () => { data: MergedGlassCombinationSummary[] | undefined; isLoading: boolean; isError: boolean }
+  useGlassList?: () => { data: { id: string; name: string; thickness: number; scope?: LookupRowScope }[] | undefined }
+  useColorList?: () => { data: { id: string; code: string; scope?: LookupRowScope }[] | undefined }
+  scoped?: boolean
+  rowScope?: (row: MergedGlassCombinationSummary) => LookupRowScope
+  canEdit?: (row: MergedGlassCombinationSummary) => boolean
+  copyToScope?: { label: string }
 } = {}) {
   const { t } = useTranslation('lookups')
   const { t: tCommon } = useTranslation('common')
@@ -130,26 +193,41 @@ export function GlassCombinationSection({
   const { data: combos, isLoading, isError } = useList()
   const { data: glassList } = useGlassList()
   const { data: colors } = useColorList()
+  const rowIsEditable = (row: MergedGlassCombinationSummary) => (canEdit ? canEdit(row) : true)
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [editTarget, setEditTarget] = useState<GlassCombinationSummary | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<GlassCombinationSummary | null>(null)
+  const [copySeed, setCopySeed] = useState<{ name: string; items: DraftItem[] } | null>(null)
+  const [editTarget, setEditTarget] = useState<MergedGlassCombinationSummary | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<MergedGlassCombinationSummary | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
-  const createMutation = useCreateGlassCombinationMutation()
-  const updateMutation = useUpdateGlassCombinationMutation(editTarget?.id ?? '')
-  const deleteMutation = useDeleteGlassCombinationMutation(deleteTarget?.id ?? '')
+  const adminCreate = useCreateGlassCombinationMutation()
+  const companyCreate = useCreateCompanyGlassCombinationMutation()
+  const adminUpdate = useUpdateGlassCombinationMutation(editTarget?.id ?? '')
+  const companyUpdate = useUpdateCompanyGlassCombinationMutation(editTarget?.id ?? '')
+  const adminDelete = useDeleteGlassCombinationMutation(deleteTarget?.id ?? '')
+  const companyDelete = useDeleteCompanyGlassCombinationMutation(deleteTarget?.id ?? '')
 
-  const glassOptions = (glassList ?? []).map((g) => ({ value: g.id, label: `${g.name} (${g.thickness}mm)` }))
-  const colorOptions = (colors ?? []).map((c) => ({ value: c.id, label: c.code }))
+  const glassOptions = (glassList ?? []).map((g) => ({
+    value: formatScopedRef(g.scope ?? LookupScope.PLATFORM, g.id),
+    label:
+      g.scope === LookupScope.COMPANY
+        ? `${g.name} (${g.thickness}mm) · ${t('scope.ours')}`
+        : `${g.name} (${g.thickness}mm)`,
+  }))
+  const colorOptions = (colors ?? []).map((c) => ({
+    value: formatScopedRef(c.scope ?? LookupScope.PLATFORM, c.id),
+    label: c.scope === LookupScope.COMPANY ? `${c.code} · ${t('scope.ours')}` : c.code,
+  }))
+  const glassThicknessByRef = (ref: ScopedRef) => {
+    const { id } = parseScopedRef(ref)
+    return (glassList ?? []).find((g) => g.id === id)?.thickness ?? 0
+  }
 
   const rows = combos ?? []
-  // Matches on name and the same build-up text the table shows, so
-  // searching "clear" or "spacer" finds combinations by what's in them,
-  // not just by name.
   const trimmedQuery = searchQuery.trim().toLowerCase()
   const visibleRows = trimmedQuery
     ? rows.filter(
@@ -158,9 +236,10 @@ export function GlassCombinationSection({
           describeCombination(row, t).toLowerCase().includes(trimmedQuery),
       )
     : rows
-  const allSelected = visibleRows.length > 0 && visibleRows.every((row) => selected.has(row.id))
+  const selectableVisibleRows = visibleRows.filter(rowIsEditable)
+  const allSelected = selectableVisibleRows.length > 0 && selectableVisibleRows.every((row) => selected.has(row.id))
   const someSelected = selected.size > 0
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(visibleRows.map((row) => row.id)))
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableVisibleRows.map((row) => row.id)))
   const toggleOne = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev)
@@ -171,7 +250,8 @@ export function GlassCombinationSection({
 
   const onDelete = async () => {
     try {
-      await deleteMutation.mutateAsync()
+      if (scoped) await companyDelete.mutateAsync()
+      else await adminDelete.mutateAsync()
       toast.success(t('messages.deleteSuccess'))
       setDeleteTarget(null)
     } catch (err) {
@@ -184,8 +264,11 @@ export function GlassCombinationSection({
     setBulkDeleteConfirmOpen(false)
     setBulkBusy(true)
     try {
-      const { deletedIds } = await lookupsApi.bulkDeleteGlassCombinations(ids)
+      const { deletedIds } = scoped
+        ? await companyLookupsApi.bulkDeleteCompanyGlassCombinations(ids)
+        : await lookupsApi.bulkDeleteGlassCombinations(ids)
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      if (scoped) await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
       toast.success(t('messages.bulkDeleteSuccess', { count: deletedIds.length }))
     } catch (err) {
       toast.error(apiErrorMessage(err, t('messages.error')))
@@ -195,39 +278,27 @@ export function GlassCombinationSection({
     }
   }
 
+  const duplicateRows = async (targets: MergedGlassCombinationSummary[]) => {
+    const named = targets.map((combo) => ({ name: `${combo.name} ${t('bulk.copySuffix')}`, items: combo.items }))
+    const { created, failedCount } = scoped
+      ? await companyLookupsApi.bulkDuplicateCompanyGlassCombinations(named)
+      : await lookupsApi.bulkDuplicateGlassCombinations(
+          named.map((combo) => ({ name: combo.name, items: toAdminItems(combo.items) })),
+        )
+    await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+    if (scoped) await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+    if (failedCount > 0) {
+      toast.error(t('messages.bulkDuplicatePartial', { failed: failedCount, succeeded: created.length }))
+    } else {
+      toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
+    }
+  }
+
   const onBulkDuplicate = async () => {
     const targets = rows.filter((row) => selected.has(row.id))
     setBulkBusy(true)
     try {
-      const created = await lookupsApi.bulkDuplicateGlassCombinations(
-        targets.map((combo) => ({
-          name: `${combo.name} ${t('bulk.copySuffix')}`,
-          items: combo.items.map((item) =>
-            item.kind === 'sheet'
-              ? { kind: 'sheet' as const, glassId: item.glassId, colorId: item.colorId }
-              : {
-                  kind: 'gap' as const,
-                  gapType: item.gapType,
-                  gapThickness: item.gapThickness,
-                  gapColorId: item.gapColorId,
-                  isGeorgian: item.isGeorgian,
-                  columnsCount: item.columnsCount,
-                  rowsCount: item.rowsCount,
-                },
-          ),
-        })),
-      )
-      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      if (created.failedCount > 0) {
-        toast.error(
-          t('messages.bulkDuplicatePartial', {
-            failed: created.failedCount,
-            succeeded: created.created.length,
-          }),
-        )
-      } else {
-        toast.success(t('messages.bulkDuplicateSuccess', { count: created.created.length }))
-      }
+      await duplicateRows(targets)
     } catch (err) {
       toast.error(apiErrorMessage(err, t('messages.error')))
     } finally {
@@ -236,18 +307,46 @@ export function GlassCombinationSection({
     }
   }
 
+  const onDuplicateRow = async (combo: MergedGlassCombinationSummary) => {
+    try {
+      await duplicateRows([combo])
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('messages.error')))
+    }
+  }
+
+  const onCopyToScope = (row: MergedGlassCombinationSummary) => {
+    if (!copyToScope) return
+    setCopySeed({ name: `${row.name} ${t('bulk.copySuffix')}`, items: fromSummary(row.items) })
+    setCreateOpen(true)
+  }
+
+  const onSaveCreate = async (values: CreateCompanyGlassCombinationInput) => {
+    if (scoped) await companyCreate.mutateAsync(values)
+    else await adminCreate.mutateAsync({ name: values.name, items: toAdminItems(values.items) })
+  }
+  const onSaveEdit = async (values: CreateCompanyGlassCombinationInput) => {
+    if (scoped) await companyUpdate.mutateAsync(values)
+    else await adminUpdate.mutateAsync({ name: values.name, items: toAdminItems(values.items) })
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex shrink-0 items-center justify-between gap-3">
         <h2 className="font-heading text-base font-semibold text-foreground">
           {t('tables.glassCombinations')}
         </h2>
-        {!readOnly && (
-          <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
-            <Plus className="size-4" aria-hidden="true" />
-            {t('combinationEditor.createButton')}
-          </Button>
-        )}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setCopySeed(null)
+            setCreateOpen(true)
+          }}
+        >
+          <Plus className="size-4" aria-hidden="true" />
+          {t('combinationEditor.createButton')}
+        </Button>
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
@@ -264,7 +363,7 @@ export function GlassCombinationSection({
           />
         </div>
 
-        {!readOnly && someSelected && (
+        {someSelected && (
           <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted/60 px-3 py-0.5">
             <span className="text-sm font-medium text-foreground">
               {t('bulk.selectedCount', { count: selected.size })}
@@ -295,29 +394,24 @@ export function GlassCombinationSection({
       <Table containerClassName="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
         <TableHeader className="sticky top-0 z-10 bg-background">
           <TableRow>
-            {!readOnly && (
-              <TableHead className="w-10">
-                {visibleRows.length > 0 && (
-                  <Checkbox
-                    checked={allSelected}
-                    onCheckedChange={toggleAll}
-                    aria-label={t('bulk.selectAll')}
-                  />
-                )}
-              </TableHead>
-            )}
+            <TableHead className="w-10">
+              {selectableVisibleRows.length > 0 && (
+                <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label={t('bulk.selectAll')} />
+              )}
+            </TableHead>
             <TableHead>{t('combinationEditor.name')}</TableHead>
             <TableHead>{t('combinationEditor.totalThickness')}</TableHead>
             <TableHead>{t('combinationEditor.items')}</TableHead>
             <TableHead>{t('combinationEditor.buildUp')}</TableHead>
-            {!readOnly && <TableHead className="w-32" />}
+            {rowScope && <TableHead className="w-24">{t('scope.columnHeader')}</TableHead>}
+            <TableHead className="w-40" />
           </TableRow>
         </TableHeader>
         <TableBody>
           {(isLoading || isError || rows.length === 0) && (
             <TableRow>
               <TableCell
-                colSpan={readOnly ? 4 : 6}
+                colSpan={5 + (rowScope ? 1 : 0) + 1}
                 className={isError ? 'text-center text-destructive' : 'text-center text-muted-foreground'}
               >
                 {isError ? t('messages.error') : t('combinationEditor.empty')}
@@ -326,63 +420,112 @@ export function GlassCombinationSection({
           )}
           {!isLoading && !isError && rows.length > 0 && visibleRows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={readOnly ? 4 : 6} className="text-center text-muted-foreground">
+              <TableCell colSpan={5 + (rowScope ? 1 : 0) + 1} className="text-center text-muted-foreground">
                 {t('messages.noResults')}
               </TableCell>
             </TableRow>
           )}
           {!isLoading &&
             !isError &&
-            visibleRows.map((combo) => (
+            visibleRows.map((combo) => {
+              const editable = rowIsEditable(combo)
+              return (
               <TableRow key={combo.id}>
-                {!readOnly && (
-                  <TableCell>
+                <TableCell>
+                  {editable && (
                     <Checkbox
                       checked={selected.has(combo.id)}
                       onCheckedChange={() => toggleOne(combo.id)}
                       aria-label={combo.name}
                     />
-                  </TableCell>
-                )}
+                  )}
+                </TableCell>
                 <TableCell className="font-medium text-foreground">{combo.name}</TableCell>
                 <TableCell>{combo.totalThickness}</TableCell>
                 <TableCell>{combo.items.length}</TableCell>
                 <TableCell className="max-w-xs truncate text-muted-foreground" title={describeCombination(combo, t)}>
                   {describeCombination(combo, t)}
                 </TableCell>
-                {!readOnly && (
-                  <TableCell className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setEditTarget(combo)}>
-                      {t('combinationEditor.editButton')}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 text-destructive hover:text-destructive"
-                      onClick={() => setDeleteTarget(combo)}
+                {rowScope && (
+                  <TableCell>
+                    <span
+                      className={
+                        rowScope(combo) === 'company'
+                          ? 'rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary'
+                          : 'rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
+                      }
                     >
-                      <Trash2 className="size-3.5" aria-hidden="true" />
-                    </Button>
+                      {rowScope(combo) === 'company' ? t('scope.ours') : t('scope.platform')}
+                    </span>
                   </TableCell>
                 )}
+                <TableCell className="flex justify-end gap-2">
+                  {editable ? (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        title={t('combinationEditor.editButton')}
+                        onClick={() => setEditTarget(combo)}
+                      >
+                        <Pencil className="size-3.5" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        title={t('bulk.duplicate')}
+                        onClick={() => void onDuplicateRow(combo)}
+                      >
+                        <Copy className="size-3.5" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTarget(combo)}
+                      >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    </>
+                  ) : (
+                    copyToScope && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8"
+                        title={copyToScope.label}
+                        onClick={() => onCopyToScope(combo)}
+                      >
+                        <Copy className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    )
+                  )}
+                </TableCell>
               </TableRow>
-            ))}
+              )
+            })}
         </TableBody>
       </Table>
 
       {createOpen && (
         <CombinationDialog
           title={t('combinationEditor.createButton')}
-          initialName=""
-          initialItems={[]}
+          initialName={copySeed?.name ?? ''}
+          initialItems={copySeed?.items ?? []}
           glassOptions={glassOptions}
           colorOptions={colorOptions}
-          glassList={glassList ?? []}
-          onClose={() => setCreateOpen(false)}
+          glassThicknessByRef={glassThicknessByRef}
+          onClose={() => {
+            setCreateOpen(false)
+            setCopySeed(null)
+          }}
           onSave={async (values) => {
-            await createMutation.mutateAsync(values)
+            await onSaveCreate(values)
             toast.success(t('messages.createSuccess'))
             setCreateOpen(false)
+            setCopySeed(null)
           }}
         />
       )}
@@ -391,13 +534,13 @@ export function GlassCombinationSection({
         <CombinationDialog
           title={editTarget.name}
           initialName={editTarget.name}
-          initialItems={fromSummary(editTarget)}
+          initialItems={fromSummary(editTarget.items)}
           glassOptions={glassOptions}
           colorOptions={colorOptions}
-          glassList={glassList ?? []}
+          glassThicknessByRef={glassThicknessByRef}
           onClose={() => setEditTarget(null)}
           onSave={async (values) => {
-            await updateMutation.mutateAsync(values)
+            await onSaveEdit(values)
             toast.success(t('messages.updateSuccess'))
             setEditTarget(null)
           }}
@@ -415,7 +558,10 @@ export function GlassCombinationSection({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
-            <AlertDialogAction disabled={deleteMutation.isPending} onClick={() => void onDelete()}>
+            <AlertDialogAction
+              disabled={scoped ? companyDelete.isPending : adminDelete.isPending}
+              onClick={() => void onDelete()}
+            >
               {tCommon('actions.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -447,7 +593,7 @@ function CombinationDialog({
   initialItems,
   glassOptions,
   colorOptions,
-  glassList,
+  glassThicknessByRef,
   onClose,
   onSave,
 }: {
@@ -456,9 +602,9 @@ function CombinationDialog({
   initialItems: DraftItem[]
   glassOptions: { value: string; label: string }[]
   colorOptions: { value: string; label: string }[]
-  glassList: { id: string; thickness: number }[]
+  glassThicknessByRef: (ref: ScopedRef) => number
   onClose: () => void
-  onSave: (values: CreateGlassCombinationInput) => Promise<void>
+  onSave: (values: CreateCompanyGlassCombinationInput) => Promise<void>
 }) {
   const { t } = useTranslation('lookups')
   const [name, setName] = useState(initialName)
@@ -466,16 +612,16 @@ function CombinationDialog({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  const glassThickness = (id: string) => glassList.find((g) => g.id === id)?.thickness ?? 0
   const runningTotal = items
-    .reduce((sum, item) => sum + (item.kind === 'sheet' ? glassThickness(item.glassId) : item.gapThickness), 0)
+    .reduce((sum, item) => sum + (item.kind === 'sheet' ? (item.glass ? glassThicknessByRef(item.glass) : 0) : item.gapThickness), 0)
     .toFixed(2)
   // A combination must strictly alternate sheet/gap (enforced for real by
-  // createGlassCombinationSchema's alternation refine at save time — this
-  // is just the add-button guard that stops the obvious mistake at entry).
+  // createCompanyGlassCombinationSchema's alternation refine at save time
+  // — this is just the add-button guard that stops the obvious mistake at
+  // entry).
   const lastItemKind = items[items.length - 1]?.kind
 
-  const addSheet = () => setItems((prev) => [...prev, { kind: 'sheet', glassId: '', colorId: null }])
+  const addSheet = () => setItems((prev) => [...prev, { kind: 'sheet', glass: '', color: null }])
   const addGap = () =>
     setItems((prev) => [
       ...prev,
@@ -483,7 +629,7 @@ function CombinationDialog({
         kind: 'gap',
         gapType: GlassGapType.SPACER,
         gapThickness: 16,
-        gapColorId: null,
+        gapColor: null,
         isGeorgian: false,
         columnsCount: null,
         rowsCount: null,
@@ -503,16 +649,16 @@ function CombinationDialog({
 
   const handleSave = async () => {
     setError(null)
-    const parsed = createGlassCombinationSchema.safeParse({
+    const parsed = createCompanyGlassCombinationSchema.safeParse({
       name,
       items: items.map((item) =>
         item.kind === 'sheet'
-          ? { kind: 'sheet', glassId: item.glassId, colorId: item.colorId }
+          ? { kind: CombinationItemKind.SHEET, glass: item.glass, color: item.color }
           : {
-              kind: 'gap',
+              kind: CombinationItemKind.GAP,
               gapType: item.gapType,
               gapThickness: item.gapThickness,
-              gapColorId: item.gapColorId,
+              gapColor: item.gapColor,
               isGeorgian: item.gapType === GlassGapType.SPACER ? item.isGeorgian : null,
               columnsCount: item.gapType === GlassGapType.SPACER ? item.columnsCount : null,
               rowsCount: item.gapType === GlassGapType.SPACER ? item.rowsCount : null,
@@ -607,7 +753,7 @@ function CombinationDialog({
 
                 {item.kind === 'sheet' ? (
                   <div className="grid grid-cols-2 gap-2">
-                    <Select value={item.glassId} onValueChange={(v) => updateItem(index, { glassId: v })}>
+                    <Select value={item.glass} onValueChange={(v) => updateItem(index, { glass: v as ScopedRef })}>
                       <SelectTrigger>
                         <SelectValue placeholder={t('combinationEditor.selectGlass')} />
                       </SelectTrigger>
@@ -620,8 +766,8 @@ function CombinationDialog({
                       </SelectContent>
                     </Select>
                     <Select
-                      value={item.colorId ?? '__none'}
-                      onValueChange={(v) => updateItem(index, { colorId: v === '__none' ? null : v })}
+                      value={item.color ?? '__none'}
+                      onValueChange={(v) => updateItem(index, { color: v === '__none' ? null : (v as ScopedRef) })}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder={t('combinationEditor.selectColorOptional')} />

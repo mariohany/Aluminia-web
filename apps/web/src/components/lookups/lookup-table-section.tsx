@@ -289,6 +289,7 @@ export function LookupTableSection<
     try {
       const { deletedIds, blockedIds } = await bulkDelete(ids)
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
       if (blockedIds.length > 0) {
         toast.error(
           t('messages.bulkDeletePartial', {
@@ -313,6 +314,7 @@ export function LookupTableSection<
     try {
       const created = await bulkDuplicate(targets.map((row) => duplicate(row)))
       await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
       toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -326,6 +328,21 @@ export function LookupTableSection<
     if (!copyToScope) return
     createForm.reset(copyToScope.toDefaults(row) as DefaultValues<TCreate>)
     setCreateOpen(true)
+  }
+
+  // Per-row duplicate (an editable row copying itself), distinct from
+  // onCopyToScope (a platform row copying itself into this caller's own
+  // scope) — same bulkDuplicate endpoint as the multi-select bulk action,
+  // just called with a single item.
+  const onDuplicateRow = async (row: TSummary) => {
+    try {
+      const created = await bulkDuplicate([duplicate(row)])
+      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
+      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, errorLabel))
+    }
   }
 
   return (
@@ -466,7 +483,7 @@ export function LookupTableSection<
               <TableHead key={col.header}>{col.header}</TableHead>
             ))}
             {rowScope && <TableHead className="w-24">{t('scope.columnHeader')}</TableHead>}
-            {!readOnly && <TableHead className="w-20" />}
+            {!readOnly && <TableHead className="w-28" />}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -538,6 +555,15 @@ export function LookupTableSection<
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="size-8"
+                          title={t('bulk.duplicate')}
+                          onClick={() => void onDuplicateRow(row)}
+                        >
+                          <Copy className="size-3.5" aria-hidden="true" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           className="size-8 text-destructive hover:text-destructive"
                           onClick={() => setDeleteTarget(row)}
                         >
@@ -546,8 +572,14 @@ export function LookupTableSection<
                       </>
                     ) : (
                       copyToScope && (
-                        <Button size="sm" variant="ghost" onClick={() => onCopyToScope(row)}>
-                          {copyToScope.label}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          title={copyToScope.label}
+                          onClick={() => onCopyToScope(row)}
+                        >
+                          <Copy className="size-3.5" aria-hidden="true" />
                         </Button>
                       )
                     )}

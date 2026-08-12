@@ -44,5 +44,9 @@
   "phone": {
     "label": "Call or text us",
     "number": "+00 000 000 0000"
+  },
+  "password": {
+    "show": "Show password",
+    "hide": "Hide password"
   }
 }

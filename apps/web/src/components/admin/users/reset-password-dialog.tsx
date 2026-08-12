@@ -7,7 +7,7 @@ import type { UserSummary } from '@repo/types/users'
 import { apiErrorMessage } from '@/lib/api-client'
 import { useResetUserPasswordMutation } from '@/lib/users-queries'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
@@ -70,9 +70,8 @@ export function ResetPasswordDialog({
 
           <div>
             <Label htmlFor="reset-password-field">{t('resetPassword.field')}</Label>
-            <Input
+            <PasswordInput
               id="reset-password-field"
-              type="password"
               autoComplete="new-password"
               className="mt-1.5"
               aria-invalid={!!errors.password}

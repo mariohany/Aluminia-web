@@ -9,6 +9,7 @@ import { apiErrorMessage } from '@/lib/api-client'
 import { useCreateCompanyMutation } from '@/lib/companies-queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
@@ -122,9 +123,8 @@ export function CreateCompanyDialog() {
 
             <div>
               <Label htmlFor="company-admin-password">{t('createCompany.fields.adminPassword')}</Label>
-              <Input
+              <PasswordInput
                 id="company-admin-password"
-                type="password"
                 autoComplete="new-password"
                 className="mt-1.5"
                 aria-invalid={!!errors.admin?.password}

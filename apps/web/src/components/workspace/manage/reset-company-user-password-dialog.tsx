@@ -6,7 +6,7 @@ import { resetUserPasswordSchema, type ResetUserPasswordInput, type UserSummary 
 import { apiErrorMessage } from '@/lib/api-client'
 import { useResetCompanyUserPasswordMutation } from '@/lib/company-users-queries'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { FieldLabel } from '@/components/workspace/field-label'
 import {
   Dialog,
@@ -75,9 +75,8 @@ export function ResetCompanyUserPasswordDialog({
 
           <div>
             <FieldLabel htmlFor="reset-company-user-password">{t('manage.fields.newPassword')}</FieldLabel>
-            <Input
+            <PasswordInput
               id="reset-company-user-password"
-              type="password"
               autoComplete="new-password"
               className="mt-1.5"
               aria-invalid={!!errors.password}

@@ -9,6 +9,7 @@ import { apiErrorMessage } from '@/lib/api-client'
 import { useCreateCompanyUserMutation } from '@/lib/company-users-queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { FieldLabel } from '@/components/workspace/field-label'
 import {
   Dialog,
@@ -91,9 +92,8 @@ export function CreateCompanyUserDialog({ disabled }: { disabled?: boolean }) {
 
             <div>
               <FieldLabel htmlFor="company-user-password">{t('manage.fields.password')}</FieldLabel>
-              <Input
+              <PasswordInput
                 id="company-user-password"
-                type="password"
                 autoComplete="new-password"
                 className="mt-1.5"
                 aria-invalid={!!errors.password}

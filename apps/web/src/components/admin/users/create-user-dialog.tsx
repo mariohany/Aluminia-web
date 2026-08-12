@@ -10,6 +10,7 @@ import { useCompaniesQuery } from '@/lib/companies-queries'
 import { useCreateUserMutation } from '@/lib/users-queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -93,9 +94,8 @@ export function CreateUserDialog() {
 
             <div>
               <Label htmlFor="user-password">{t('createUser.fields.password')}</Label>
-              <Input
+              <PasswordInput
                 id="user-password"
-                type="password"
                 autoComplete="new-password"
                 className="mt-1.5"
                 aria-invalid={!!errors.password}

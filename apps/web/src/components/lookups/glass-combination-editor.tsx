@@ -181,7 +181,7 @@ export function GlassCombinationSection({
 }: {
   useList?: () => { data: MergedGlassCombinationSummary[] | undefined; isLoading: boolean; isError: boolean }
   useGlassList?: () => { data: { id: string; name: string; thickness: number; scope?: LookupRowScope }[] | undefined }
-  useColorList?: () => { data: { id: string; code: string; scope?: LookupRowScope }[] | undefined }
+  useColorList?: () => { data: { id: string; code: string; hex: string; scope?: LookupRowScope }[] | undefined }
   scoped?: boolean
   rowScope?: (row: MergedGlassCombinationSummary) => LookupRowScope
   canEdit?: (row: MergedGlassCombinationSummary) => boolean
@@ -221,6 +221,7 @@ export function GlassCombinationSection({
   const colorOptions = (colors ?? []).map((c) => ({
     value: formatScopedRef(c.scope ?? LookupScope.PLATFORM, c.id),
     label: c.scope === LookupScope.COMPANY ? `${c.code} · ${t('scope.ours')}` : c.code,
+    hex: c.hex,
   }))
   const glassThicknessByRef = (ref: ScopedRef) => {
     const { id } = parseScopedRef(ref)
@@ -601,7 +602,7 @@ function CombinationDialog({
   initialName: string
   initialItems: DraftItem[]
   glassOptions: { value: string; label: string }[]
-  colorOptions: { value: string; label: string }[]
+  colorOptions: { value: string; label: string; hex: string }[]
   glassThicknessByRef: (ref: ScopedRef) => number
   onClose: () => void
   onSave: (values: CreateCompanyGlassCombinationInput) => Promise<void>
@@ -776,7 +777,14 @@ function CombinationDialog({
                         <SelectItem value="__none">{t('combinationEditor.noColor')}</SelectItem>
                         {colorOptions.map((opt) => (
                           <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
+                            <span className="flex items-center gap-1.5">
+                              <span
+                                className="size-3 shrink-0 rounded-sm border border-border"
+                                style={{ backgroundColor: opt.hex }}
+                                aria-hidden="true"
+                              />
+                              {opt.label}
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>

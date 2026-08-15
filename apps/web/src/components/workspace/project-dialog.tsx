@@ -3,12 +3,13 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Plus } from 'lucide-react'
+import { Check, Plus } from 'lucide-react'
 import { createProjectSchema, type CreateProjectInput, type ProjectDetail } from '@repo/types/projects'
 import type { ClientWithProjects } from '@repo/types/clients'
 import { apiErrorMessage } from '@/lib/api-client'
 import { optionalTextField } from '@/lib/form-fields'
 import { displayName } from '@/lib/bilingual'
+import { cn } from '@/lib/utils'
 import { useCreateProjectMutation, useUpdateProjectMutation } from '@/lib/projects-queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +31,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ClientDialog } from '@/components/workspace/client-dialog'
+import { ProjectPreferencesFields } from '@/components/workspace/project-preferences-fields'
 
 interface ProjectDialogProps {
   open: boolean
@@ -44,8 +46,17 @@ interface ProjectDialogProps {
    * client is fixed and the selector isn't shown at all.
    */
   defaultClientId?: string
+  /**
+   * Which step the dialog opens on. Defaults to 1 (Basic info). The
+   * properties panel's Preferences section and the project row's
+   * context menu both pass 2, so "edit preferences" lands directly on
+   * that step rather than making the user click through step 1 again.
+   */
+  initialStep?: 1 | 2
   onCreated?: (project: ProjectDetail) => void
 }
+
+const STEP1_FIELDS = ['clientId', 'enName', 'email'] as const
 
 /**
  * Create or edit a project.
@@ -63,11 +74,13 @@ export function ProjectDialog({
   language,
   project,
   defaultClientId,
+  initialStep = 1,
   onCreated,
 }: ProjectDialogProps) {
   const { t } = useTranslation('workspace')
   const isEdit = !!project
   const [clientDialogOpen, setClientDialogOpen] = useState(false)
+  const [step, setStep] = useState<1 | 2>(initialStep)
 
   const createMutation = useCreateProjectMutation()
   const updateMutation = useUpdateProjectMutation(project?.id ?? '')
@@ -78,6 +91,7 @@ export function ProjectDialog({
     reset,
     setValue,
     watch,
+    trigger,
     formState: { errors, isSubmitting },
   } = useForm<CreateProjectInput>({
     resolver: zodResolver(createProjectSchema),
@@ -86,6 +100,7 @@ export function ProjectDialog({
 
   useEffect(() => {
     if (!open) return
+    setStep(initialStep)
     reset(
       project
         ? {
@@ -97,12 +112,22 @@ export function ProjectDialog({
             notes: project.notes,
             phone: project.phone,
             email: project.email,
+            defaultSystemBrand: project.defaultSystemBrand,
+            defaultSystemCatalog: project.defaultSystemCatalog,
+            currency: project.currency,
+            vatRate: project.vatRate,
+            discountRate: project.discountRate,
           }
         : emptyProject(defaultClientId),
     )
-  }, [open, project, reset, defaultClientId])
+  }, [open, project, reset, defaultClientId, initialStep])
 
   const clientId = watch('clientId')
+
+  const goToStep2 = async () => {
+    const valid = await trigger(STEP1_FIELDS)
+    if (valid) setStep(2)
+  }
 
   const onSubmit = async (data: CreateProjectInput) => {
     try {
@@ -132,10 +157,27 @@ export function ProjectDialog({
               <DialogTitle>
                 {isEdit ? t('projectDialog.editTitle') : t('projectDialog.createTitle')}
               </DialogTitle>
-              <DialogDescription>{t('projectDialog.description')}</DialogDescription>
+              <DialogDescription>
+                {step === 1 ? t('projectDialog.description') : t('projectDialog.stepPreferencesDescription')}
+              </DialogDescription>
             </DialogHeader>
 
-            <div className="flex flex-col gap-3">
+            {/* Two steps, one form, one submit — the dialog still
+                writes through a single path. Step 2 is entirely
+                optional, so `Create`/`Save` stays live on step 1
+                rather than gating behind it. A short fixed-width
+                connector (not `flex-1`) keeps the two steps close
+                together as a compact unit instead of stretching them
+                across the dialog's full width. */}
+            <div className="flex items-center justify-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <StepDot active={step === 1} done={step === 2} label="1" />
+              <span>{t('projectDialog.stepBasicInfo')}</span>
+              <span className="mx-1 h-px w-6 shrink-0 bg-border" />
+              <StepDot active={step === 2} done={false} label="2" />
+              <span>{t('projectDialog.stepPreferences')}</span>
+            </div>
+
+            <div className={cn('flex flex-col gap-3', step !== 1 && 'hidden')}>
               {/* Only on create. A project cannot change client. */}
               {!isEdit && (
                 <div>
@@ -205,10 +247,26 @@ export function ProjectDialog({
               </div>
             </div>
 
+            {/* Always mounted, just hidden — swapping steps must not
+                reset either step's field values. */}
+            <div className={cn(step !== 2 && 'hidden')}>
+              <ProjectPreferencesFields watch={watch} setValue={setValue} />
+            </div>
+
             <DialogFooter>
+              {step === 2 && (
+                <Button type="button" variant="outline" className="me-auto" onClick={() => setStep(1)}>
+                  {t('actions.back')}
+                </Button>
+              )}
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 {t('actions.cancel')}
               </Button>
+              {step === 1 && (
+                <Button type="button" variant="outline" onClick={() => void goToStep2()}>
+                  {t('actions.next')}
+                </Button>
+              )}
               <Button type="submit" disabled={isSubmitting}>
                 {isEdit ? t('actions.save') : t('actions.create')}
               </Button>
@@ -238,5 +296,32 @@ function emptyProject(defaultClientId?: string): CreateProjectInput {
     notes: null,
     phone: null,
     email: null,
+    defaultSystemBrand: null,
+    defaultSystemCatalog: null,
+    // Defaults to EGP rather than "no default" — this product quotes
+    // almost exclusively in EGP, and a picker that starts empty just
+    // means everyone re-picks the same value on every project. Still
+    // overridable, and on EDIT the project's own (possibly null) value
+    // is used instead — see the `reset()` call above.
+    currency: 'EGP',
+    vatRate: null,
+    discountRate: null,
   }
+}
+
+function StepDot({ active, done, label }: { active: boolean; done: boolean; label: string }) {
+  return (
+    <span
+      className={cn(
+        'flex size-5 shrink-0 items-center justify-center rounded-full text-[0.65rem] font-semibold',
+        active
+          ? 'bg-primary text-primary-foreground'
+          : done
+            ? 'bg-primary/15 text-primary'
+            : 'bg-muted text-muted-foreground',
+      )}
+    >
+      {done ? <Check className="size-3" aria-hidden="true" /> : label}
+    </span>
+  )
 }

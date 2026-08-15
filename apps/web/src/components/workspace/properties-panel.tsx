@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PanelRightClose, PanelRightOpen, Pencil, Trash2 } from 'lucide-react'
 import type { ProjectDetail } from '@repo/types/projects'
+import { parseScopedRef } from '@repo/types/company-lookups'
+import { useMergedSystemBrandsQuery, useMergedSystemCatalogsQuery } from '@/lib/lookup-merge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
@@ -65,9 +67,27 @@ export function PropertiesPanel({
     <aside className={cn('w-72 shrink-0 overflow-y-auto border-s border-border bg-background')}>
       <div className="flex items-center justify-between gap-2 p-3">
         <h2 className="text-sm font-semibold text-foreground">{t('properties.title')}</h2>
-        <Button variant="ghost" size="icon" aria-label={t('properties.collapse')} onClick={() => setCollapsed(true)}>
-          <PanelRightClose className="size-5 rtl:rotate-180" aria-hidden="true" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {!isLoading && project && (
+            <>
+              <Button variant="ghost" size="icon" aria-label={t('actions.edit')} onClick={onEdit}>
+                <Pencil className="size-4" aria-hidden="true" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-destructive"
+                aria-label={t('actions.delete')}
+                onClick={onDelete}
+              >
+                <Trash2 className="size-4" aria-hidden="true" />
+              </Button>
+            </>
+          )}
+          <Button variant="ghost" size="icon" aria-label={t('properties.collapse')} onClick={() => setCollapsed(true)}>
+            <PanelRightClose className="size-5 rtl:rotate-180" aria-hidden="true" />
+          </Button>
+        </div>
       </div>
       <Separator />
 
@@ -84,18 +104,57 @@ export function PropertiesPanel({
           <Field label={t('fields.notes')} value={project.notes} />
 
           <Separator />
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="flex-1" onClick={onEdit}>
-              <Pencil className="size-4" aria-hidden="true" />
-              {t('actions.edit')}
-            </Button>
-            <Button variant="outline" size="sm" className="text-destructive" aria-label={t('actions.delete')} onClick={onDelete}>
-              <Trash2 className="size-4" aria-hidden="true" />
-            </Button>
-          </div>
+          <PreferencesSection project={project} />
         </div>
       )}
     </aside>
+  )
+}
+
+/**
+ * Resolved read-only view of a project's optional defaults — the
+ * counterpart to `ProjectPreferencesFields`' edit form. Resolves
+ * `defaultSystemBrand`/`defaultSystemCatalog` against the same merged
+ * platform+company catalogue the Data page and the edit form both use;
+ * a reference that no longer resolves (its target since deleted) shows
+ * as "unavailable" rather than blanking silently — the read-side half
+ * of docs/project_preferences_planing.md's dangling-reference rule.
+ */
+function PreferencesSection({ project }: { project: ProjectDetail }) {
+  const { t } = useTranslation('workspace')
+  const { t: tLookups } = useTranslation('lookups')
+  const brands = useMergedSystemBrandsQuery()
+  const catalogs = useMergedSystemCatalogsQuery()
+
+  const brand = project.defaultSystemBrand
+    ? brands.data?.find((b) => b.id === parseScopedRef(project.defaultSystemBrand!).id)
+    : undefined
+  const catalog = project.defaultSystemCatalog
+    ? catalogs.data?.find((c) => c.id === parseScopedRef(project.defaultSystemCatalog!).id)
+    : undefined
+
+  const brandValue = !project.defaultSystemBrand
+    ? null
+    : brand
+      ? `${brand.name} (${brand.scope === 'company' ? tLookups('scope.ours') : tLookups('scope.platform')})`
+      : t('properties.unavailable')
+  const catalogValue = !project.defaultSystemCatalog
+    ? null
+    : catalog
+      ? `${catalog.name} (${catalog.scope === 'company' ? tLookups('scope.ours') : tLookups('scope.platform')})`
+      : t('properties.unavailable')
+
+  const rate = (value: number | null) => (value === null ? null : `${value}%`)
+
+  return (
+    <div className="flex flex-col gap-3">
+      <h3 className="text-sm font-semibold text-foreground">{t('properties.preferencesTitle')}</h3>
+      <Field label={t('fields.defaultSystemBrand')} value={brandValue} />
+      <Field label={t('fields.defaultSystemCatalog')} value={catalogValue} />
+      <Field label={t('fields.currency')} value={project.currency} dir="ltr" />
+      <Field label={t('fields.vatRate')} value={rate(project.vatRate)} dir="ltr" />
+      <Field label={t('fields.discountRate')} value={rate(project.discountRate)} dir="ltr" />
+    </div>
   )
 }
 

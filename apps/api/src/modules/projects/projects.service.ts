@@ -5,9 +5,11 @@ import type {
   ProjectDetail,
   UpdateProjectInput,
 } from '@repo/types/projects';
+import { LookupScope, formatScopedRef, type ScopedRef } from '@repo/types/company-lookups';
 import { Client } from '../../database/tenant/entities/client.entity';
 import { Project } from '../../database/tenant/entities/project.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
+import { resolveScopedRef } from '../company-lookups/scoped-ref.util';
 
 /**
  * Projects — manufacturing jobs — inside one manufacturer's schema.
@@ -50,6 +52,9 @@ export class ProjectsService {
         throw new BadRequestException('That client does not exist.');
       }
 
+      const brandPair = resolveScopedRefPair(input.defaultSystemBrand);
+      const catalogPair = resolveScopedRefPair(input.defaultSystemCatalog);
+
       const project = manager.create(Project, {
         clientId: input.clientId,
         enName: input.enName,
@@ -60,6 +65,13 @@ export class ProjectsService {
         phone: input.phone ?? null,
         email: input.email ?? null,
         createdByUserId,
+        defaultSystemPlatformBrandId: brandPair.platformId,
+        defaultSystemCompanyBrandId: brandPair.companyId,
+        defaultSystemPlatformCatalogId: catalogPair.platformId,
+        defaultSystemCompanyCatalogId: catalogPair.companyId,
+        currency: input.currency ?? null,
+        vatRate: input.vatRate ?? null,
+        discountRate: input.discountRate ?? null,
       });
 
       return toDetail(await manager.save(project));
@@ -85,6 +97,29 @@ export class ProjectsService {
       if (input.notes !== undefined) project.notes = input.notes;
       if (input.phone !== undefined) project.phone = input.phone;
       if (input.email !== undefined) project.email = input.email;
+
+      // Consistency rule (docs/project_preferences_planing.md §2): a
+      // catalogue belongs to exactly one brand, but neither column pair
+      // carries a FK to enforce that. Setting a new brand without also
+      // setting a catalogue in the same request nulls the catalogue out
+      // — otherwise a direct PATCH could leave the two disagreeing.
+      if (input.defaultSystemBrand !== undefined) {
+        const brandPair = resolveScopedRefPair(input.defaultSystemBrand);
+        project.defaultSystemPlatformBrandId = brandPair.platformId;
+        project.defaultSystemCompanyBrandId = brandPair.companyId;
+        if (input.defaultSystemCatalog === undefined) {
+          project.defaultSystemPlatformCatalogId = null;
+          project.defaultSystemCompanyCatalogId = null;
+        }
+      }
+      if (input.defaultSystemCatalog !== undefined) {
+        const catalogPair = resolveScopedRefPair(input.defaultSystemCatalog);
+        project.defaultSystemPlatformCatalogId = catalogPair.platformId;
+        project.defaultSystemCompanyCatalogId = catalogPair.companyId;
+      }
+      if (input.currency !== undefined) project.currency = input.currency;
+      if (input.vatRate !== undefined) project.vatRate = input.vatRate;
+      if (input.discountRate !== undefined) project.discountRate = input.discountRate;
 
       return toDetail(await manager.save(project));
     });
@@ -118,6 +153,28 @@ export class ProjectsService {
   }
 }
 
+// `undefined` (absent from the request) leaves both columns of the pair
+// alone; `null` (explicitly cleared) or a real `ScopedRef` resolves to
+// the platform/company pair — same nullable-pair shape
+// `company-lookups` already uses for a cross-scope parent, reused here
+// via the same `resolveScopedRef` helper. See project.entity.ts's doc
+// comment for why this pair carries no CHECK/FK, unlike that reuse.
+function resolveScopedRefPair(
+  ref: ScopedRef | null | undefined,
+): { platformId: string | null; companyId: string | null } {
+  if (!ref) return { platformId: null, companyId: null };
+  return resolveScopedRef(ref);
+}
+
+function toScopedRef(
+  platformId: string | null,
+  companyId: string | null,
+): ScopedRef | null {
+  if (platformId) return formatScopedRef(LookupScope.PLATFORM, platformId);
+  if (companyId) return formatScopedRef(LookupScope.COMPANY, companyId);
+  return null;
+}
+
 function toDetail(project: Project): ProjectDetail {
   return {
     id: project.id,
@@ -132,5 +189,16 @@ function toDetail(project: Project): ProjectDetail {
     createdByUserId: project.createdByUserId,
     createdAt: project.createdAt.toISOString(),
     updatedAt: project.updatedAt.toISOString(),
+    defaultSystemBrand: toScopedRef(
+      project.defaultSystemPlatformBrandId,
+      project.defaultSystemCompanyBrandId,
+    ),
+    defaultSystemCatalog: toScopedRef(
+      project.defaultSystemPlatformCatalogId,
+      project.defaultSystemCompanyCatalogId,
+    ),
+    currency: project.currency as ProjectDetail['currency'],
+    vatRate: project.vatRate,
+    discountRate: project.discountRate,
   };
 }

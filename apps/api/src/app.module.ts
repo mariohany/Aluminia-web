@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+import { ZodValidationPipe } from 'nestjs-zod';
 import { ConfigModule } from './config/config.module';
 import { LoggerModule } from './common/logger.module';
 import { RedisModule } from './common/redis.module';
@@ -43,6 +44,17 @@ import { LeadsModule } from './modules/leads/leads.module';
     CompanyModule,
     LeadsModule,
   ],
-  providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],
+  providers: [
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    // Registered here rather than only via main.ts's
+    // `app.useGlobalPipes()` so it's also active inside every e2e test —
+    // those build the Nest app straight from `AppModule` via
+    // `Test.createTestingModule()` + `createNestApplication()`, which
+    // never runs `bootstrap()`. Before this, no e2e test actually
+    // exercised body validation at all; invalid input reached services
+    // unvalidated in every test run, silently, because the assertion
+    // that would have caught it never had a functioning pipe behind it.
+    { provide: APP_PIPE, useClass: ZodValidationPipe },
+  ],
 })
 export class AppModule {}

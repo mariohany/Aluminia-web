@@ -9,6 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Client } from './client.entity';
+import { decimalTransformer } from '../../control-plane/entities/decimal.transformer';
 
 /**
  * A manufacturing job. Lives in the TENANT schema.
@@ -78,6 +79,51 @@ export class Project {
    */
   @Column({ name: 'created_by_user_id', type: 'uuid' })
   createdByUserId: string;
+
+  // Optional defaults the window designer will inherit later — set at
+  // creation or any time after, never required. The two system
+  // references are nullable PAIRS (platform_x_id / company_x_id),
+  // reusing the storage shape AddCompanyLookups established for a
+  // parent that may live in either scope — but unlike that migration's
+  // own uses of the pair, neither half here has a CHECK or a foreign
+  // key: this is a soft preference, not a required structural parent,
+  // and is allowed to go stale if its target is later deleted (surfaced
+  // on read as "unavailable", not prevented). See
+  // docs/project_preferences_planing.md.
+  @Column({ name: 'default_system_platform_brand_id', type: 'uuid', nullable: true })
+  defaultSystemPlatformBrandId: string | null;
+
+  @Column({ name: 'default_system_company_brand_id', type: 'uuid', nullable: true })
+  defaultSystemCompanyBrandId: string | null;
+
+  @Column({ name: 'default_system_platform_catalog_id', type: 'uuid', nullable: true })
+  defaultSystemPlatformCatalogId: string | null;
+
+  @Column({ name: 'default_system_company_catalog_id', type: 'uuid', nullable: true })
+  defaultSystemCompanyCatalogId: string | null;
+
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  currency: string | null;
+
+  @Column({
+    name: 'vat_rate',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  vatRate: number | null;
+
+  @Column({
+    name: 'discount_rate',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  discountRate: number | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

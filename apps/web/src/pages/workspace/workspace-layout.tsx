@@ -209,6 +209,7 @@ export function WorkspaceLayout() {
   const [editingClient, setEditingClient] = useState<ClientWithProjects | undefined>()
   const [projectDialogOpen, setProjectDialogOpen] = useState(false)
   const [editingProject, setEditingProject] = useState(false)
+  const [projectDialogInitialStep, setProjectDialogInitialStep] = useState<1 | 2>(1)
   const [deletingClient, setDeletingClient] = useState<ClientWithProjects | undefined>()
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
 
@@ -273,12 +274,24 @@ export function WorkspaceLayout() {
 
   const openNewProject = () => {
     setEditingProject(false)
+    setProjectDialogInitialStep(1)
     setProjectDialogOpen(true)
   }
 
   const openEditProject = () => {
     if (!selectedProjectId) return
     setEditingProject(true)
+    setProjectDialogInitialStep(1)
+    setProjectDialogOpen(true)
+  }
+
+  // Same dialog, opened straight on step 2 — from the properties
+  // panel's Preferences section or the tree's right-click menu, neither
+  // of which should make the user click through step 1 again.
+  const openEditProjectPreferences = () => {
+    if (!selectedProjectId) return
+    setEditingProject(true)
+    setProjectDialogInitialStep(2)
     setProjectDialogOpen(true)
   }
 
@@ -293,6 +306,7 @@ export function WorkspaceLayout() {
       }}
       onDeleteClient={(client) => setDeletingClient(client)}
       onEditProject={openEditProject}
+      onEditProjectPreferences={openEditProjectPreferences}
       onDeleteProject={() => setDeleteProjectOpen(true)}
     />
   )
@@ -403,6 +417,7 @@ export function WorkspaceLayout() {
         language={language}
         project={editingProject ? projectQuery.data : undefined}
         defaultClientId={contextClientId}
+        initialStep={projectDialogInitialStep}
         // Selecting the new project immediately is the point of
         // creating it — otherwise the user has to go find it.
         onCreated={(created) => void navigate(`/workspace/projects/${created.id}`)}

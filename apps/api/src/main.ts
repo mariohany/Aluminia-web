@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import type { Env } from './config/env.schema';
 
@@ -20,7 +19,9 @@ async function bootstrap() {
     origin: config.get('CORS_ORIGIN', { infer: true }),
     credentials: true,
   });
-  app.useGlobalPipes(new ZodValidationPipe());
+  // ZodValidationPipe is registered as an APP_PIPE in AppModule, not
+  // here — see that file's comment for why (e2e tests build the Nest
+  // app straight from AppModule and never run this function).
 
   await app.listen(config.get('PORT', { infer: true }));
 }

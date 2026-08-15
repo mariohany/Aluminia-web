@@ -103,7 +103,16 @@
     "phone": "Site contact phone",
     "email": "Site contact email",
     "notes": "Notes",
-    "optional": "(optional)"
+    "optional": "(optional)",
+    "defaultSystemBrand": "System brand",
+    "defaultSystemBrandPlaceholder": "No default brand",
+    "defaultSystemCatalog": "System catalogue",
+    "defaultSystemCatalogPlaceholder": "No default catalogue",
+    "defaultSystemCatalogNeedsBrand": "Pick a brand first",
+    "currency": "Currency",
+    "currencyPlaceholder": "No default currency",
+    "vatRate": "VAT (%)",
+    "discountRate": "Discount (%)"
   },
   "actions": {
     "cancel": "Cancel",
@@ -111,10 +120,13 @@
     "save": "Save changes",
     "edit": "Edit",
     "delete": "Delete",
+    "back": "Back",
+    "next": "Next",
     "newClient": "New client",
     "newProject": "New project",
     "editProject": "Edit project",
     "editClient": "Edit client",
+    "editPreferences": "Preferences",
     "deleteClient": "Delete client",
     "deleteProject": "Delete project"
   },
@@ -130,6 +142,9 @@
     "createTitle": "New project",
     "editTitle": "Edit project",
     "description": "A project belongs to one client and cannot be moved later.",
+    "stepBasicInfo": "Basic info",
+    "stepPreferences": "Preferences",
+    "stepPreferencesDescription": "Optional defaults the window designer will use later. Leave blank and set them any time.",
     "created": "Created {{name}}.",
     "updated": "Project saved.",
     "error": "Couldn't save the project. Try again."
@@ -153,6 +168,8 @@
     "title": "Properties",
     "collapse": "Collapse properties",
     "expand": "Show properties",
-    "notSet": "Not set"
+    "notSet": "Not set",
+    "preferencesTitle": "Preferences",
+    "unavailable": "Unavailable"
   }
 }

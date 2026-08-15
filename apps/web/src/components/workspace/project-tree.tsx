@@ -26,6 +26,7 @@ interface ProjectTreeProps {
    * `ContextMenu`'s `onOpenChange` below) before either can fire.
    */
   onEditProject: () => void
+  onEditProjectPreferences: () => void
   onDeleteProject: () => void
 }
 
@@ -44,6 +45,7 @@ export function ProjectTree({
   onEditClient,
   onDeleteClient,
   onEditProject,
+  onEditProjectPreferences,
   onDeleteProject,
 }: ProjectTreeProps) {
   const { t, i18n } = useTranslation('workspace')
@@ -300,6 +302,9 @@ export function ProjectTree({
                               <ContextMenuContent>
                                 <ContextMenuItem onSelect={onEditProject}>
                                   {t('actions.editProject')}
+                                </ContextMenuItem>
+                                <ContextMenuItem onSelect={onEditProjectPreferences}>
+                                  {t('actions.editPreferences')}
                                 </ContextMenuItem>
                                 <ContextMenuItem variant="destructive" onSelect={onDeleteProject}>
                                   {t('actions.deleteProject')}

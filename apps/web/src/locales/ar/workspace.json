@@ -103,7 +103,16 @@
     "phone": "هاتف مسؤول الموقع",
     "email": "بريد مسؤول الموقع",
     "notes": "ملاحظات",
-    "optional": "(اختياري)"
+    "optional": "(اختياري)",
+    "defaultSystemBrand": "ماركة النظام",
+    "defaultSystemBrandPlaceholder": "بلا ماركة افتراضية",
+    "defaultSystemCatalog": "كتالوج النظام",
+    "defaultSystemCatalogPlaceholder": "بلا كتالوج افتراضي",
+    "defaultSystemCatalogNeedsBrand": "اختر ماركة أولاً",
+    "currency": "العملة",
+    "currencyPlaceholder": "بلا عملة افتراضية",
+    "vatRate": "ضريبة القيمة المضافة (%)",
+    "discountRate": "الخصم (%)"
   },
   "actions": {
     "cancel": "إلغاء",
@@ -111,10 +120,13 @@
     "save": "حفظ التغييرات",
     "edit": "تعديل",
     "delete": "حذف",
+    "back": "رجوع",
+    "next": "التالي",
     "newClient": "عميل جديد",
     "newProject": "مشروع جديد",
     "editProject": "تعديل المشروع",
     "editClient": "تعديل العميل",
+    "editPreferences": "التفضيلات",
     "deleteClient": "حذف العميل",
     "deleteProject": "حذف المشروع"
   },
@@ -130,6 +142,9 @@
     "createTitle": "مشروع جديد",
     "editTitle": "تعديل المشروع",
     "description": "المشروع يتبع عميلاً واحداً ولا يمكن نقله لاحقاً.",
+    "stepBasicInfo": "البيانات الأساسية",
+    "stepPreferences": "التفضيلات",
+    "stepPreferencesDescription": "إعدادات افتراضية اختيارية سيستخدمها مصمم النوافذ لاحقاً. يمكن تركها فارغة وتحديدها في أي وقت.",
     "created": "تم إنشاء {{name}}.",
     "updated": "تم حفظ المشروع.",
     "error": "تعذّر حفظ المشروع. حاول مرة أخرى."
@@ -157,6 +172,8 @@
     "title": "الخصائص",
     "collapse": "طيّ الخصائص",
     "expand": "إظهار الخصائص",
-    "notSet": "غير محدد"
+    "notSet": "غير محدد",
+    "preferencesTitle": "التفضيلات",
+    "unavailable": "غير متاح"
   }
 }

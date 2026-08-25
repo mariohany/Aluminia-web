@@ -272,6 +272,7 @@ export const createCompanySystemProfileSchema = z.object({
   inertiaIx: z.number().positive(),
   inertiaIy: z.number().positive(),
   image: z.url().nullable().optional(),
+  acceptsFlyScreen: z.boolean(),
 })
 export type CreateCompanySystemProfileInput = z.infer<typeof createCompanySystemProfileSchema>
 export const updateCompanySystemProfileSchema = createCompanySystemProfileSchema.partial()
@@ -290,6 +291,7 @@ export interface CompanySystemProfileSummary {
   inertiaIx: number
   inertiaIy: number
   image: string | null
+  acceptsFlyScreen: boolean
   scope: typeof LookupScope.COMPANY
   createdAt: string
   updatedAt: string

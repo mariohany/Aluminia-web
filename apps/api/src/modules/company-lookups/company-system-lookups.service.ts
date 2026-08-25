@@ -369,6 +369,7 @@ export class CompanySystemLookupsService {
         inertiaIx: input.inertiaIx,
         inertiaIy: input.inertiaIy,
         image: input.image ?? null,
+        acceptsFlyScreen: input.acceptsFlyScreen,
       });
       try {
         await manager.save(profile);
@@ -415,6 +416,8 @@ export class CompanySystemLookupsService {
       if (input.inertiaIx !== undefined) profile.inertiaIx = input.inertiaIx;
       if (input.inertiaIy !== undefined) profile.inertiaIy = input.inertiaIy;
       if (input.image !== undefined) profile.image = input.image ?? null;
+      if (input.acceptsFlyScreen !== undefined)
+        profile.acceptsFlyScreen = input.acceptsFlyScreen;
 
       try {
         await manager.save(profile);
@@ -475,6 +478,7 @@ export class CompanySystemLookupsService {
               inertiaIx: item.inertiaIx,
               inertiaIy: item.inertiaIy,
               image: item.image ?? null,
+              acceptsFlyScreen: item.acceptsFlyScreen,
             })),
           )
           .execute();
@@ -541,6 +545,7 @@ export class CompanySystemLookupsService {
         inertiaIx: profile.inertiaIx,
         inertiaIy: profile.inertiaIy,
         image: profile.image,
+        acceptsFlyScreen: profile.acceptsFlyScreen,
         scope: LookupScope.COMPANY,
         createdAt: profile.createdAt.toISOString(),
         updatedAt: profile.updatedAt.toISOString(),

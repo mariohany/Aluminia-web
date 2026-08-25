@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowDown, ArrowUp, Copy, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   CombinationItemKind,
   GlassGapType,
@@ -40,6 +40,7 @@ import {
 import type { LookupRowScope } from './lookup-table-section'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -351,18 +352,13 @@ export function GlassCombinationSection({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <div className="relative w-full max-w-xs">
-          <Search
-            className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('search.glassCombinations')}
-            className="ps-8"
-          />
-        </div>
+        <SearchInput
+          icon
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder={t('search.glassCombinations')}
+          className="w-full max-w-xs"
+        />
 
         {someSelected && (
           <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted/60 px-3 py-0.5">

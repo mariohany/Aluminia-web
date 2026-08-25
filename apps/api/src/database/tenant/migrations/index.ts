@@ -3,6 +3,7 @@ import { InitialTenantSchema1785971048351 } from './1785971048351-InitialTenantS
 import { AddClientsAndProjects1786143076516 } from './1786143076516-AddClientsAndProjects';
 import { AddCompanyLookups1786531275742 } from './1786531275742-AddCompanyLookups';
 import { AddProjectPreferences1786786169898 } from './1786786169898-AddProjectPreferences';
+import { AddCompanyProfileFlyScreen1786831096555 } from './1786831096555-AddCompanyProfileFlyScreen';
 
 /**
  * The tenant migration track, explicitly ordered.
@@ -21,6 +22,7 @@ export const tenantMigrations: Array<new () => MigrationInterface> = [
   AddClientsAndProjects1786143076516,
   AddCompanyLookups1786531275742,
   AddProjectPreferences1786786169898,
+  AddCompanyProfileFlyScreen1786831096555,
 ];
 
 /** TypeORM records applied migrations as `{timestamp}-{ClassName}`. */

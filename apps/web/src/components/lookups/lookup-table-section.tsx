@@ -11,12 +11,13 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Copy, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Copy, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { ZodType } from 'zod'
 import { apiErrorMessage } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -48,7 +49,7 @@ import {
 export interface LookupFieldSpec<TInput extends FieldValues> {
   name: Path<TInput>
   label: string
-  type: 'text' | 'number' | 'select'
+  type: 'text' | 'number' | 'select' | 'boolean'
   step?: number
   min?: number
   options?: { value: string; label: string }[]
@@ -391,18 +392,13 @@ export function LookupTableSection<
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             {search && (
-              <div className="relative w-full max-w-xs">
-                <Search
-                  className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={search.placeholder}
-                  className="ps-8"
-                />
-              </div>
+              <SearchInput
+                icon
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder={search.placeholder}
+                className="w-full max-w-xs"
+              />
             )}
             {rowScope && (
               <Select value={scopeFilter} onValueChange={(v) => setScopeFilter(v as typeof scopeFilter)}>
@@ -672,36 +668,57 @@ function LookupFormFields<TInput extends FieldValues>({
         const error = errors[field.name]
         return (
           <div key={field.name}>
-            <Label htmlFor={fieldId}>{field.label}</Label>
-            {field.type === 'select' ? (
-              <Controller
-                name={field.name}
-                control={control}
-                render={({ field: controllerField }) => (
-                  <Select value={controllerField.value ?? ''} onValueChange={controllerField.onChange}>
-                    <SelectTrigger id={fieldId} className="mt-1.5 w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(field.options ?? []).map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
+            {field.type === 'boolean' ? (
+              <div className="mt-1.5 flex items-center gap-2">
+                <Controller
+                  name={field.name}
+                  control={control}
+                  render={({ field: controllerField }) => (
+                    <Checkbox
+                      id={fieldId}
+                      checked={!!controllerField.value}
+                      onCheckedChange={(checked) => controllerField.onChange(!!checked)}
+                    />
+                  )}
+                />
+                <Label htmlFor={fieldId} className="font-normal">
+                  {field.label}
+                </Label>
+              </div>
             ) : (
-              <Input
-                id={fieldId}
-                type={field.type === 'number' ? 'number' : 'text'}
-                step={field.step}
-                min={field.min}
-                className="mt-1.5"
-                aria-invalid={!!error}
-                {...register(field.name, field.type === 'number' ? { valueAsNumber: true } : undefined)}
-              />
+              <>
+                <Label htmlFor={fieldId}>{field.label}</Label>
+                {field.type === 'select' ? (
+                  <Controller
+                    name={field.name}
+                    control={control}
+                    render={({ field: controllerField }) => (
+                      <Select value={controllerField.value ?? ''} onValueChange={controllerField.onChange}>
+                        <SelectTrigger id={fieldId} className="mt-1.5 w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(field.options ?? []).map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                ) : (
+                  <Input
+                    id={fieldId}
+                    type={field.type === 'number' ? 'number' : 'text'}
+                    step={field.step}
+                    min={field.min}
+                    className="mt-1.5"
+                    aria-invalid={!!error}
+                    {...register(field.name, field.type === 'number' ? { valueAsNumber: true } : undefined)}
+                  />
+                )}
+              </>
             )}
             {error && <p className="mt-1 text-xs text-destructive">{String(error.message ?? '')}</p>}
           </div>

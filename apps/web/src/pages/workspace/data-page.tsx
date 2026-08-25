@@ -362,6 +362,7 @@ function SystemProfilesTab() {
           inertiaIx: 1,
           inertiaIy: 1,
           image: null,
+          acceptsFlyScreen: false,
         } as CreateCompanySystemProfileInput
       }
       fields={[
@@ -378,6 +379,7 @@ function SystemProfilesTab() {
         { name: 'perimeter', label: t('fields.perimeter'), type: 'number', min: 1 },
         { name: 'inertiaIx', label: t('fields.inertiaIx'), type: 'number', step: 0.01, min: 0 },
         { name: 'inertiaIy', label: t('fields.inertiaIy'), type: 'number', step: 0.01, min: 0 },
+        { name: 'acceptsFlyScreen', label: t('fields.acceptsFlyScreen'), type: 'boolean' },
       ]}
       columns={[
         {
@@ -395,6 +397,10 @@ function SystemProfilesTab() {
         { header: t('fields.perimeter'), cell: (row) => row.perimeter },
         { header: t('fields.inertiaIx'), cell: (row) => row.inertiaIx.toFixed(2) },
         { header: t('fields.inertiaIy'), cell: (row) => row.inertiaIy.toFixed(2) },
+        {
+          header: t('fields.acceptsFlyScreen'),
+          cell: (row) => (row.acceptsFlyScreen ? t('common.yes') : t('common.no')),
+        },
       ]}
       search={{
         placeholder: t('search.systemProfiles'),
@@ -431,6 +437,7 @@ function SystemProfilesTab() {
           inertiaIx: row.inertiaIx,
           inertiaIy: row.inertiaIy,
           image: row.image,
+          acceptsFlyScreen: row.acceptsFlyScreen,
         }),
       }}
       useList={useMergedSystemProfilesQuery}
@@ -449,6 +456,7 @@ function SystemProfilesTab() {
         inertiaIx: row.inertiaIx,
         inertiaIy: row.inertiaIy,
         image: row.image,
+        acceptsFlyScreen: row.acceptsFlyScreen,
       })}
       toEditDefaults={(row) => ({
         catalog: row.catalog,
@@ -460,6 +468,7 @@ function SystemProfilesTab() {
         inertiaIx: row.inertiaIx,
         inertiaIy: row.inertiaIy,
         image: row.image,
+        acceptsFlyScreen: row.acceptsFlyScreen,
       })}
       rowLabel={(row) => row.profileNo}
     />

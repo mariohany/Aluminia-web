@@ -703,7 +703,8 @@ export class SystemLookupsService {
           const changed =
             existing.profileType !== row.profileType ||
             numbersChanged ||
-            (existing.image ?? null) !== (row.image ?? null);
+            (existing.image ?? null) !== (row.image ?? null) ||
+            existing.acceptsFlyScreen !== row.acceptsFlyScreen;
           if (changed) toUpdate.push({ id: existing.id, row });
           else profilesResult.unchangedCount += 1;
         }
@@ -730,6 +731,7 @@ export class SystemLookupsService {
                       inertiaIx: row.inertiaIx,
                       inertiaIy: row.inertiaIy,
                       image: row.image,
+                      acceptsFlyScreen: row.acceptsFlyScreen,
                     })),
                   )
                   .execute();
@@ -743,7 +745,7 @@ export class SystemLookupsService {
                 const values = toUpdate
                   .map(
                     (_, i) =>
-                      `($${i * 8 + 1}::uuid, $${i * 8 + 2}::profile_type, $${i * 8 + 3}::integer, $${i * 8 + 4}::real, $${i * 8 + 5}::integer, $${i * 8 + 6}::real, $${i * 8 + 7}::real, $${i * 8 + 8}::varchar)`,
+                      `($${i * 9 + 1}::uuid, $${i * 9 + 2}::profile_type, $${i * 9 + 3}::integer, $${i * 9 + 4}::real, $${i * 9 + 5}::integer, $${i * 9 + 6}::real, $${i * 9 + 7}::real, $${i * 9 + 8}::varchar, $${i * 9 + 9}::boolean)`,
                   )
                   .join(', ');
                 const params = toUpdate.flatMap(({ id, row }) => [
@@ -755,11 +757,12 @@ export class SystemLookupsService {
                   row.inertiaIx,
                   row.inertiaIy,
                   row.image,
+                  row.acceptsFlyScreen,
                 ]);
                 await queryRunner.query(
                   `UPDATE "system_profile" AS t
-                   SET "profile_type" = v.profile_type, "max_glass_thickness" = v.max_glass_thickness, "weight" = v.weight, "perimeter" = v.perimeter, "inertia_ix" = v.inertia_ix, "inertia_iy" = v.inertia_iy, "image" = v.image, "updated_at" = now()
-                   FROM (VALUES ${values}) AS v(id, profile_type, max_glass_thickness, weight, perimeter, inertia_ix, inertia_iy, image)
+                   SET "profile_type" = v.profile_type, "max_glass_thickness" = v.max_glass_thickness, "weight" = v.weight, "perimeter" = v.perimeter, "inertia_ix" = v.inertia_ix, "inertia_iy" = v.inertia_iy, "image" = v.image, "accepts_fly_screen" = v.accepts_fly_screen, "updated_at" = now()
+                   FROM (VALUES ${values}) AS v(id, profile_type, max_glass_thickness, weight, perimeter, inertia_ix, inertia_iy, image, accepts_fly_screen)
                    WHERE t.id = v.id`,
                   params,
                 );
@@ -870,6 +873,7 @@ function toSystemProfileSummary(profile: SystemProfile): SystemProfileSummary {
     inertiaIx: profile.inertiaIx,
     inertiaIy: profile.inertiaIy,
     image: profile.image,
+    acceptsFlyScreen: profile.acceptsFlyScreen,
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
   };

@@ -61,7 +61,12 @@
     "weight": "Weight (kg/m)",
     "perimeter": "Perimeter (mm)",
     "inertiaIx": "Inertia Ix (cm⁴)",
-    "inertiaIy": "Inertia Iy (cm⁴)"
+    "inertiaIy": "Inertia Iy (cm⁴)",
+    "acceptsFlyScreen": "Fly screen"
+  },
+  "common": {
+    "yes": "Yes",
+    "no": "No"
   },
   "systemType": {
     "sliding": "Sliding",
@@ -162,7 +167,7 @@
   },
   "systemsImport": {
     "button": "Import Excel",
-    "description": "Upload a spreadsheet with up to three sheets named exactly \"Brand\", \"Catalogue\", and \"Profile\" — any of the three can be left out. Brand: a \"Name\" column. Catalogue: \"Brand\", \"Name\", \"System type\", \"Max glass thickness\", \"Max sash weight\" — Brand must match a name from the Brand sheet. Profile: \"Catalogue\", \"Profile no.\", \"Profile type\", \"Max glass thickness\", \"Weight\", \"Perimeter\", \"Inertia Ix\", \"Inertia Iy\", and an optional \"Image\" — Catalogue must match a name from the Catalogue sheet. Existing rows only update when a value actually changed.",
+    "description": "Upload a spreadsheet with up to three sheets named exactly \"Brand\", \"Catalogue\", and \"Profile\" — any of the three can be left out. Brand: a \"Name\" column. Catalogue: \"Brand\", \"Name\", \"System type\", \"Max glass thickness\", \"Max sash weight\" — Brand must match a name from the Brand sheet. Profile: \"Catalogue\", \"Profile no.\", \"Profile type\", \"Max glass thickness\", \"Weight\", \"Perimeter\", \"Inertia Ix\", \"Inertia Iy\", an optional \"Image\", and an optional \"Fly screen\" (yes/no, defaults to no if left out) — Catalogue must match a name from the Catalogue sheet. Existing rows only update when a value actually changed.",
     "importing": "Importing…",
     "resultTitle": "Import results",
     "created": "{{count}} added",

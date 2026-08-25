@@ -16,12 +16,22 @@
     "collapse": "طيّ",
     "resizeLabel": "تغيير حجم لوحة العملاء والمشاريع"
   },
+  "profilePicker": {
+    "searchPlaceholder": "دور على ماركة أو كتالوج أو رقم بروفايل…",
+    "loading": "جارٍ تحميل البروفايلات…",
+    "error": "تعذّر تحميل البروفايلات. حاول تاني.",
+    "empty": "لا توجد بروفايلات من هذا النوع بعد.",
+    "noMatches": "لا توجد نتائج مطابقة.",
+    "setFavorite": "تعيين كمفضّل"
+  },
   "canvas": {
     "nothingSelected": "لم يتم اختيار مشروع",
     "nothingSelectedHint": "اختر مشروعاً من الشجرة، أو أنشئ أول عميل لك.",
-    "designerComing": "مصمم النوافذ",
-    "designerHint": "سطح التصميم الخاص بهذا المشروع سيظهر هنا.",
-    "clientSelectedHint": "أنشئ مشروعاً لهذا العميل، أو اختر مشروعاً من الشجرة."
+    "noWindowsTitle": "لا توجد شبابيك بعد",
+    "noWindowsHint": "أضف أول شباك من شريط الأدوات في الأعلى.",
+    "clientSelectedHint": "أنشئ مشروعاً لهذا العميل، أو اختر مشروعاً من الشجرة.",
+    "copySuffix": "نسخة",
+    "duplicateError": "تعذّر تكرار الشباك. حاول مرة أخرى."
   },
   "dataPage": {
     "title": "البيانات"
@@ -112,7 +122,52 @@
     "currency": "العملة",
     "currencyPlaceholder": "بلا عملة افتراضية",
     "vatRate": "ضريبة القيمة المضافة (%)",
-    "discountRate": "الخصم (%)"
+    "discountRate": "الخصم (%)",
+    "windowName": "اسم الشباك",
+    "windowNameRequired": "اكتب اسم الشباك.",
+    "frameProfile": "بروفايل البرواز",
+    "frameProfileRequired": "اختر بروفايل برواز.",
+    "sashProfile": "بروفايل الدفة",
+    "sashProfilePlaceholder": "اختر دفة",
+    "sashProfileNeedsFrame": "اختر برواز أولاً",
+    "sashProfileRequired": "اختر بروفايل دفة.",
+    "widthMm": "العرض (مم)",
+    "widthMmRequired": "اكتب العرض.",
+    "heightMm": "الارتفاع (مم)",
+    "heightMmRequired": "اكتب الارتفاع.",
+    "quantity": "الكمية",
+    "quantityRequired": "اكتب الكمية.",
+    "glass": "الزجاج",
+    "glassPlaceholder": "اختر الزجاج",
+    "glassNeedsSash": "اختر دفة أولاً",
+    "glassDisclaimer": "يظهر فقط الزجاج حتى {{max}} مم — الدفة تقبل {{sashMax}} مم، ناقص هامش 2 مم.",
+    "glassRequired": "اختر زجاجاً.",
+    "hasFlyScreen": "سلك ناموس",
+    "flyScreenDisabledHint": "بروفايل البرواز ده مش بيقبل سلك ناموس.",
+    "isDoor": "باب",
+    "openingTypeSection": "طريقة الفتح",
+    "openingTypeLabels": {
+      "top_hung": "مفصلي علوي",
+      "fixed_closed": "ثابت (مغلق)",
+      "side_hung_left": "مفصلي جانبي، المفصلة يسار",
+      "side_hung_right": "مفصلي جانبي، المفصلة يمين",
+      "tilt_turn_left": "ميل ودوران، المفصلة يسار",
+      "tilt_turn_right": "ميل ودوران، المفصلة يمين",
+      "pivot_bottom": "محوري، محور سفلي",
+      "pivot_side": "محوري، محور جانبي",
+      "double_door_french_a": "باب مزدوج فرنسي",
+      "double_door_french_b": "باب مزدوج فرنسي (ب)",
+      "single_door_hinge_left": "باب مفرد، المفصلة يسار",
+      "single_door_hinge_right": "باب مفرد، المفصلة يمين",
+      "double_door_handles_a": "باب مزدوج بمقابض",
+      "double_door_handles_b": "باب مزدوج بمقابض (ب)",
+      "fixed_vertical_mullion": "ثابت، عمود قسمة رأسي",
+      "fixed_horizontal_mullion": "ثابت، عمود قسمة أفقي"
+    },
+    "interiorColor": "اللون الداخلي",
+    "exteriorColor": "اللون الخارجي",
+    "colorPlaceholder": "بدون لون",
+    "location": "الموضع في الموقع"
   },
   "actions": {
     "cancel": "إلغاء",
@@ -120,10 +175,12 @@
     "save": "حفظ التغييرات",
     "edit": "تعديل",
     "delete": "حذف",
+    "duplicate": "تكرار",
     "back": "رجوع",
     "next": "التالي",
     "newClient": "عميل جديد",
     "newProject": "مشروع جديد",
+    "newWindow": "شباك جديد",
     "editProject": "تعديل المشروع",
     "editClient": "تعديل العميل",
     "editPreferences": "التفضيلات",
@@ -149,6 +206,37 @@
     "updated": "تم حفظ المشروع.",
     "error": "تعذّر حفظ المشروع. حاول مرة أخرى."
   },
+  "windowDialog": {
+    "createTitle": "شباك جديد",
+    "createTitleTyped": "شباك {{type}} جديد",
+    "editTitle": "تعديل الشباك",
+    "editTitleTyped": "تعديل شباك {{type}}",
+    "description": "البرواز والدفة والزجاج والمقاس والخيارات لتصميم شباك واحد.",
+    "created": "تم إنشاء {{name}}.",
+    "updated": "تم حفظ الشباك.",
+    "error": "تعذّر حفظ الشباك. حاول مرة أخرى.",
+    "design": {
+      "interior": "داخلي",
+      "exterior": "خارجي",
+      "untitled": "شباك بدون اسم",
+      "computedSize": "{{width}} × {{height}} مم (تقريبي)",
+      "sashWeight": "الوزن التقديري: {{weight}} كجم (حد الكتالوج {{max}} كجم)",
+      "sections": {
+        "frame": "البرواز",
+        "sash": "الدفة",
+        "glass": "الزجاج",
+        "flyScreen": "سلك الناموس"
+      },
+      "issues": {
+        "frameRequired": "اختر بروفيل البرواز.",
+        "sashRequired": "اختر بروفيل الدفة.",
+        "glassRequired": "اختر الزجاج.",
+        "glassTooThick": "زجاج {{thickness}} مم يتجاوز حد الدفة البالغ {{max}} مم.",
+        "flyScreenNotAllowed": "هذا البروفيل لا يقبل تركيب سلك ناموسية.",
+        "sashWeightExceeded": "الوزن التقديري {{weight}} كجم يتجاوز حد الكتالوج البالغ {{max}} كجم (تقديري)."
+      }
+    }
+  },
   "deleteClient": {
     "title": "حذف العميل",
     "warning": "سيؤدي هذا إلى حذف {{name}} نهائياً. لا يمكن التراجع عن ذلك.",
@@ -167,6 +255,12 @@
     "warning": "سيؤدي هذا إلى حذف {{name}} نهائياً. لا يمكن التراجع عن ذلك.",
     "success": "تم حذف {{name}}.",
     "error": "تعذّر حذف المشروع."
+  },
+  "deleteWindow": {
+    "title": "حذف الشباك",
+    "warning": "سيؤدي هذا إلى حذف {{name}} نهائياً. لا يمكن التراجع عن ذلك.",
+    "success": "تم حذف {{name}}.",
+    "error": "تعذّر حذف الشباك."
   },
   "properties": {
     "title": "الخصائص",

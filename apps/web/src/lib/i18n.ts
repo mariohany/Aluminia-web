@@ -98,6 +98,7 @@ void i18n
       'login',
       'app',
       'admin',
+      'workspace',
       'lookups',
     ],
     defaultNS: 'common',

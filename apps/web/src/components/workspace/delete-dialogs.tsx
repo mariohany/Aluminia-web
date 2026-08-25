@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { apiErrorMessage } from '@/lib/api-client'
 import { useClientQuery, useDeleteClientMutation } from '@/lib/clients-queries'
 import { useDeleteProjectMutation } from '@/lib/projects-queries'
+import { useDeleteWindowMutation } from '@/lib/windows-queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -141,6 +142,59 @@ export function DeleteProjectDialog({
         <DialogHeader>
           <DialogTitle>{t('deleteProject.title')}</DialogTitle>
           <DialogDescription>{t('deleteProject.warning', { name: projectName })}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {t('actions.cancel')}
+          </Button>
+          <Button variant="destructive" disabled={mutation.isPending} onClick={() => void handleDelete()}>
+            {t('actions.delete')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * Same plain-confirmation shape as `DeleteProjectDialog` — one row, no
+ * cascade, no typed name.
+ */
+export function DeleteWindowDialog({
+  windowId,
+  windowName,
+  projectId,
+  open,
+  onOpenChange,
+  onDeleted,
+}: {
+  windowId: string
+  windowName: string
+  projectId: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onDeleted?: () => void
+}) {
+  const { t } = useTranslation('workspace')
+  const mutation = useDeleteWindowMutation(windowId, projectId)
+
+  const handleDelete = async () => {
+    try {
+      await mutation.mutateAsync()
+      toast.success(t('deleteWindow.success', { name: windowName }))
+      onOpenChange(false)
+      onDeleted?.()
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('deleteWindow.error')))
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('deleteWindow.title')}</DialogTitle>
+          <DialogDescription>{t('deleteWindow.warning', { name: windowName })}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

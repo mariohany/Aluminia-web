@@ -1,11 +1,19 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import type {
   CreateProjectInput,
   ProjectDetail,
   UpdateProjectInput,
 } from '@repo/types/projects';
-import { LookupScope, formatScopedRef, type ScopedRef } from '@repo/types/company-lookups';
+import {
+  LookupScope,
+  formatScopedRef,
+  type ScopedRef,
+} from '@repo/types/company-lookups';
 import { Client } from '../../database/tenant/entities/client.entity';
 import { Project } from '../../database/tenant/entities/project.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
@@ -54,6 +62,7 @@ export class ProjectsService {
 
       const brandPair = resolveScopedRefPair(input.defaultSystemBrand);
       const catalogPair = resolveScopedRefPair(input.defaultSystemCatalog);
+      const favoritePair = resolveScopedRefPair(input.favoriteFrameProfile);
 
       const project = manager.create(Project, {
         clientId: input.clientId,
@@ -72,6 +81,8 @@ export class ProjectsService {
         currency: input.currency ?? null,
         vatRate: input.vatRate ?? null,
         discountRate: input.discountRate ?? null,
+        favoritePlatformProfileId: favoritePair.platformId,
+        favoriteCompanyProfileId: favoritePair.companyId,
       });
 
       return toDetail(await manager.save(project));
@@ -119,7 +130,17 @@ export class ProjectsService {
       }
       if (input.currency !== undefined) project.currency = input.currency;
       if (input.vatRate !== undefined) project.vatRate = input.vatRate;
-      if (input.discountRate !== undefined) project.discountRate = input.discountRate;
+      if (input.discountRate !== undefined)
+        project.discountRate = input.discountRate;
+
+      // No cascade rule to mirror here (unlike brand/catalogue above) —
+      // a favourite is a single reference, not a two-part pair that can
+      // disagree with itself.
+      if (input.favoriteFrameProfile !== undefined) {
+        const favoritePair = resolveScopedRefPair(input.favoriteFrameProfile);
+        project.favoritePlatformProfileId = favoritePair.platformId;
+        project.favoriteCompanyProfileId = favoritePair.companyId;
+      }
 
       return toDetail(await manager.save(project));
     });
@@ -159,9 +180,10 @@ export class ProjectsService {
 // `company-lookups` already uses for a cross-scope parent, reused here
 // via the same `resolveScopedRef` helper. See project.entity.ts's doc
 // comment for why this pair carries no CHECK/FK, unlike that reuse.
-function resolveScopedRefPair(
-  ref: ScopedRef | null | undefined,
-): { platformId: string | null; companyId: string | null } {
+function resolveScopedRefPair(ref: ScopedRef | null | undefined): {
+  platformId: string | null;
+  companyId: string | null;
+} {
   if (!ref) return { platformId: null, companyId: null };
   return resolveScopedRef(ref);
 }
@@ -200,5 +222,9 @@ function toDetail(project: Project): ProjectDetail {
     currency: project.currency as ProjectDetail['currency'],
     vatRate: project.vatRate,
     discountRate: project.discountRate,
+    favoriteFrameProfile: toScopedRef(
+      project.favoritePlatformProfileId,
+      project.favoriteCompanyProfileId,
+    ),
   };
 }

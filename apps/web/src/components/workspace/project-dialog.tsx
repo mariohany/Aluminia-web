@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Check, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { createProjectSchema, type CreateProjectInput, type ProjectDetail } from '@repo/types/projects'
 import type { ClientWithProjects } from '@repo/types/clients'
 import { apiErrorMessage } from '@/lib/api-client'
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/dialog'
 import { ClientDialog } from '@/components/workspace/client-dialog'
 import { ProjectPreferencesFields } from '@/components/workspace/project-preferences-fields'
+import { StepDot } from '@/components/workspace/step-dot'
 
 interface ProjectDialogProps {
   open: boolean
@@ -307,21 +308,4 @@ function emptyProject(defaultClientId?: string): CreateProjectInput {
     vatRate: null,
     discountRate: null,
   }
-}
-
-function StepDot({ active, done, label }: { active: boolean; done: boolean; label: string }) {
-  return (
-    <span
-      className={cn(
-        'flex size-5 shrink-0 items-center justify-center rounded-full text-[0.65rem] font-semibold',
-        active
-          ? 'bg-primary text-primary-foreground'
-          : done
-            ? 'bg-primary/15 text-primary'
-            : 'bg-muted text-muted-foreground',
-      )}
-    >
-      {done ? <Check className="size-3" aria-hidden="true" /> : label}
-    </span>
-  )
 }

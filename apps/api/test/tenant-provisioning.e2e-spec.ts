@@ -113,6 +113,7 @@ describe('TenantProvisioning (e2e)', () => {
       'projects',
       'tenant_info',
       'tenant_migrations',
+      'windows',
     ]);
 
     // Those tables belong to THIS schema and must not also exist in the

@@ -4,6 +4,8 @@ import { AddClientsAndProjects1786143076516 } from './1786143076516-AddClientsAn
 import { AddCompanyLookups1786531275742 } from './1786531275742-AddCompanyLookups';
 import { AddProjectPreferences1786786169898 } from './1786786169898-AddProjectPreferences';
 import { AddCompanyProfileFlyScreen1786831096555 } from './1786831096555-AddCompanyProfileFlyScreen';
+import { AddWindows1786835416435 } from './1786835416435-AddWindows';
+import { AddWindowOpeningType1786900000000 } from './1786900000000-AddWindowOpeningType';
 
 /**
  * The tenant migration track, explicitly ordered.
@@ -23,6 +25,8 @@ export const tenantMigrations: Array<new () => MigrationInterface> = [
   AddCompanyLookups1786531275742,
   AddProjectPreferences1786786169898,
   AddCompanyProfileFlyScreen1786831096555,
+  AddWindows1786835416435,
+  AddWindowOpeningType1786900000000,
 ];
 
 /** TypeORM records applied migrations as `{timestamp}-{ClassName}`. */

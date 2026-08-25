@@ -16,12 +16,22 @@
     "collapse": "Collapse",
     "resizeLabel": "Resize the client and project panel"
   },
+  "profilePicker": {
+    "searchPlaceholder": "Search brand, catalogue, or profile no…",
+    "loading": "Loading profiles…",
+    "error": "Couldn't load profiles. Try again.",
+    "empty": "No profiles of this type yet.",
+    "noMatches": "Nothing matches that search.",
+    "setFavorite": "Set as favourite"
+  },
   "canvas": {
     "nothingSelected": "No project selected",
     "nothingSelectedHint": "Pick a project from the tree, or create your first client.",
-    "designerComing": "Window designer",
-    "designerHint": "The design surface for this project will live here.",
-    "clientSelectedHint": "Create a project for this client, or pick one from the tree."
+    "noWindowsTitle": "No windows yet",
+    "noWindowsHint": "Add your first window from the toolbar above.",
+    "clientSelectedHint": "Create a project for this client, or pick one from the tree.",
+    "copySuffix": "copy",
+    "duplicateError": "Couldn't duplicate the window. Try again."
   },
   "dataPage": {
     "title": "Data"
@@ -112,7 +122,52 @@
     "currency": "Currency",
     "currencyPlaceholder": "No default currency",
     "vatRate": "VAT (%)",
-    "discountRate": "Discount (%)"
+    "discountRate": "Discount (%)",
+    "windowName": "Window name",
+    "windowNameRequired": "Enter a window name.",
+    "frameProfile": "Frame profile",
+    "frameProfileRequired": "Pick a frame profile.",
+    "sashProfile": "Sash profile",
+    "sashProfilePlaceholder": "Choose a sash",
+    "sashProfileNeedsFrame": "Pick a frame first",
+    "sashProfileRequired": "Pick a sash profile.",
+    "widthMm": "Width (mm)",
+    "widthMmRequired": "Enter a width.",
+    "heightMm": "Height (mm)",
+    "heightMmRequired": "Enter a height.",
+    "quantity": "Quantity",
+    "quantityRequired": "Enter a quantity.",
+    "glass": "Glass",
+    "glassPlaceholder": "Choose glass",
+    "glassNeedsSash": "Pick a sash first",
+    "glassDisclaimer": "Only glass up to {{max}} mm is shown — the sash accepts {{sashMax}} mm, less a 2 mm allowance.",
+    "glassRequired": "Pick a glass.",
+    "hasFlyScreen": "Fly screen",
+    "flyScreenDisabledHint": "This frame profile doesn't accept a fly screen.",
+    "isDoor": "Is door",
+    "openingTypeSection": "Type",
+    "openingTypeLabels": {
+      "top_hung": "Top-hung",
+      "fixed_closed": "Fixed (closed)",
+      "side_hung_left": "Side-hung, hinge left",
+      "side_hung_right": "Side-hung, hinge right",
+      "tilt_turn_left": "Tilt & turn, hinge left",
+      "tilt_turn_right": "Tilt & turn, hinge right",
+      "pivot_bottom": "Pivot, bottom axis",
+      "pivot_side": "Pivot, side axis",
+      "double_door_french_a": "French double door",
+      "double_door_french_b": "French double door (B)",
+      "single_door_hinge_left": "Single door, hinge left",
+      "single_door_hinge_right": "Single door, hinge right",
+      "double_door_handles_a": "Double door with handles",
+      "double_door_handles_b": "Double door with handles (B)",
+      "fixed_vertical_mullion": "Fixed, vertical mullion",
+      "fixed_horizontal_mullion": "Fixed, horizontal mullion"
+    },
+    "interiorColor": "Interior colour",
+    "exteriorColor": "Exterior colour",
+    "colorPlaceholder": "No colour",
+    "location": "Location in site"
   },
   "actions": {
     "cancel": "Cancel",
@@ -120,10 +175,12 @@
     "save": "Save changes",
     "edit": "Edit",
     "delete": "Delete",
+    "duplicate": "Duplicate",
     "back": "Back",
     "next": "Next",
     "newClient": "New client",
     "newProject": "New project",
+    "newWindow": "New window",
     "editProject": "Edit project",
     "editClient": "Edit client",
     "editPreferences": "Preferences",
@@ -149,6 +206,37 @@
     "updated": "Project saved.",
     "error": "Couldn't save the project. Try again."
   },
+  "windowDialog": {
+    "createTitle": "New window",
+    "createTitleTyped": "New {{type}} window",
+    "editTitle": "Edit window",
+    "editTitleTyped": "Edit {{type}} window",
+    "description": "Frame, sash, glass, size and options for one window design.",
+    "created": "Created {{name}}.",
+    "updated": "Window saved.",
+    "error": "Couldn't save the window. Try again.",
+    "design": {
+      "interior": "Interior",
+      "exterior": "Exterior",
+      "untitled": "Untitled window",
+      "computedSize": "{{width}} × {{height}} mm (indicative)",
+      "sashWeight": "Estimated weight: {{weight}} kg (catalogue limit {{max}} kg)",
+      "sections": {
+        "frame": "Frame",
+        "sash": "Sash",
+        "glass": "Glass",
+        "flyScreen": "Fly screen"
+      },
+      "issues": {
+        "frameRequired": "Pick a frame profile.",
+        "sashRequired": "Pick a sash profile.",
+        "glassRequired": "Pick a glass.",
+        "glassTooThick": "{{thickness}} mm glass exceeds the sash's {{max}} mm limit.",
+        "flyScreenNotAllowed": "This frame profile doesn't accept a fly screen.",
+        "sashWeightExceeded": "Estimated {{weight}} kg exceeds the catalogue's {{max}} kg limit (estimate)."
+      }
+    }
+  },
   "deleteClient": {
     "title": "Delete client",
     "warning": "This permanently deletes {{name}}. This cannot be undone.",
@@ -163,6 +251,12 @@
     "warning": "This permanently deletes {{name}}. This cannot be undone.",
     "success": "Deleted {{name}}.",
     "error": "Couldn't delete the project."
+  },
+  "deleteWindow": {
+    "title": "Delete window",
+    "warning": "This permanently deletes {{name}}. This cannot be undone.",
+    "success": "Deleted {{name}}.",
+    "error": "Couldn't delete the window."
   },
   "properties": {
     "title": "Properties",

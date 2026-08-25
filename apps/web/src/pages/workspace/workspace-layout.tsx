@@ -9,7 +9,8 @@ import { WorkspaceToolbar } from '@/components/workspace/workspace-toolbar'
 import { PropertiesPanel } from '@/components/workspace/properties-panel'
 import { ClientDialog } from '@/components/workspace/client-dialog'
 import { ProjectDialog } from '@/components/workspace/project-dialog'
-import { DeleteClientDialog, DeleteProjectDialog } from '@/components/workspace/delete-dialogs'
+import { WindowDialog } from '@/components/workspace/window-dialog'
+import { DeleteClientDialog, DeleteProjectDialog, DeleteWindowDialog } from '@/components/workspace/delete-dialogs'
 import { useClientTreeQuery } from '@/lib/clients-queries'
 import { useProjectQuery } from '@/lib/projects-queries'
 import { displayName } from '@/lib/bilingual'
@@ -212,6 +213,9 @@ export function WorkspaceLayout() {
   const [projectDialogInitialStep, setProjectDialogInitialStep] = useState<1 | 2>(1)
   const [deletingClient, setDeletingClient] = useState<ClientWithProjects | undefined>()
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
+  const [windowDialogOpen, setWindowDialogOpen] = useState(false)
+  const [editingWindowId, setEditingWindowId] = useState<string | undefined>()
+  const [deletingWindow, setDeletingWindow] = useState<{ id: string; name: string } | undefined>()
 
   // A selected client or project can be deleted with the keyboard, not
   // only via the tree's right-click menu / properties panel button —
@@ -293,6 +297,24 @@ export function WorkspaceLayout() {
     setEditingProject(true)
     setProjectDialogInitialStep(2)
     setProjectDialogOpen(true)
+  }
+
+  const openNewWindow = () => {
+    setEditingWindowId(undefined)
+    setWindowDialogOpen(true)
+  }
+
+  // Passed down to CanvasPage via Outlet context — its cards need to
+  // open the same dialog state this layout owns (see the file header
+  // comment on why dialogs live here), for the same reason the tree's
+  // right-click menu calls back up to these same openers.
+  const openEditWindow = (id: string) => {
+    setEditingWindowId(id)
+    setWindowDialogOpen(true)
+  }
+
+  const openDeleteWindow = (id: string, name: string) => {
+    setDeletingWindow({ id, name })
   }
 
   const tree = (onNavigate?: () => void) => (
@@ -377,15 +399,17 @@ export function WorkspaceLayout() {
             {!outsideProjectsSection && (
               <WorkspaceToolbar
                 hasSelection={!!selectedProjectId}
+                hasProjectSelection={!!selectedProjectId}
                 onNewClient={() => {
                   setEditingClient(undefined)
                   setClientDialogOpen(true)
                 }}
                 onNewProject={openNewProject}
+                onNewWindow={openNewWindow}
                 onEdit={openEditProject}
               />
             )}
-            <Outlet />
+            <Outlet context={{ openEditWindow, openDeleteWindow }} />
           </main>
 
           {!outsideProjectsSection && (
@@ -461,6 +485,29 @@ export function WorkspaceLayout() {
             localStorage.removeItem(LAST_SELECTION_STORAGE_KEY)
             void navigate('/workspace')
           }}
+        />
+      )}
+
+      {selectedProjectId && (
+        <WindowDialog
+          open={windowDialogOpen}
+          onOpenChange={(open) => {
+            setWindowDialogOpen(open)
+            if (!open) setEditingWindowId(undefined)
+          }}
+          projectId={selectedProjectId}
+          project={projectQuery.data}
+          windowId={editingWindowId}
+        />
+      )}
+
+      {deletingWindow && selectedProjectId && (
+        <DeleteWindowDialog
+          windowId={deletingWindow.id}
+          windowName={deletingWindow.name}
+          projectId={selectedProjectId}
+          open={!!deletingWindow}
+          onOpenChange={(open) => !open && setDeletingWindow(undefined)}
         />
       )}
     </div>

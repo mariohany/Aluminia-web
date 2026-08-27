@@ -38,6 +38,15 @@ export const projectPreferencesSchema = z.object({
   currency: z.enum(PROJECT_CURRENCIES).nullable().optional(),
   vatRate: optionalPercent,
   discountRate: optionalPercent,
+  // The favourite FRAME profile, starred from the window dialog's
+  // profile tree (docs/window_creation_planing.md) — same soft,
+  // no-existence-check posture as the refs above. Bundled into this
+  // schema so PATCH /projects/:id serves it for free, but deliberately
+  // never rendered in ProjectPreferencesFields: it's written only from
+  // the tree's right-click "Set as favourite", and ProjectDialog never
+  // puts the key in its form data, so an ordinary preferences edit
+  // sends `undefined` and leaves it untouched.
+  favoriteFrameProfile: scopedRefSchema.nullable().optional(),
 })
 export type ProjectPreferencesInput = z.infer<typeof projectPreferencesSchema>
 
@@ -74,6 +83,16 @@ export const updateProjectSchema = z.object({
   ...projectPreferencesSchema.shape,
 })
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>
+
+// Same "type the name back" confirmation as deleteClientSchema —
+// verified server-side against the stored `enName`, not trusted from
+// the browser. A single row rather than a cascade, but a project can
+// carry an unknown number of window designs, so the same friction
+// applies here now.
+export const deleteProjectSchema = z.object({
+  confirmName: z.string().min(1),
+})
+export type DeleteProjectInput = z.infer<typeof deleteProjectSchema>
 
 /**
  * What the navigation tree needs per project, and nothing more — the
@@ -114,4 +133,5 @@ export interface ProjectDetail extends ProjectSummary {
   currency: ProjectCurrency | null
   vatRate: number | null
   discountRate: number | null
+  favoriteFrameProfile: string | null
 }

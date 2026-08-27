@@ -61,7 +61,12 @@
     "weight": "الوزن (كجم/م)",
     "perimeter": "المحيط (مم)",
     "inertiaIx": "عزم القصور Ix (سم⁴)",
-    "inertiaIy": "عزم القصور Iy (سم⁴)"
+    "inertiaIy": "عزم القصور Iy (سم⁴)",
+    "acceptsFlyScreen": "سلك ناموس"
+  },
+  "common": {
+    "yes": "أيوه",
+    "no": "لأ"
   },
   "systemType": {
     "sliding": "سحاب",
@@ -162,7 +167,7 @@
   },
   "systemsImport": {
     "button": "استيراد من إكسل",
-    "description": "ارفع شيت فيه لغاية ثلاث ورقات لازم تتسمى بالظبط \"Brand\" و\"Catalogue\" و\"Profile\" — تقدر تسيب أي واحدة فيهم. Brand: عمود \"Name\". Catalogue: \"Brand\" و\"Name\" و\"System type\" و\"Max glass thickness\" و\"Max sash weight\" — الـ Brand لازم يطابق اسم موجود في شيت الـ Brand. Profile: \"Catalogue\" و\"Profile no.\" و\"Profile type\" و\"Max glass thickness\" و\"Weight\" و\"Perimeter\" و\"Inertia Ix\" و\"Inertia Iy\" وعمود اختياري \"Image\" — الـ Catalogue لازم يطابق اسم موجود في شيت الـ Catalogue. الصفوف الموجودة بتتحدّث بس لو قيمة فعلاً اتغيرت.",
+    "description": "ارفع شيت فيه لغاية ثلاث ورقات لازم تتسمى بالظبط \"Brand\" و\"Catalogue\" و\"Profile\" — تقدر تسيب أي واحدة فيهم. Brand: عمود \"Name\". Catalogue: \"Brand\" و\"Name\" و\"System type\" و\"Max glass thickness\" و\"Max sash weight\" — الـ Brand لازم يطابق اسم موجود في شيت الـ Brand. Profile: \"Catalogue\" و\"Profile no.\" و\"Profile type\" و\"Max glass thickness\" و\"Weight\" و\"Perimeter\" و\"Inertia Ix\" و\"Inertia Iy\" وعمود اختياري \"Image\" وعمود اختياري \"Fly screen\" (yes/no، لو اتساب فاضي يبقى لأ) — الـ Catalogue لازم يطابق اسم موجود في شيت الـ Catalogue. الصفوف الموجودة بتتحدّث بس لو قيمة فعلاً اتغيرت.",
     "importing": "جاري الاستيراد…",
     "resultTitle": "نتيجة الاستيراد",
     "created": "{{count}} تمت إضافتهم",

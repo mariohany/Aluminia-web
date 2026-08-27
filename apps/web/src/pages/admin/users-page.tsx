@@ -13,7 +13,7 @@ import { useAuth } from '@/lib/auth-context'
 import { useCompaniesQuery } from '@/lib/companies-queries'
 import { useUsersQuery } from '@/lib/users-queries'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -177,9 +177,9 @@ export function UsersPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Input
+        <SearchInput
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
           placeholder={t('usersPage.search.placeholder')}
           className="max-w-xs"
         />

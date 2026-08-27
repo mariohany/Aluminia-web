@@ -43,6 +43,15 @@ function normalizeEnumLabel(text: string): string {
   return text.trim().toLowerCase();
 }
 
+const TRUTHY_TEXT = new Set(['yes', 'y', 'true', '1']);
+
+// The Fly screen column is optional and new — absent entirely, or blank
+// on a given row, both mean "no" rather than an error, so every
+// workbook users already hold keeps importing unchanged.
+function cellBoolean(cell: ExcelJS.Cell | undefined): boolean {
+  return TRUTHY_TEXT.has(cellText(cell).trim().toLowerCase());
+}
+
 export interface ParsedBrandRow {
   name: string;
   rowNumber: number;
@@ -67,6 +76,7 @@ export interface ParsedProfileRow {
   inertiaIx: number;
   inertiaIy: number;
   image: string | null;
+  acceptsFlyScreen: boolean;
   rowNumber: number;
 }
 
@@ -211,10 +221,13 @@ function parseProfileSheet(
     );
     return [];
   }
-  // Image is optional — looked up separately so its absence doesn't
-  // block the required-columns check above.
+  // Image and Fly screen are both optional — looked up separately so
+  // their absence doesn't block the required-columns check above.
   const imageHeader = findColumns(sheet.getRow(header.rowNumber), [
     { key: 'image', hints: ['image', 'url'] },
+  ]);
+  const flyScreenHeader = findColumns(sheet.getRow(header.rowNumber), [
+    { key: 'acceptsFlyScreen', hints: ['fly screen', 'flyscreen'] },
   ]);
 
   const rows: ParsedProfileRow[] = [];
@@ -261,6 +274,9 @@ function parseProfileSheet(
     const image = imageHeader
       ? cellText(line.getCell(imageHeader.image)).trim() || null
       : null;
+    const acceptsFlyScreen = flyScreenHeader
+      ? cellBoolean(line.getCell(flyScreenHeader.acceptsFlyScreen))
+      : false;
     rows.push({
       catalogName,
       profileNo,
@@ -271,6 +287,7 @@ function parseProfileSheet(
       inertiaIx,
       inertiaIy,
       image,
+      acceptsFlyScreen,
       rowNumber: i,
     });
   }

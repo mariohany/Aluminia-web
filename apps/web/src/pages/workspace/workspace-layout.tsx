@@ -9,10 +9,10 @@ import { WorkspaceToolbar } from '@/components/workspace/workspace-toolbar'
 import { PropertiesPanel } from '@/components/workspace/properties-panel'
 import { ClientDialog } from '@/components/workspace/client-dialog'
 import { ProjectDialog } from '@/components/workspace/project-dialog'
-import { DeleteClientDialog, DeleteProjectDialog } from '@/components/workspace/delete-dialogs'
+import { WindowDialog } from '@/components/workspace/window-dialog'
+import { DeleteClientDialog, DeleteProjectDialog, DeleteWindowDialog } from '@/components/workspace/delete-dialogs'
 import { useClientTreeQuery } from '@/lib/clients-queries'
 import { useProjectQuery } from '@/lib/projects-queries'
-import { displayName } from '@/lib/bilingual'
 import { isRtlLanguage } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -212,6 +212,9 @@ export function WorkspaceLayout() {
   const [projectDialogInitialStep, setProjectDialogInitialStep] = useState<1 | 2>(1)
   const [deletingClient, setDeletingClient] = useState<ClientWithProjects | undefined>()
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
+  const [windowDialogOpen, setWindowDialogOpen] = useState(false)
+  const [editingWindowId, setEditingWindowId] = useState<string | undefined>()
+  const [deletingWindow, setDeletingWindow] = useState<{ id: string; name: string } | undefined>()
 
   // A selected client or project can be deleted with the keyboard, not
   // only via the tree's right-click menu / properties panel button —
@@ -229,8 +232,14 @@ export function WorkspaceLayout() {
         return
       }
 
-      // Don't stack a second delete dialog on top of a dialog already open.
-      if (clientDialogOpen || projectDialogOpen || deletingClient || deleteProjectOpen) return
+      // Don't stack a second delete dialog on top of a dialog already
+      // open — including the window designer, which owns its own set
+      // of unsaved edits that a project delete underneath it would
+      // orphan. This is the path that actually needs the guard: the
+      // window dialog is a global `keydown` listener too, so it can't
+      // rely on focus/modal trapping to keep Backspace from reaching
+      // here while it's open.
+      if (clientDialogOpen || projectDialogOpen || deletingClient || deleteProjectOpen || windowDialogOpen) return
 
       if (selectedProjectId && projectQuery.data) {
         event.preventDefault()
@@ -258,6 +267,7 @@ export function WorkspaceLayout() {
     projectDialogOpen,
     deletingClient,
     deleteProjectOpen,
+    windowDialogOpen,
   ])
 
   // The Sheet primitive only understands physical sides, so this one
@@ -295,6 +305,34 @@ export function WorkspaceLayout() {
     setProjectDialogOpen(true)
   }
 
+  const openNewWindow = () => {
+    setEditingWindowId(undefined)
+    setWindowDialogOpen(true)
+  }
+
+  // Passed down to CanvasPage via Outlet context — its cards need to
+  // open the same dialog state this layout owns (see the file header
+  // comment on why dialogs live here), for the same reason the tree's
+  // right-click menu calls back up to these same openers.
+  const openEditWindow = (id: string) => {
+    setEditingWindowId(id)
+    setWindowDialogOpen(true)
+  }
+
+  const openDeleteWindow = (id: string, name: string) => {
+    setDeletingWindow({ id, name })
+  }
+
+  // Shared by the tree's right-click menu, the properties panel's
+  // delete button, and the keyboard shortcut above — the window
+  // designer owns unsaved edits of its own, so none of those entry
+  // points should be able to open a project delete confirmation out
+  // from under it.
+  const openDeleteProject = () => {
+    if (windowDialogOpen) return
+    setDeleteProjectOpen(true)
+  }
+
   const tree = (onNavigate?: () => void) => (
     <ProjectTree
       clients={clients}
@@ -307,7 +345,7 @@ export function WorkspaceLayout() {
       onDeleteClient={(client) => setDeletingClient(client)}
       onEditProject={openEditProject}
       onEditProjectPreferences={openEditProjectPreferences}
-      onDeleteProject={() => setDeleteProjectOpen(true)}
+      onDeleteProject={openDeleteProject}
     />
   )
 
@@ -377,15 +415,17 @@ export function WorkspaceLayout() {
             {!outsideProjectsSection && (
               <WorkspaceToolbar
                 hasSelection={!!selectedProjectId}
+                hasProjectSelection={!!selectedProjectId}
                 onNewClient={() => {
                   setEditingClient(undefined)
                   setClientDialogOpen(true)
                 }}
                 onNewProject={openNewProject}
+                onNewWindow={openNewWindow}
                 onEdit={openEditProject}
               />
             )}
-            <Outlet />
+            <Outlet context={{ openEditWindow, openDeleteWindow }} />
           </main>
 
           {!outsideProjectsSection && (
@@ -394,7 +434,7 @@ export function WorkspaceLayout() {
                 project={selectedProjectId ? projectQuery.data : undefined}
                 isLoading={!!selectedProjectId && projectQuery.isLoading}
                 onEdit={openEditProject}
-                onDelete={() => setDeleteProjectOpen(true)}
+                onDelete={openDeleteProject}
               />
             </div>
           )}
@@ -454,13 +494,40 @@ export function WorkspaceLayout() {
       {selectedProjectId && projectQuery.data && (
         <DeleteProjectDialog
           projectId={selectedProjectId}
-          projectName={displayName(projectQuery.data, language)}
+          // The English name specifically, typed back — same as
+          // DeleteClientDialog uses `enName`, not the bilingual display
+          // name, so the confirmation the server checks against is
+          // exactly what the user is asked to type.
+          projectName={projectQuery.data.enName}
           open={deleteProjectOpen}
           onOpenChange={setDeleteProjectOpen}
           onDeleted={() => {
             localStorage.removeItem(LAST_SELECTION_STORAGE_KEY)
             void navigate('/workspace')
           }}
+        />
+      )}
+
+      {selectedProjectId && (
+        <WindowDialog
+          open={windowDialogOpen}
+          onOpenChange={(open) => {
+            setWindowDialogOpen(open)
+            if (!open) setEditingWindowId(undefined)
+          }}
+          projectId={selectedProjectId}
+          project={projectQuery.data}
+          windowId={editingWindowId}
+        />
+      )}
+
+      {deletingWindow && selectedProjectId && (
+        <DeleteWindowDialog
+          windowId={deletingWindow.id}
+          windowName={deletingWindow.name}
+          projectId={selectedProjectId}
+          open={!!deletingWindow}
+          onOpenChange={(open) => !open && setDeletingWindow(undefined)}
         />
       )}
     </div>

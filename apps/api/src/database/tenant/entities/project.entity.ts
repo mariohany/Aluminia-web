@@ -90,16 +90,32 @@ export class Project {
   // and is allowed to go stale if its target is later deleted (surfaced
   // on read as "unavailable", not prevented). See
   // docs/project_preferences_planing.md.
-  @Column({ name: 'default_system_platform_brand_id', type: 'uuid', nullable: true })
+  @Column({
+    name: 'default_system_platform_brand_id',
+    type: 'uuid',
+    nullable: true,
+  })
   defaultSystemPlatformBrandId: string | null;
 
-  @Column({ name: 'default_system_company_brand_id', type: 'uuid', nullable: true })
+  @Column({
+    name: 'default_system_company_brand_id',
+    type: 'uuid',
+    nullable: true,
+  })
   defaultSystemCompanyBrandId: string | null;
 
-  @Column({ name: 'default_system_platform_catalog_id', type: 'uuid', nullable: true })
+  @Column({
+    name: 'default_system_platform_catalog_id',
+    type: 'uuid',
+    nullable: true,
+  })
   defaultSystemPlatformCatalogId: string | null;
 
-  @Column({ name: 'default_system_company_catalog_id', type: 'uuid', nullable: true })
+  @Column({
+    name: 'default_system_company_catalog_id',
+    type: 'uuid',
+    nullable: true,
+  })
   defaultSystemCompanyCatalogId: string | null;
 
   @Column({ type: 'varchar', length: 3, nullable: true })
@@ -124,6 +140,20 @@ export class Project {
     transformer: decimalTransformer,
   })
   discountRate: number | null;
+
+  // The favourite FRAME profile, starred from the window dialog's
+  // profile tree — same soft, no-CHECK, no-FK pair shape as the
+  // preference columns above (see their comment). Set only via the
+  // tree's right-click menu, never rendered in ProjectPreferencesFields.
+  @Column({
+    name: 'favorite_platform_profile_id',
+    type: 'uuid',
+    nullable: true,
+  })
+  favoritePlatformProfileId: string | null;
+
+  @Column({ name: 'favorite_company_profile_id', type: 'uuid', nullable: true })
+  favoriteCompanyProfileId: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

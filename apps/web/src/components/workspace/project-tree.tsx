@@ -3,7 +3,7 @@ import { NavLink, useMatch, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Folder, PencilRuler } from 'lucide-react'
 import type { ClientWithProjects } from '@repo/types/clients'
-import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -127,9 +127,9 @@ export function ProjectTree({
 
   return (
     <div className="flex h-full flex-col gap-3">
-      <Input
+      <SearchInput
         value={search}
-        onChange={(event) => setSearch(event.target.value)}
+        onChange={setSearch}
         placeholder={t('tree.searchPlaceholder')}
         aria-label={t('tree.searchPlaceholder')}
       />

@@ -61,6 +61,9 @@ export class CompanySystemProfile {
   @Column({ type: 'varchar', length: 2048, nullable: true })
   image: string | null;
 
+  @Column({ name: 'accepts_fly_screen', type: 'boolean', default: false })
+  acceptsFlyScreen: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

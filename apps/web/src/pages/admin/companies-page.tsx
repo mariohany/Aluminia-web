@@ -12,7 +12,7 @@ import { ArrowUpDown } from 'lucide-react'
 import { CompanyStatus, type CompanySummary } from '@repo/types/companies'
 import { useCompaniesQuery } from '@/lib/companies-queries'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
 import {
   Select,
   SelectContent,
@@ -116,9 +116,9 @@ export function CompaniesPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Input
+        <SearchInput
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
           placeholder={t('companiesPage.search.placeholder')}
           className="max-w-xs"
         />

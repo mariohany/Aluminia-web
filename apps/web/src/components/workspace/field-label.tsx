@@ -2,7 +2,10 @@ import { useTranslation } from 'react-i18next'
 import { Label } from '@/components/ui/label'
 
 /**
- * A form label with an optional "(optional)" marker.
+ * A form label with an optional "(optional)" marker, or a red asterisk
+ * for `required` — never both; `required` is for fields whose emptiness
+ * is itself invalid (a real "must fill this in"), not just a habit
+ * applied to every field that happens to lack `optional`.
  *
  * The marker lives INSIDE a single span rather than as a sibling of the
  * label text, because shadcn's `Label` is a flex container: two
@@ -15,10 +18,12 @@ export function FieldLabel({
   htmlFor,
   children,
   optional = false,
+  required = false,
 }: {
   htmlFor: string
   children: React.ReactNode
   optional?: boolean
+  required?: boolean
 }) {
   const { t } = useTranslation('workspace')
   return (
@@ -26,6 +31,11 @@ export function FieldLabel({
       <span>
         {children}
         {optional && <span className="ms-1 font-normal text-muted-foreground">{t('fields.optional')}</span>}
+        {required && (
+          <span className="ms-0.5 text-destructive" aria-hidden="true">
+            *
+          </span>
+        )}
       </span>
     </Label>
   )

@@ -416,6 +416,7 @@ export const createSystemProfileSchema = z.object({
   inertiaIx: z.number().positive(),
   inertiaIy: z.number().positive(),
   image: z.url().nullable().optional(),
+  acceptsFlyScreen: z.boolean(),
 })
 export type CreateSystemProfileInput = z.infer<typeof createSystemProfileSchema>
 export const updateSystemProfileSchema = createSystemProfileSchema.partial()
@@ -433,6 +434,7 @@ export interface SystemProfileSummary {
   inertiaIx: number
   inertiaIy: number
   image: string | null
+  acceptsFlyScreen: boolean
   createdAt: string
   updatedAt: string
 }

@@ -3,7 +3,8 @@
   "actions": {
     "cancel": "Cancel",
     "save": "Save",
-    "delete": "Delete"
+    "delete": "Delete",
+    "clearSearch": "Clear search"
   },
   "nav": {
     "howItWorks": "How it works",

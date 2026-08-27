@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { AppWindow, Copy, DoorOpen, Fan, Folder, Pencil, Trash2 } from 'lucide-react'
 import { GlassKind } from '@repo/types/windows'
 import type { WindowSummary } from '@repo/types/windows'
+import { WindowThumbnail } from '@/components/workspace/window-thumbnail'
 import { useClientTreeQuery } from '@/lib/clients-queries'
 import { useDuplicateWindowMutation, useWindowsQuery } from '@/lib/windows-queries'
 import { useMergedGlassCombinationsQuery, useMergedGlassQuery, useMergedSystemProfilesQuery } from '@/lib/lookup-merge'
@@ -90,7 +91,11 @@ export function CanvasPage() {
         // `pt-20` (not `p-6` on top) clears the floating toolbar
         // (`WorkspaceToolbar`, `absolute top-0`) — otherwise the first
         // row of cards renders directly under it.
-        <div className="grid grid-cols-1 gap-3 px-6 pt-20 pb-6 sm:grid-cols-2 lg:grid-cols-3">
+        //
+        // auto-fill rather than a fixed column count: cards stay compact
+        // at any canvas width instead of each stretching to a third of
+        // the screen, and more of them fit on one view.
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3 px-6 pt-20 pb-6">
           {windows.map((w) => (
             <WindowCard
               key={w.id}
@@ -137,55 +142,74 @@ function WindowCard({
       : combinationsQuery.data?.find((c) => `${c.scope}:${c.id}` === w.glass)?.name
 
   return (
-    <div className="pointer-events-auto flex flex-col gap-2 rounded-xl border border-border bg-card/95 p-4 shadow-sm backdrop-blur">
-      <div className="flex items-start justify-between gap-2">
-        <p className="truncate text-sm font-semibold text-foreground">{w.name}</p>
-        <div className="flex shrink-0 gap-1">
-          <Button variant="ghost" size="icon" className="size-7" aria-label={t('actions.edit')} onClick={onEdit}>
-            <Pencil className="size-3.5" aria-hidden="true" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            aria-label={t('actions.duplicate')}
-            title={t('actions.duplicate')}
-            onClick={onDuplicate}
-          >
-            <Copy className="size-3.5" aria-hidden="true" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            aria-label={t('actions.delete')}
-            onClick={onDelete}
-          >
-            <Trash2 className="size-3.5" aria-hidden="true" />
-          </Button>
-        </div>
+    <div className="pointer-events-auto flex flex-col overflow-hidden rounded-xl border border-border bg-card/95 shadow-sm backdrop-blur">
+      {/* The elevation leads — it says what this window IS faster than
+          the three lines under it do. Fixed height so a grid of cards
+          stays on a rhythm regardless of each window's proportions; the
+          SVG letterboxes itself inside. */}
+      <div className="flex h-40 items-center justify-center border-b border-border bg-muted/30 p-2">
+        <WindowThumbnail panels={w.panels} className="h-full w-full" />
       </div>
-      <p className="text-xs text-muted-foreground" dir="ltr">
-        {w.widthMm} × {w.heightMm} mm · ×{w.quantity}
-      </p>
-      {frame && <p className="truncate text-xs text-muted-foreground">{frame.profileNo}</p>}
-      {glassName && <p className="truncate text-xs text-muted-foreground">{glassName}</p>}
-      {(w.isDoor || w.hasFlyScreen) && (
-        <div className="flex gap-1.5">
-          {w.isDoor && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[0.65rem] text-muted-foreground">
-              <DoorOpen className="size-3" aria-hidden="true" />
-              {t('fields.isDoor')}
-            </span>
-          )}
-          {w.hasFlyScreen && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[0.65rem] text-muted-foreground">
-              <Fan className="size-3" aria-hidden="true" />
-              {t('fields.hasFlyScreen')}
-            </span>
-          )}
+
+      <div className="flex flex-col gap-1 p-3">
+        {/* Name and the actions share the top line; the detail lines run
+            the card's full width underneath. At this column width there
+            isn't room for three buttons alongside four lines of text —
+            "1400 × 1600 mm · ×1" wraps the moment it has to share. */}
+        <div className="flex items-start justify-between gap-1">
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{w.name}</p>
+          <div className="-me-1 -mt-1 flex shrink-0">
+            <Button variant="ghost" size="icon" className="size-6" aria-label={t('actions.edit')} onClick={onEdit}>
+              <Pencil className="size-3" aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6"
+              aria-label={t('actions.duplicate')}
+              title={t('actions.duplicate')}
+              onClick={onDuplicate}
+            >
+              <Copy className="size-3" aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              aria-label={t('actions.delete')}
+              onClick={onDelete}
+            >
+              <Trash2 className="size-3" aria-hidden="true" />
+            </Button>
+          </div>
         </div>
-      )}
+
+        <p className="truncate text-xs text-muted-foreground" dir="ltr">
+          {w.widthMm} × {w.heightMm} mm · ×{w.quantity}
+        </p>
+        {frame && <p className="truncate text-xs text-muted-foreground">{frame.profileNo}</p>}
+        {glassName && <p className="truncate text-xs text-muted-foreground">{glassName}</p>}
+        {/* No panel-count chip: the drawing above already shows how many
+            panels there are, and a number repeating the picture is
+            noise. Door/fly-screen stay because they're the FIRST panel's
+            flags and aren't always readable at this size. */}
+        {(w.isDoor || w.hasFlyScreen) && (
+          <div className="mt-0.5 flex flex-wrap gap-1">
+            {w.isDoor && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+                <DoorOpen className="size-3" aria-hidden="true" />
+                {t('fields.isDoor')}
+              </span>
+            )}
+            {w.hasFlyScreen && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+                <Fan className="size-3" aria-hidden="true" />
+                {t('fields.hasFlyScreen')}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

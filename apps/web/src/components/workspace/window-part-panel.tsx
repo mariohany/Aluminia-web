@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Trash2 } from 'lucide-react'
 import { GlassKind, HingedOpeningType } from '@repo/types/windows'
 import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
 import type { WindowLayout, WindowPartKind } from '@/lib/window-geometry'
@@ -8,6 +9,7 @@ import type { MergedSystemProfileSummary } from '@/lib/lookup-merge'
 import { cn } from '@/lib/utils'
 import { FieldLabel } from '@/components/workspace/field-label'
 import { OpeningTypeIcon } from '@/components/icons/opening-type-icon'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -62,6 +64,16 @@ export interface WindowPartPanelProps {
    * section filters out its own kind's issues. */
   issuesByPart: Map<string, TranslatedIssue[]>
 
+  /** Which panel of the assembly every per-panel field below edits,
+   * and how many there are. A one-panel window hides the Panel section
+   * entirely — "Panel 1 of 1" is just the window. */
+  panelIndex: number
+  panelCount: number
+  /** `undefined` when this panel can't be removed — the caller passes a
+   * translated reason instead, via `deleteDisabledReason`. */
+  onDeletePanel?: () => void
+  deleteDisabledReason?: string
+
   name: string
   onNameChange: (value: string) => void
   /** Already-translated "required" messages — undefined/blank means no
@@ -73,6 +85,10 @@ export interface WindowPartPanelProps {
   onQuantityChange: (value: number) => void
   quantityError?: string
 
+  /** The SELECTED PANEL's size, not the assembly's — the assembly's is
+   * derived from the panels' bounding box and shown read-only on the
+   * drawing. `quantity` below really is the whole assembly's: you order
+   * three of the unit, not three of panel 2. */
   widthMm: number
   heightMm: number
   onWidthChange: (mm: number) => void
@@ -167,6 +183,32 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
 
   return (
     <div className="flex flex-col gap-4 text-sm">
+      {/* Only for a real assembly. For a single-panel window every field
+          below is simply "the window's", exactly as it was before this
+          feature, and a "Panel 1 of 1" header would be noise. */}
+      {props.panelCount > 1 && (
+        <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-2.5 py-1.5">
+          <span className="text-xs font-medium">
+            {t('windowDialog.design.panelOf', {
+              index: props.panelIndex + 1,
+              count: props.panelCount,
+            })}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-6 px-1.5 text-muted-foreground hover:text-destructive"
+            disabled={!props.onDeletePanel}
+            title={props.deleteDisabledReason ?? t('windowDialog.design.deletePanel')}
+            aria-label={t('windowDialog.design.deletePanel')}
+            onClick={() => props.onDeletePanel?.()}
+          >
+            <Trash2 className="size-3.5" aria-hidden="true" />
+          </Button>
+        </div>
+      )}
+
       <div>
         <FieldLabel htmlFor="panel-name" required>
           {t('fields.windowName')}

@@ -233,7 +233,24 @@
         "glassRequired": "Pick a glass.",
         "glassTooThick": "{{thickness}} mm glass exceeds the sash's {{max}} mm limit.",
         "flyScreenNotAllowed": "This frame profile doesn't accept a fly screen.",
-        "sashWeightExceeded": "Estimated {{weight}} kg exceeds the catalogue's {{max}} kg limit (estimate)."
+        "sashWeightExceeded": "Estimated {{weight}} kg exceeds the catalogue's {{max}} kg limit (estimate).",
+        "irregularOutline": "The overall outline isn't a rectangle. That's allowed — stepped assemblies are real — just check it's what you meant.",
+        "disconnectedPanels": "The panels aren't all joined — one or more is floating free. Resize or move them until every panel shares an edge with another."
+      },
+      "panelOf": "Panel {{index}} of {{count}}",
+      "deletePanel": "Remove this panel",
+      "deletePanelBlocked": "This panel can't be removed — an assembly needs at least one panel, and removing this one would leave the rest disconnected.",
+      "addPanel": {
+        "title": "Add a panel",
+        "add": "Add",
+        "clonesHint": "Copies this panel's frame, sash, glass and colours. Change them after.",
+        "wouldOverlap": "That size would overlap an existing panel. Try a smaller one.",
+        "side": {
+          "top": "Attaching above",
+          "bottom": "Attaching below",
+          "left": "Attaching to the left",
+          "right": "Attaching to the right"
+        }
       }
     }
   },

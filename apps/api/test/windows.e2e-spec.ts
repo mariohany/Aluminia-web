@@ -13,10 +13,11 @@ import { AppModule } from './../src/app.module';
 import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provisioning.service';
 
 /**
- * docs/window_creation_planing.md — the first table that is actually a
- * WINDOW. Real Postgres, real HTTP, real /auth/login, genuinely
- * provisioned schemas — same shape as project-preferences.e2e-spec.ts,
- * which this file's ScopedRef plumbing borrows directly.
+ * docs/window_creation_planing.md + docs/window_assembly_planing.md —
+ * a window is an ASSEMBLY of coupled panels. Real Postgres, real HTTP,
+ * real /auth/login, genuinely provisioned schemas — same shape as
+ * project-preferences.e2e-spec.ts, which this file's ScopedRef plumbing
+ * borrows directly.
  *
  * Platform lookup rows are read straight out of the control plane
  * rather than fabricated; the company-scope counterpart is created
@@ -147,6 +148,23 @@ describe('Windows (e2e)', () => {
     return (res.body as LoginResponse).accessToken;
   }
 
+  /** One panel's worth of a valid request body. */
+  function panel(overrides: Record<string, unknown> = {}) {
+    return {
+      xMm: 0,
+      yMm: 0,
+      widthMm: 1200,
+      heightMm: 1500,
+      frameProfile: `platform:${platformFrameId}`,
+      sashProfile: `platform:${platformSashId}`,
+      hasFlyScreen: false,
+      isDoor: false,
+      glassKind: 'single',
+      glass: `platform:${platformGlassId}`,
+      ...overrides,
+    };
+  }
+
   function createWindow(body: Record<string, unknown>) {
     return request(app.getHttpServer())
       .post('/windows')
@@ -154,39 +172,41 @@ describe('Windows (e2e)', () => {
       .send({
         projectId,
         name: 'W-01',
-        frameProfile: `platform:${platformFrameId}`,
-        sashProfile: `platform:${platformSashId}`,
-        widthMm: 1200,
-        heightMm: 1500,
         quantity: 1,
-        hasFlyScreen: false,
-        isDoor: false,
-        glassKind: 'single',
-        glass: `platform:${platformGlassId}`,
+        panels: [panel()],
         ...body,
       });
+  }
+
+  function patchWindow(id: string, body: Record<string, unknown>) {
+    return request(app.getHttpServer())
+      .patch(`/windows/${id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
   }
 
   it('creates a window with a platform frame and a company sash — cross-scope refs round-trip', async () => {
     const res = await createWindow({
       name: 'W-cross-scope',
-      sashProfile: `company:${companySashId}`,
+      panels: [panel({ sashProfile: `company:${companySashId}` })],
     }).expect(201);
     const body = res.body as WindowDetail;
 
-    expect(body.frameProfile).toBe(`platform:${platformFrameId}`);
-    expect(body.sashProfile).toBe(`company:${companySashId}`);
     expect(body.projectId).toBe(projectId);
+    expect(body.panels).toHaveLength(1);
+    // The summary fields are the FIRST panel's — see WindowSummary.
+    expect(body.frameProfile).toBe(`platform:${platformFrameId}`);
     expect(body.glassKind).toBe('single');
-    expect(body.glass).toBe(`platform:${platformGlassId}`);
-    expect(body.interiorColor).toBeNull();
-    expect(body.exteriorColor).toBeNull();
+    expect(body.panels[0].sashProfile).toBe(`company:${companySashId}`);
+    expect(body.panels[0].glass).toBe(`platform:${platformGlassId}`);
+    expect(body.panels[0].interiorColor).toBeNull();
+    expect(body.panels[0].exteriorColor).toBeNull();
 
     const fetched = await request(app.getHttpServer())
       .get(`/windows/${body.id}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    expect((fetched.body as WindowDetail).sashProfile).toBe(
+    expect((fetched.body as WindowDetail).panels[0].sashProfile).toBe(
       `company:${companySashId}`,
     );
   });
@@ -194,43 +214,45 @@ describe('Windows (e2e)', () => {
   it('round-trips nullable interior/exterior colours and location/notes', async () => {
     const res = await createWindow({
       name: 'W-colours',
-      interiorColor: `platform:${colorId}`,
-      exteriorColor: `platform:${colorId}`,
+      panels: [
+        panel({
+          interiorColor: `platform:${colorId}`,
+          exteriorColor: `platform:${colorId}`,
+        }),
+      ],
       location: 'North elevation',
       notes: 'Handle on the left',
     }).expect(201);
     const body = res.body as WindowDetail;
 
-    expect(body.interiorColor).toBe(`platform:${colorId}`);
-    expect(body.exteriorColor).toBe(`platform:${colorId}`);
+    expect(body.panels[0].interiorColor).toBe(`platform:${colorId}`);
+    expect(body.panels[0].exteriorColor).toBe(`platform:${colorId}`);
     expect(body.location).toBe('North elevation');
     expect(body.notes).toBe('Handle on the left');
   });
 
-  it('round-trips openingType, defaults to null, and PATCHes independently', async () => {
+  it('round-trips openingType per panel, defaults to null, and PATCHes', async () => {
     const created = await createWindow({ name: 'W-opening-type' }).expect(201);
     const body = created.body as WindowDetail;
-    expect(body.openingType).toBeNull();
+    expect(body.panels[0].openingType).toBeNull();
 
-    const patched = await request(app.getHttpServer())
-      .patch(`/windows/${body.id}`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ openingType: 'side_hung_left' })
-      .expect(200);
-    expect((patched.body as WindowDetail).openingType).toBe('side_hung_left');
+    const patched = await patchWindow(body.id, {
+      panels: [panel({ openingType: 'side_hung_left' })],
+    }).expect(200);
+    expect((patched.body as WindowDetail).panels[0].openingType).toBe(
+      'side_hung_left',
+    );
 
-    const cleared = await request(app.getHttpServer())
-      .patch(`/windows/${body.id}`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ openingType: null })
-      .expect(200);
-    expect((cleared.body as WindowDetail).openingType).toBeNull();
+    const cleared = await patchWindow(body.id, {
+      panels: [panel({ openingType: null })],
+    }).expect(200);
+    expect((cleared.body as WindowDetail).panels[0].openingType).toBeNull();
   });
 
   it('rejects an unknown openingType', async () => {
     await createWindow({
       name: 'W-bad-opening-type',
-      openingType: 'diagonal_slide',
+      panels: [panel({ openingType: 'diagonal_slide' })],
     }).expect(400);
   });
 
@@ -274,38 +296,36 @@ describe('Windows (e2e)', () => {
     await createWindow({ name: 'W-bad-qty', quantity: 0 }).expect(400);
   });
 
-  it('rejects width 0', async () => {
-    await createWindow({ name: 'W-bad-width', widthMm: 0 }).expect(400);
+  it('rejects a panel of width 0', async () => {
+    await createWindow({
+      name: 'W-bad-width',
+      panels: [panel({ widthMm: 0 })],
+    }).expect(400);
   });
 
   it('rejects a malformed ScopedRef', async () => {
     await createWindow({
       name: 'W-bad-ref',
-      frameProfile: `foo:${platformFrameId}`,
+      panels: [panel({ frameProfile: `foo:${platformFrameId}` })],
     }).expect(400);
   });
 
   it('rejects an unknown glassKind', async () => {
-    await createWindow({ name: 'W-bad-kind', glassKind: 'triple' }).expect(400);
+    await createWindow({
+      name: 'W-bad-kind',
+      panels: [panel({ glassKind: 'triple' })],
+    }).expect(400);
   });
 
-  it('rejects changing glassKind without glass, and vice versa', async () => {
-    const created = await createWindow({ name: 'W-glass-coupling' }).expect(
-      201,
-    );
-    const id = (created.body as WindowDetail).id;
+  it('rejects a panel missing glass, or missing glassKind', async () => {
+    // glassKind and glass are one discriminated union at the storage
+    // layer (CK_window_panels_glass_shape) — the panel schema requires
+    // both, so neither can arrive alone any more.
+    const { glass: _glass, ...noGlass } = panel();
+    await createWindow({ name: 'W-no-glass', panels: [noGlass] }).expect(400);
 
-    await request(app.getHttpServer())
-      .patch(`/windows/${id}`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ glassKind: 'combination' })
-      .expect(400);
-
-    await request(app.getHttpServer())
-      .patch(`/windows/${id}`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ glass: `platform:${platformGlassId}` })
-      .expect(400);
+    const { glassKind: _kind, ...noKind } = panel();
+    await createWindow({ name: 'W-no-kind', panels: [noKind] }).expect(400);
   });
 
   it('PATCHes name alone, leaving every other field untouched', async () => {
@@ -315,16 +335,15 @@ describe('Windows (e2e)', () => {
     }).expect(201);
     const id = (created.body as WindowDetail).id;
 
-    const patched = await request(app.getHttpServer())
-      .patch(`/windows/${id}`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ name: 'W-patch-name-renamed' })
-      .expect(200);
+    const patched = await patchWindow(id, {
+      name: 'W-patch-name-renamed',
+    }).expect(200);
     const body = patched.body as WindowDetail;
 
     expect(body.name).toBe('W-patch-name-renamed');
     expect(body.notes).toBe('original notes');
-    expect(body.glass).toBe(`platform:${platformGlassId}`);
+    expect(body.panels).toHaveLength(1);
+    expect(body.panels[0].glass).toBe(`platform:${platformGlassId}`);
   });
 
   it('deleting the project cascades its windows away', async () => {
@@ -344,6 +363,7 @@ describe('Windows (e2e)', () => {
     await request(app.getHttpServer())
       .delete(`/projects/${scratchProjectId}`)
       .set('Authorization', `Bearer ${token}`)
+      .send({ confirmName: 'Scratch Cascade Project' })
       .expect(204);
 
     await request(app.getHttpServer())
@@ -373,6 +393,148 @@ describe('Windows (e2e)', () => {
       .expect(404);
   });
 
+  // ---- Assembly invariants (docs/window_assembly_planing.md §1) ----
+
+  it('round-trips a multi-panel assembly and derives the overall size', async () => {
+    const res = await createWindow({
+      name: 'W-assembly',
+      panels: [
+        panel({ xMm: 0, yMm: 0, widthMm: 1200, heightMm: 1500 }),
+        panel({ xMm: 1200, yMm: 0, widthMm: 800, heightMm: 1500 }),
+      ],
+    }).expect(201);
+    const body = res.body as WindowDetail;
+
+    expect(body.panels).toHaveLength(2);
+    expect(body.panels).toHaveLength(2);
+    // Derived from the bounding box, never taken from the request.
+    expect(body.widthMm).toBe(2000);
+    expect(body.heightMm).toBe(1500);
+    expect(body.panels[1].xMm).toBe(1200);
+
+    const fetched = await request(app.getHttpServer())
+      .get(`/windows/${body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    const refetched = fetched.body as WindowDetail;
+    expect(refetched.panels.map((p) => p.xMm)).toEqual([0, 1200]);
+    expect(refetched.widthMm).toBe(2000);
+  });
+
+  it('accepts a stepped, non-rectangular outline — the UI flags it, the API does not', async () => {
+    const res = await createWindow({
+      name: 'W-l-shape',
+      panels: [
+        panel({ xMm: 0, yMm: 0, widthMm: 1000, heightMm: 1000 }),
+        panel({ xMm: 1000, yMm: 0, widthMm: 1000, heightMm: 600 }),
+      ],
+    }).expect(201);
+    const body = res.body as WindowDetail;
+    expect(body.widthMm).toBe(2000);
+    expect(body.heightMm).toBe(1000);
+  });
+
+  it('normalises the origin rather than rejecting an offset assembly', async () => {
+    const res = await createWindow({
+      name: 'W-offset',
+      panels: [
+        panel({ xMm: 500, yMm: 300, widthMm: 1000, heightMm: 1000 }),
+        panel({ xMm: 1500, yMm: 300, widthMm: 1000, heightMm: 1000 }),
+      ],
+    }).expect(201);
+    const body = res.body as WindowDetail;
+
+    expect(body.panels.map((p) => p.xMm)).toEqual([0, 1000]);
+    expect(body.panels.map((p) => p.yMm)).toEqual([0, 0]);
+    expect(body.widthMm).toBe(2000);
+    expect(body.heightMm).toBe(1000);
+  });
+
+  it('rejects overlapping panels', async () => {
+    await createWindow({
+      name: 'W-overlap',
+      panels: [
+        panel({ xMm: 0, yMm: 0, widthMm: 1200, heightMm: 1500 }),
+        panel({ xMm: 600, yMm: 0, widthMm: 1200, heightMm: 1500 }),
+      ],
+    }).expect(400);
+  });
+
+  it('rejects a panel detached from the rest', async () => {
+    await createWindow({
+      name: 'W-detached',
+      panels: [
+        panel({ xMm: 0, yMm: 0, widthMm: 1000, heightMm: 1000 }),
+        panel({ xMm: 2000, yMm: 0, widthMm: 1000, heightMm: 1000 }),
+      ],
+    }).expect(400);
+  });
+
+  it('rejects panels touching only at a corner — a point is not a joint', async () => {
+    await createWindow({
+      name: 'W-corner',
+      panels: [
+        panel({ xMm: 0, yMm: 0, widthMm: 1000, heightMm: 1000 }),
+        panel({ xMm: 1000, yMm: 1000, widthMm: 1000, heightMm: 1000 }),
+      ],
+    }).expect(400);
+  });
+
+  it('rejects an empty panel list', async () => {
+    await createWindow({ name: 'W-no-panels', panels: [] }).expect(400);
+  });
+
+  it('PATCHing panels replaces the whole set and re-derives the size', async () => {
+    const created = await createWindow({
+      name: 'W-replace',
+      panels: [
+        panel({ xMm: 0, yMm: 0, widthMm: 1000, heightMm: 1000 }),
+        panel({ xMm: 1000, yMm: 0, widthMm: 1000, heightMm: 1000 }),
+      ],
+    }).expect(201);
+    const id = (created.body as WindowDetail).id;
+    expect((created.body as WindowDetail).widthMm).toBe(2000);
+
+    const patched = await patchWindow(id, {
+      panels: [panel({ xMm: 0, yMm: 0, widthMm: 900, heightMm: 800 })],
+    }).expect(200);
+    const body = patched.body as WindowDetail;
+
+    expect(body.panels).toHaveLength(1);
+    expect(body.panels).toHaveLength(1);
+    expect(body.widthMm).toBe(900);
+    expect(body.heightMm).toBe(800);
+  });
+
+  it('deleting a window cascades its panel rows away', async () => {
+    const created = await createWindow({
+      name: 'W-panel-cascade',
+      panels: [
+        panel({ xMm: 0, yMm: 0, widthMm: 1000, heightMm: 1000 }),
+        panel({ xMm: 1000, yMm: 0, widthMm: 1000, heightMm: 1000 }),
+      ],
+    }).expect(201);
+    const id = (created.body as WindowDetail).id;
+
+    const schema = await schemaNameFor(controlPlane, companyName);
+    const before: Array<{ count: string }> = await controlPlane.query(
+      `SELECT count(*) FROM "${schema}"."window_panels" WHERE window_id = $1`,
+      [id],
+    );
+    expect(Number(before[0].count)).toBe(2);
+
+    await request(app.getHttpServer())
+      .delete(`/windows/${id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(204);
+
+    const after: Array<{ count: string }> = await controlPlane.query(
+      `SELECT count(*) FROM "${schema}"."window_panels" WHERE window_id = $1`,
+      [id],
+    );
+    expect(Number(after[0].count)).toBe(0);
+  });
+
   it('records the authenticated caller as the author', async () => {
     const created = await createWindow({ name: 'W-author' }).expect(201);
     const body = created.body as WindowDetail;
@@ -380,6 +542,17 @@ describe('Windows (e2e)', () => {
     expect(body.createdByUserId.length).toBeGreaterThan(0);
   });
 });
+
+async function schemaNameFor(
+  controlPlane: DataSource,
+  name: string,
+): Promise<string> {
+  const rows: Array<{ schema_name: string }> = await controlPlane.query(
+    `SELECT schema_name FROM companies WHERE name = $1`,
+    [name],
+  );
+  return rows[0].schema_name;
+}
 
 async function dropCompanies(controlPlane: DataSource, names: string[]) {
   for (const name of names) {

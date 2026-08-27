@@ -59,17 +59,18 @@ export function useDuplicateWindowMutation(projectId: string) {
       return windowsApi.createWindow({
         projectId: detail.projectId,
         name: `${detail.name} ${copySuffix}`,
-        frameProfile: detail.frameProfile as ScopedRef,
-        sashProfile: detail.sashProfile as ScopedRef,
-        widthMm: detail.widthMm,
-        heightMm: detail.heightMm,
         quantity: detail.quantity,
-        hasFlyScreen: detail.hasFlyScreen,
-        isDoor: detail.isDoor,
-        glassKind: detail.glassKind,
-        glass: detail.glass as ScopedRef,
-        interiorColor: detail.interiorColor as ScopedRef | null,
-        exteriorColor: detail.exteriorColor as ScopedRef | null,
+        // The whole assembly, panel for panel — a duplicate of a
+        // three-panel unit is a three-panel unit. `widthMm`/`heightMm`
+        // are absent deliberately: the API derives them from these.
+        panels: detail.panels.map((panel) => ({
+          ...panel,
+          frameProfile: panel.frameProfile as ScopedRef,
+          sashProfile: panel.sashProfile as ScopedRef,
+          glass: panel.glass as ScopedRef,
+          interiorColor: panel.interiorColor as ScopedRef | null,
+          exteriorColor: panel.exteriorColor as ScopedRef | null,
+        })),
         location: detail.location,
         notes: detail.notes,
       })

@@ -8,8 +8,9 @@ import {
   createWindowSchema,
   type CreateWindowInput,
   type WindowDetail,
+  type WindowPanelInput,
 } from '@repo/types/windows'
-import { CombinationItemKind, ProfileType } from '@repo/types/lookups'
+import { ProfileType } from '@repo/types/lookups'
 import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
 import type { ProjectDetail } from '@repo/types/projects'
 import { apiErrorMessage } from '@/lib/api-client'
@@ -27,8 +28,24 @@ import { Button } from '@/components/ui/button'
 import { FieldLabel } from '@/components/workspace/field-label'
 import { ProfileTreePicker } from '@/components/workspace/profile-tree-picker'
 import { WindowDrawing } from '@/components/workspace/window-drawing'
+import { useResolvedPanels, type PanelRender } from '@/lib/window-render'
 import { WindowPartPanel } from '@/components/workspace/window-part-panel'
-import { buildWindowLayout } from '@/lib/window-geometry'
+import { AddPanelCard, type AddPanelRequest } from '@/components/workspace/add-panel-card'
+import {
+  buildAssemblyLayout,
+  freeSidesOf,
+  insertPanel,
+  panelRect,
+  panelsConnected,
+  parsePartId,
+  prefillForSide,
+  removePanel,
+  resizePanel,
+  tilesExactly,
+  unionRect,
+  type AssemblyPanelInput,
+  type PanelSide,
+} from '@/lib/window-geometry'
 import { collectWindowIssues, computeSashWeightKg, resolveGlassWeightPerSqm, type TranslatedIssue } from '@/lib/window-weight'
 import {
   Dialog,
@@ -39,10 +56,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-// The bead allowance subtracted from a sash's max glass thickness to get
-// the largest glass build-up it can actually take. See
-// docs/window_creation_planing.md §5's "The glass rule".
-const BEAD_ALLOWANCE_MM = 2
+// What an unsized panel is drawn at. A brand-new window's width/height
+// are NaN so the number inputs render empty rather than showing a 0
+// nobody typed — but the elevation still has to draw something.
+const PLACEHOLDER_WIDTH_MM = 1000
+const PLACEHOLDER_HEIGHT_MM = 1200
+
+/** The assembly-level issue's part id — it belongs to no drawn part. */
+const ASSEMBLY_PART_ID = 'assembly'
 
 interface WindowDialogProps {
   open: boolean
@@ -58,12 +79,14 @@ interface WindowDialogProps {
 }
 
 /**
- * Create or edit a window — one screen, one `useForm`, one submit: a
- * frame profile tree, a clickable elevation of the window
+ * Create or edit a window ASSEMBLY — one screen, one `useForm`, one
+ * submit: a frame profile tree, a clickable elevation of every panel
  * (`window-drawing.tsx`), and an options panel (`window-part-panel.tsx`)
- * that scrolls to and highlights whichever part is selected on the
- * drawing. There is no separate "basic info" step any more — every
- * field lives here.
+ * that edits whichever panel owns the selected part.
+ *
+ * Hovering a panel puts a "+" on each of its free sides; selecting
+ * several panels (ctrl/cmd-click) offers one on the sides of their
+ * combined outline. See docs/window_assembly_planing.md.
  *
  * Every field uses the controlled `watch()`/`setValue()` pattern, never
  * `register()` + `setValueAs`, for numeric/select fields — a
@@ -88,6 +111,17 @@ export function WindowDialog({
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null)
   const [hoveredPartId, setHoveredPartId] = useState<string | null>(null)
   const [drawingFace, setDrawingFace] = useState<'interior' | 'exterior'>('exterior')
+  // Which panel the options column edits, and which panels a new one
+  // would attach to. They coincide except while multi-selecting.
+  const [activePanelIndex, setActivePanelIndex] = useState(0)
+  const [selectedPanelIndices, setSelectedPanelIndices] = useState<number[]>([0])
+  // Sticky: set when the pointer enters a panel, cleared only when it
+  // leaves the whole drawing. Deriving it from `hoveredPartId` instead
+  // made the "+" markers flicker out the moment the pointer crossed
+  // onto one of them — the panel's own mouseleave had already fired.
+  const [hoveredPanelIndex, setHoveredPanelIndex] = useState<number | null>(null)
+  const [addRequest, setAddRequest] = useState<AddPanelRequest | null>(null)
+  const [addError, setAddError] = useState<string | undefined>(undefined)
 
   const editingWindowQuery = useWindowQuery(open && windowId ? windowId : undefined)
   const editingWindow = editingWindowQuery.data
@@ -119,13 +153,17 @@ export function WindowDialog({
   // (a real thing to do, since the tree lives inside this very dialog)
   // changes `project.favoriteFrameProfile`, which would otherwise
   // re-trigger the effect and wipe out whatever the user had already
-  // typed — confirmed live in the browser, not hypothetical.
+  // typed — confirmed live in the browser, not hypothetical (bug-012).
   const wasOpen = useRef(false)
 
   useEffect(() => {
     if (!open) {
       wasOpen.current = false
       setSelectedPartId(null)
+      setActivePanelIndex(0)
+      setSelectedPanelIndices([0])
+      setHoveredPanelIndex(null)
+      setAddRequest(null)
       return
     }
     // Editing, but the detail fetch hasn't landed yet — wait rather than
@@ -138,18 +176,15 @@ export function WindowDialog({
         ? {
             projectId,
             name: editingWindow.name,
-            frameProfile: editingWindow.frameProfile as ScopedRef,
-            sashProfile: editingWindow.sashProfile as ScopedRef,
-            widthMm: editingWindow.widthMm,
-            heightMm: editingWindow.heightMm,
             quantity: editingWindow.quantity,
-            hasFlyScreen: editingWindow.hasFlyScreen,
-            isDoor: editingWindow.isDoor,
-            openingType: editingWindow.openingType,
-            glassKind: editingWindow.glassKind,
-            glass: editingWindow.glass as ScopedRef,
-            interiorColor: editingWindow.interiorColor as ScopedRef | null,
-            exteriorColor: editingWindow.exteriorColor as ScopedRef | null,
+            panels: editingWindow.panels.map((p) => ({
+              ...p,
+              frameProfile: p.frameProfile as ScopedRef,
+              sashProfile: p.sashProfile as ScopedRef,
+              glass: p.glass as ScopedRef,
+              interiorColor: p.interiorColor as ScopedRef | null,
+              exteriorColor: p.exteriorColor as ScopedRef | null,
+            })),
             location: editingWindow.location,
             notes: editingWindow.notes,
           }
@@ -157,69 +192,37 @@ export function WindowDialog({
     )
   }, [open, isEdit, editingWindow, reset, projectId, project?.favoriteFrameProfile])
 
-  const frameProfile = watch('frameProfile')
-  const sashProfile = watch('sashProfile')
-  const widthMm = watch('widthMm')
-  const heightMm = watch('heightMm')
+  const panels = watch('panels')
   const quantity = watch('quantity')
-  const hasFlyScreen = watch('hasFlyScreen')
-  const isDoor = watch('isDoor')
-  const openingType = watch('openingType') ?? null
-  const glassKind = watch('glassKind')
-  const glass = watch('glass')
-  const interiorColor = watch('interiorColor')
-  const exteriorColor = watch('exteriorColor')
 
-  const frame = profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === frameProfile)
-  const frameCatalog = catalogsQuery.data?.find((c) => formatScopedRef(c.scope, c.id) === frame?.catalog)
-  const sash = profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === sashProfile)
+  // ---- Per-panel catalogue resolution --------------------------------
+  //
+  // Every one of these used to be computed once for the whole window.
+  // An assembly's panels each have their own frame, so each has its own
+  // system type, its own sash options, its own glass thickness ceiling
+  // and its own weight limit.
 
-  // The frame's own catalogue is a hinged system — door only means
-  // something there. Force it off if the frame changes to a non-hinged
-  // (or no) catalogue rather than leave a stale true hidden.
-  const systemType = frameCatalog?.systemType ?? null
-  const showDoor = systemType === 'hinged'
-  // Same "hinged only" gate as showDoor — the Type icon grid (and the
-  // structural double-door/mullion geometry it can drive) only makes
-  // sense there; sliding gets its own icon set later, not this one.
-  const showOpeningTypes = showDoor
-  useEffect(() => {
-    if (!showDoor && isDoor) setValue('isDoor', false, { shouldValidate: true })
-  }, [showDoor, isDoor, setValue])
-  useEffect(() => {
-    if (!showOpeningTypes && openingType) setValue('openingType', null, { shouldValidate: true })
-  }, [showOpeningTypes, openingType, setValue])
+  // Resolved once, shared with the canvas card's own thumbnail — see
+  // lib/window-render.ts. `drawingFace` picks which side's colour the
+  // elevation is painted in.
+  const resolved = useResolvedPanels(panels, drawingFace)
+  const panelInfos = resolved.map((r) => r.info)
 
-  // Same rule for fly screen — gated on the frame's own flag.
-  const flyScreenAllowed = frame?.acceptsFlyScreen ?? false
-  useEffect(() => {
-    if (!flyScreenAllowed && hasFlyScreen) setValue('hasFlyScreen', false, { shouldValidate: true })
-  }, [flyScreenAllowed, hasFlyScreen, setValue])
-
-  const sashOptions = (profilesQuery.data ?? [])
-    .filter((p) => p.profileType === ProfileType.LEAF && p.catalog === frame?.catalog)
-    .sort((a, b) => a.profileNo.localeCompare(b.profileNo))
-
-  const sashMaxGlassThickness = sash?.maxGlassThickness ?? null
-  const maxGlassAllowed = sashMaxGlassThickness !== null ? sashMaxGlassThickness - BEAD_ALLOWANCE_MM : null
-
-  const glassOptions = [
-    ...(glassQuery.data ?? [])
-      .filter((g) => maxGlassAllowed !== null && g.thickness <= maxGlassAllowed)
-      .map((g) => ({
-        value: `${GlassKind.SINGLE}|${formatScopedRef(g.scope, g.id)}`,
-        label: `${g.name} — ${g.thickness} mm`,
-        scope: g.scope,
-      })),
-    ...(combinationsQuery.data ?? [])
-      .filter((c) => maxGlassAllowed !== null && c.totalThickness <= maxGlassAllowed)
-      .map((c) => ({
-        value: `${GlassKind.COMBINATION}|${formatScopedRef(c.scope, c.id)}`,
-        label: `${c.name} — ${c.totalThickness} mm`,
-        scope: c.scope,
-      })),
-  ]
-  const glassValue = glass ? `${glassKind}|${glass}` : ''
+  // A panel's door/opening-type/fly-screen flags are only meaningful for
+  // certain frames. Rather than an effect that writes back into the form
+  // (one per panel, each a chance to loop), the stale value is simply
+  // never READ: the drawing, the options column and the submitted body
+  // all use this sanitised view. Changing a frame away and back
+  // therefore restores what you had, instead of silently destroying it.
+  const sanitizedPanels: WindowPanelInput[] = panels.map((panel, i) => {
+    const info = panelInfos[i]
+    return {
+      ...panel,
+      isDoor: info.showDoor ? panel.isDoor : false,
+      openingType: info.showOpeningTypes ? (panel.openingType ?? null) : null,
+      hasFlyScreen: info.flyScreenAllowed ? panel.hasFlyScreen : false,
+    }
+  })
 
   const colorOptions = (colorsQuery.data ?? []).map((c) => ({
     value: formatScopedRef(c.scope, c.id),
@@ -228,14 +231,323 @@ export function WindowDialog({
     scope: c.scope,
   }))
 
+  // ---- Layout ---------------------------------------------------------
+
+  // Recomputed on every render (cheap, pure) rather than memoized —
+  // both the drawing and the panel's per-part sizes need it, so it's
+  // lifted here instead of built twice.
+  const layoutInput: AssemblyPanelInput[] = sanitizedPanels.map((panel, i) => ({
+    xMm: panel.xMm,
+    yMm: panel.yMm,
+    widthMm: drawableMm(panel.widthMm, PLACEHOLDER_WIDTH_MM),
+    heightMm: drawableMm(panel.heightMm, PLACEHOLDER_HEIGHT_MM),
+    systemType: panelInfos[i].systemType,
+    hasFlyScreen: panel.hasFlyScreen,
+    flyScreenAllowed: panelInfos[i].flyScreenAllowed,
+    isDoor: panel.isDoor,
+    openingType: panel.openingType ?? null,
+  }))
+  const drawingLayout = buildAssemblyLayout(layoutInput)
+
+  const activePanel = sanitizedPanels[activePanelIndex] ?? sanitizedPanels[0]
+  const activeInfo = panelInfos[activePanelIndex] ?? panelInfos[0]
+  const activeRaw = panels[activePanelIndex] ?? panels[0]
+
+  // ---- Attach affordance ---------------------------------------------
+  //
+  // With two or more panels selected the markers stay put — that
+  // selection was deliberate. With one or none they follow the pointer,
+  // which is the user's own "when I hover over a window" ask.
+
+  const effectiveAttachIndices =
+    selectedPanelIndices.length >= 2
+      ? selectedPanelIndices
+      : hoveredPanelIndex !== null
+        ? [hoveredPanelIndex]
+        : []
+
+  // Geometry runs on the raw panels, whose placement fields are the same
+  // as the sanitised ones — sanitising only touches door/opening/fly
+  // screen. Identity matters: freeSidesOf excludes the selection by
+  // reference.
+  const attachPanels = effectiveAttachIndices.map((i) => panels[i]).filter(Boolean)
+  // An assembly still being filled in has no real size yet — there is
+  // nothing coherent to attach to, so no "+" until every panel has one.
+  const allPanelsSized = panels.every(
+    (p) => Number.isFinite(p.widthMm) && p.widthMm > 0 && Number.isFinite(p.heightMm) && p.heightMm > 0,
+  )
+  // "The edge of the selection" is only well-defined when the selected
+  // panels actually form a solid rectangle between them.
+  const canAttach =
+    allPanelsSized && attachPanels.length > 0 && (attachPanels.length === 1 || tilesExactly(attachPanels))
+  const attachRect = canAttach ? unionRect(attachPanels.map(panelRect)) : null
+  const attachSides = canAttach ? freeSidesOf(attachPanels, panels) : []
+
+  const onAddPanel = (side: PanelSide, at: { left: number; top: number }) => {
+    if (attachPanels.length === 0) return
+    const source = attachPanels[0]
+    setAddError(undefined)
+    setAddRequest({ side, at, ...prefillForSide(side, attachPanels, source) })
+  }
+
+  const onConfirmAddPanel = (widthMm: number, heightMm: number) => {
+    if (!addRequest || attachPanels.length === 0) return
+    // Clones the panel attached to — same frame, sash, glass, colours,
+    // opening type and flags. Only the size differs.
+    const source = attachPanels[0]
+    const next = insertPanel(panels, addRequest.side, attachPanels, {
+      ...source,
+      widthMm: Math.round(widthMm),
+      heightMm: Math.round(heightMm),
+      xMm: 0,
+      yMm: 0,
+    })
+    if (!next) {
+      setAddError(t('windowDialog.design.addPanel.wouldOverlap'))
+      return
+    }
+    setValue('panels', next, { shouldValidate: true })
+    // The new panel is the last one appended; land on it with its frame
+    // selected, so the options column is already showing what to change.
+    const newIndex = next.length - 1
+    setActivePanelIndex(newIndex)
+    setSelectedPanelIndices([newIndex])
+    setSelectedPartId(`p${newIndex}:frame`)
+    // The card sits inside the drawing box, so dismissing it doesn't
+    // fire the container's mouseleave — without this the markers for
+    // whatever was hovered before stay on screen until the pointer next
+    // crosses the drawing's edge.
+    setHoveredPanelIndex(null)
+    setAddRequest(null)
+    setAddError(undefined)
+  }
+
+  // ---- Panel mutation -------------------------------------------------
+
+  const updateActivePanel = (changes: Partial<WindowPanelInput>) => {
+    setValue(
+      'panels',
+      panels.map((panel, i) => (i === activePanelIndex ? { ...panel, ...changes } : panel)),
+      { shouldValidate: true },
+    )
+  }
+
+  const onPanelSizeChange = (widthMm: number, heightMm: number) => {
+    setValue('panels', resizePanel(panels, activePanelIndex, widthMm, heightMm), { shouldValidate: true })
+  }
+
+  const canDeletePanel = panels.length > 1 && removePanel(panels, activePanelIndex) !== null
+  const onDeletePanel = () => {
+    const next = removePanel(panels, activePanelIndex)
+    if (!next) return
+    setValue('panels', next, { shouldValidate: true })
+    const fallback = Math.max(0, activePanelIndex - 1)
+    setActivePanelIndex(fallback)
+    setSelectedPanelIndices([fallback])
+    setSelectedPartId(null)
+  }
+
+  const onSelectPart = (partId: string, additive: boolean) => {
+    const panelIndex = parsePartId(partId)?.panelIndex ?? 0
+    if (additive) {
+      // Toggles this panel into the selection WITHOUT moving which part
+      // is selected — the options column stays where it was.
+      setSelectedPanelIndices((prev) =>
+        prev.includes(panelIndex) ? prev.filter((i) => i !== panelIndex) : [...prev, panelIndex],
+      )
+      return
+    }
+    setSelectedPartId(partId)
+    setActivePanelIndex(panelIndex)
+    setSelectedPanelIndices([panelIndex])
+  }
+
+  // ---- Active panel's options ----------------------------------------
+
+  const sashOptions = (profilesQuery.data ?? [])
+    .filter((p) => p.profileType === ProfileType.LEAF && p.catalog === activeInfo?.frame?.catalog)
+    .sort((a, b) => a.profileNo.localeCompare(b.profileNo))
+
+  const glassOptions = [
+    ...(glassQuery.data ?? [])
+      .filter((g) => activeInfo?.maxGlassAllowed != null && g.thickness <= activeInfo.maxGlassAllowed)
+      .map((g) => ({
+        value: `${GlassKind.SINGLE}|${formatScopedRef(g.scope, g.id)}`,
+        label: `${g.name} — ${g.thickness} mm`,
+        scope: g.scope,
+      })),
+    ...(combinationsQuery.data ?? [])
+      .filter((c) => activeInfo?.maxGlassAllowed != null && c.totalThickness <= activeInfo.maxGlassAllowed)
+      .map((c) => ({
+        value: `${GlassKind.COMBINATION}|${formatScopedRef(c.scope, c.id)}`,
+        label: `${c.name} — ${c.totalThickness} mm`,
+        scope: c.scope,
+      })),
+  ]
+  const glassValue = activePanel?.glass ? `${activePanel.glassKind}|${activePanel.glass}` : ''
+
+  // The active panel's own weight estimate, for the options column's
+  // weight line. Recomputed here rather than plucked out of `issuesByPart`,
+  // which only carries the translated message, not the number — and which
+  // stays empty until `showValidation`.
+  const activeSashRect = drawingLayout.parts.find(
+    (p) => p.panelIndex === activePanelIndex && p.kind === 'sash',
+  )?.rectMm
+  const activeSashWeightKg =
+    activeInfo?.sash && (activeInfo.currentGlass ?? activeInfo.currentCombination) && activeSashRect && activePanel
+      ? computeSashWeightKg({
+          rectMm: activeSashRect,
+          glassWeightPerSqm: resolveGlassWeightPerSqm(
+            activePanel.glassKind,
+            activeInfo.currentGlass,
+            activeInfo.currentCombination,
+            glassQuery.data ?? [],
+          ),
+          sashProfile: activeInfo.sash,
+        })
+      : null
+
+  // Changing the frame invalidates the sash (scoped to its catalogue)
+  // and, transitively, the glass (scoped to the sash's max thickness) —
+  // same cascade rule ProjectPreferencesFields uses for brand →
+  // catalogue. Applies to the ACTIVE panel only.
+  const onFrameChange = (ref: ScopedRef) => {
+    updateActivePanel({ frameProfile: ref, sashProfile: '' as ScopedRef, glass: '' as ScopedRef })
+  }
+
+  // ---- The face toggle -------------------------------------------------
+
+  // Only matters when it would actually show something different — both
+  // colours picked on some panel, and they don't resolve to the same hex
+  // (two different colour entries can still be visually identical).
+  const showFaceToggle = sanitizedPanels.some((panel) => {
+    if (!panel.interiorColor || !panel.exteriorColor) return false
+    const interiorHex = colorOptions.find((c) => c.value === panel.interiorColor)?.hex ?? null
+    const exteriorHex = colorOptions.find((c) => c.value === panel.exteriorColor)?.hex ?? null
+    return interiorHex !== exteriorHex
+  })
+
+  // ---- Per-panel render descriptors ------------------------------------
+
+  // `useResolvedPanels` already did the catalogue work (colours, glass
+  // tint, Georgian grid). Two fields are overridden here: `placement`
+  // uses the drawable fallback so an unsized panel still renders, and
+  // the door/opening-type flags come from the sanitised view rather than
+  // the raw form value.
+  const panelRenders: PanelRender[] = resolved.map((r, i) => ({
+    ...r.render,
+    placement: layoutInput[i],
+    isDoor: sanitizedPanels[i].isDoor,
+    openingType: sanitizedPanels[i].openingType ?? null,
+  }))
+
+  // ---- Issues ----------------------------------------------------------
+
+  // A brand-new window starts with every required field empty — showing
+  // "Pick a sash profile." before the user has touched anything reads as
+  // the dialog already complaining. Editing an existing window always
+  // shows its real issues; creating one stays quiet until first submit.
+  const showValidation = isEdit || isSubmitted
+
+  const issuesByPart = new Map<string, TranslatedIssue[]>()
+  if (showValidation) {
+    sanitizedPanels.forEach((panel, i) => {
+      const info = panelInfos[i]
+      const parts = drawingLayout.parts.filter((p) => p.panelIndex === i)
+      const sashPartIds = parts.filter((p) => p.kind === 'sash').map((p) => p.id)
+      const glassPartIds = parts.filter((p) => p.kind === 'glass').map((p) => p.id)
+      const flyScreenPartId = parts.find((p) => p.kind === 'flyScreen')?.id ?? null
+      const firstSashRect = parts.find((p) => p.kind === 'sash')?.rectMm
+      const glassWeightPerSqm = resolveGlassWeightPerSqm(
+        panel.glassKind,
+        info.currentGlass,
+        info.currentCombination,
+        glassQuery.data ?? [],
+      )
+      const sashWeightKg =
+        info.sash && (info.currentGlass ?? info.currentCombination) && firstSashRect
+          ? computeSashWeightKg({ rectMm: firstSashRect, glassWeightPerSqm, sashProfile: info.sash })
+          : null
+
+      for (const issue of collectWindowIssues({
+        frameProfile: info.frame,
+        sashProfile: info.sash,
+        hasGlass: !!panel.glass,
+        glassThickness: info.currentGlass?.thickness ?? info.currentCombination?.totalThickness ?? null,
+        maxGlassAllowed: info.maxGlassAllowed,
+        sashWeightKg,
+        maxSashWeight: info.maxSashWeight,
+        hasFlyScreen: panel.hasFlyScreen,
+        flyScreenAllowed: info.flyScreenAllowed,
+        sashPartIds,
+        glassPartIds,
+        flyScreenPartId,
+      })) {
+        const translated: TranslatedIssue = {
+          severity: issue.severity,
+          messageKey: issue.messageKey,
+          message: t(`windowDialog.design.issues.${issue.messageKey}`, issue.values),
+        }
+        issuesByPart.set(issue.partId, [...(issuesByPart.get(issue.partId) ?? []), translated])
+      }
+    })
+  }
+
+  // Assembly-level, so they belong to no drawn part.
+  const assemblyIssues: TranslatedIssue[] = []
+
+  // A stepped outline is a real fabricated shape — amber, and Save stays
+  // enabled, same posture as the sash-weight estimate.
+  const irregularOutline = panels.length > 1 && allPanelsSized && !tilesExactly(panels)
+  if (irregularOutline) {
+    assemblyIssues.push({
+      severity: 'warning',
+      messageKey: 'irregularOutline',
+      message: t('windowDialog.design.issues.irregularOutline'),
+    })
+  }
+
+  // Red, not amber: the API rejects a disconnected assembly outright.
+  // Resizing can reach this state — shrinking a panel narrower than the
+  // one it was the only bridge to strands the rest — so it's surfaced
+  // live here instead of only as a 400 on Save.
+  if (panels.length > 1 && allPanelsSized && !panelsConnected(panels)) {
+    assemblyIssues.push({
+      severity: 'error',
+      messageKey: 'disconnectedPanels',
+      message: t('windowDialog.design.issues.disconnectedPanels'),
+    })
+  }
+
+  if (assemblyIssues.length > 0) issuesByPart.set(ASSEMBLY_PART_ID, assemblyIssues)
+
+  // The strip below the drawing — one row per distinct message, not per
+  // part (four panels all missing a sash profile would otherwise repeat
+  // "Pick a sash profile." four times).
+  const stripIssues: { partId: string; severity: TranslatedIssue['severity']; message: string }[] = []
+  const seenMessages = new Set<string>()
+  for (const [partId, issues] of issuesByPart) {
+    for (const issue of issues) {
+      if (seenMessages.has(issue.message)) continue
+      seenMessages.add(issue.message)
+      stripIssues.push({ partId, ...issue })
+    }
+  }
+
+  // ---- Submit ----------------------------------------------------------
+
   const onSubmit = async (data: CreateWindowInput) => {
     try {
+      // Submits the sanitised panels, never the raw ones — a stale
+      // openingType on a panel whose frame is no longer hinged must not
+      // reach the API just because the control that set it is hidden.
+      const body: CreateWindowInput = { ...data, panels: sanitizedPanels }
       if (isEdit) {
-        const { projectId: _ignored, ...editable } = data
+        const { projectId: _ignored, ...editable } = body
         await updateMutation.mutateAsync(editable)
         toast.success(t('windowDialog.updated'))
       } else {
-        const created = await createMutation.mutateAsync(data)
+        const created = await createMutation.mutateAsync(body)
         toast.success(t('windowDialog.created', { name: created.name }))
         onCreated?.(created)
       }
@@ -248,9 +560,9 @@ export function WindowDialog({
   // Once a frame profile is picked, its catalogue's system type is known
   // — swap the generic title for one naming it (e.g. "New sliding
   // window"), same label text `lookups.json`'s systemType filter uses.
-  const dialogTitle = systemType
+  const dialogTitle = activeInfo?.systemType
     ? t(isEdit ? 'windowDialog.editTitleTyped' : 'windowDialog.createTitleTyped', {
-        type: tLookups(`systemType.${systemType}`).toLowerCase(),
+        type: tLookups(`systemType.${activeInfo.systemType}`).toLowerCase(),
       })
     : t(isEdit ? 'windowDialog.editTitle' : 'windowDialog.createTitle')
 
@@ -260,8 +572,7 @@ export function WindowDialog({
   // tree's "preferred catalogue" expansion pointing at the wrong branch
   // every time this dialog opens next. `ref` is whichever profile was
   // right-clicked in the tree, not necessarily the one currently
-  // selected on the form, so its catalogue/brand are looked up fresh
-  // rather than reusing `frame`/`frameCatalog` above.
+  // selected on the form, so its catalogue/brand are looked up fresh.
   const onSetFavorite = (ref: ScopedRef) => {
     if (!project) return
     const favoritedProfile = profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === ref)
@@ -280,133 +591,6 @@ export function WindowDialog({
     )
   }
 
-  // Shared by both steps' own tree instance (Step 1's persistent left
-  // column and Step 2's, identical). Changing the frame invalidates the
-  // sash (scoped to its catalogue) and, transitively, the glass (scoped
-  // to the sash's max thickness) — same cascade rule
-  // ProjectPreferencesFields uses for brand → catalogue.
-  const onFrameChange = (ref: ScopedRef) => {
-    setValue('frameProfile', ref, { shouldValidate: true })
-    setValue('sashProfile', '' as ScopedRef, { shouldValidate: true })
-    setValue('glass', '' as ScopedRef, { shouldValidate: true })
-  }
-
-  // Recomputed on every render (cheap, pure) rather than memoized —
-  // both the drawing and the panel's per-part sizes need it, so it's
-  // lifted here instead of built twice.
-  const drawingLayout = buildWindowLayout({
-    widthMm: Number.isFinite(widthMm) && widthMm > 0 ? widthMm : 1000,
-    heightMm: Number.isFinite(heightMm) && heightMm > 0 ? heightMm : 1200,
-    systemType,
-    hasFlyScreen,
-    flyScreenAllowed,
-    isDoor,
-    openingType,
-  })
-  // The weight estimate and the re-surfaced validation rules — see
-  // docs/window_design_planing.md §1. `sashWeightKg` stays `null`
-  // (no line shown) until there's an actual sash and glass to weigh.
-  const currentGlass = glassKind === GlassKind.SINGLE ? glassQuery.data?.find((g) => formatScopedRef(g.scope, g.id) === glass) : undefined
-  const currentCombination =
-    glassKind === GlassKind.COMBINATION ? combinationsQuery.data?.find((c) => formatScopedRef(c.scope, c.id) === glass) : undefined
-  // A plain single-pane glass has no colour field at all — only a
-  // combination's sheets can reference a real Color (RAL code + hex),
-  // the same shared table frame/sash colours use. Reflect whichever
-  // sheet in the build-up has one set (first one found); a colourless
-  // combination or a single glass falls back to WindowDrawing's own
-  // neutral default tint.
-  const coloredSheet = currentCombination?.items.find(
-    (item) => item.kind === CombinationItemKind.SHEET && item.colorCode,
-  )
-  const glassHex = coloredSheet ? (colorOptions.find((c) => c.label === coloredSheet.colorCode)?.hex ?? null) : null
-  // Georgian bars are a real physical grid embedded in the spacer gap,
-  // not a decorative option — draw one whenever the build-up actually
-  // has one. Takes the first Georgian gap found; a build-up with more
-  // than one would be unusual and this is a reasonable default rather
-  // than something worth a UI to disambiguate.
-  let georgianGrid: { columns: number; rows: number } | null = null
-  for (const item of currentCombination?.items ?? []) {
-    if (item.kind === CombinationItemKind.GAP && item.isGeorgian && item.columnsCount && item.rowsCount) {
-      georgianGrid = { columns: item.columnsCount, rows: item.rowsCount }
-      break
-    }
-  }
-  const glassWeightPerSqm = resolveGlassWeightPerSqm(glassKind, currentGlass, currentCombination, glassQuery.data ?? [])
-  const firstSashRect = drawingLayout.parts.find((p) => p.kind === 'sash')?.rectMm
-  const sashWeightKg =
-    sash && (currentGlass ?? currentCombination) && firstSashRect
-      ? computeSashWeightKg({ rectMm: firstSashRect, glassWeightPerSqm, sashProfile: sash })
-      : null
-  const maxSashWeight = frameCatalog?.maxSashWeight ?? null
-
-  const sashPartIds = drawingLayout.parts.filter((p) => p.kind === 'sash').map((p) => p.id)
-  const glassPartIds = drawingLayout.parts.filter((p) => p.kind === 'glass').map((p) => p.id)
-  const flyScreenPartId = drawingLayout.parts.find((p) => p.kind === 'flyScreen')?.id ?? null
-
-  // A brand-new window starts with every required field empty — showing
-  // "Pick a sash profile." etc. before the user has touched anything
-  // reads as the dialog already complaining. Editing an existing window
-  // always shows its real issues (there's real data to be wrong about);
-  // creating one stays quiet until the first submit attempt, same as
-  // any other "don't yell before I've done anything" form.
-  const showValidation = isEdit || isSubmitted
-
-  const rawIssues = showValidation
-    ? collectWindowIssues({
-        frameProfile: frame,
-        sashProfile: sash,
-        hasGlass: !!glass,
-        glassThickness: currentGlass?.thickness ?? currentCombination?.totalThickness ?? null,
-        maxGlassAllowed,
-        sashWeightKg,
-        maxSashWeight,
-        hasFlyScreen,
-        flyScreenAllowed,
-        sashPartIds,
-        glassPartIds,
-        flyScreenPartId,
-      })
-    : []
-  const issuesByPart = new Map<string, TranslatedIssue[]>()
-  for (const issue of rawIssues) {
-    const translated: TranslatedIssue = {
-      severity: issue.severity,
-      messageKey: issue.messageKey,
-      message: t(`windowDialog.design.issues.${issue.messageKey}`, issue.values),
-    }
-    issuesByPart.set(issue.partId, [...(issuesByPart.get(issue.partId) ?? []), translated])
-  }
-  // The strip below the drawing — one row per distinct message, not per
-  // part (a sliding window's two sashes both missing a profile would
-  // otherwise repeat "Pick a sash profile." twice).
-  const stripIssues: { partId: string; severity: TranslatedIssue['severity']; message: string }[] = []
-  const seenMessages = new Set<string>()
-  for (const [partId, issues] of issuesByPart) {
-    for (const issue of issues) {
-      if (seenMessages.has(issue.message)) continue
-      seenMessages.add(issue.message)
-      stripIssues.push({ partId, ...issue })
-    }
-  }
-
-  // The drawing borrows the other face's colour when only one is set —
-  // a window is realistically painted the same on both sides more often
-  // than not, so this saves re-picking it twice. Purely a rendering
-  // fallback: the interior/exterior fields themselves stay exactly what
-  // the user actually chose (one still shows its real placeholder), and
-  // the moment they pick the other face's own colour this stops
-  // applying — each face then shows only its own value.
-  const shownFaceColor = drawingFace === 'interior' ? interiorColor : exteriorColor
-  const otherFaceColor = drawingFace === 'interior' ? exteriorColor : interiorColor
-  const drawingFaceColorRef = shownFaceColor ?? otherFaceColor
-
-  // The toggle only matters when it would actually show something
-  // different — both colours picked, and they don't resolve to the same
-  // hex (two different colour entries can still be visually identical).
-  const interiorHex = colorOptions.find((c) => c.value === interiorColor)?.hex ?? null
-  const exteriorHex = colorOptions.find((c) => c.value === exteriorColor)?.hex ?? null
-  const showFaceToggle = !!interiorColor && !!exteriorColor && interiorHex !== exteriorHex
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* FIXED height and width (not max-h/max-w) with a constant 2rem
@@ -415,7 +599,7 @@ export function WindowDialog({
           content changes height (a validation message appearing, a
           tree branch expanding), which reads as the dialog visibly
           jumping/flickering. Fixing both dimensions means only the
-          inner scroll regions ever move, and Step 2's three columns
+          inner scroll regions ever move, and the three columns
           (tree/drawing/panel) get the full available width to lay out
           in rather than being capped at some fraction of the screen. */}
       <DialogContent className="flex h-[calc(100svh-4rem)] flex-col sm:max-w-[calc(100vw-4rem)]">
@@ -431,11 +615,14 @@ export function WindowDialog({
             <DialogDescription className="sr-only">{t('windowDialog.description')}</DialogDescription>
           </DialogHeader>
 
-          {/* A frame profile tree (22rem) + the drawing (1fr) + a
+          {/* A frame profile tree (18rem) + the drawing (1fr) + a
               fixed-width options column, so all three stay put and
               never reflow when a different part is selected, per
-              docs/window_design_planing.md's decisions table. */}
-          <div className="mt-6 grid min-h-0 flex-1 grid-cols-[22rem_1fr_26rem] gap-4 overflow-hidden">
+              docs/window_design_planing.md's decisions table. Tree
+              narrowed from its original 22rem — it only ever holds
+              short profile codes, and the drawing is what benefits from
+              the room. */}
+          <div className="mt-6 grid min-h-0 flex-1 grid-cols-[18rem_1fr_26rem] gap-4 overflow-hidden">
             <div className="flex min-h-0 min-w-0 flex-col border-e border-border ps-1 pe-3">
               <FieldLabel htmlFor="window-frame" required>
                 {t('fields.frameProfile')}
@@ -443,7 +630,7 @@ export function WindowDialog({
               <div className="mt-1.5 min-h-0 min-w-0 flex-1">
                 <ProfileTreePicker
                   profileType={ProfileType.FRAME}
-                  value={frameProfile || null}
+                  value={activePanel?.frameProfile || null}
                   onChange={onFrameChange}
                   favoriteRef={project?.favoriteFrameProfile}
                   onSetFavorite={project ? onSetFavorite : undefined}
@@ -451,7 +638,7 @@ export function WindowDialog({
                   preferredBrandRef={isEdit ? undefined : project?.defaultSystemBrand}
                 />
               </div>
-              {showValidation && errors.frameProfile && (
+              {showValidation && errors.panels && (
                 <p className="mt-1 shrink-0 text-xs text-destructive">{t('fields.frameProfileRequired')}</p>
               )}
             </div>
@@ -484,104 +671,129 @@ export function WindowDialog({
               <div className="min-h-0 flex-1">
                 <WindowDrawing
                   layout={drawingLayout}
-                  systemType={systemType}
-                  hasFrame={!!frame}
-                  isDoor={isDoor}
-                  openingType={openingType}
-                  glassHex={glassHex}
-                  georgianGrid={georgianGrid}
-                  frameHex={colorOptions.find((c) => c.value === drawingFaceColorRef)?.hex ?? null}
+                  panels={panelRenders}
                   selectedPartId={selectedPartId}
                   hoveredPartId={hoveredPartId}
-                  onSelect={setSelectedPartId}
+                  onSelect={onSelectPart}
                   onHover={setHoveredPartId}
-                  widthMm={widthMm}
-                  heightMm={heightMm}
-                  onWidthChange={(mm) => setValue('widthMm', mm, { shouldValidate: true })}
-                  onHeightChange={(mm) => setValue('heightMm', mm, { shouldValidate: true })}
+                  selectedPanelIndices={panels.length > 1 ? selectedPanelIndices : []}
+                  activePanelIndex={activePanelIndex}
+                  onPanelWidthChange={(mm) => onPanelSizeChange(mm, activeRaw?.heightMm ?? mm)}
+                  onPanelHeightChange={(mm) => onPanelSizeChange(activeRaw?.widthMm ?? mm, mm)}
                   widthLabel={t('fields.widthMm')}
                   heightLabel={t('fields.heightMm')}
+                  attachRect={attachRect}
+                  attachSides={attachSides}
+                  onPanelHover={setHoveredPanelIndex}
+                  onAddPanel={onAddPanel}
+                  overlay={
+                    <AddPanelCard
+                      request={addRequest}
+                      error={addError}
+                      onCancel={() => {
+                        setAddRequest(null)
+                        setAddError(undefined)
+                      }}
+                      onConfirm={onConfirmAddPanel}
+                    />
+                  }
                   issuesByPart={issuesByPart}
                 />
               </div>
               {stripIssues.length > 0 && (
                 <ul className="flex shrink-0 flex-wrap gap-x-3 gap-y-1 border-t border-border pt-1.5 text-xs">
-                  {stripIssues.map((issue) => (
-                    <li key={issue.partId + issue.message}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPartId(issue.partId)}
-                        className={cn(
-                          'underline decoration-dotted underline-offset-2',
-                          issue.severity === 'error'
-                            ? 'text-destructive'
-                            : 'font-medium text-amber-600 dark:text-amber-500',
-                        )}
-                      >
+                  {stripIssues.map((issue) =>
+                    // The assembly-level note points at no part, so it's
+                    // plain text rather than a click-to-select button.
+                    issue.partId === ASSEMBLY_PART_ID ? (
+                      <li key={issue.message} className="font-medium text-amber-600 dark:text-amber-500">
                         {issue.message}
-                      </button>
-                    </li>
-                  ))}
+                      </li>
+                    ) : (
+                      <li key={issue.partId + issue.message}>
+                        <button
+                          type="button"
+                          onClick={() => onSelectPart(issue.partId, false)}
+                          className={cn(
+                            'underline decoration-dotted underline-offset-2',
+                            issue.severity === 'error'
+                              ? 'text-destructive'
+                              : 'font-medium text-amber-600 dark:text-amber-500',
+                          )}
+                        >
+                          {issue.message}
+                        </button>
+                      </li>
+                    ),
+                  )}
                 </ul>
               )}
             </div>
 
             <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto border-s border-border px-3 pe-0 pb-4">
-              <WindowPartPanel
-                layout={drawingLayout}
-                selectedPartId={selectedPartId}
-                issuesByPart={issuesByPart}
-                name={watch('name')}
-                onNameChange={(value) => setValue('name', value, { shouldValidate: true })}
-                nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
-                quantity={quantity}
-                onQuantityChange={(value) => setValue('quantity', value, { shouldValidate: true })}
-                quantityError={showValidation && errors.quantity ? t('fields.quantityRequired') : undefined}
-                widthMm={widthMm}
-                heightMm={heightMm}
-                onWidthChange={(mm) => setValue('widthMm', mm, { shouldValidate: true })}
-                onHeightChange={(mm) => setValue('heightMm', mm, { shouldValidate: true })}
-                widthError={showValidation && errors.widthMm ? t('fields.widthMmRequired') : undefined}
-                heightError={showValidation && errors.heightMm ? t('fields.heightMmRequired') : undefined}
-                interiorColor={interiorColor ?? null}
-                exteriorColor={exteriorColor ?? null}
-                onInteriorColorChange={(value) =>
-                  setValue('interiorColor', value as ScopedRef | null, { shouldValidate: true })
-                }
-                onExteriorColorChange={(value) =>
-                  setValue('exteriorColor', value as ScopedRef | null, { shouldValidate: true })
-                }
-                colorOptions={colorOptions}
-                showDoor={showDoor}
-                isDoor={isDoor}
-                onDoorChange={(value) => setValue('isDoor', value, { shouldValidate: true })}
-                showOpeningTypes={showOpeningTypes}
-                openingType={openingType}
-                onOpeningTypeChange={(value) => setValue('openingType', value, { shouldValidate: true })}
-                sashProfile={sashProfile}
-                sashOptions={sashOptions}
-                onSashChange={(ref) => {
-                  setValue('sashProfile', ref, { shouldValidate: true })
-                  setValue('glass', '' as ScopedRef, { shouldValidate: true })
-                }}
-                sashWeightKg={sashWeightKg}
-                maxSashWeight={maxSashWeight}
-                glassValue={glassValue}
-                glassOptions={glassOptions}
-                onGlassChange={(kind, ref) => {
-                  setValue('glassKind', kind, { shouldValidate: true })
-                  setValue('glass', ref, { shouldValidate: true })
-                }}
-                maxGlassAllowed={maxGlassAllowed}
-                sashMaxGlassThickness={sashMaxGlassThickness}
-                hasFlyScreen={hasFlyScreen}
-                flyScreenAllowed={flyScreenAllowed}
-                onFlyScreenChange={(value) => setValue('hasFlyScreen', value, { shouldValidate: true })}
-                location={watch('location') ?? null}
-                onLocationChange={(value) => setValue('location', value, { shouldValidate: true })}
-                notes={watch('notes') ?? null}
-                onNotesChange={(value) => setValue('notes', value, { shouldValidate: true })}
-              />
+              {activePanel && activeInfo && (
+                <WindowPartPanel
+                  layout={{
+                    outerMm: {
+                      width: layoutInput[activePanelIndex]?.widthMm ?? 0,
+                      height: layoutInput[activePanelIndex]?.heightMm ?? 0,
+                    },
+                    parts: drawingLayout.parts.filter((p) => p.panelIndex === activePanelIndex),
+                  }}
+                  selectedPartId={selectedPartId}
+                  issuesByPart={issuesByPart}
+                  panelIndex={activePanelIndex}
+                  panelCount={panels.length}
+                  onDeletePanel={canDeletePanel ? onDeletePanel : undefined}
+                  deleteDisabledReason={
+                    canDeletePanel ? undefined : t('windowDialog.design.deletePanelBlocked')
+                  }
+                  name={watch('name')}
+                  onNameChange={(value) => setValue('name', value, { shouldValidate: true })}
+                  nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
+                  quantity={quantity}
+                  onQuantityChange={(value) => setValue('quantity', value, { shouldValidate: true })}
+                  quantityError={showValidation && errors.quantity ? t('fields.quantityRequired') : undefined}
+                  widthMm={activeRaw?.widthMm ?? NaN}
+                  heightMm={activeRaw?.heightMm ?? NaN}
+                  onWidthChange={(mm) => onPanelSizeChange(mm, activeRaw?.heightMm ?? mm)}
+                  onHeightChange={(mm) => onPanelSizeChange(activeRaw?.widthMm ?? mm, mm)}
+                  widthError={showValidation && errors.panels ? t('fields.widthMmRequired') : undefined}
+                  heightError={showValidation && errors.panels ? t('fields.heightMmRequired') : undefined}
+                  interiorColor={activePanel.interiorColor ?? null}
+                  exteriorColor={activePanel.exteriorColor ?? null}
+                  onInteriorColorChange={(value) =>
+                    updateActivePanel({ interiorColor: value as ScopedRef | null })
+                  }
+                  onExteriorColorChange={(value) =>
+                    updateActivePanel({ exteriorColor: value as ScopedRef | null })
+                  }
+                  colorOptions={colorOptions}
+                  showDoor={activeInfo.showDoor}
+                  isDoor={activePanel.isDoor}
+                  onDoorChange={(value) => updateActivePanel({ isDoor: value })}
+                  showOpeningTypes={activeInfo.showOpeningTypes}
+                  openingType={activePanel.openingType ?? null}
+                  onOpeningTypeChange={(value) => updateActivePanel({ openingType: value })}
+                  sashProfile={activePanel.sashProfile}
+                  sashOptions={sashOptions}
+                  onSashChange={(ref) => updateActivePanel({ sashProfile: ref, glass: '' as ScopedRef })}
+                  sashWeightKg={activeSashWeightKg}
+                  maxSashWeight={activeInfo.maxSashWeight}
+                  glassValue={glassValue}
+                  glassOptions={glassOptions}
+                  onGlassChange={(kind, ref) => updateActivePanel({ glassKind: kind, glass: ref })}
+                  maxGlassAllowed={activeInfo.maxGlassAllowed}
+                  sashMaxGlassThickness={activeInfo.sashMaxGlassThickness}
+                  hasFlyScreen={activePanel.hasFlyScreen}
+                  flyScreenAllowed={activeInfo.flyScreenAllowed}
+                  onFlyScreenChange={(value) => updateActivePanel({ hasFlyScreen: value })}
+                  location={watch('location') ?? null}
+                  onLocationChange={(value) => setValue('location', value, { shouldValidate: true })}
+                  notes={watch('notes') ?? null}
+                  onNotesChange={(value) => setValue('notes', value, { shouldValidate: true })}
+                />
+              )}
             </div>
           </div>
 
@@ -599,23 +811,39 @@ export function WindowDialog({
   )
 }
 
+/** A panel with no size yet still has to draw as something. */
+function drawableMm(value: number, fallback: number): number {
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
 function emptyWindow(projectId: string, favoriteFrameProfile?: string | null): CreateWindowInput {
   return {
     projectId,
     name: '',
-    frameProfile: (favoriteFrameProfile ?? '') as ScopedRef,
-    sashProfile: '' as ScopedRef,
-    widthMm: NaN,
-    heightMm: NaN,
     quantity: 1,
-    hasFlyScreen: false,
-    isDoor: false,
-    openingType: null,
-    glassKind: GlassKind.SINGLE,
-    glass: '' as ScopedRef,
-    interiorColor: null,
-    exteriorColor: null,
+    panels: [emptyPanel(favoriteFrameProfile)],
     location: null,
     notes: null,
+  }
+}
+
+/** A blank panel. Width/height are NaN, not 0, so their inputs render
+ * empty rather than showing a number nobody typed (the drawing falls
+ * back to PLACEHOLDER_* for the elevation). */
+function emptyPanel(favoriteFrameProfile?: string | null): WindowPanelInput {
+  return {
+    xMm: 0,
+    yMm: 0,
+    widthMm: NaN,
+    heightMm: NaN,
+    frameProfile: (favoriteFrameProfile ?? '') as ScopedRef,
+    sashProfile: '' as ScopedRef,
+    hasFlyScreen: false,
+    isDoor: false,
+    glassKind: GlassKind.SINGLE,
+    glass: '' as ScopedRef,
+    openingType: null,
+    interiorColor: null,
+    exteriorColor: null,
   }
 }

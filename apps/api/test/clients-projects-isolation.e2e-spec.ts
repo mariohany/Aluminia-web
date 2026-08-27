@@ -153,7 +153,11 @@ describe('Clients & projects tenant isolation (e2e)', () => {
       .set(auth)
       .send({ enName: 'Hijacked' })
       .expect(404);
-    await request(server).delete(`/projects/${projectId}`).set(auth).expect(404);
+    await request(server)
+      .delete(`/projects/${projectId}`)
+      .set(auth)
+      .send({ confirmName: 'Guarded Job' })
+      .expect(404);
     await request(server).get(`/clients/${clientId}`).set(auth).expect(404);
     await request(server)
       .delete(`/clients/${clientId}`)

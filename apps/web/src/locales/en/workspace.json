@@ -266,6 +266,7 @@
   "deleteProject": {
     "title": "Delete project",
     "warning": "This permanently deletes {{name}}. This cannot be undone.",
+    "confirmLabel": "Type {{name}} to confirm",
     "success": "Deleted {{name}}.",
     "error": "Couldn't delete the project."
   },

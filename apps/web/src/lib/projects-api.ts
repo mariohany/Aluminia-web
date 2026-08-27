@@ -19,6 +19,6 @@ export function updateProject(id: string, input: UpdateProjectInput): Promise<Pr
   return apiFetch<ProjectDetail>(`/projects/${id}`, { method: 'PATCH', body: input })
 }
 
-export function deleteProject(id: string): Promise<void> {
-  return apiFetch<void>(`/projects/${id}`, { method: 'DELETE' })
+export function deleteProject(id: string, confirmName: string): Promise<void> {
+  return apiFetch<void>(`/projects/${id}`, { method: 'DELETE', body: { confirmName } })
 }

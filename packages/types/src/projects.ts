@@ -84,6 +84,16 @@ export const updateProjectSchema = z.object({
 })
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>
 
+// Same "type the name back" confirmation as deleteClientSchema —
+// verified server-side against the stored `enName`, not trusted from
+// the browser. A single row rather than a cascade, but a project can
+// carry an unknown number of window designs, so the same friction
+// applies here now.
+export const deleteProjectSchema = z.object({
+  confirmName: z.string().min(1),
+})
+export type DeleteProjectInput = z.infer<typeof deleteProjectSchema>
+
 /**
  * What the navigation tree needs per project, and nothing more — the
  * tree renders a name and that's it.

@@ -18,6 +18,7 @@ import type { AuthenticatedRequestUser } from '../auth/jwt-payload';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
+import { DeleteProjectDto } from './dto/delete-project.dto';
 
 /**
  * No `GET /projects` — the workspace tree is served by `GET /clients`
@@ -55,9 +56,13 @@ export class ProjectsController {
     return this.projects.update(id, dto);
   }
 
+  /** Requires the name typed back — see ProjectsService.remove(). */
   @Delete(':id')
   @HttpCode(204)
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    await this.projects.remove(id);
+  async remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DeleteProjectDto,
+  ): Promise<void> {
+    await this.projects.remove(id, dto.confirmName);
   }
 }

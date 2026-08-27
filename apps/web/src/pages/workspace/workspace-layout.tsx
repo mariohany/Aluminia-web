@@ -13,7 +13,6 @@ import { WindowDialog } from '@/components/workspace/window-dialog'
 import { DeleteClientDialog, DeleteProjectDialog, DeleteWindowDialog } from '@/components/workspace/delete-dialogs'
 import { useClientTreeQuery } from '@/lib/clients-queries'
 import { useProjectQuery } from '@/lib/projects-queries'
-import { displayName } from '@/lib/bilingual'
 import { isRtlLanguage } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -233,8 +232,14 @@ export function WorkspaceLayout() {
         return
       }
 
-      // Don't stack a second delete dialog on top of a dialog already open.
-      if (clientDialogOpen || projectDialogOpen || deletingClient || deleteProjectOpen) return
+      // Don't stack a second delete dialog on top of a dialog already
+      // open — including the window designer, which owns its own set
+      // of unsaved edits that a project delete underneath it would
+      // orphan. This is the path that actually needs the guard: the
+      // window dialog is a global `keydown` listener too, so it can't
+      // rely on focus/modal trapping to keep Backspace from reaching
+      // here while it's open.
+      if (clientDialogOpen || projectDialogOpen || deletingClient || deleteProjectOpen || windowDialogOpen) return
 
       if (selectedProjectId && projectQuery.data) {
         event.preventDefault()
@@ -262,6 +267,7 @@ export function WorkspaceLayout() {
     projectDialogOpen,
     deletingClient,
     deleteProjectOpen,
+    windowDialogOpen,
   ])
 
   // The Sheet primitive only understands physical sides, so this one
@@ -317,6 +323,16 @@ export function WorkspaceLayout() {
     setDeletingWindow({ id, name })
   }
 
+  // Shared by the tree's right-click menu, the properties panel's
+  // delete button, and the keyboard shortcut above — the window
+  // designer owns unsaved edits of its own, so none of those entry
+  // points should be able to open a project delete confirmation out
+  // from under it.
+  const openDeleteProject = () => {
+    if (windowDialogOpen) return
+    setDeleteProjectOpen(true)
+  }
+
   const tree = (onNavigate?: () => void) => (
     <ProjectTree
       clients={clients}
@@ -329,7 +345,7 @@ export function WorkspaceLayout() {
       onDeleteClient={(client) => setDeletingClient(client)}
       onEditProject={openEditProject}
       onEditProjectPreferences={openEditProjectPreferences}
-      onDeleteProject={() => setDeleteProjectOpen(true)}
+      onDeleteProject={openDeleteProject}
     />
   )
 
@@ -418,7 +434,7 @@ export function WorkspaceLayout() {
                 project={selectedProjectId ? projectQuery.data : undefined}
                 isLoading={!!selectedProjectId && projectQuery.isLoading}
                 onEdit={openEditProject}
-                onDelete={() => setDeleteProjectOpen(true)}
+                onDelete={openDeleteProject}
               />
             </div>
           )}
@@ -478,7 +494,11 @@ export function WorkspaceLayout() {
       {selectedProjectId && projectQuery.data && (
         <DeleteProjectDialog
           projectId={selectedProjectId}
-          projectName={displayName(projectQuery.data, language)}
+          // The English name specifically, typed back — same as
+          // DeleteClientDialog uses `enName`, not the bilingual display
+          // name, so the confirmation the server checks against is
+          // exactly what the user is asked to type.
+          projectName={projectQuery.data.enName}
           open={deleteProjectOpen}
           onOpenChange={setDeleteProjectOpen}
           onDeleted={() => {

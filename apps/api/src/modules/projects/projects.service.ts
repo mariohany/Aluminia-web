@@ -147,15 +147,22 @@ export class ProjectsService {
   }
 
   /**
-   * Hard delete of a single row. No typed confirmation server-side,
-   * unlike clients: this destroys one project rather than cascading
-   * through an unknown number of them, and a typed confirmation on
-   * every delete trains people to type without reading. The dialog in
-   * the UI is the friction.
+   * Hard delete of a single row. `confirmName` is verified HERE,
+   * against the stored row, rather than trusted from the browser —
+   * same posture as ClientsService.remove(): a project can carry an
+   * unknown number of window designs, so the typed-name friction
+   * applies here too now, not just to the client cascade.
    */
-  remove(id: string): Promise<void> {
+  remove(id: string, confirmName: string): Promise<void> {
     return this.tenantContext.run(async (manager) => {
       const project = await this.findOrFail(manager, id);
+
+      if (confirmName.trim() !== project.enName) {
+        throw new BadRequestException(
+          'The typed name does not match this project.',
+        );
+      }
+
       await manager.remove(project);
     });
   }

@@ -7,6 +7,8 @@ import { AddCompanyProfileFlyScreen1786831096555 } from './1786831096555-AddComp
 import { AddWindows1786835416435 } from './1786835416435-AddWindows';
 import { AddWindowOpeningType1786900000000 } from './1786900000000-AddWindowOpeningType';
 import { AddWindowPanels1787632599315 } from './1787632599315-AddWindowPanels';
+import { AddPanelArchHeads1787899610005 } from './1787899610005-AddPanelArchHeads';
+import { AddTransomPanels1788337151528 } from './1788337151528-AddTransomPanels';
 
 /**
  * The tenant migration track, explicitly ordered.
@@ -29,6 +31,8 @@ export const tenantMigrations: Array<new () => MigrationInterface> = [
   AddWindows1786835416435,
   AddWindowOpeningType1786900000000,
   AddWindowPanels1787632599315,
+  AddPanelArchHeads1787899610005,
+  AddTransomPanels1788337151528,
 ];
 
 /** TypeORM records applied migrations as `{timestamp}-{ClassName}`. */

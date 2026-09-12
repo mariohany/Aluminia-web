@@ -1,5 +1,6 @@
 import { SystemType } from '@repo/types/lookups'
-import { HingedOpeningType } from '@repo/types/windows'
+import { HingedOpeningType, HeadShape, PanelType } from '@repo/types/windows'
+import { insetHeadOutline, normalizeHeadRise, type HeadOutline } from '@/lib/arch-geometry'
 
 // Profiles carry no face-width field yet (system_profile has weight,
 // perimeter, inertia — not a drawable cross-section width), so the
@@ -21,6 +22,13 @@ export const NOMINAL_GLAZING_BEAD_MM = 45
 // instead of the opening type — a different feature that happens to
 // reuse the same bar-drawing code in window-drawing.tsx).
 export const NOMINAL_MULLION_BAR_MM = 50
+// A transom's own profile face — visually slimmer than a full outer
+// frame (`NOMINAL_FRAME_FACE_MM`), so it gets its own value rather than
+// reusing that one (docs/transom_planing.md §1 decision 3). Same
+// visual weight as the mullion bar above — both read as a structural
+// divider, not a full frame — so it shares that value rather than
+// inventing an unrelated third number.
+export const NOMINAL_TRANSOM_FACE_MM = 50
 
 export type WindowPartKind = 'frame' | 'sash' | 'glass' | 'flyScreen'
 
@@ -43,6 +51,12 @@ export interface WindowPart {
    * parts by panel doesn't have to do string work. */
   panelIndex: number
   rectMm: RectMm
+  /** Set exactly when this part's outline is arched — absent (not
+   * `null`) for a flat part, so `if (part.head)` is the one check every
+   * consumer needs. Only ever set on the frame and its single sash/
+   * glass, and only for the single-sash, non-door case — see
+   * `buildWindowLayout`'s `archable` for the scope boundary. */
+  head?: { shape: HeadShape; riseMm: number }
 }
 
 export interface WindowLayoutInput {
@@ -55,6 +69,11 @@ export interface WindowLayoutInput {
    * runs flush to the frame's actual bottom edge instead of stopping a
    * frame-face short of it. Ignored for every other systemType. */
   isDoor: boolean
+  /** `undefined`/`HeadShape.FLAT` behaves exactly as every panel did
+   * before this feature. Optional so every pre-existing caller of
+   * `buildWindowLayout` keeps compiling without change. */
+  headShape?: HeadShape
+  headRiseMm?: number | null
   /** Only meaningful for `systemType === 'hinged'` — sliding/curtain_wall
    * ignore it entirely (sliding gets its own icon set later, not this
    * one). Most values are purely decorative (window-drawing.tsx draws a
@@ -86,6 +105,33 @@ export interface WindowLayout {
  * here is persisted; it's recomputed from the window's own fields on
  * every render.
  */
+
+/**
+ * Whether a panel's own frame/opening-type combination can support an
+ * arched head at all — independent of whether one is currently set on
+ * it. Sliding and double-door both produce more than one sash rect, a
+ * fixed-mullion opening type produces more than one glass rect, and a
+ * hinged door's asymmetric (no-bottom) inset has no arch-aware
+ * equivalent yet (see docs/arch_windows_planing.md §5's scope note:
+ * every arched-door reference photo turns out to be two coupled PANELS
+ * in this assembly model, not one panel needing both at once).
+ *
+ * `buildWindowLayout` uses this to decide whether to actually draw a
+ * curve; `window-part-panel.tsx` uses the same predicate to decide
+ * whether to let the user pick a shape in the first place, rather than
+ * silently drawing flat after they do. One function, not a rule
+ * duplicated in both places that could drift apart.
+ */
+export function canHaveArchedHead(input: Pick<WindowLayoutInput, 'isDoor' | 'systemType' | 'openingType'>): boolean {
+  const isHinged = input.systemType === SystemType.HINGED
+  const isDoorHinged = input.isDoor && isHinged
+  const isDoubleDoorHinged = isHinged && !!input.openingType && DOUBLE_DOOR_OPENING_TYPES.includes(input.openingType)
+  const isMullion =
+    isHinged &&
+    (input.openingType === HingedOpeningType.FIXED_VERTICAL_MULLION ||
+      input.openingType === HingedOpeningType.FIXED_HORIZONTAL_MULLION)
+  return !isDoorHinged && input.systemType !== SystemType.SLIDING && !isDoubleDoorHinged && !isMullion
+}
 export function buildWindowLayout(input: WindowLayoutInput): WindowLayout {
   const width = Math.max(input.widthMm, 1)
   const height = Math.max(input.heightMm, 1)
@@ -96,10 +142,6 @@ export function buildWindowLayout(input: WindowLayoutInput): WindowLayout {
   const innerY = NOMINAL_FRAME_FACE_MM
   const innerWidth = Math.max(width - 2 * NOMINAL_FRAME_FACE_MM, 1)
   const innerHeight = Math.max(height - NOMINAL_FRAME_FACE_MM - (isDoorHinged ? 0 : NOMINAL_FRAME_FACE_MM), 1)
-
-  const parts: WindowPart[] = [
-    { id: 'frame', kind: 'frame', index: 0, panelIndex: 0, rectMm: { x: 0, y: 0, width, height } },
-  ]
 
   const isHinged = input.systemType === SystemType.HINGED
   const isDoubleDoorHinged =
@@ -112,6 +154,30 @@ export function buildWindowLayout(input: WindowLayoutInput): WindowLayout {
         ? 'horizontal'
         : null
 
+  const headShape = input.headShape ?? HeadShape.FLAT
+  const archable = headShape !== HeadShape.FLAT && canHaveArchedHead(input)
+  // Clamped here, not just at the UI layer — this is what actually
+  // gets rendered/weighed, so it's the one place that has to be right
+  // regardless of how a stale or otherwise-uncoordinated `headRiseMm`
+  // got here (see normalizeHeadRise's own comment on the transom bug
+  // this guards against).
+  const frameOutline: HeadOutline = {
+    rect: { x: 0, y: 0, width, height },
+    shape: headShape,
+    riseMm: normalizeHeadRise(headShape, width, input.headRiseMm ?? 0, height),
+  }
+
+  const parts: WindowPart[] = [
+    {
+      id: 'frame',
+      kind: 'frame',
+      index: 0,
+      panelIndex: 0,
+      rectMm: { x: 0, y: 0, width, height },
+      head: archable ? { shape: frameOutline.shape, riseMm: frameOutline.riseMm } : undefined,
+    },
+  ]
+
   const sashRects: RectMm[] =
     input.systemType === SystemType.SLIDING
       ? buildSlidingSashRects(innerX, innerY, innerWidth, innerHeight)
@@ -119,16 +185,39 @@ export function buildWindowLayout(input: WindowLayoutInput): WindowLayout {
         ? buildDoubleLeafSashRects(innerX, innerY, innerWidth, innerHeight)
         : [{ x: innerX, y: innerY, width: innerWidth, height: innerHeight }]
 
+  // Insetting the OUTLINE (not just the rect) keeps the same curve at
+  // every layer, just smaller — see arch-geometry.ts's
+  // `insetHeadOutline`. `null` whenever `archable` is false, so every
+  // branch below that reads it falls through to the exact expression
+  // this function used before this feature existed.
+  const sashOutline = archable ? insetHeadOutline(frameOutline, NOMINAL_FRAME_FACE_MM) : null
+  const glassOutline = sashOutline ? insetHeadOutline(sashOutline, NOMINAL_GLAZING_BEAD_MM) : null
+
   sashRects.forEach((rect, index) => {
-    parts.push({ id: `sash-${index}`, kind: 'sash', index, panelIndex: 0, rectMm: rect })
-    const opening = insetRect(rect, NOMINAL_GLAZING_BEAD_MM)
+    const useArch = archable && index === 0 // archable implies exactly one sash — see above
+    parts.push({
+      id: `sash-${index}`,
+      kind: 'sash',
+      index,
+      panelIndex: 0,
+      rectMm: useArch && sashOutline ? sashOutline.rect : rect,
+      head: useArch && sashOutline ? { shape: sashOutline.shape, riseMm: sashOutline.riseMm } : undefined,
+    })
+    const opening = useArch && glassOutline ? glassOutline.rect : insetRect(rect, NOMINAL_GLAZING_BEAD_MM)
     // A fixed-mullion opening type splits ONE sash's glass into two
     // independently-selectable lights, split by a static bar — every
     // other opening type (including double-door, which already gets two
     // real sashes above) keeps the usual one light per sash.
     const glassRects = mullionAxis ? splitRectWithMullion(opening, mullionAxis, NOMINAL_MULLION_BAR_MM) : [opening]
     glassRects.forEach((glassRect, lightIndex) => {
-      parts.push({ id: `glass-${index}-${lightIndex}`, kind: 'glass', index, panelIndex: 0, rectMm: glassRect })
+      parts.push({
+        id: `glass-${index}-${lightIndex}`,
+        kind: 'glass',
+        index,
+        panelIndex: 0,
+        rectMm: glassRect,
+        head: useArch && glassOutline ? { shape: glassOutline.shape, riseMm: glassOutline.riseMm } : undefined,
+      })
     })
   })
 
@@ -136,10 +225,45 @@ export function buildWindowLayout(input: WindowLayoutInput): WindowLayout {
   // option, even when the frame would allow one.
   if (input.flyScreenAllowed && input.hasFlyScreen) {
     const flyScreenRect =
-      input.systemType === SystemType.SLIDING ? sashRects[sashRects.length - 1] : { x: innerX, y: innerY, width: innerWidth, height: innerHeight }
-    parts.push({ id: 'flyScreen', kind: 'flyScreen', index: 0, panelIndex: 0, rectMm: flyScreenRect })
+      input.systemType === SystemType.SLIDING
+        ? sashRects[sashRects.length - 1]
+        : archable && sashOutline
+          ? sashOutline.rect
+          : { x: innerX, y: innerY, width: innerWidth, height: innerHeight }
+    parts.push({
+      id: 'flyScreen',
+      kind: 'flyScreen',
+      index: 0,
+      panelIndex: 0,
+      rectMm: flyScreenRect,
+      head: archable && sashOutline ? { shape: sashOutline.shape, riseMm: sashOutline.riseMm } : undefined,
+    })
   }
 
+  return { outerMm: { width, height }, parts }
+}
+
+export interface TransomLayoutInput {
+  widthMm: number
+  heightMm: number
+}
+
+/**
+ * A transom's own geometry — deliberately SIMPLE, not a branch bolted
+ * onto `buildWindowLayout`, which already carries sliding/hinged/
+ * opening-type/arch branching a transom has none of (docs/
+ * transom_planing.md §3, decision 1: profile + glass, nothing else).
+ * Exactly two parts: a `frame` ring the full outer rect, and one
+ * `glass` rect inset by `NOMINAL_TRANSOM_FACE_MM` — never a `head`
+ * (arched transoms deferred, §7), never a `sash` (no opening leaf).
+ */
+export function buildTransomLayout(input: TransomLayoutInput): WindowLayout {
+  const { widthMm: width, heightMm: height } = input
+  const outer: RectMm = { x: 0, y: 0, width, height }
+  const parts: WindowPart[] = [
+    { id: 'frame', kind: 'frame', index: 0, panelIndex: 0, rectMm: outer },
+    { id: 'glass-0', kind: 'glass', index: 0, panelIndex: 0, rectMm: insetRect(outer, NOMINAL_TRANSOM_FACE_MM) },
+  ]
   return { outerMm: { width, height }, parts }
 }
 
@@ -217,8 +341,14 @@ export interface PanelPlacement {
 export type PanelSide = 'top' | 'bottom' | 'left' | 'right'
 export const PANEL_SIDES: PanelSide[] = ['top', 'bottom', 'left', 'right']
 
-/** One panel's worth of layout input, plus where it sits. */
-export interface AssemblyPanelInput extends WindowLayoutInput, PanelPlacement {}
+/** One panel's worth of layout input, plus where it sits — a
+ * discriminated union on `panelType` mirroring `WindowPanelInput`'s own
+ * (packages/types/src/windows.ts), so `buildAssemblyLayout` below can
+ * pick `buildWindowLayout`/`buildTransomLayout` per panel the same way
+ * `windows.service.ts`'s `toPanelColumns`/`toPanelDetail` already do. */
+export type AssemblyPanelInput =
+  | (PanelPlacement & WindowLayoutInput & { panelType: typeof PanelType.WINDOW })
+  | (PanelPlacement & { panelType: typeof PanelType.TRANSOM })
 
 export interface AssemblyLayout {
   outerMm: { width: number; height: number }
@@ -242,7 +372,7 @@ export function buildAssemblyLayout(panels: AssemblyPanelInput[]): AssemblyLayou
   const panelRects: RectMm[] = []
 
   panels.forEach((panel, panelIndex) => {
-    const layout = buildWindowLayout(panel)
+    const layout = panel.panelType === PanelType.TRANSOM ? buildTransomLayout(panel) : buildWindowLayout(panel)
     panelRects.push({ x: panel.xMm, y: panel.yMm, width: layout.outerMm.width, height: layout.outerMm.height })
     for (const part of layout.parts) {
       parts.push({
@@ -309,6 +439,18 @@ export function panelsTouch(a: PanelPlacement, b: PanelPlacement): boolean {
   return (sideBySide && verticallyAligned) || (stacked && horizontallyAligned)
 }
 
+/** True iff `other` sits directly on top of `panel` — `other`'s bottom
+ * edge coincides with `panel`'s own top edge, with their x-spans
+ * overlapping. The directional half of `panelsTouch`'s "stacked" case:
+ * `archObstructed` (`window-weight.ts`'s `collectWindowIssues`) only
+ * cares about this one direction — a panel resting on an arched
+ * panel's own curved head carves a void inside the assembly rather
+ * than at its outline, unlike a panel touching any other edge. */
+export function touchesTopEdge(panel: PanelPlacement, other: PanelPlacement): boolean {
+  const horizontallyAligned = spanOverlap(panel.xMm, panel.xMm + panel.widthMm, other.xMm, other.xMm + other.widthMm) > 0
+  return horizontallyAligned && other.yMm + other.heightMm === panel.yMm
+}
+
 /** Every panel reachable from the first by shared edges. */
 export function panelsConnected(panels: PanelPlacement[]): boolean {
   if (panels.length <= 1) return true
@@ -349,13 +491,28 @@ export function tilesExactly(panels: PanelPlacement[]): boolean {
  * that line anywhere along the box's cross-span — not merely when
  * nothing is flush against it. A panel sitting beyond a gap still blocks
  * the side, because a new panel placed there could run straight into it.
+ *
+ * `hasArchedHead`, when given, refuses 'top' outright whenever a panel
+ * forming the selection's own top row is arched — a panel resting there
+ * would carve a void inside the assembly rather than sit at its
+ * outline, the same problem `archObstructed` (window-weight.ts) warns
+ * about for geometry that predates this rule or reaches it some other
+ * way (a resize, imported data). This is the harder rule for the
+ * ADD-PANEL affordance itself: never even offer it, rather than offer
+ * it and warn after the fact.
  */
-export function freeSidesOf(selection: PanelPlacement[], all: PanelPlacement[]): PanelSide[] {
+export function freeSidesOf(
+  selection: PanelPlacement[],
+  all: PanelPlacement[],
+  hasArchedHead?: (panel: PanelPlacement) => boolean,
+): PanelSide[] {
   if (selection.length === 0) return []
   const box = unionRect(selection.map(panelRect))
   const others = all.filter((p) => !selection.includes(p))
+  const topRowIsArched = !!hasArchedHead && selection.some((p) => p.yMm === box.y && hasArchedHead(p))
 
   return PANEL_SIDES.filter((side) => {
+    if (side === 'top' && topRowIsArched) return false
     if (side === 'left' || side === 'right') {
       const line = side === 'right' ? box.x + box.width : box.x
       return !others.some((p) => {

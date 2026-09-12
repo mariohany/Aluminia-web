@@ -131,6 +131,12 @@
     "sashProfilePlaceholder": "Choose a sash",
     "sashProfileNeedsFrame": "Pick a frame first",
     "sashProfileRequired": "Pick a sash profile.",
+    "transomProfile": "Transom profile",
+    "transomProfileRequired": "Pick a transom profile.",
+    "panelTypeLabels": {
+      "window": "Window",
+      "transom": "Transom"
+    },
     "widthMm": "Width (mm)",
     "widthMmRequired": "Enter a width.",
     "heightMm": "Height (mm)",
@@ -140,7 +146,9 @@
     "glass": "Glass",
     "glassPlaceholder": "Choose glass",
     "glassNeedsSash": "Pick a sash first",
+    "glassNeedsTransomProfile": "Pick a transom profile first",
     "glassDisclaimer": "Only glass up to {{max}} mm is shown — the sash accepts {{sashMax}} mm, less a 2 mm allowance.",
+    "glassDisclaimerTransom": "Only glass up to {{max}} mm is shown, based on the transom profile's own limit, less a 2 mm allowance.",
     "glassRequired": "Pick a glass.",
     "hasFlyScreen": "Fly screen",
     "flyScreenDisabledHint": "This frame profile doesn't accept a fly screen.",
@@ -164,6 +172,29 @@
       "fixed_vertical_mullion": "Fixed, vertical mullion",
       "fixed_horizontal_mullion": "Fixed, horizontal mullion"
     },
+    "headShapeSection": "Head",
+    "headShapeLabels": {
+      "flat": "Flat",
+      "round": "Round",
+      "segmental": "Segmental",
+      "gothic": "Gothic"
+    },
+    "headShapeDisabledHint": "An arched head isn't available for this panel's opening type.",
+    "headShapeRoundTooWideHint": "A true semicircle needs more height than this panel has — try Segmental instead, or make the panel taller.",
+    "headRiseMm": "Rise (mm)",
+    "barsSection": "Bars",
+    "barsDrawBar": "Draw a bar",
+    "barsDrawingActive": "Drawing… (Esc to stop)",
+    "barsDrawHint": "Click the arch to place the first end of a bar, then click again to place the second. Escape cancels the one in progress, or turns this off.",
+    "barsCount": "{{count}} bars",
+    "barsDeleteButton": "Delete bar",
+    "barsDeleteConfirmTitle": "Delete this bar?",
+    "barsDeleteConfirmDescriptionPlain": "This bar will be removed.",
+    "barsDeleteConfirmDescriptionCascade_one": "This also removes 1 bar that depends on it.",
+    "barsDeleteConfirmDescriptionCascade_other": "This also removes {{count}} bars that depend on it.",
+    "barRadiusMm": "Radius (mm)",
+    "barRadiusStraight": "R = ∞ · straight",
+    "barRadiusHint": "Clear the field to straighten it back to a line.",
     "interiorColor": "Interior colour",
     "exteriorColor": "Exterior colour",
     "colorPlaceholder": "No colour",
@@ -178,6 +209,8 @@
     "duplicate": "Duplicate",
     "back": "Back",
     "next": "Next",
+    "discard": "Discard",
+    "keepEditing": "Keep editing",
     "newClient": "New client",
     "newProject": "New project",
     "newWindow": "New window",
@@ -215,6 +248,8 @@
     "created": "Created {{name}}.",
     "updated": "Window saved.",
     "error": "Couldn't save the window. Try again.",
+    "discardTitle": "Discard unsaved changes?",
+    "discardDescription": "This window has unsaved changes. Leaving now will discard them.",
     "design": {
       "interior": "Interior",
       "exterior": "Exterior",
@@ -225,8 +260,12 @@
         "frame": "Frame",
         "sash": "Sash",
         "glass": "Glass",
-        "flyScreen": "Fly screen"
+        "flyScreen": "Fly screen",
+        "bar": "Bar",
+        "transom": "Transom"
       },
+      "barLength": "Length: {{length}} mm",
+      "barLengthUnknown": "Length: —",
       "issues": {
         "frameRequired": "Pick a frame profile.",
         "sashRequired": "Pick a sash profile.",
@@ -235,13 +274,19 @@
         "flyScreenNotAllowed": "This frame profile doesn't accept a fly screen.",
         "sashWeightExceeded": "Estimated {{weight}} kg exceeds the catalogue's {{max}} kg limit (estimate).",
         "irregularOutline": "The overall outline isn't a rectangle. That's allowed — stepped assemblies are real — just check it's what you meant.",
-        "disconnectedPanels": "The panels aren't all joined — one or more is floating free. Resize or move them until every panel shares an edge with another."
+        "disconnectedPanels": "The panels aren't all joined — one or more is floating free. Resize or move them until every panel shares an edge with another.",
+        "archObstructed": "The arched head is partly blocked by another panel resting on it — that carves a void inside the assembly rather than at its own outline. Still fabricable — just check it's what you meant.",
+        "transomProfileRequired": "Pick a transom profile.",
+        "transomGlassRequired": "Pick a glass.",
+        "transomGlassTooThick": "{{thickness}} mm glass exceeds the transom profile's {{max}} mm limit."
       },
+      "transomWeight": "Estimated weight: {{weight}} kg",
       "panelOf": "Panel {{index}} of {{count}}",
       "deletePanel": "Remove this panel",
       "deletePanelBlocked": "This panel can't be removed — an assembly needs at least one panel, and removing this one would leave the rest disconnected.",
       "addPanel": {
         "title": "Add a panel",
+        "transomTitle": "Add a transom",
         "add": "Add",
         "clonesHint": "Copies this panel's frame, sash, glass and colours. Change them after.",
         "wouldOverlap": "That size would overlap an existing panel. Try a smaller one.",
@@ -250,6 +295,9 @@
           "bottom": "Attaching below",
           "left": "Attaching to the left",
           "right": "Attaching to the right"
+        },
+        "typeStep": {
+          "title": "What are you adding?"
         }
       }
     }

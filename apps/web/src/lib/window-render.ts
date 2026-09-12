@@ -1,5 +1,5 @@
 import { CombinationItemKind, SystemType } from '@repo/types/lookups'
-import { GlassKind, type WindowPanelInput } from '@repo/types/windows'
+import { GlassKind, HeadShape, PanelType, type WindowPanelInput } from '@repo/types/windows'
 import { formatScopedRef } from '@repo/types/company-lookups'
 import {
   useMergedColorsQuery,
@@ -12,7 +12,7 @@ import {
   type MergedSystemCatalogSummary,
   type MergedSystemProfileSummary,
 } from '@/lib/lookup-merge'
-import type { HingedOpeningType } from '@repo/types/windows'
+import type { HingedOpeningType, WindowBarInput } from '@repo/types/windows'
 import type { PanelPlacement } from '@/lib/window-geometry'
 
 /** The bead allowance subtracted from a sash's max glass thickness to
@@ -47,6 +47,13 @@ export interface PanelRender {
    * physical grid, not a decorative option, so it's drawn whenever the
    * build-up actually has one. */
   georgianGrid: { columns: number; rows: number } | null
+  /** Raw panel fields, not catalogue-resolved — passed straight through
+   * so the drawing can build a `HeadOutline` from whichever `WindowPart`
+   * actually carries the matching `head` (see window-geometry.ts) and
+   * resolve `bars` against it. `[]` on a flat panel, same as stored. */
+  headShape: HeadShape
+  headRiseMm: number | null
+  bars: WindowBarInput[]
 }
 
 /** The catalogue facts a panel's own options depend on — the design
@@ -89,6 +96,14 @@ export interface ResolvedPanel {
  * this saves picking it twice. Purely a rendering fallback — the stored
  * fields stay exactly what the user chose.
  */
+// The full `WindowPanelInput` union, not just the window branch — a
+// transom can genuinely be in `panels` now (docs/transom_tasks.md
+// Step 5 lets the "+" flow create one). Its own resolution branch below
+// resolves exactly what a transom's own real UI needs (Step 6's options
+// form, the glass ceiling) and leaves everything else — `frame`/
+// `systemType`/`flyScreenAllowed`/`maxSashWeight` — honestly `null`/
+// `undefined`/`false`, since a transom genuinely has none of those
+// concepts (not "not built yet", but "not applicable").
 export function useResolvedPanels(
   panels: WindowPanelInput[],
   face: 'interior' | 'exterior',
@@ -103,14 +118,9 @@ export function useResolvedPanels(
     ref ? (colorsQuery.data?.find((c) => formatScopedRef(c.scope, c.id) === ref)?.hex ?? null) : null
 
   return panels.map((panel) => {
-    const frame = profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === panel.frameProfile)
-    const frameCatalog = catalogsQuery.data?.find((c) => formatScopedRef(c.scope, c.id) === frame?.catalog)
-    const sash = profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === panel.sashProfile)
-    const systemType = frameCatalog?.systemType ?? null
-    const showDoor = systemType === SystemType.HINGED
-    const flyScreenAllowed = frame?.acceptsFlyScreen ?? false
-    const sashMaxGlassThickness = sash?.maxGlassThickness ?? null
-
+    // Glass/colour resolution is identical for both branches — a
+    // transom's glass is a plain single/combination pane exactly like
+    // a window's own (`basePanelFields`, packages/types/src/windows.ts).
     const currentGlass =
       panel.glassKind === GlassKind.SINGLE
         ? glassQuery.data?.find((g) => formatScopedRef(g.scope, g.id) === panel.glass)
@@ -135,6 +145,63 @@ export function useResolvedPanels(
 
     const shown = face === 'interior' ? panel.interiorColor : panel.exteriorColor
     const other = face === 'interior' ? panel.exteriorColor : panel.interiorColor
+    const frameHex = hexFor(shown ?? other)
+    const glassHex = coloredSheet
+      ? (colorsQuery.data?.find((c) => c.code === coloredSheet.colorCode)?.hex ?? null)
+      : null
+
+    if (panel.panelType !== PanelType.WINDOW) {
+      // A transom's own profile plays a sash's role for both the glass
+      // ceiling AND the weight formula (docs/transom_planing.md §6:
+      // `computeSashWeightKg({ ..., sashProfile: transomProfile })` is
+      // literally the same call a window's sash already uses) — `info.
+      // sash` holds it under that name deliberately, not by accident,
+      // so window-editor-page.tsx's already-panel-type-agnostic
+      // `glassOptions`/`glassValue` derivation (built once, keyed off
+      // `activeInfo.maxGlassAllowed`) works for a transom with no
+      // separate code path. `frame`/`systemType`/`showDoor`/
+      // `flyScreenAllowed`/`maxSashWeight` stay genuinely not
+      // applicable — a transom has none of those concepts.
+      const transom = profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === panel.transomProfile)
+      const transomMaxGlassThickness = transom?.maxGlassThickness ?? null
+      return {
+        info: {
+          frame: undefined,
+          frameCatalog: undefined,
+          sash: transom,
+          systemType: null,
+          showDoor: false,
+          showOpeningTypes: false,
+          flyScreenAllowed: false,
+          sashMaxGlassThickness: transomMaxGlassThickness,
+          maxGlassAllowed: transomMaxGlassThickness !== null ? transomMaxGlassThickness - BEAD_ALLOWANCE_MM : null,
+          currentGlass,
+          currentCombination,
+          maxSashWeight: null,
+        },
+        render: {
+          placement: panel,
+          systemType: null,
+          hasFrame: false,
+          isDoor: false,
+          openingType: null,
+          frameHex,
+          glassHex,
+          georgianGrid,
+          headShape: HeadShape.FLAT,
+          headRiseMm: null,
+          bars: [],
+        },
+      }
+    }
+
+    const frame = profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === panel.frameProfile)
+    const frameCatalog = catalogsQuery.data?.find((c) => formatScopedRef(c.scope, c.id) === frame?.catalog)
+    const sash = profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === panel.sashProfile)
+    const systemType = frameCatalog?.systemType ?? null
+    const showDoor = systemType === SystemType.HINGED
+    const flyScreenAllowed = frame?.acceptsFlyScreen ?? false
+    const sashMaxGlassThickness = sash?.maxGlassThickness ?? null
 
     return {
       info: {
@@ -157,11 +224,12 @@ export function useResolvedPanels(
         hasFrame: !!frame,
         isDoor: panel.isDoor,
         openingType: panel.openingType ?? null,
-        frameHex: hexFor(shown ?? other),
-        glassHex: coloredSheet
-          ? (colorsQuery.data?.find((c) => c.code === coloredSheet.colorCode)?.hex ?? null)
-          : null,
+        frameHex,
+        glassHex,
         georgianGrid,
+        headShape: panel.headShape,
+        headRiseMm: panel.headRiseMm ?? null,
+        bars: panel.bars,
       },
     }
   })

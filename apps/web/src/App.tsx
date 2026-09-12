@@ -23,6 +23,7 @@ import { WorkspaceLayout } from '@/pages/workspace/workspace-layout'
 import { CanvasPage } from '@/pages/workspace/canvas-page'
 import { DataPage } from '@/pages/workspace/data-page'
 import { ManagePage } from '@/pages/workspace/manage-page'
+import { WindowEditorPage } from '@/pages/workspace/window-editor-page'
 
 function App() {
   const { i18n } = useTranslation()
@@ -96,6 +97,34 @@ function App() {
                 }
               />
             </Route>
+
+            {/* The window editor — a full-screen route, not a modal, so
+                it's a SIBLING of /workspace above rather than nested
+                inside it: WorkspaceLayout's rail/tree/toolbar never
+                mount while this is showing, instead of being covered by
+                an overlay. See docs/window_editor_planing.md. Static
+                "new" is matched before the dynamic ":windowId" segment
+                by React Router's own ranking, so both can coexist. */}
+            <Route
+              path="/workspace/projects/:projectId/windows/new"
+              element={
+                <ProtectedRoute>
+                  <RoleRoute allow={[UserRole.COMPANY_ADMIN, UserRole.USER]}>
+                    <WindowEditorPage />
+                  </RoleRoute>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/workspace/projects/:projectId/windows/:windowId"
+              element={
+                <ProtectedRoute>
+                  <RoleRoute allow={[UserRole.COMPANY_ADMIN, UserRole.USER]}>
+                    <WindowEditorPage />
+                  </RoleRoute>
+                </ProtectedRoute>
+              }
+            />
 
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/terms" element={<TermsPage />} />

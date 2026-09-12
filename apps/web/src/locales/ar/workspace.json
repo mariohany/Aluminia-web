@@ -131,6 +131,12 @@
     "sashProfilePlaceholder": "اختر دفة",
     "sashProfileNeedsFrame": "اختر برواز أولاً",
     "sashProfileRequired": "اختر بروفايل دفة.",
+    "transomProfile": "بروفايل العارضة",
+    "transomProfileRequired": "اختر بروفايل عارضة.",
+    "panelTypeLabels": {
+      "window": "شباك",
+      "transom": "عارضة"
+    },
     "widthMm": "العرض (مم)",
     "widthMmRequired": "اكتب العرض.",
     "heightMm": "الارتفاع (مم)",
@@ -140,7 +146,9 @@
     "glass": "الزجاج",
     "glassPlaceholder": "اختر الزجاج",
     "glassNeedsSash": "اختر دفة أولاً",
+    "glassNeedsTransomProfile": "اختر بروفايل عارضة أولاً",
     "glassDisclaimer": "يظهر فقط الزجاج حتى {{max}} مم — الدفة تقبل {{sashMax}} مم، ناقص هامش 2 مم.",
+    "glassDisclaimerTransom": "يظهر فقط الزجاج حتى {{max}} مم، بناءً على الحد الأقصى لبروفايل العارضة، ناقص هامش 2 مم.",
     "glassRequired": "اختر زجاجاً.",
     "hasFlyScreen": "سلك ناموس",
     "flyScreenDisabledHint": "بروفايل البرواز ده مش بيقبل سلك ناموس.",
@@ -164,6 +172,33 @@
       "fixed_vertical_mullion": "ثابت، عمود قسمة رأسي",
       "fixed_horizontal_mullion": "ثابت، عمود قسمة أفقي"
     },
+    "headShapeSection": "القوس",
+    "headShapeLabels": {
+      "flat": "مستقيم",
+      "round": "نصف دائري",
+      "segmental": "قوس مجزأ",
+      "gothic": "قوطي"
+    },
+    "headShapeDisabledHint": "القوس غير متاح لنوع فتح هذه اللوحة.",
+    "headShapeRoundTooWideHint": "نصف الدائرة الحقيقي يحتاج ارتفاعاً أكبر مما تسمح به هذه اللوحة — جرّب القطاعي، أو اجعل اللوحة أطول.",
+    "headRiseMm": "الارتفاع (مم)",
+    "barsSection": "القضبان",
+    "barsDrawBar": "رسم قضيب",
+    "barsDrawingActive": "جارٍ الرسم… (Esc للإيقاف)",
+    "barsDrawHint": "انقر على القوس لتحديد طرف القضيب الأول، ثم انقر مرة أخرى لتحديد الطرف الثاني. يلغي Escape القضيب قيد الرسم، أو يوقف هذا الوضع.",
+    "barsCount": "{{count}} قضبان",
+    "barsDeleteButton": "حذف القضيب",
+    "barsDeleteConfirmTitle": "حذف هذا القضيب؟",
+    "barsDeleteConfirmDescriptionPlain": "سيتم حذف هذا القضيب.",
+    "barsDeleteConfirmDescriptionCascade_zero": "سيتم حذف هذا القضيب فقط.",
+    "barsDeleteConfirmDescriptionCascade_one": "سيؤدي هذا أيضًا إلى حذف قضيب واحد يعتمد عليه.",
+    "barsDeleteConfirmDescriptionCascade_two": "سيؤدي هذا أيضًا إلى حذف قضيبين يعتمدان عليه.",
+    "barsDeleteConfirmDescriptionCascade_few": "سيؤدي هذا أيضًا إلى حذف {{count}} قضبان تعتمد عليه.",
+    "barsDeleteConfirmDescriptionCascade_many": "سيؤدي هذا أيضًا إلى حذف {{count}} قضيباً تعتمد عليه.",
+    "barsDeleteConfirmDescriptionCascade_other": "سيؤدي هذا أيضًا إلى حذف {{count}} قضيب يعتمد عليه.",
+    "barRadiusMm": "نصف القطر (مم)",
+    "barRadiusStraight": "R = ∞ · مستقيم",
+    "barRadiusHint": "امسح الحقل لتعديله وإرجاعه إلى خط مستقيم.",
     "interiorColor": "اللون الداخلي",
     "exteriorColor": "اللون الخارجي",
     "colorPlaceholder": "بدون لون",
@@ -178,6 +213,8 @@
     "duplicate": "تكرار",
     "back": "رجوع",
     "next": "التالي",
+    "discard": "تجاهل",
+    "keepEditing": "متابعة التعديل",
     "newClient": "عميل جديد",
     "newProject": "مشروع جديد",
     "newWindow": "شباك جديد",
@@ -215,6 +252,8 @@
     "created": "تم إنشاء {{name}}.",
     "updated": "تم حفظ الشباك.",
     "error": "تعذّر حفظ الشباك. حاول مرة أخرى.",
+    "discardTitle": "تجاهل التغييرات غير المحفوظة؟",
+    "discardDescription": "توجد تغييرات غير محفوظة في هذا الشباك. المغادرة الآن ستؤدي إلى فقدانها.",
     "design": {
       "interior": "داخلي",
       "exterior": "خارجي",
@@ -225,8 +264,12 @@
         "frame": "البرواز",
         "sash": "الدفة",
         "glass": "الزجاج",
-        "flyScreen": "سلك الناموس"
+        "flyScreen": "سلك الناموس",
+        "bar": "القضيب",
+        "transom": "العارضة"
       },
+      "barLength": "الطول: {{length}} مم",
+      "barLengthUnknown": "الطول: —",
       "issues": {
         "frameRequired": "اختر بروفيل البرواز.",
         "sashRequired": "اختر بروفيل الدفة.",
@@ -235,13 +278,19 @@
         "flyScreenNotAllowed": "هذا البروفيل لا يقبل تركيب سلك ناموسية.",
         "sashWeightExceeded": "الوزن التقديري {{weight}} كجم يتجاوز حد الكتالوج البالغ {{max}} كجم (تقديري).",
         "irregularOutline": "الشكل الخارجي العام ليس مستطيلاً. هذا مسموح — فالتجميعات المتدرّجة موجودة فعلاً — لكن تأكّد أنه ما تقصده.",
-        "disconnectedPanels": "الألواح ليست كلها متصلة — هناك لوح أو أكثر منفصل. غيّر المقاسات أو حرّك الألواح حتى يشترك كل لوح في حافة مع آخر."
+        "disconnectedPanels": "الألواح ليست كلها متصلة — هناك لوح أو أكثر منفصل. غيّر المقاسات أو حرّك الألواح حتى يشترك كل لوح في حافة مع آخر.",
+        "archObstructed": "القوس محجوب جزئياً بلوح آخر يرتكز عليه — ما يُنشئ فراغاً داخل التجميعة بدلاً من عند حدودها الخارجية. لا يزال قابلاً للتصنيع — فقط تأكّد أنه ما تقصده.",
+        "transomProfileRequired": "اختر بروفايل عارضة.",
+        "transomGlassRequired": "اختر الزجاج.",
+        "transomGlassTooThick": "زجاج {{thickness}} مم يتجاوز حد بروفايل العارضة البالغ {{max}} مم."
       },
+      "transomWeight": "الوزن التقديري: {{weight}} كجم",
       "panelOf": "اللوح {{index}} من {{count}}",
       "deletePanel": "إزالة هذا اللوح",
       "deletePanelBlocked": "لا يمكن إزالة هذا اللوح — لا بد من لوح واحد على الأقل، وإزالته ستفصل بقية الألواح عن بعضها.",
       "addPanel": {
         "title": "إضافة لوح",
+        "transomTitle": "إضافة عارضة",
         "add": "إضافة",
         "clonesHint": "ينسخ إطار هذا اللوح ودرفته وزجاجه وألوانه. يمكنك تغييرها بعد ذلك.",
         "wouldOverlap": "هذا المقاس سيتداخل مع لوح موجود. جرّب مقاساً أصغر.",
@@ -250,6 +299,9 @@
           "bottom": "الإضافة من الأسفل",
           "left": "الإضافة من اليسار",
           "right": "الإضافة من اليمين"
+        },
+        "typeStep": {
+          "title": "ما الذي تريد إضافته؟"
         }
       }
     }

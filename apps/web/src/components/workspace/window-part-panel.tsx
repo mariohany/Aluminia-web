@@ -1,21 +1,23 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2 } from 'lucide-react'
-import { GlassKind, HingedOpeningType } from '@repo/types/windows'
+import { GlassKind, HeadShape, HingedOpeningType } from '@repo/types/windows'
 import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
 import type { WindowLayout, WindowPartKind } from '@/lib/window-geometry'
-import type { TranslatedIssue } from '@/lib/window-weight'
+import { dedupeIssues, type TranslatedIssue } from '@/lib/window-weight'
 import type { MergedSystemProfileSummary } from '@/lib/lookup-merge'
+import { minGothicRiseMm, normalizeHeadRise, type HeadOutline } from '@/lib/arch-geometry'
 import { cn } from '@/lib/utils'
 import { FieldLabel } from '@/components/workspace/field-label'
 import { OpeningTypeIcon } from '@/components/icons/opening-type-icon'
+import { archOutlinePath } from '@/components/workspace/window-shapes'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-// Radix rejects an empty-string item value — same sentinel window-dialog.tsx uses.
+// Radix rejects an empty-string item value — same sentinel window-editor-page.tsx uses.
 const NONE = '__none'
 
 // Grid order — one row of the four "primary" hinge/pivot ways a single
@@ -40,6 +42,20 @@ const OPENING_TYPE_OPTIONS: HingedOpeningType[] = [
   HingedOpeningType.FIXED_HORIZONTAL_MULLION,
 ]
 
+const HEAD_SHAPE_OPTIONS: HeadShape[] = [HeadShape.FLAT, HeadShape.ROUND, HeadShape.SEGMENTAL, HeadShape.GOTHIC]
+
+// Fixed 40×46 demo outlines for the four shape-button icons — not the
+// panel's own rect. `round`'s rise is the real formula (width / 2);
+// `segmental`/`gothic` are just representative enough to read as
+// "shallow" and "pointed" at icon size, same way OpeningTypeIcon's
+// glyphs are illustrative rather than derived from a real sash.
+const HEAD_SHAPE_ICON_OUTLINES: Record<HeadShape, HeadOutline> = {
+  [HeadShape.FLAT]: { rect: { x: 2, y: 2, width: 36, height: 42 }, shape: HeadShape.FLAT, riseMm: 0 },
+  [HeadShape.ROUND]: { rect: { x: 2, y: 2, width: 36, height: 42 }, shape: HeadShape.ROUND, riseMm: 18 },
+  [HeadShape.SEGMENTAL]: { rect: { x: 2, y: 2, width: 36, height: 42 }, shape: HeadShape.SEGMENTAL, riseMm: 10 },
+  [HeadShape.GOTHIC]: { rect: { x: 2, y: 2, width: 36, height: 42 }, shape: HeadShape.GOTHIC, riseMm: 31 },
+}
+
 export interface WindowPartPanelColorOption {
   value: string
   label: string
@@ -57,7 +73,7 @@ export interface WindowPartPanelProps {
    * since every section renders at once. */
   layout: WindowLayout
   /** Drives which section scrolls into view + gets the focus ring
-   * (frame's own focus ring lives on window-dialog.tsx's tree column
+   * (frame's own focus ring lives on window-editor-page.tsx's tree column
    * instead — the tree isn't part of this panel any more). */
   selectedPartId: string | null
   /** Full map from `collectWindowIssues()`, keyed by part id — each
@@ -77,7 +93,7 @@ export interface WindowPartPanelProps {
   name: string
   onNameChange: (value: string) => void
   /** Already-translated "required" messages — undefined/blank means no
-   * error is shown. window-dialog.tsx only ever passes these once
+   * error is shown. window-editor-page.tsx only ever passes these once
    * `showValidation` is true (edit mode, or after a first submit
    * attempt in create mode) — see its own comment for why. */
   nameError?: string
@@ -96,6 +112,41 @@ export interface WindowPartPanelProps {
   widthError?: string
   heightError?: string
 
+  // Head — arch_windows_planing.md §7. `headShapeAllowed` is
+  // `canHaveArchedHead()` from window-geometry.ts, computed once in
+  // window-editor-page.tsx from the same fields `showOpeningTypes`/`showDoor`
+  // already derive — false disables the shape buttons rather than
+  // letting the user pick a shape `buildWindowLayout` would silently
+  // draw flat (sliding, double-door, fixed-mullion, a hinged door).
+  headShape: HeadShape
+  headRiseMm: number | null
+  onHeadShapeChange: (shape: HeadShape) => void
+  onHeadRiseChange: (mm: number) => void
+  headShapeAllowed: boolean
+
+  // Bars — arch_windows_planing.md §6.1/§6.2. A persistent toggle (the
+  // user's own chosen interaction, over a one-shot tool): it stays on
+  // across multiple bars, and window-editor-page.tsx owns turning it back
+  // off (re-click, `Escape` with nothing pending, switching panels, or
+  // flattening the head).
+  barDrawMode: boolean
+  onBarDrawModeChange: (on: boolean) => void
+  barCount: number
+  /** Non-null while a bar is selected — arch_windows_planing.md §6.3.
+   * `lengthMm`/`radiusMm`/`minRadiusMm` are already resolved/derived,
+   * `null` only for a dangling anchor chain mid-edit (or, for
+   * `radiusMm` specifically, a straight bar — `R = ∞`), same as
+   * everywhere else a resolved value can legitimately be missing. */
+  selectedBar: { id: string; lengthMm: number | null; radiusMm: number | null; minRadiusMm: number | null } | null
+  /** Starts the delete confirm (button here, or `Delete`/`Backspace`
+   * on the drawing) — the actual removal, and the danger-colour
+   * highlight of what else goes with it, are owned by `WindowEditor`. */
+  onRequestDeleteBar: () => void
+  /** `null` clears the field, flattening the bar back to a line
+   * (§6.5) — the radius input's own mirror of dragging the bow handle
+   * to zero, not a separate control. */
+  onBarRadiusChange: (radiusMm: number | null) => void
+
   hasFlyScreen: boolean
   flyScreenAllowed: boolean
   onFlyScreenChange: (value: boolean) => void
@@ -110,7 +161,7 @@ export interface WindowPartPanelProps {
   colorOptions: WindowPartPanelColorOption[]
 
   // Type — the opening-type icon grid, hinged windows only (sliding
-  // gets its own icon set later, not this one). window-dialog.tsx
+  // gets its own icon set later, not this one). window-editor-page.tsx
   // already clears the value when the frame stops being hinged, so this
   // panel only has to decide whether to show the grid at all.
   showOpeningTypes: boolean
@@ -153,6 +204,7 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
   const sashRef = useRef<HTMLDivElement>(null)
   const glassRef = useRef<HTMLDivElement>(null)
   const flyScreenRef = useRef<HTMLDivElement>(null)
+  const barRef = useRef<HTMLDivElement>(null)
   const sectionRefs: Partial<Record<WindowPartKind, React.RefObject<HTMLDivElement | null>>> = {
     sash: sashRef,
     glass: glassRef,
@@ -169,6 +221,12 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.selectedPartId])
 
+  useEffect(() => {
+    if (!props.selectedBar) return
+    barRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.selectedBar?.id])
+
   const sashPart = props.layout.parts.find((p) => p.kind === 'sash')
   const glassPart = props.layout.parts.find((p) => p.kind === 'glass')
 
@@ -183,31 +241,12 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
 
   return (
     <div className="flex flex-col gap-4 text-sm">
-      {/* Only for a real assembly. For a single-panel window every field
-          below is simply "the window's", exactly as it was before this
-          feature, and a "Panel 1 of 1" header would be noise. */}
-      {props.panelCount > 1 && (
-        <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-2.5 py-1.5">
-          <span className="text-xs font-medium">
-            {t('windowDialog.design.panelOf', {
-              index: props.panelIndex + 1,
-              count: props.panelCount,
-            })}
-          </span>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-6 px-1.5 text-muted-foreground hover:text-destructive"
-            disabled={!props.onDeletePanel}
-            title={props.deleteDisabledReason ?? t('windowDialog.design.deletePanel')}
-            aria-label={t('windowDialog.design.deletePanel')}
-            onClick={() => props.onDeletePanel?.()}
-          >
-            <Trash2 className="size-3.5" aria-hidden="true" />
-          </Button>
-        </div>
-      )}
+      <PanelHeader
+        panelIndex={props.panelIndex}
+        panelCount={props.panelCount}
+        onDeletePanel={props.onDeletePanel}
+        deleteDisabledReason={props.deleteDisabledReason}
+      />
 
       <div>
         <FieldLabel htmlFor="panel-name" required>
@@ -246,6 +285,159 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
           error={props.quantityError}
         />
       </div>
+
+      <div>
+        <FieldLabel htmlFor="panel-head-shape">{t('fields.headShapeSection')}</FieldLabel>
+        <div
+          id="panel-head-shape"
+          role="group"
+          aria-label={t('fields.headShapeSection')}
+          className="mt-1.5 grid grid-cols-4 gap-1"
+        >
+          {HEAD_SHAPE_OPTIONS.map((shape) => {
+            const selected = props.headShape === shape
+            // `round`'s rise is always exactly `widthMm / 2` — a true
+            // semicircle, never adjustable — so unlike segmental/gothic
+            // (whose rise the user can simply pick something smaller
+            // for), there's no valid rise left to offer once the panel
+            // is too wide for its own height: a real semicircle that
+            // wide needs more vertical room than the panel has. Disable
+            // the button itself rather than silently drawing a flatter
+            // curve than "round" promised.
+            const roundDoesNotFit = shape === HeadShape.ROUND && props.widthMm / 2 >= props.heightMm
+            const disabled = !props.headShapeAllowed || roundDoesNotFit
+            const disabledHint = !props.headShapeAllowed
+              ? t('fields.headShapeDisabledHint')
+              : roundDoesNotFit
+                ? t('fields.headShapeRoundTooWideHint')
+                : undefined
+            return (
+              <button
+                key={shape}
+                type="button"
+                disabled={disabled}
+                title={disabledHint ?? t(`fields.headShapeLabels.${shape}`)}
+                aria-label={t(`fields.headShapeLabels.${shape}`)}
+                aria-pressed={selected}
+                // Re-clicking the already-selected shape is a no-op —
+                // window-editor-page.tsx's handler always writes a fresh
+                // shape-appropriate default rise, which would otherwise
+                // clobber a value the user is still editing every time
+                // they happened to click the button they're already on.
+                onClick={() => {
+                  if (!selected) props.onHeadShapeChange(shape)
+                }}
+                className={cn(
+                  'flex flex-col items-center gap-1 rounded-md border p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                  selected ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground',
+                )}
+              >
+                <svg viewBox="0 0 40 46" className="h-8 w-7 text-foreground" aria-hidden="true">
+                  <path d={archOutlinePath(HEAD_SHAPE_ICON_OUTLINES[shape])} fill="none" stroke="currentColor" strokeWidth="2" />
+                </svg>
+                <span className="text-[10px] leading-none text-muted-foreground">
+                  {t(`fields.headShapeLabels.${shape}`)}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        {props.headShape !== HeadShape.FLAT && (
+          <div className="mt-2 max-w-32">
+            <NumberField
+              id="panel-head-rise"
+              label={t('fields.headRiseMm')}
+              value={
+                props.headShape === HeadShape.ROUND
+                  ? normalizeHeadRise(HeadShape.ROUND, props.widthMm, 0, props.heightMm)
+                  : (props.headRiseMm ?? 0)
+              }
+              onChange={props.onHeadRiseChange}
+              disabled={props.headShape === HeadShape.ROUND}
+              // Below this, a gothic head's two arcs stop meeting at a
+              // point and cross each other instead — a shape with no
+              // real bend a fabricator could set out to. See
+              // arch-geometry.ts's minGothicRiseMm.
+              min={props.headShape === HeadShape.GOTHIC ? Math.ceil(minGothicRiseMm(props.widthMm)) + 1 : 1}
+              // At or above this, the springing line falls at or below
+              // the panel's own bottom edge — no jamb, and the curve
+              // starts extending outside the panel's own rect entirely.
+              // See arch-geometry.ts's normalizeHeadRise.
+              max={Math.max(Math.floor(props.heightMm) - 1, 1)}
+            />
+          </div>
+        )}
+      </div>
+
+      {props.headShape !== HeadShape.FLAT && (
+        <div>
+          <FieldLabel htmlFor="panel-bars-toggle">{t('fields.barsSection')}</FieldLabel>
+          <div className="mt-1.5 flex items-center gap-2">
+            <Button
+              id="panel-bars-toggle"
+              type="button"
+              size="sm"
+              variant={props.barDrawMode ? 'default' : 'outline'}
+              aria-pressed={props.barDrawMode}
+              onClick={() => props.onBarDrawModeChange(!props.barDrawMode)}
+            >
+              {props.barDrawMode ? t('fields.barsDrawingActive') : t('fields.barsDrawBar')}
+            </Button>
+            <span className="text-xs text-muted-foreground">{t('fields.barsCount', { count: props.barCount })}</span>
+          </div>
+          {props.barDrawMode && <p className="mt-1.5 text-xs text-muted-foreground">{t('fields.barsDrawHint')}</p>}
+        </div>
+      )}
+
+      {/* Shown once a bar is selected on the drawing — §7. */}
+      {props.selectedBar && (
+        <Section innerRef={barRef} title={t('windowDialog.design.sections.bar')} focused>
+          <p className="text-xs text-muted-foreground">
+            {props.selectedBar.lengthMm !== null
+              ? t('windowDialog.design.barLength', { length: Math.round(props.selectedBar.lengthMm) })
+              : t('windowDialog.design.barLengthUnknown')}
+          </p>
+          {/* Bow, or type the radius — §6.5. `line` and `arc` are never
+              two separate tools, only two values of this one field:
+              clearing it flattens the bar (`sagMm: 0`), typing a number
+              bows it. A typed radius below the chord's own half-length
+              can't fit — `onBarRadiusChange` clamps it server-side of
+              the callback (`sagFromRadius`), and what's shown back here
+              is always the ACTUAL current radius, so a too-small typed
+              value visibly snaps to the real minimum rather than just
+              silently accepting an impossible number. */}
+          {props.selectedBar.minRadiusMm !== null && (
+            <div>
+              <FieldLabel htmlFor="bar-radius">{t('fields.barRadiusMm')}</FieldLabel>
+              <Input
+                id="bar-radius"
+                className="mt-1.5"
+                type="number"
+                min={Math.ceil(props.selectedBar.minRadiusMm)}
+                dir="ltr"
+                placeholder="∞"
+                value={props.selectedBar.radiusMm !== null ? Math.round(props.selectedBar.radiusMm) : ''}
+                onChange={(e) => {
+                  const raw = e.target.value
+                  if (raw.trim() === '') {
+                    props.onBarRadiusChange(null)
+                    return
+                  }
+                  const parsed = Number(raw)
+                  if (Number.isFinite(parsed)) props.onBarRadiusChange(parsed)
+                }}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {props.selectedBar.radiusMm === null ? t('fields.barRadiusStraight') : t('fields.barRadiusHint')}
+              </p>
+            </div>
+          )}
+          <Button type="button" size="sm" variant="destructive" onClick={props.onRequestDeleteBar}>
+            <Trash2 className="size-3.5" aria-hidden="true" />
+            {t('fields.barsDeleteButton')}
+          </Button>
+        </Section>
+      )}
 
       <div>
         <div ref={flyScreenRef} className="flex flex-wrap gap-2">
@@ -451,7 +643,45 @@ function blankToNull(value: string): string | null {
   return trimmed === '' ? null : trimmed
 }
 
-function Section({
+/** The "Panel N of M" row + delete button — shown only for a real
+ * multi-panel assembly (a single-panel window/transom's delete button
+ * lives at the dialog's own footer level instead, same as before this
+ * ever needed a name). Exported: `transom-part-panel.tsx` uses this
+ * exact same header — a second real call site, not a hypothetical
+ * one. */
+export function PanelHeader({
+  panelIndex,
+  panelCount,
+  onDeletePanel,
+  deleteDisabledReason,
+}: {
+  panelIndex: number
+  panelCount: number
+  onDeletePanel?: () => void
+  deleteDisabledReason?: string
+}) {
+  const { t } = useTranslation('workspace')
+  if (panelCount <= 1) return null
+  return (
+    <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-2.5 py-1.5">
+      <span className="text-xs font-medium">{t('windowDialog.design.panelOf', { index: panelIndex + 1, count: panelCount })}</span>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-6 px-1.5 text-muted-foreground hover:text-destructive"
+        disabled={!onDeletePanel}
+        title={deleteDisabledReason ?? t('windowDialog.design.deletePanel')}
+        aria-label={t('windowDialog.design.deletePanel')}
+        onClick={() => onDeletePanel?.()}
+      >
+        <Trash2 className="size-3.5" aria-hidden="true" />
+      </Button>
+    </div>
+  )
+}
+
+export function Section({
   innerRef,
   title,
   focused,
@@ -509,16 +739,7 @@ function CheckboxChip({
   )
 }
 
-function dedupeIssues(issues: TranslatedIssue[]): TranslatedIssue[] {
-  const seen = new Set<string>()
-  return issues.filter((issue) => {
-    if (seen.has(issue.message)) return false
-    seen.add(issue.message)
-    return true
-  })
-}
-
-function IssueList({ issues }: { issues: TranslatedIssue[] }) {
+export function IssueList({ issues }: { issues: TranslatedIssue[] }) {
   if (issues.length === 0) return null
   return (
     <ul className="flex flex-col gap-1">
@@ -537,18 +758,24 @@ function IssueList({ issues }: { issues: TranslatedIssue[] }) {
   )
 }
 
-function NumberField({
+export function NumberField({
   id,
   label,
   value,
   onChange,
   error,
+  disabled,
+  min = 1,
+  max,
 }: {
   id: string
   label: string
   value: number
   onChange: (mm: number) => void
   error?: string
+  disabled?: boolean
+  min?: number
+  max?: number
 }) {
   return (
     <div>
@@ -559,8 +786,10 @@ function NumberField({
         id={id}
         className="mt-1.5"
         type="number"
-        min={1}
+        min={min}
+        max={max}
         dir="ltr"
+        disabled={disabled}
         aria-invalid={!!error}
         value={Number.isFinite(value) ? value : ''}
         onChange={(e) => {

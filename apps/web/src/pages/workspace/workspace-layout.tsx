@@ -9,7 +9,6 @@ import { WorkspaceToolbar } from '@/components/workspace/workspace-toolbar'
 import { PropertiesPanel } from '@/components/workspace/properties-panel'
 import { ClientDialog } from '@/components/workspace/client-dialog'
 import { ProjectDialog } from '@/components/workspace/project-dialog'
-import { WindowDialog } from '@/components/workspace/window-dialog'
 import { DeleteClientDialog, DeleteProjectDialog, DeleteWindowDialog } from '@/components/workspace/delete-dialogs'
 import { useClientTreeQuery } from '@/lib/clients-queries'
 import { useProjectQuery } from '@/lib/projects-queries'
@@ -212,8 +211,6 @@ export function WorkspaceLayout() {
   const [projectDialogInitialStep, setProjectDialogInitialStep] = useState<1 | 2>(1)
   const [deletingClient, setDeletingClient] = useState<ClientWithProjects | undefined>()
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
-  const [windowDialogOpen, setWindowDialogOpen] = useState(false)
-  const [editingWindowId, setEditingWindowId] = useState<string | undefined>()
   const [deletingWindow, setDeletingWindow] = useState<{ id: string; name: string } | undefined>()
 
   // A selected client or project can be deleted with the keyboard, not
@@ -233,13 +230,10 @@ export function WorkspaceLayout() {
       }
 
       // Don't stack a second delete dialog on top of a dialog already
-      // open — including the window designer, which owns its own set
-      // of unsaved edits that a project delete underneath it would
-      // orphan. This is the path that actually needs the guard: the
-      // window dialog is a global `keydown` listener too, so it can't
-      // rely on focus/modal trapping to keep Backspace from reaching
-      // here while it's open.
-      if (clientDialogOpen || projectDialogOpen || deletingClient || deleteProjectOpen || windowDialogOpen) return
+      // open. The window editor no longer needs a guard here — it's a
+      // separate route now, not a modal sharing this component's
+      // keydown listener.
+      if (clientDialogOpen || projectDialogOpen || deletingClient || deleteProjectOpen) return
 
       if (selectedProjectId && projectQuery.data) {
         event.preventDefault()
@@ -267,7 +261,6 @@ export function WorkspaceLayout() {
     projectDialogOpen,
     deletingClient,
     deleteProjectOpen,
-    windowDialogOpen,
   ])
 
   // The Sheet primitive only understands physical sides, so this one
@@ -305,18 +298,20 @@ export function WorkspaceLayout() {
     setProjectDialogOpen(true)
   }
 
+  // The window editor is a full-screen ROUTE now (window-editor-page.tsx),
+  // not a dialog this shell owns — these just navigate there.
   const openNewWindow = () => {
-    setEditingWindowId(undefined)
-    setWindowDialogOpen(true)
+    if (!selectedProjectId) return
+    void navigate(`/workspace/projects/${selectedProjectId}/windows/new`)
   }
 
   // Passed down to CanvasPage via Outlet context — its cards need to
-  // open the same dialog state this layout owns (see the file header
+  // open the same navigation this layout owns (see the file header
   // comment on why dialogs live here), for the same reason the tree's
   // right-click menu calls back up to these same openers.
   const openEditWindow = (id: string) => {
-    setEditingWindowId(id)
-    setWindowDialogOpen(true)
+    if (!selectedProjectId) return
+    void navigate(`/workspace/projects/${selectedProjectId}/windows/${id}`)
   }
 
   const openDeleteWindow = (id: string, name: string) => {
@@ -324,12 +319,8 @@ export function WorkspaceLayout() {
   }
 
   // Shared by the tree's right-click menu, the properties panel's
-  // delete button, and the keyboard shortcut above — the window
-  // designer owns unsaved edits of its own, so none of those entry
-  // points should be able to open a project delete confirmation out
-  // from under it.
+  // delete button, and the keyboard shortcut above.
   const openDeleteProject = () => {
-    if (windowDialogOpen) return
     setDeleteProjectOpen(true)
   }
 
@@ -505,19 +496,6 @@ export function WorkspaceLayout() {
             localStorage.removeItem(LAST_SELECTION_STORAGE_KEY)
             void navigate('/workspace')
           }}
-        />
-      )}
-
-      {selectedProjectId && (
-        <WindowDialog
-          open={windowDialogOpen}
-          onOpenChange={(open) => {
-            setWindowDialogOpen(open)
-            if (!open) setEditingWindowId(undefined)
-          }}
-          projectId={selectedProjectId}
-          project={projectQuery.data}
-          windowId={editingWindowId}
         />
       )}
 

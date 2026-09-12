@@ -7,11 +7,14 @@ import {
 import type { EntityManager } from 'typeorm';
 import {
   GlassKind,
+  HeadShape,
+  PanelType,
   type CreateWindowInput,
   type UpdateWindowInput,
   type WindowDetail,
   type WindowPanelInput,
   type WindowPanelDetail,
+  type WindowPanelWindowDetail,
   type WindowSummary,
 } from '@repo/types/windows';
 import {
@@ -212,9 +215,27 @@ export class WindowsService {
 // stepped, L-shaped assembly is a real fabricated shape — the UI flags
 // it amber, the API accepts it.
 
-/** Normalises the origin, then enforces overlap and connectivity. */
+/** Normalises the origin and every panel's head, then enforces overlap
+ * and connectivity.
+ *
+ * The four structural rules on a panel's own `headShape`/`bars` (flat
+ * ⇔ null rise, bars only on a non-flat head, unique bar ids, every
+ * anchor referencing something earlier in the array) are NOT
+ * re-checked here. Unlike overlap/connectivity — genuinely cross-panel
+ * relationships a single-object Zod schema cannot see — those four are
+ * scoped entirely to one panel's own fields, and `windowPanelSchema`'s
+ * `superRefine` (packages/types/src/windows.ts) already enforces them
+ * on every request via the global `ZodValidationPipe`
+ * (`AppModule`'s `APP_PIPE`) before this method ever runs. Nothing else
+ * in the codebase calls `WindowsService.create`/`.update` outside that
+ * HTTP path, so re-implementing the same four rules here would be
+ * validating input that literally cannot reach this line unvalidated —
+ * pure duplication with no defensive value, and not this codebase's
+ * actual pattern (see `assertNoOverlap`/`assertConnected`'s own
+ * comment: the service re-checks what Zod structurally cannot, not
+ * everything a client sends). */
 function prepareAssembly(panels: WindowPanelInput[]): WindowPanelInput[] {
-  const normalized = normalizeOrigin(panels);
+  const normalized = normalizeHeads(normalizeOrigin(panels));
   assertNoOverlap(normalized);
   assertConnected(normalized);
   return normalized;
@@ -225,6 +246,42 @@ function normalizeOrigin(panels: WindowPanelInput[]): WindowPanelInput[] {
   const minY = Math.min(...panels.map((p) => p.yMm));
   if (minX === 0 && minY === 0) return panels;
   return panels.map((p) => ({ ...p, xMm: p.xMm - minX, yMm: p.yMm - minY }));
+}
+
+/** A `round` head's rise is always exactly `widthMm / 2` — a true
+ * semicircle — regardless of what a client sent for `headRiseMm`
+ * (Zod only checks it's non-null on a non-flat head, not that it's
+ * accurate; `round` doesn't get its own derivation in
+ * arch-geometry.ts either, it's segmental with the rise pinned).
+ *
+ * Every non-flat shape's rise is ALSO clamped below its own
+ * `heightMm` — at or beyond it, the springing line falls at or below
+ * the panel's own bottom edge and the curve extends past its declared
+ * rect rather than staying inside it, the same invariant `arch-
+ * geometry.ts`'s `normalizeHeadRise` enforces client-side. Found live,
+ * not hypothetical: a 3000×500 panel with a round head demands a
+ * 1500mm rise — more than triple its own height — because `round`'s
+ * derivation above has no awareness of `heightMm` at all. Clamped
+ * rather than rejected: one stored representation per design, same
+ * posture as `normalizeOrigin` just above and as `round`'s own rise
+ * already was before this fix. */
+function normalizeHeads(panels: WindowPanelInput[]): WindowPanelInput[] {
+  return panels.map((panel) => {
+    // A transom has no head to normalise at all — `headShape` isn't
+    // even a field on that branch (docs/transom_planing.md decision
+    // 6: always flat, deferred). Not reachable with real data yet
+    // (transoms aren't stored until Step 2), but this keeps the
+    // function honest about what it operates on rather than assuming
+    // every panel is a window.
+    if (panel.panelType !== PanelType.WINDOW) return panel;
+    if (panel.headShape === HeadShape.FLAT) return panel;
+    const raw =
+      panel.headShape === HeadShape.ROUND
+        ? panel.widthMm / 2
+        : (panel.headRiseMm ?? 0);
+    const headRiseMm = Math.min(raw, panel.heightMm - 1);
+    return headRiseMm === panel.headRiseMm ? panel : { ...panel, headRiseMm };
+  });
 }
 
 function boundingSize(panels: WindowPanelInput[]): {
@@ -303,34 +360,74 @@ function assertConnected(panels: WindowPanelInput[]): void {
 function toPanelColumns(
   panel: WindowPanelInput,
 ): Omit<WindowPanel, 'id' | 'window' | 'windowId' | 'position'> {
-  const framePair = resolveScopedRef(panel.frameProfile);
-  const sashPair = resolveScopedRef(panel.sashProfile);
   const glassPair = resolveScopedRef(panel.glass);
   const interiorPair = resolveOptionalScopedRef(panel.interiorColor);
   const exteriorPair = resolveOptionalScopedRef(panel.exteriorColor);
   const isSingle = panel.glassKind === GlassKind.SINGLE;
+  const glassColumns = {
+    glassKind: panel.glassKind,
+    glassPlatformSingleId: isSingle ? glassPair.platformId : null,
+    glassCompanySingleId: isSingle ? glassPair.companyId : null,
+    glassPlatformCombinationId: isSingle ? null : glassPair.platformId,
+    glassCompanyCombinationId: isSingle ? null : glassPair.companyId,
+    interiorColorPlatformId: interiorPair.platformId,
+    interiorColorCompanyId: interiorPair.companyId,
+    exteriorColorPlatformId: exteriorPair.platformId,
+    exteriorColorCompanyId: exteriorPair.companyId,
+  };
+
+  if (panel.panelType !== PanelType.WINDOW) {
+    // A transom: profile + glass, nothing else (docs/transom_planing.md
+    // decision 1). `frame`/`sash` stay null and `headShape` stays
+    // `'flat'`/`headRiseMm` null/`bars` empty — the migration's
+    // type-aware CHECKs (§2) enforce exactly this shape at the DB
+    // layer too, so this mapping and the constraints agree by
+    // construction rather than by convention.
+    const transomPair = resolveScopedRef(panel.transomProfile);
+    return {
+      xMm: panel.xMm,
+      yMm: panel.yMm,
+      widthMm: panel.widthMm,
+      heightMm: panel.heightMm,
+      panelType: PanelType.TRANSOM,
+      framePlatformProfileId: null,
+      frameCompanyProfileId: null,
+      sashPlatformProfileId: null,
+      sashCompanyProfileId: null,
+      transomPlatformProfileId: transomPair.platformId,
+      transomCompanyProfileId: transomPair.companyId,
+      hasFlyScreen: false,
+      isDoor: false,
+      ...glassColumns,
+      openingType: null,
+      headShape: HeadShape.FLAT,
+      headRiseMm: null,
+      bars: [],
+    };
+  }
+
+  const framePair = resolveScopedRef(panel.frameProfile);
+  const sashPair = resolveScopedRef(panel.sashProfile);
 
   return {
     xMm: panel.xMm,
     yMm: panel.yMm,
     widthMm: panel.widthMm,
     heightMm: panel.heightMm,
+    panelType: PanelType.WINDOW,
     framePlatformProfileId: framePair.platformId,
     frameCompanyProfileId: framePair.companyId,
     sashPlatformProfileId: sashPair.platformId,
     sashCompanyProfileId: sashPair.companyId,
+    transomPlatformProfileId: null,
+    transomCompanyProfileId: null,
     hasFlyScreen: panel.hasFlyScreen,
     isDoor: panel.isDoor,
-    glassKind: panel.glassKind,
-    glassPlatformSingleId: isSingle ? glassPair.platformId : null,
-    glassCompanySingleId: isSingle ? glassPair.companyId : null,
-    glassPlatformCombinationId: isSingle ? null : glassPair.platformId,
-    glassCompanyCombinationId: isSingle ? null : glassPair.companyId,
+    ...glassColumns,
     openingType: panel.openingType ?? null,
-    interiorColorPlatformId: interiorPair.platformId,
-    interiorColorCompanyId: interiorPair.companyId,
-    exteriorColorPlatformId: exteriorPair.platformId,
-    exteriorColorCompanyId: exteriorPair.companyId,
+    headShape: panel.headShape,
+    headRiseMm: panel.headRiseMm ?? null,
+    bars: panel.bars,
   };
 }
 
@@ -422,11 +519,37 @@ function toGlassRef(panel: WindowPanel): ScopedRef {
 }
 
 function toPanelDetail(panel: WindowPanel): WindowPanelDetail {
-  return {
+  const base = {
     xMm: panel.xMm,
     yMm: panel.yMm,
     widthMm: panel.widthMm,
     heightMm: panel.heightMm,
+    glassKind: panel.glassKind as WindowPanelDetail['glassKind'],
+    glass: toGlassRef(panel),
+    interiorColor: toOptionalScopedRef(
+      panel.interiorColorPlatformId,
+      panel.interiorColorCompanyId,
+    ),
+    exteriorColor: toOptionalScopedRef(
+      panel.exteriorColorPlatformId,
+      panel.exteriorColorCompanyId,
+    ),
+  };
+
+  if (panel.panelType !== PanelType.WINDOW) {
+    return {
+      ...base,
+      panelType: PanelType.TRANSOM,
+      transomProfile: toRequiredScopedRef(
+        panel.transomPlatformProfileId,
+        panel.transomCompanyProfileId,
+      ),
+    };
+  }
+
+  return {
+    ...base,
+    panelType: PanelType.WINDOW,
     frameProfile: toRequiredScopedRef(
       panel.framePlatformProfileId,
       panel.frameCompanyProfileId,
@@ -437,17 +560,10 @@ function toPanelDetail(panel: WindowPanel): WindowPanelDetail {
     ),
     hasFlyScreen: panel.hasFlyScreen,
     isDoor: panel.isDoor,
-    glassKind: panel.glassKind as WindowPanelDetail['glassKind'],
-    glass: toGlassRef(panel),
-    openingType: panel.openingType as WindowPanelDetail['openingType'],
-    interiorColor: toOptionalScopedRef(
-      panel.interiorColorPlatformId,
-      panel.interiorColorCompanyId,
-    ),
-    exteriorColor: toOptionalScopedRef(
-      panel.exteriorColorPlatformId,
-      panel.exteriorColorCompanyId,
-    ),
+    openingType: panel.openingType as WindowPanelWindowDetail['openingType'],
+    headShape: panel.headShape as WindowPanelWindowDetail['headShape'],
+    headRiseMm: panel.headRiseMm,
+    bars: panel.bars,
   };
 }
 

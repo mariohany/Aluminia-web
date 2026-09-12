@@ -57,6 +57,81 @@ const hingedOpeningTypeValues = Object.values(HingedOpeningType) as [HingedOpeni
 // can't disagree about the ceiling.
 const MAX_DIMENSION_MM = 100000
 
+// What a panel's top edge does — see docs/arch_windows_planing.md §1.
+// `flat` is every panel this product could draw before this feature;
+// `round` is a true semicircle (its rise gets normalised to
+// `widthMm / 2` server-side, so a client sending anything else for
+// `round` doesn't get a second, disagreeing shape); `segmental` is the
+// same construction with a free rise; `gothic` is two arcs meeting at
+// a point. apps/web/src/lib/arch-geometry.ts imports this rather than
+// keeping its own copy — one source of truth for the four strings,
+// same posture as `HingedOpeningType` below.
+export const HeadShape = {
+  FLAT: 'flat',
+  ROUND: 'round',
+  SEGMENTAL: 'segmental',
+  GOTHIC: 'gothic',
+} as const
+export type HeadShape = (typeof HeadShape)[keyof typeof HeadShape]
+const headShapeValues = Object.values(HeadShape) as [HeadShape, ...HeadShape[]]
+
+// An endpoint names what it's attached to, not a coordinate — the
+// head curve (`'arch'`), the springing line (`'sill'`), or an earlier
+// bar in the same panel's `bars` array (its id). `at` is a `0..1`
+// fraction along whichever of those it is, always measured the same
+// way regardless of anchor kind, so one field means "how far along"
+// no matter what's being measured. See §2's "why references, not
+// coordinates" — this is the one modelling choice a dependent
+// following its parent, and a delete cascading, both hang off.
+export const barAnchorSchema = z.object({
+  on: z.string().min(1),
+  at: z.number().min(0).max(1),
+})
+export type BarAnchorInput = z.infer<typeof barAnchorSchema>
+
+// A bar is a line or a circular arc — never a free-form curve, since a
+// spline has no single bend radius and so no cut length a work order
+// can print. `sagMm` is what's stored rather than radius: it stays
+// finite and well-behaved as a bar flattens (a straight bar is simply
+// `0`), where radius runs to infinity there. See
+// arch-geometry.ts's `radiusFromSag`/`sagFromRadius` for the two-way
+// binding the UI shows the user.
+export const windowBarSchema = z.object({
+  id: z.string().min(1).max(40),
+  from: barAnchorSchema,
+  to: barAnchorSchema,
+  sagMm: z.number().int().min(-MAX_DIMENSION_MM).max(MAX_DIMENSION_MM),
+})
+export type WindowBarInput = z.infer<typeof windowBarSchema>
+
+// `panelType` is a plain string literal, not reusing `HeadShape`-style
+// naming — deliberately not called `kind`, which already means
+// something different (`WindowPart['kind']` in
+// apps/web/src/lib/window-geometry.ts, the *drawn component* within a
+// panel — 'frame'/'sash'/'glass'/'flyScreen'). This is a new,
+// panel-level discriminator one level up from that.
+export const PanelType = {
+  WINDOW: 'window',
+  TRANSOM: 'transom',
+} as const
+export type PanelType = (typeof PanelType)[keyof typeof PanelType]
+
+// Shared by both branches below — everything a panel needs regardless
+// of what it actually is. Not itself a schema (a bare object literal,
+// spread into each branch) so each branch's own `z.object` stays the
+// single source of truth for its own shape; a wrapping `.extend()`
+// would work too but reads less plainly at the two call sites.
+const basePanelFields = {
+  xMm: z.number().int().min(0).max(MAX_DIMENSION_MM),
+  yMm: z.number().int().min(0).max(MAX_DIMENSION_MM),
+  widthMm: z.number().int().min(1).max(MAX_DIMENSION_MM),
+  heightMm: z.number().int().min(1).max(MAX_DIMENSION_MM),
+  glassKind: z.enum([GlassKind.SINGLE, GlassKind.COMBINATION]),
+  glass: scopedRefSchema,
+  interiorColor: scopedRefSchema.nullable().optional(),
+  exteriorColor: scopedRefSchema.nullable().optional(),
+}
+
 /**
  * One panel of an assembly — a whole window unit with its own frame all
  * the way round, not a light within a shared frame. (Two lights sharing
@@ -74,22 +149,116 @@ const MAX_DIMENSION_MM = 100000
  * every panel edge-connected; origin normalised) and for why a
  * *non-rectangular* outline is deliberately legal.
  */
-export const windowPanelSchema = z.object({
-  xMm: z.number().int().min(0).max(MAX_DIMENSION_MM),
-  yMm: z.number().int().min(0).max(MAX_DIMENSION_MM),
-  widthMm: z.number().int().min(1).max(MAX_DIMENSION_MM),
-  heightMm: z.number().int().min(1).max(MAX_DIMENSION_MM),
-  frameProfile: scopedRefSchema,
-  sashProfile: scopedRefSchema,
-  hasFlyScreen: z.boolean(),
-  isDoor: z.boolean(),
-  glassKind: z.enum([GlassKind.SINGLE, GlassKind.COMBINATION]),
-  glass: scopedRefSchema,
-  openingType: z.enum(hingedOpeningTypeValues).nullable().optional(),
-  interiorColor: scopedRefSchema.nullable().optional(),
-  exteriorColor: scopedRefSchema.nullable().optional(),
-})
-export type WindowPanelInput = z.infer<typeof windowPanelSchema>
+export const windowPanelSchema = z
+  .object({
+    ...basePanelFields,
+    panelType: z.literal(PanelType.WINDOW),
+    frameProfile: scopedRefSchema,
+    sashProfile: scopedRefSchema,
+    hasFlyScreen: z.boolean(),
+    isDoor: z.boolean(),
+    openingType: z.enum(hingedOpeningTypeValues).nullable().optional(),
+    // Required, no `.default()` — matches `hasFlyScreen`/`isDoor` right
+    // above: every panel field the client can vary is required, so the
+    // whole object is always a complete, self-describing panel. (A
+    // `.default()` here would also fight react-hook-form's zodResolver,
+    // whose input/output types genuinely disagree once a field can be
+    // omitted on write but never absent on read — not worth the
+    // complexity for the one caller that would ever omit it.)
+    headShape: z.enum(headShapeValues),
+    headRiseMm: z.number().int().min(1).max(MAX_DIMENSION_MM).nullable().optional(),
+    bars: z.array(windowBarSchema).max(200),
+  })
+  // `.strict()` — a window panel carrying a `transomProfile` (or any
+  // other stray key) is rejected outright rather than silently
+  // stripped. Without it, Zod's default (strip unknown keys) would
+  // undercut the whole point of the discriminated union: a client
+  // could send both `sashProfile` and `transomProfile` on a `window`
+  // body and get 201 back with the extra field quietly dropped,
+  // masking a real client-side bug instead of surfacing it at the wire
+  // boundary where it's cheap to fix.
+  .strict()
+  // Four cross-field rules from docs/arch_windows_planing.md §3, none of
+  // which a single field's own `.min()`/`.max()` can express. NOT
+  // reimplemented in windows.service.ts — these are single-panel field
+  // checks the global ZodValidationPipe already fully enforces on
+  // every write, and nothing calls WindowsService outside the HTTP
+  // path (confirmed while building Step 6, see docs/arch_windows_
+  // tasks.md's own correction there); a `validatePanelHead` was
+  // planned but never written for exactly that reason. Compare
+  // windows.service.ts's `normalizeHeads`, which DOES duplicate work
+  // here — but that one CORRECTS a value (round's rise, and every
+  // shape's rise clamped below its own height), which a validator
+  // can only reject, not fix.
+  .superRefine((panel, ctx) => {
+    const hasRise = panel.headRiseMm != null
+    if (panel.headShape === HeadShape.FLAT && hasRise) {
+      ctx.addIssue({ code: 'custom', path: ['headRiseMm'], message: 'A flat head has no rise.' })
+    }
+    if (panel.headShape !== HeadShape.FLAT && !hasRise) {
+      ctx.addIssue({ code: 'custom', path: ['headRiseMm'], message: 'A non-flat head needs a rise.' })
+    }
+    if (panel.headShape === HeadShape.FLAT && panel.bars.length > 0) {
+      ctx.addIssue({ code: 'custom', path: ['bars'], message: 'Bars only belong on a non-flat head.' })
+    }
+
+    // A bar may only reference the head, the springing line, or a bar
+    // EARLIER in this same array — that ordering rule is the whole
+    // acyclicity guarantee (see arch-bars.ts's `barsAreOrdered`), so
+    // this one pass both catches a forward/self reference and proves
+    // the rest of the array is a DAG.
+    const earlierIds = new Set<string>()
+    panel.bars.forEach((bar, index) => {
+      if (earlierIds.has(bar.id)) {
+        ctx.addIssue({ code: 'custom', path: ['bars', index, 'id'], message: `Duplicate bar id "${bar.id}" in this panel.` })
+      }
+      for (const end of ['from', 'to'] as const) {
+        const anchor = bar[end]
+        if (anchor.on !== 'arch' && anchor.on !== 'sill' && !earlierIds.has(anchor.on)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['bars', index, end, 'on'],
+            message: `Bar "${bar.id}" anchors to "${anchor.on}", which is not the head, the springing line, or an earlier bar in this panel.`,
+          })
+        }
+      }
+      earlierIds.add(bar.id)
+    })
+  })
+export type WindowPanelWindowInput = z.infer<typeof windowPanelSchema>
+
+/**
+ * A transom — a profile plus glass, no sash, no opening leaf. See
+ * docs/transom_planing.md decision 1: closer to a fixed light than a
+ * shrunk window, but its "frame" is a `ProfileType.TRANSOM` profile,
+ * not a `ProfileType.FRAME` one. No `hasFlyScreen`/`isDoor`/
+ * `openingType` at all — not merely unset, structurally absent, since
+ * a fly screen mounts to a sash and a door is a sash that swings, and
+ * a transom has no sash. No `headShape`/`headRiseMm`/`bars` either —
+ * arched transoms are deliberately deferred (planing doc §7); every
+ * transom is flat this phase, so there is nothing for those fields to
+ * describe yet.
+ */
+export const transomPanelSchema = z
+  .object({
+    ...basePanelFields,
+    panelType: z.literal(PanelType.TRANSOM),
+    transomProfile: scopedRefSchema,
+  })
+  // See windowPanelSchema's own `.strict()` just above for why: a
+  // transom body carrying a `sashProfile`/`hasFlyScreen`/etc. is
+  // rejected, not silently ignored.
+  .strict()
+export type WindowPanelTransomInput = z.infer<typeof transomPanelSchema>
+
+// The wire/storage shape for one panel, either kind. `panelType` is
+// what every downstream caller narrows on before reaching for a
+// branch-only field (`sashProfile`, `transomProfile`, ...) — the
+// union makes the illegal combination (a transom carrying a
+// `sashProfile`, a window carrying a `transomProfile`) a compile
+// error rather than merely unvalidated.
+export const windowPanelInputSchema = z.discriminatedUnion('panelType', [windowPanelSchema, transomPanelSchema])
+export type WindowPanelInput = z.infer<typeof windowPanelInputSchema>
 
 // `projectId` is create-only, deliberately — a window cannot be moved
 // between projects once it exists, for the same reason a project can't
@@ -106,7 +275,7 @@ export const createWindowSchema = z.object({
   projectId: z.uuid(),
   name: z.string().trim().min(1).max(255),
   quantity: z.number().int().min(1),
-  panels: z.array(windowPanelSchema).min(1),
+  panels: z.array(windowPanelInputSchema).min(1),
   location: optionalText,
   notes: optionalText,
 })
@@ -122,26 +291,53 @@ export type CreateWindowInput = z.infer<typeof createWindowSchema>
 export const updateWindowSchema = z.object({
   name: z.string().trim().min(1).max(255).optional(),
   quantity: z.number().int().min(1).optional(),
-  panels: z.array(windowPanelSchema).min(1).optional(),
+  panels: z.array(windowPanelInputSchema).min(1).optional(),
   location: optionalText,
   notes: optionalText,
 })
 export type UpdateWindowInput = z.infer<typeof updateWindowSchema>
 
-/**
- * One panel as read back — the input shape plus nothing, since every
- * field on it is already client-resolvable.
- */
-export type WindowPanelDetail = Required<
-  Pick<
-    WindowPanelInput,
-    'xMm' | 'yMm' | 'widthMm' | 'heightMm' | 'frameProfile' | 'sashProfile' | 'hasFlyScreen' | 'isDoor' | 'glassKind' | 'glass'
-  >
-> & {
-  openingType: HingedOpeningType | null
+// Shared by both branches below — mirrors `basePanelFields` above, but
+// as the READ shape (colours resolved to `string | null`, not the
+// input's `ScopedRef | null | undefined`).
+interface PanelDetailBase {
+  xMm: number
+  yMm: number
+  widthMm: number
+  heightMm: number
+  glassKind: GlassKind
+  glass: string
   interiorColor: string | null
   exteriorColor: string | null
 }
+
+/**
+ * One panel as read back — the input shape plus nothing, since every
+ * field on it is already client-resolvable. A union for the same
+ * reason `WindowPanelInput` is: `panel.panelType === 'window'` narrows
+ * which of `sashProfile`/`transomProfile` (etc.) is actually there,
+ * same as on the way in. Named per-branch, same as the input side
+ * (`WindowPanelWindowInput`/`WindowPanelTransomInput`), for every
+ * caller that's window-only for now (docs/transom_tasks.md Steps 3-4,
+ * 6-7 haven't landed yet) to say so directly instead of intersecting
+ * `WindowPanelDetail` with `{ panelType: 'window' }` inline each time.
+ */
+export type WindowPanelWindowDetail = PanelDetailBase & {
+  panelType: typeof PanelType.WINDOW
+  frameProfile: string
+  sashProfile: string
+  hasFlyScreen: boolean
+  isDoor: boolean
+  openingType: HingedOpeningType | null
+  headShape: HeadShape
+  headRiseMm: number | null
+  bars: WindowBarInput[]
+}
+export type WindowPanelTransomDetail = PanelDetailBase & {
+  panelType: typeof PanelType.TRANSOM
+  transomProfile: string
+}
+export type WindowPanelDetail = WindowPanelWindowDetail | WindowPanelTransomDetail
 
 /**
  * What a canvas card needs, and nothing more.

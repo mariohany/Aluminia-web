@@ -1,29 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { PanelSide } from '@/lib/window-geometry'
+import { useAddPanelCardPosition, type AddPanelRequest } from '@/lib/add-panel-popover'
 import { Button } from '@/components/ui/button'
 import { FieldLabel } from '@/components/workspace/field-label'
 import { Input } from '@/components/ui/input'
 
-export interface AddPanelRequest {
-  side: PanelSide
-  /** The "+" marker's position inside the drawing's own box — the same
-   * coordinate space the dimension inputs are placed in. */
-  at: { left: number; top: number }
-  /** Pre-filled size: the cross-dimension is the selection's union, the
-   * other comes from the panel being cloned. See `prefillForSide()`. */
-  widthMm: number
-  heightMm: number
-}
-
-/** Pushes the card clear of the marker it belongs to, on whichever side
- * it opened. */
-const OFFSET_BY_SIDE: Record<PanelSide, string> = {
-  right: 'translate(12px, -50%)',
-  left: 'translate(calc(-100% - 12px), -50%)',
-  top: 'translate(-50%, calc(-100% - 12px))',
-  bottom: 'translate(-50%, 12px)',
-}
+export type { AddPanelRequest }
 
 /**
  * The size prompt behind a "+" marker.
@@ -61,11 +43,7 @@ export function AddPanelCard({
   const { t } = useTranslation('workspace')
   const [widthMm, setWidthMm] = useState(0)
   const [heightMm, setHeightMm] = useState(0)
-  const cardRef = useRef<HTMLDivElement>(null)
-  // Nudged back inside the drawing box when the preferred side would
-  // hang off an edge — attaching above a panel near the top otherwise
-  // opens the card half outside the container and clips its heading.
-  const [nudge, setNudge] = useState({ x: 0, y: 0 })
+  const { cardRef, style } = useAddPanelCardPosition(request, error)
 
   // Re-seed whenever a different "+" is pressed. Keyed on the side and
   // the pre-filled numbers rather than object identity — `request` is a
@@ -78,40 +56,9 @@ export function AddPanelCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request?.side, request?.widthMm, request?.heightMm])
 
-  // Measured after the card is laid out at its preferred position, so
-  // the correction accounts for its real height (which depends on
-  // whether an error line is showing).
-  useLayoutEffect(() => {
-    const card = cardRef.current
-    const box = card?.offsetParent as HTMLElement | null | undefined
-    if (!card || !box) return
-    const margin = 8
-    const cardBox = card.getBoundingClientRect()
-    const parentBox = box.getBoundingClientRect()
-    const overTop = parentBox.top + margin - cardBox.top
-    const overBottom = cardBox.bottom - (parentBox.bottom - margin)
-    const overLeft = parentBox.left + margin - cardBox.left
-    const overRight = cardBox.right - (parentBox.right - margin)
-    const next = {
-      x: overLeft > 0 ? overLeft : overRight > 0 ? -overRight : 0,
-      y: overTop > 0 ? overTop : overBottom > 0 ? -overBottom : 0,
-    }
-    setNudge((prev) => (prev.x === next.x && prev.y === next.y ? prev : next))
-    // Re-measure only when something that moves or resizes the card
-    // changes: which marker opened it, where that marker is, and
-    // whether the error line is taking up a row. Deliberately not every
-    // render — this sets state, and an unguarded version would be one
-    // missed equality check away from an update loop.
-  }, [request?.side, request?.at.left, request?.at.top, error])
-
   if (!request) return null
 
   const valid = Number.isFinite(widthMm) && widthMm >= 1 && Number.isFinite(heightMm) && heightMm >= 1
-  const style: CSSProperties = {
-    left: request.at.left,
-    top: request.at.top,
-    transform: `translate(${nudge.x}px, ${nudge.y}px) ${OFFSET_BY_SIDE[request.side]}`,
-  }
 
   return (
     // dir="ltr" is inherited from the drawing, which never mirrors; the

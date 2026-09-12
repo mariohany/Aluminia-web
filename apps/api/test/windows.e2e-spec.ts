@@ -7,10 +7,23 @@ import { App } from 'supertest/types';
 import type { LoginResponse } from '@repo/types/auth';
 import type { ClientDetail } from '@repo/types/clients';
 import type { ProjectDetail } from '@repo/types/projects';
-import type { WindowDetail, WindowSummary } from '@repo/types/windows';
+import type {
+  WindowDetail,
+  WindowPanelWindowDetail,
+  WindowSummary,
+} from '@repo/types/windows';
 import type { CompanySystemProfileSummary } from '@repo/types/company-lookups';
 import { AppModule } from './../src/app.module';
 import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provisioning.service';
+
+// Every test in this file builds a WINDOW-only assembly (transom test
+// cases land in docs/transom_tasks.md Step 2) — this is what every
+// `res.body as ...` cast below actually asserts, so `.panels[0].
+// sashProfile`/`.headShape`/etc. narrow without a `panelType` check at
+// each of the many call sites that read one.
+type WindowDetailAllWindows = Omit<WindowDetail, 'panels'> & {
+  panels: WindowPanelWindowDetail[];
+};
 
 /**
  * docs/window_creation_planing.md + docs/window_assembly_planing.md —
@@ -43,6 +56,7 @@ describe('Windows (e2e)', () => {
   let platformSashId: string;
   let platformGlassId: string;
   let platformCatalogId: string;
+  let platformTransomId: string;
   let companySashId: string;
   let colorId: string;
 
@@ -92,6 +106,11 @@ describe('Windows (e2e)', () => {
       `SELECT id FROM system_catalog LIMIT 1`,
     );
     platformCatalogId = catalog.id;
+
+    const [transom]: { id: string }[] = await controlPlane.query(
+      `SELECT id FROM system_profile WHERE profile_type = 'transom' LIMIT 1`,
+    );
+    platformTransomId = transom.id;
 
     const [color]: { id: string }[] = await controlPlane.query(
       `SELECT id FROM color LIMIT 1`,
@@ -148,9 +167,13 @@ describe('Windows (e2e)', () => {
     return (res.body as LoginResponse).accessToken;
   }
 
-  /** One panel's worth of a valid request body. */
+  /** One WINDOW panel's worth of a valid request body — the schema is
+   * now a discriminated union on `panelType` (docs/transom_planing.md),
+   * so this has to be present for Zod to even pick a branch, not just
+   * an extra field. */
   function panel(overrides: Record<string, unknown> = {}) {
     return {
+      panelType: 'window',
       xMm: 0,
       yMm: 0,
       widthMm: 1200,
@@ -159,6 +182,31 @@ describe('Windows (e2e)', () => {
       sashProfile: `platform:${platformSashId}`,
       hasFlyScreen: false,
       isDoor: false,
+      glassKind: 'single',
+      glass: `platform:${platformGlassId}`,
+      // Flat/empty — the default every panel had before arch heads
+      // existed. headShape/headRiseMm/bars are required (no `.default`
+      // on the schema — see docs/arch_windows_planing.md's Step 4
+      // finding), so every panel literal needs them explicitly now.
+      headShape: 'flat',
+      headRiseMm: null,
+      bars: [],
+      ...overrides,
+    };
+  }
+
+  /** One TRANSOM panel's worth of a valid request body — attached to
+   * `panel()`'s own right edge (docs/transom_tasks.md Step 2), matching
+   * the neighbour's height and carrying its own width, per decision 7's
+   * "right/left keeps the neighbour's height" rule. */
+  function transomPanel(overrides: Record<string, unknown> = {}) {
+    return {
+      panelType: 'transom',
+      xMm: 1200,
+      yMm: 0,
+      widthMm: 150,
+      heightMm: 1500,
+      transomProfile: `platform:${platformTransomId}`,
       glassKind: 'single',
       glass: `platform:${platformGlassId}`,
       ...overrides,
@@ -190,7 +238,7 @@ describe('Windows (e2e)', () => {
       name: 'W-cross-scope',
       panels: [panel({ sashProfile: `company:${companySashId}` })],
     }).expect(201);
-    const body = res.body as WindowDetail;
+    const body = res.body as WindowDetailAllWindows;
 
     expect(body.projectId).toBe(projectId);
     expect(body.panels).toHaveLength(1);
@@ -206,7 +254,7 @@ describe('Windows (e2e)', () => {
       .get(`/windows/${body.id}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    expect((fetched.body as WindowDetail).panels[0].sashProfile).toBe(
+    expect((fetched.body as WindowDetailAllWindows).panels[0].sashProfile).toBe(
       `company:${companySashId}`,
     );
   });
@@ -223,7 +271,7 @@ describe('Windows (e2e)', () => {
       location: 'North elevation',
       notes: 'Handle on the left',
     }).expect(201);
-    const body = res.body as WindowDetail;
+    const body = res.body as WindowDetailAllWindows;
 
     expect(body.panels[0].interiorColor).toBe(`platform:${colorId}`);
     expect(body.panels[0].exteriorColor).toBe(`platform:${colorId}`);
@@ -233,26 +281,189 @@ describe('Windows (e2e)', () => {
 
   it('round-trips openingType per panel, defaults to null, and PATCHes', async () => {
     const created = await createWindow({ name: 'W-opening-type' }).expect(201);
-    const body = created.body as WindowDetail;
+    const body = created.body as WindowDetailAllWindows;
     expect(body.panels[0].openingType).toBeNull();
 
     const patched = await patchWindow(body.id, {
       panels: [panel({ openingType: 'side_hung_left' })],
     }).expect(200);
-    expect((patched.body as WindowDetail).panels[0].openingType).toBe(
+    expect((patched.body as WindowDetailAllWindows).panels[0].openingType).toBe(
       'side_hung_left',
     );
 
     const cleared = await patchWindow(body.id, {
       panels: [panel({ openingType: null })],
     }).expect(200);
-    expect((cleared.body as WindowDetail).panels[0].openingType).toBeNull();
+    expect(
+      (cleared.body as WindowDetailAllWindows).panels[0].openingType,
+    ).toBeNull();
   });
 
   it('rejects an unknown openingType', async () => {
     await createWindow({
       name: 'W-bad-opening-type',
       panels: [panel({ openingType: 'diagonal_slide' })],
+    }).expect(400);
+  });
+
+  // Arch heads and glazing bars — docs/arch_windows_planing.md §4.
+  // headShape/headRiseMm/bars round-trip like every other panel field;
+  // the interesting cases are the four structural rules on `bars`
+  // (flat ⇔ null rise, bars only on a non-flat head, unique ids, every
+  // anchor referencing something earlier in the array) and where they
+  // actually get enforced — see the forward-reference test below.
+
+  it('round-trips a segmental head with anchored and bowed bars', async () => {
+    const res = await createWindow({
+      name: 'W-arch-round-trip',
+      panels: [
+        panel({
+          headShape: 'segmental',
+          headRiseMm: 400,
+          bars: [
+            {
+              id: 'b1',
+              from: { on: 'sill', at: 0.5 },
+              to: { on: 'arch', at: 0.5 },
+              sagMm: 0,
+            },
+            {
+              id: 'b2',
+              from: { on: 'sill', at: 0.2 },
+              to: { on: 'arch', at: 0.15 },
+              sagMm: 0,
+            },
+            {
+              id: 'b3',
+              from: { on: 'b1', at: 0.5 },
+              to: { on: 'b2', at: 0.5 },
+              sagMm: 45,
+            },
+          ],
+        }),
+      ],
+    }).expect(201);
+    const body = res.body as WindowDetailAllWindows;
+
+    expect(body.panels[0].headShape).toBe('segmental');
+    expect(body.panels[0].headRiseMm).toBe(400);
+    expect(body.panels[0].bars).toHaveLength(3);
+    expect(body.panels[0].bars[2]).toEqual({
+      id: 'b3',
+      from: { on: 'b1', at: 0.5 },
+      to: { on: 'b2', at: 0.5 },
+      sagMm: 45,
+    });
+
+    const fetched = await request(app.getHttpServer())
+      .get(`/windows/${body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect((fetched.body as WindowDetailAllWindows).panels[0].bars).toEqual(
+      body.panels[0].bars,
+    );
+  });
+
+  it("normalises a round head's rise to widthMm / 2, ignoring whatever the client sent", async () => {
+    const res = await createWindow({
+      name: 'W-arch-round-normalize',
+      panels: [panel({ widthMm: 1400, headShape: 'round', headRiseMm: 1 })],
+    }).expect(201);
+    expect((res.body as WindowDetailAllWindows).panels[0].headRiseMm).toBe(700);
+  });
+
+  it('rejects a bar that references a LATER bar — proves the schema catches it, not the service', async () => {
+    // A single panel structurally cannot fail assertNoOverlap or
+    // assertConnected (nothing to overlap or disconnect from), so any
+    // 400 here can only have come from windowPanelSchema's superRefine
+    // via the global ZodValidationPipe — proof the request never
+    // reaches WindowsService.create's body unvalidated.
+    await createWindow({
+      name: 'W-arch-forward-ref',
+      panels: [
+        panel({
+          headShape: 'segmental',
+          headRiseMm: 400,
+          bars: [
+            {
+              id: 'b1',
+              from: { on: 'b2', at: 0.5 },
+              to: { on: 'arch', at: 0.5 },
+              sagMm: 0,
+            },
+            {
+              id: 'b2',
+              from: { on: 'sill', at: 0.5 },
+              to: { on: 'arch', at: 0.2 },
+              sagMm: 0,
+            },
+          ],
+        }),
+      ],
+    }).expect(400);
+  });
+
+  it('rejects a bar anchored to a nonexistent id', async () => {
+    await createWindow({
+      name: 'W-arch-bad-ref',
+      panels: [
+        panel({
+          headShape: 'round',
+          headRiseMm: 700,
+          bars: [
+            {
+              id: 'b1',
+              from: { on: 'nope', at: 0.5 },
+              to: { on: 'arch', at: 0.5 },
+              sagMm: 0,
+            },
+          ],
+        }),
+      ],
+    }).expect(400);
+  });
+
+  it('rejects bars on a flat head', async () => {
+    await createWindow({
+      name: 'W-arch-bars-on-flat',
+      panels: [
+        panel({
+          bars: [
+            {
+              id: 'b1',
+              from: { on: 'arch', at: 0.2 },
+              to: { on: 'sill', at: 0.5 },
+              sagMm: 0,
+            },
+          ],
+        }),
+      ],
+    }).expect(400);
+  });
+
+  it('rejects duplicate bar ids within a panel', async () => {
+    await createWindow({
+      name: 'W-arch-dup-ids',
+      panels: [
+        panel({
+          headShape: 'round',
+          headRiseMm: 700,
+          bars: [
+            {
+              id: 'b1',
+              from: { on: 'arch', at: 0.2 },
+              to: { on: 'sill', at: 0.5 },
+              sagMm: 0,
+            },
+            {
+              id: 'b1',
+              from: { on: 'arch', at: 0.8 },
+              to: { on: 'sill', at: 0.5 },
+              sagMm: 0,
+            },
+          ],
+        }),
+      ],
     }).expect(400);
   });
 
@@ -333,12 +544,12 @@ describe('Windows (e2e)', () => {
       name: 'W-patch-name',
       notes: 'original notes',
     }).expect(201);
-    const id = (created.body as WindowDetail).id;
+    const id = (created.body as WindowDetailAllWindows).id;
 
     const patched = await patchWindow(id, {
       name: 'W-patch-name-renamed',
     }).expect(200);
-    const body = patched.body as WindowDetail;
+    const body = patched.body as WindowDetailAllWindows;
 
     expect(body.name).toBe('W-patch-name-renamed');
     expect(body.notes).toBe('original notes');
@@ -358,7 +569,7 @@ describe('Windows (e2e)', () => {
       projectId: scratchProjectId,
       name: 'W-cascade',
     }).expect(201);
-    const scratchWindowId = (scratchWindow.body as WindowDetail).id;
+    const scratchWindowId = (scratchWindow.body as WindowDetailAllWindows).id;
 
     await request(app.getHttpServer())
       .delete(`/projects/${scratchProjectId}`)
@@ -374,7 +585,7 @@ describe('Windows (e2e)', () => {
 
   it("refuses company B every operation on company A's window, with 404 not 403", async () => {
     const created = await createWindow({ name: 'W-isolation' }).expect(201);
-    const id = (created.body as WindowDetail).id;
+    const id = (created.body as WindowDetailAllWindows).id;
 
     await request(app.getHttpServer())
       .get(`/windows/${id}`)
@@ -403,7 +614,7 @@ describe('Windows (e2e)', () => {
         panel({ xMm: 1200, yMm: 0, widthMm: 800, heightMm: 1500 }),
       ],
     }).expect(201);
-    const body = res.body as WindowDetail;
+    const body = res.body as WindowDetailAllWindows;
 
     expect(body.panels).toHaveLength(2);
     expect(body.panels).toHaveLength(2);
@@ -416,7 +627,7 @@ describe('Windows (e2e)', () => {
       .get(`/windows/${body.id}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    const refetched = fetched.body as WindowDetail;
+    const refetched = fetched.body as WindowDetailAllWindows;
     expect(refetched.panels.map((p) => p.xMm)).toEqual([0, 1200]);
     expect(refetched.widthMm).toBe(2000);
   });
@@ -429,7 +640,7 @@ describe('Windows (e2e)', () => {
         panel({ xMm: 1000, yMm: 0, widthMm: 1000, heightMm: 600 }),
       ],
     }).expect(201);
-    const body = res.body as WindowDetail;
+    const body = res.body as WindowDetailAllWindows;
     expect(body.widthMm).toBe(2000);
     expect(body.heightMm).toBe(1000);
   });
@@ -442,7 +653,7 @@ describe('Windows (e2e)', () => {
         panel({ xMm: 1500, yMm: 300, widthMm: 1000, heightMm: 1000 }),
       ],
     }).expect(201);
-    const body = res.body as WindowDetail;
+    const body = res.body as WindowDetailAllWindows;
 
     expect(body.panels.map((p) => p.xMm)).toEqual([0, 1000]);
     expect(body.panels.map((p) => p.yMm)).toEqual([0, 0]);
@@ -492,13 +703,13 @@ describe('Windows (e2e)', () => {
         panel({ xMm: 1000, yMm: 0, widthMm: 1000, heightMm: 1000 }),
       ],
     }).expect(201);
-    const id = (created.body as WindowDetail).id;
-    expect((created.body as WindowDetail).widthMm).toBe(2000);
+    const id = (created.body as WindowDetailAllWindows).id;
+    expect((created.body as WindowDetailAllWindows).widthMm).toBe(2000);
 
     const patched = await patchWindow(id, {
       panels: [panel({ xMm: 0, yMm: 0, widthMm: 900, heightMm: 800 })],
     }).expect(200);
-    const body = patched.body as WindowDetail;
+    const body = patched.body as WindowDetailAllWindows;
 
     expect(body.panels).toHaveLength(1);
     expect(body.panels).toHaveLength(1);
@@ -514,7 +725,7 @@ describe('Windows (e2e)', () => {
         panel({ xMm: 1000, yMm: 0, widthMm: 1000, heightMm: 1000 }),
       ],
     }).expect(201);
-    const id = (created.body as WindowDetail).id;
+    const id = (created.body as WindowDetailAllWindows).id;
 
     const schema = await schemaNameFor(controlPlane, companyName);
     const before: Array<{ count: string }> = await controlPlane.query(
@@ -537,9 +748,58 @@ describe('Windows (e2e)', () => {
 
   it('records the authenticated caller as the author', async () => {
     const created = await createWindow({ name: 'W-author' }).expect(201);
-    const body = created.body as WindowDetail;
+    const body = created.body as WindowDetailAllWindows;
     expect(body.createdByUserId).toEqual(expect.any(String));
     expect(body.createdByUserId.length).toBeGreaterThan(0);
+  });
+
+  it('accepts a minimal valid transom panel attached to a window panel', async () => {
+    const created = await createWindow({
+      name: 'W-transom-minimal',
+      panels: [panel(), transomPanel()],
+    }).expect(201);
+    const body = created.body as WindowDetail;
+    expect(body.panels).toHaveLength(2);
+    // The assembly's overall size is the bounding box of both panels —
+    // the transom's own 150mm sits to the right of the window's 1200mm.
+    expect(body.widthMm).toBe(1350);
+    expect(body.heightMm).toBe(1500);
+
+    const transom = body.panels[1];
+    expect(transom.panelType).toBe('transom');
+    if (transom.panelType !== 'transom') throw new Error('unreachable');
+    expect(transom.transomProfile).toBe(`platform:${platformTransomId}`);
+    // Nothing window-only leaks onto a transom row — `sashProfile`
+    // isn't even a field on `WindowPanelTransomDetail`, so this checks
+    // the ACTUAL response body, not just the type.
+    expect(
+      (transom as unknown as Record<string, unknown>).sashProfile,
+    ).toBeUndefined();
+
+    const fetched = await request(app.getHttpServer())
+      .get(`/windows/${body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect((fetched.body as WindowDetail).panels[1].panelType).toBe('transom');
+  });
+
+  it('rejects a transom panel carrying a sashProfile', async () => {
+    await createWindow({
+      name: 'W-transom-bad-sash',
+      panels: [
+        panel(),
+        transomPanel({ sashProfile: `platform:${platformSashId}` }),
+      ],
+    }).expect(400);
+  });
+
+  it('rejects a transom panel missing transomProfile', async () => {
+    const incomplete: Record<string, unknown> = transomPanel();
+    delete incomplete.transomProfile;
+    await createWindow({
+      name: 'W-transom-missing-profile',
+      panels: [panel(), incomplete],
+    }).expect(400);
   });
 });
 

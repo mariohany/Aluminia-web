@@ -6,6 +6,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import type { WindowBarInput } from '@repo/types/windows';
 import { Window } from './window.entity';
 
 /**
@@ -69,6 +70,25 @@ export class WindowPanel {
   @Column({ name: 'sash_company_profile_id', type: 'uuid', nullable: true })
   sashCompanyProfileId: string | null;
 
+  // 'window' | 'transom' — see packages/types/src/windows.ts's PanelType.
+  // Plain varchar for the same reason glassKind/openingType/headShape
+  // above are. Which of frame/sash vs transom profile pair is populated
+  // is enforced per-type by the migration's CHECKs, not by this column
+  // alone.
+  @Column({
+    name: 'panel_type',
+    type: 'varchar',
+    length: 10,
+    default: 'window',
+  })
+  panelType: string;
+
+  @Column({ name: 'transom_platform_profile_id', type: 'uuid', nullable: true })
+  transomPlatformProfileId: string | null;
+
+  @Column({ name: 'transom_company_profile_id', type: 'uuid', nullable: true })
+  transomCompanyProfileId: string | null;
+
   @Column({ name: 'has_fly_screen', type: 'boolean', default: false })
   hasFlyScreen: boolean;
 
@@ -120,4 +140,26 @@ export class WindowPanel {
 
   @Column({ name: 'exterior_color_company_id', type: 'uuid', nullable: true })
   exteriorColorCompanyId: string | null;
+
+  // 'flat' | 'round' | 'segmental' | 'gothic' — see
+  // packages/types/src/windows.ts's HeadShape. Plain varchar for the
+  // same reason glassKind/openingType above are. `headRiseMm` is null
+  // iff this is 'flat' — enforced by the migration's CHECK, re-checked
+  // in WindowsService.validatePanelHead rather than trusted from
+  // either.
+  @Column({ name: 'head_shape', type: 'varchar', length: 12, default: 'flat' })
+  headShape: string;
+
+  @Column({ name: 'head_rise_mm', type: 'integer', nullable: true })
+  headRiseMm: number | null;
+
+  // Freely-drawn bars inside the head — see docs/arch_windows_planing.md
+  // §2's "why references, not coordinates". A jsonb column rather than
+  // a child table (planing doc decision 10): unlike every profile/glass
+  // reference above, a bar's own internal shape (unique ids, anchors
+  // only referencing something earlier in the array) can't be expressed
+  // as a CHECK, so that validation lives entirely in
+  // WindowsService.validatePanelHead.
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  bars: WindowBarInput[];
 }

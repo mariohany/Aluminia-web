@@ -1,6 +1,9 @@
 import { SystemType } from '@repo/types/lookups'
-import { HingedOpeningType } from '@repo/types/windows'
+import { HingedOpeningType, HeadShape } from '@repo/types/windows'
 import { DOUBLE_DOOR_OPENING_TYPES, type WindowPart } from '@/lib/window-geometry'
+import { headPointAt, type HeadOutline, type PointMm } from '@/lib/arch-geometry'
+import { pointAlongBar, resolveBar } from '@/lib/arch-bars'
+import type { WindowBarInput } from '@repo/types/windows'
 
 /**
  * The pure paint layer shared by the interactive elevation
@@ -108,6 +111,88 @@ export function openBottomFramePath(outer: WindowPart['rectMm'], inner: WindowPa
     `L${inner.x} ${bottom}`,
     'Z',
   ].join(' ')
+}
+
+// ---- Arched outlines -----------------------------------------------
+//
+// The arched siblings of ringPath/openBottomFramePath above, for a part
+// carrying a `head` (see window-geometry.ts's WindowPart). Sampled from
+// `headPointAt` rather than hand-derived as an SVG arc command — that
+// function is already numerically verified (arch-geometry.ts), so
+// reusing it here means the drawn curve and the bar-anchor system can
+// never quietly disagree with each other; deriving fresh SVG arc-flag
+// maths would be a second, independent place for the same class of
+// sign/direction bug arch-geometry.ts's own gothic derivation already
+// caught once. 24 segments is smooth at any on-screen size a window
+// elevation is actually drawn at.
+
+const ARCH_PATH_SEGMENTS = 24
+
+/** One closed outline: sill → left jamb → the head curve → right jamb
+ * → back to the sill. Degenerates to a plain rect path for a flat
+ * head, so a caller never needs to branch on shape. */
+export function archOutlinePath(o: HeadOutline, segments = ARCH_PATH_SEGMENTS): string {
+  const bottom = o.rect.y + o.rect.height
+  const right = o.rect.x + o.rect.width
+  if (o.shape === HeadShape.FLAT) {
+    return `M${o.rect.x} ${bottom} L${o.rect.x} ${o.rect.y} L${right} ${o.rect.y} L${right} ${bottom} Z`
+  }
+  const pts: string[] = []
+  for (let i = 0; i <= segments; i++) {
+    const p = headPointAt(o, i / segments)
+    pts.push(`${p.x} ${p.y}`)
+  }
+  return `M${o.rect.x} ${bottom} L${pts.join(' L')} L${right} ${bottom} Z`
+}
+
+/** The arched sibling of `ringPath` — an outer and an inner arched
+ * outline traced as one path, `fillRule="evenodd"` on the caller's
+ * `<path>` cuts the inner one out as a hole, same contract as
+ * `ringPath`. */
+export function archRingPath(outer: HeadOutline, inner: HeadOutline): string {
+  return `${archOutlinePath(outer)} ${archOutlinePath(inner)}`
+}
+
+/** A `WindowPart`'s own outline, iff it's arched — `null` for a flat
+ * part (or one with no `head` at all), so `const o = outlineOf(part)`
+ * followed by `if (o)` is the one check both drawing components need
+ * before reaching for `archOutlinePath`/`archRingPath` instead of the
+ * plain-rect functions above. */
+export function outlineOf(part: WindowPart): HeadOutline | null {
+  return part.head ? { rect: part.rectMm, shape: part.head.shape, riseMm: part.head.riseMm } : null
+}
+
+// ---- Glazing bars -----------------------------------------------------
+
+/** SVG path data for one bar between two already-resolved points
+ * (`resolveBar` in arch-bars.ts). A straight line for `sagMm === 0`;
+ * otherwise sampled from the same `pointAlongBar` the anchor system
+ * itself uses, for the same reason `archOutlinePath` samples
+ * `headPointAt` rather than deriving its own arc command. */
+export function barPath(from: PointMm, to: PointMm, sagMm: number, segments = 16): string {
+  if (sagMm === 0) return `M${from.x} ${from.y} L${to.x} ${to.y}`
+  const pts: string[] = []
+  for (let i = 0; i <= segments; i++) {
+    const p = pointAlongBar(from, to, sagMm, i / segments)
+    pts.push(`${p.x} ${p.y}`)
+  }
+  return `M${pts.join(' L')}`
+}
+
+/** Every bar in a panel, resolved against its glass outline and turned
+ * into path data — the one call both drawing components make to get
+ * everything they need to render the bar layer. A bar whose anchor
+ * chain is broken (a dangling reference mid-edit) is silently dropped
+ * rather than drawn wrong; `resolveBar` already returns `null` for
+ * exactly that rather than throwing. */
+export function barPathsFor(bars: WindowBarInput[], glassOutline: HeadOutline): { id: string; d: string }[] {
+  const paths: { id: string; d: string }[] = []
+  for (const bar of bars) {
+    const resolved = resolveBar(bar, bars, glassOutline)
+    if (!resolved) continue
+    paths.push({ id: bar.id, d: barPath(resolved.from, resolved.to, bar.sagMm) })
+  }
+  return paths
 }
 // ---- Opening-type symbols -------------------------------------------
 //

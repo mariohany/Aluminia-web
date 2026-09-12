@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-// Radix rejects an empty-string item value — same sentinel window-dialog.tsx uses.
+// Radix rejects an empty-string item value — same sentinel window-editor-page.tsx uses.
 const NONE = '__none'
 
 // Grid order — one row of the four "primary" hinge/pivot ways a single
@@ -73,7 +73,7 @@ export interface WindowPartPanelProps {
    * since every section renders at once. */
   layout: WindowLayout
   /** Drives which section scrolls into view + gets the focus ring
-   * (frame's own focus ring lives on window-dialog.tsx's tree column
+   * (frame's own focus ring lives on window-editor-page.tsx's tree column
    * instead — the tree isn't part of this panel any more). */
   selectedPartId: string | null
   /** Full map from `collectWindowIssues()`, keyed by part id — each
@@ -93,7 +93,7 @@ export interface WindowPartPanelProps {
   name: string
   onNameChange: (value: string) => void
   /** Already-translated "required" messages — undefined/blank means no
-   * error is shown. window-dialog.tsx only ever passes these once
+   * error is shown. window-editor-page.tsx only ever passes these once
    * `showValidation` is true (edit mode, or after a first submit
    * attempt in create mode) — see its own comment for why. */
   nameError?: string
@@ -114,7 +114,7 @@ export interface WindowPartPanelProps {
 
   // Head — arch_windows_planing.md §7. `headShapeAllowed` is
   // `canHaveArchedHead()` from window-geometry.ts, computed once in
-  // window-dialog.tsx from the same fields `showOpeningTypes`/`showDoor`
+  // window-editor-page.tsx from the same fields `showOpeningTypes`/`showDoor`
   // already derive — false disables the shape buttons rather than
   // letting the user pick a shape `buildWindowLayout` would silently
   // draw flat (sliding, double-door, fixed-mullion, a hinged door).
@@ -126,7 +126,7 @@ export interface WindowPartPanelProps {
 
   // Bars — arch_windows_planing.md §6.1/§6.2. A persistent toggle (the
   // user's own chosen interaction, over a one-shot tool): it stays on
-  // across multiple bars, and window-dialog.tsx owns turning it back
+  // across multiple bars, and window-editor-page.tsx owns turning it back
   // off (re-click, `Escape` with nothing pending, switching panels, or
   // flattening the head).
   barDrawMode: boolean
@@ -140,7 +140,7 @@ export interface WindowPartPanelProps {
   selectedBar: { id: string; lengthMm: number | null; radiusMm: number | null; minRadiusMm: number | null } | null
   /** Starts the delete confirm (button here, or `Delete`/`Backspace`
    * on the drawing) — the actual removal, and the danger-colour
-   * highlight of what else goes with it, are owned by `WindowDialog`. */
+   * highlight of what else goes with it, are owned by `WindowEditor`. */
   onRequestDeleteBar: () => void
   /** `null` clears the field, flattening the bar back to a line
    * (§6.5) — the radius input's own mirror of dragging the bow handle
@@ -161,7 +161,7 @@ export interface WindowPartPanelProps {
   colorOptions: WindowPartPanelColorOption[]
 
   // Type — the opening-type icon grid, hinged windows only (sliding
-  // gets its own icon set later, not this one). window-dialog.tsx
+  // gets its own icon set later, not this one). window-editor-page.tsx
   // already clears the value when the frame stops being hinged, so this
   // panel only has to decide whether to show the grid at all.
   showOpeningTypes: boolean
@@ -320,7 +320,7 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
                 aria-label={t(`fields.headShapeLabels.${shape}`)}
                 aria-pressed={selected}
                 // Re-clicking the already-selected shape is a no-op —
-                // window-dialog.tsx's handler always writes a fresh
+                // window-editor-page.tsx's handler always writes a fresh
                 // shape-appropriate default rise, which would otherwise
                 // clobber a value the user is still editing every time
                 // they happened to click the button they're already on.

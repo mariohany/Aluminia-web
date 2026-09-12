@@ -125,7 +125,7 @@ export interface WindowDrawingProps {
   widthLabel: string
   heightLabel: string
   /** Where the "+" markers sit (the current selection's bounding box)
-   * and which of its sides get one. `WindowDialog` decides both, via
+   * and which of its sides get one. `WindowEditor` decides both, via
    * `freeSidesOf()` — the drawing renders whatever it's handed and makes
    * no judgement about what's attachable. An empty `attachSides` draws
    * nothing. */
@@ -148,7 +148,7 @@ export interface WindowDrawingProps {
    * card lives here rather than in a portal so it shares this dialog's
    * focus scope; see add-panel-card.tsx for what went wrong otherwise. */
   overlay?: React.ReactNode
-  /** Already-translated messages, keyed by part id — window-dialog.tsx builds this from `collectWindowIssues()` (apps/web/src/lib/window-weight.ts). */
+  /** Already-translated messages, keyed by part id — window-editor-page.tsx builds this from `collectWindowIssues()` (apps/web/src/lib/window-weight.ts). */
   issuesByPart: Map<string, TranslatedIssue[]>
 
   // Bar drawing — arch_windows_planing.md §6.1/§6.2. Scoped to the
@@ -182,7 +182,7 @@ export interface WindowDrawingProps {
   /** Delete/Backspace with a bar selected and draw mode off — starts
    * the confirm (sets `pendingDeleteBarId`), same as the Bar section's
    * own Delete button; the actual removal only happens once the user
-   * confirms, owned by `WindowDialog`. */
+   * confirms, owned by `WindowEditor`. */
   onRequestDeleteBar: () => void
   /** Fires on every mouse-move of an endpoint drag that resolves to a
    * valid anchor — re-written live, per §6.4, not just on release. */
@@ -205,7 +205,7 @@ function worstSeverity(issues: TranslatedIssue[] | undefined): TranslatedIssue['
  * from `buildAssemblyLayout()` (apps/web/src/lib/window-geometry.ts) —
  * nothing here is computed beyond pixel-space derived from it.
  * Selection/hover state, the panel model, and which sides are
- * attachable are all owned by `WindowDialog`.
+ * attachable are all owned by `WindowEditor`.
  */
 export function WindowDrawing({
   layout,
@@ -380,7 +380,7 @@ export function WindowDrawing({
 
   // Delete/Backspace with a bar selected — only when not mid-drawing
   // (a selected bar and draw mode are already mutually exclusive, see
-  // window-dialog.tsx) and only when focus isn't in a text field
+  // window-editor-page.tsx) and only when focus isn't in a text field
   // elsewhere in the dialog (Notes, panel name, …), where Backspace
   // must keep editing text, not delete a bar the user isn't looking at.
   useEffect(() => {

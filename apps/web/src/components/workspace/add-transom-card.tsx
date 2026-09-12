@@ -38,7 +38,7 @@ const DEFAULT_TRANSOM_SIZE_MM = 300
  * clone of the neighbour's own frame/sash, and a glass `<Select>`
  * gated by the CHOSEN transom profile's own `maxGlassThickness` — there
  * is no sash here to derive that ceiling from, so it's computed locally
- * rather than reusing `window-dialog.tsx`'s own `activeInfo`, which
+ * rather than reusing `window-editor-page.tsx`'s own `activeInfo`, which
  * describes the ACTIVE panel, not the one still being created.
  */
 export function AddTransomCard({

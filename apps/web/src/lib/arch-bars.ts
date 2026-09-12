@@ -208,7 +208,7 @@ export function resolveBar(b: WindowBar, bars: WindowBar[], o: HeadOutline): { f
 /** A bar's own real cut length — its resolved chord run through
  * `barCutLengthMm`. Kept as its own export, separate from
  * `readoutFor`'s own inline version of the same two lines below, so
- * the Bar section in window-part-panel.tsx (via window-dialog.tsx) has
+ * the Bar section in window-part-panel.tsx (via window-editor-page.tsx) has
  * something to call without touching `readoutFor` itself — that
  * function is already shipped and being manually verified by the user
  * for an unrelated step, not something to risk a behavioural drift in

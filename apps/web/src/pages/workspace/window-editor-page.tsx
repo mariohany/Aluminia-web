@@ -1,22 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useNavigate, useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { ArrowLeft } from 'lucide-react'
 import {
   GlassKind,
   HeadShape,
   PanelType,
   createWindowSchema,
   type CreateWindowInput,
-  type WindowDetail,
   type WindowPanelInput,
   type WindowPanelTransomInput,
   type WindowPanelWindowInput,
 } from '@repo/types/windows'
 import { ProfileType } from '@repo/types/lookups'
 import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
-import type { ProjectDetail } from '@repo/types/projects'
 import { apiErrorMessage } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import {
@@ -26,7 +26,7 @@ import {
   useMergedSystemCatalogsQuery,
   useMergedSystemProfilesQuery,
 } from '@/lib/lookup-merge'
-import { useUpdateProjectMutation } from '@/lib/projects-queries'
+import { useProjectQuery, useUpdateProjectMutation } from '@/lib/projects-queries'
 import { useCreateWindowMutation, useUpdateWindowMutation, useWindowQuery } from '@/lib/windows-queries'
 import { Button } from '@/components/ui/button'
 import { FieldLabel } from '@/components/workspace/field-label'
@@ -61,14 +61,6 @@ import { barLengthMm, dependentsOf, removeBarCascade, resolveBar } from '@/lib/a
 import { outlineOf } from '@/components/workspace/window-shapes'
 import { collectTransomIssues, collectWindowIssues, computeSashWeightKg, resolveGlassWeightPerSqm, type TranslatedIssue } from '@/lib/window-weight'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -88,17 +80,23 @@ const PLACEHOLDER_HEIGHT_MM = 1200
 /** The assembly-level issue's part id — it belongs to no drawn part. */
 const ASSEMBLY_PART_ID = 'assembly'
 
-interface WindowDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  projectId: string
-  /** For the favourite frame pre-select and the tree's preferred catalogue. */
-  project?: ProjectDetail
-  /** Absent for create; present for edit — fetched internally, so the
-   * caller (a canvas card, which only holds a `WindowSummary`) doesn't
-   * need the full detail just to open this dialog. */
-  windowId?: string
-  onCreated?: (window: WindowDetail) => void
+/**
+ * Route wrapper — `/workspace/projects/:projectId/windows/new` and
+ * `/windows/:windowId`. `WindowEditor` is keyed on `windowId` so
+ * switching between "new" and any two windows always gets a fresh
+ * component instance (React Router reuses the same instance across a
+ * param-only change by default; every bit of local editor state below
+ * — selection, bar-draw mode, the add-panel flow — is only ever valid
+ * for the window it was created for).
+ */
+export function WindowEditorPage() {
+  const { projectId, windowId } = useParams<{ projectId: string; windowId?: string }>()
+  // The route always supplies a projectId; this guard only exists to
+  // satisfy the type (useParams can't statically prove it's present),
+  // and it runs before any hooks below — WindowEditor itself never
+  // conditionally skips a hook.
+  if (!projectId) return null
+  return <WindowEditor key={windowId ?? 'new'} projectId={projectId} windowId={windowId} />
 }
 
 /**
@@ -115,19 +113,21 @@ interface WindowDialogProps {
  * `register()` + `setValueAs`, for numeric/select fields — a
  * `register()`-driven numeric input populated via `reset()` and never
  * typed into can silently submit as `null` (bug-011).
+ *
+ * A full-screen route, not a modal — see docs/window_editor_planing.md.
+ * `projectId`/`windowId` come straight off the URL rather than props,
+ * so there's nothing above this in the tree that needs to know a window
+ * is being edited (unlike the old dialog, which the workspace shell had
+ * to own open/close state for).
  */
-export function WindowDialog({
-  open,
-  onOpenChange,
-  projectId,
-  project,
-  windowId,
-  onCreated,
-}: WindowDialogProps) {
+function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: string }) {
+  const navigate = useNavigate()
   const { t } = useTranslation('workspace')
   const { t: tLookups } = useTranslation('lookups')
   const { t: tCommon } = useTranslation('common')
   const isEdit = !!windowId
+
+  const onDone = () => void navigate(`/workspace/projects/${projectId}`)
 
   // Drawing selection/hover state — owned here (not inside WindowDrawing
   // itself) per docs/window_design_planing.md §3, so it can also drive
@@ -176,7 +176,10 @@ export function WindowDialog({
     }
   }, [barDrawMode])
 
-  const editingWindowQuery = useWindowQuery(open && windowId ? windowId : undefined)
+  const projectQuery = useProjectQuery(projectId)
+  const project = projectQuery.data
+
+  const editingWindowQuery = useWindowQuery(windowId)
   const editingWindow = editingWindowQuery.data
 
   const createMutation = useCreateWindowMutation(projectId)
@@ -194,47 +197,30 @@ export function WindowDialog({
     reset,
     setValue,
     watch,
-    formState: { errors, isSubmitting, isSubmitted },
+    formState: { errors, isSubmitting, isSubmitted, isDirty },
   } = useForm<CreateWindowInput>({
     resolver: zodResolver(createWindowSchema),
     defaultValues: emptyWindow(projectId),
   })
 
-  // Guards the create-mode reset below so it only fires on the
-  // closed→open transition, not on every render while open. Without
-  // this, setting a favourite from the tree's right-click menu mid-fill
-  // (a real thing to do, since the tree lives inside this very dialog)
-  // changes `project.favoriteFrameProfile`, which would otherwise
-  // re-trigger the effect and wipe out whatever the user had already
-  // typed — confirmed live in the browser, not hypothetical (bug-012).
-  const wasOpen = useRef(false)
+  // `WindowEditor` is remounted (via the `key` on `windowId` above)
+  // every time the route switches to a different window, so this only
+  // ever needs to fire once per mount — no "closed" state to gate on
+  // anymore, unlike the old dialog. Still guarded by a ref rather than
+  // firing unconditionally on every render: without it, setting a
+  // favourite from the tree's right-click menu mid-fill (a real thing
+  // to do, since the tree lives inside this very screen) changes
+  // `project.favoriteFrameProfile`, which would otherwise re-trigger
+  // the effect and wipe out whatever the user had already typed —
+  // confirmed live in the browser, not hypothetical (bug-012).
+  const initialized = useRef(false)
 
   useEffect(() => {
-    if (!open) {
-      wasOpen.current = false
-      setSelectedPartId(null)
-      setActivePanelIndex(0)
-      setSelectedPanelIndices([0])
-      setHoveredPanelIndex(null)
-      setAddRequest(null)
-      setAddPanelType(null)
-      // `WindowDialog` is a single instance reused across every window
-      // (no `key`, see the `activePanelIndex`-keyed effect below for
-      // why that one alone isn't enough) — without this, closing the
-      // dialog while mid-drawing left `barDrawMode` stuck `true` for
-      // whatever window got opened next, panel 0 or not. Found live:
-      // reopening this exact test window showed "Drawing…" already
-      // active with nothing drawn yet.
-      setBarDrawMode(false)
-      setSelectedBarId(null)
-      setPendingDeleteBarId(null)
-      return
-    }
+    if (initialized.current) return
     // Editing, but the detail fetch hasn't landed yet — wait rather than
     // briefly resetting to blank create-mode defaults.
     if (isEdit && !editingWindow) return
-    if (wasOpen.current) return
-    wasOpen.current = true
+    initialized.current = true
     reset(
       editingWindow
         ? {
@@ -272,7 +258,86 @@ export function WindowDialog({
           }
         : emptyWindow(projectId, project?.favoriteFrameProfile ?? null),
     )
-  }, [open, isEdit, editingWindow, reset, projectId, project?.favoriteFrameProfile])
+  }, [isEdit, editingWindow, reset, projectId, project?.favoriteFrameProfile])
+
+  // ---- Leaving with unsaved changes -------------------------------------
+  //
+  // `requestLeave` is the single gate every "leave this screen" affordance
+  // goes through — the back arrow, the Cancel button, the physical browser
+  // back button/trackpad swipe (via the popstate trick below), and a tab
+  // close/refresh (via beforeunload). A successful save does NOT go
+  // through this — `onSubmit` below calls `onDone()` directly, since
+  // there's nothing left to discard once the request succeeds.
+  const [confirmLeave, setConfirmLeave] = useState<{ onConfirm: () => void; onCancel?: () => void } | null>(null)
+  // Set just before AlertDialogAction's own click closes the dialog, so
+  // the single onOpenChange(false) below can tell "Discard" apart from
+  // every other way the dialog closes (Cancel, Escape, an outside click)
+  // — all of which mean the same thing here: stay.
+  const confirmedRef = useRef(false)
+
+  const requestLeave = useCallback(
+    (onConfirm: () => void, onCancel?: () => void) => {
+      if (!isDirty) {
+        onConfirm()
+        return
+      }
+      setConfirmLeave({ onConfirm, onCancel })
+    },
+    [isDirty],
+  )
+
+  // Stops the trackpad two-finger swipe-back gesture from leaving this
+  // screen entirely (Chromium honours `overscroll-behavior-x` for the
+  // navigation gesture, not only for rubber-band scrolling) — scoped to
+  // this screen's lifetime, not applied app-wide. Unconditional, not
+  // gated on `isDirty`: the point is to stop the accidental swipe from
+  // ever firing here, so it doesn't need to have discarded anything
+  // for the fix to matter.
+  useEffect(() => {
+    const root = document.documentElement
+    const previous = root.style.overscrollBehaviorX
+    root.style.overscrollBehaviorX = 'none'
+    return () => {
+      root.style.overscrollBehaviorX = previous
+    }
+  }, [])
+
+  // Tab close, refresh, or typing a new URL — the one case this can't
+  // hand off to `requestLeave`'s own dialog, since the page is gone
+  // before any of our own code could run. The browser's own generic
+  // prompt is all any site gets here; `returnValue` is what triggers it.
+  useEffect(() => {
+    if (!isDirty) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [isDirty])
+
+  // The physical back button (and the swipe gesture on a browser/OS
+  // combination the CSS above doesn't fully catch) fires `popstate`
+  // after the entry has already been popped — there's no "cancel this
+  // navigation" native API for it. The standard workaround: push a
+  // harmless duplicate of the current entry once there's something to
+  // lose, so the first back press only consumes THAT (no visible
+  // change, since the URL is identical) and lands here instead of
+  // actually leaving. Confirming calls `history.back()` again — for
+  // real this time, since the duplicate is already gone. Cancelling
+  // re-pushes the duplicate so the next back press is caught too.
+  useEffect(() => {
+    if (!isDirty) return
+    window.history.pushState(null, '', window.location.href)
+    const onPopState = () => {
+      requestLeave(
+        () => window.history.back(),
+        () => window.history.pushState(null, '', window.location.href),
+      )
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [isDirty, requestLeave])
 
   // The full union, not window-only — the "+" flow can genuinely append
   // a transom now (docs/transom_tasks.md Step 5).
@@ -393,7 +458,7 @@ export function WindowDialog({
     if (selectedBarId) setPendingDeleteBarId(selectedBarId)
   }
 
-  // ---- Attach affordance ---------------------------------------------
+  // ---- Attach affordance -----------------------------------------------
   //
   // With two or more panels selected the markers stay put — that
   // selection was deliberate. With one or none they follow the pointer,
@@ -460,7 +525,7 @@ export function WindowDialog({
   // since only WHICH part id to select differs (a transom has no sash,
   // but its frame ring is still `:frame`, so even that's the same).
   const landOnNewPanel = (next: WindowPanelInput[]) => {
-    setValue('panels', next, { shouldValidate: true })
+    setValue('panels', next, { shouldValidate: true, shouldDirty: true })
     const newIndex = next.length - 1
     setActivePanelIndex(newIndex)
     setSelectedPanelIndices([newIndex])
@@ -520,7 +585,7 @@ export function WindowDialog({
     landOnNewPanel(next)
   }
 
-  // ---- Panel mutation -------------------------------------------------
+  // ---- Panel mutation ---------------------------------------------------
 
   const updateActivePanel = (changes: Partial<WindowPanelWindowInput>) => {
     setValue(
@@ -536,7 +601,7 @@ export function WindowDialog({
       panels.map((panel, i) =>
         i === activePanelIndex && panel.panelType === PanelType.WINDOW ? { ...panel, ...changes } : panel,
       ),
-      { shouldValidate: true },
+      { shouldValidate: true, shouldDirty: true },
     )
   }
 
@@ -549,7 +614,7 @@ export function WindowDialog({
       panels.map((panel, i) =>
         i === activePanelIndex && panel.panelType === PanelType.TRANSOM ? { ...panel, ...changes } : panel,
       ),
-      { shouldValidate: true },
+      { shouldValidate: true, shouldDirty: true },
     )
   }
 
@@ -573,14 +638,14 @@ export function WindowDialog({
   }
 
   const onPanelSizeChange = (widthMm: number, heightMm: number) => {
-    setValue('panels', resizePanel(panels, activePanelIndex, widthMm, heightMm), { shouldValidate: true })
+    setValue('panels', resizePanel(panels, activePanelIndex, widthMm, heightMm), { shouldValidate: true, shouldDirty: true })
   }
 
   const canDeletePanel = panels.length > 1 && removePanel(panels, activePanelIndex) !== null
   const onDeletePanel = () => {
     const next = removePanel(panels, activePanelIndex)
     if (!next) return
-    setValue('panels', next, { shouldValidate: true })
+    setValue('panels', next, { shouldValidate: true, shouldDirty: true })
     const fallback = Math.max(0, activePanelIndex - 1)
     setActivePanelIndex(fallback)
     setSelectedPanelIndices([fallback])
@@ -604,7 +669,7 @@ export function WindowDialog({
     setPendingDeleteBarId(null)
   }
 
-  // ---- Active panel's options ----------------------------------------
+  // ---- Active panel's options -------------------------------------------
 
   const sashOptions = (profilesQuery.data ?? [])
     .filter((p) => p.profileType === ProfileType.LEAF && p.catalog === activeInfo?.frame?.catalog)
@@ -696,7 +761,7 @@ export function WindowDialog({
     updateActiveTransomPanel({ transomProfile: ref, glass: '' as ScopedRef })
   }
 
-  // ---- The face toggle -------------------------------------------------
+  // ---- The face toggle ---------------------------------------------------
 
   // Only matters when it would actually show something different — both
   // colours picked on some panel, and they don't resolve to the same hex
@@ -708,7 +773,7 @@ export function WindowDialog({
     return interiorHex !== exteriorHex
   })
 
-  // ---- Per-panel render descriptors ------------------------------------
+  // ---- Per-panel render descriptors --------------------------------------
 
   // `useResolvedPanels` already did the catalogue work (colours, glass
   // tint, Georgian grid). Two fields are overridden here: `placement`
@@ -723,7 +788,7 @@ export function WindowDialog({
       : { ...r.render, placement: layoutInput[i] }
   })
 
-  // ---- Issues ----------------------------------------------------------
+  // ---- Issues ------------------------------------------------------------
 
   // A brand-new window starts with every required field empty — showing
   // "Pick a sash profile." before the user has touched anything reads as
@@ -852,7 +917,7 @@ export function WindowDialog({
     }
   }
 
-  // ---- Submit ----------------------------------------------------------
+  // ---- Submit --------------------------------------------------------------
 
   const onSubmit = async (data: CreateWindowInput) => {
     try {
@@ -867,9 +932,8 @@ export function WindowDialog({
       } else {
         const created = await createMutation.mutateAsync(body)
         toast.success(t('windowDialog.created', { name: created.name }))
-        onCreated?.(created)
       }
-      onOpenChange(false)
+      onDone()
     } catch (err) {
       toast.error(apiErrorMessage(err, t('windowDialog.error')))
     }
@@ -878,7 +942,7 @@ export function WindowDialog({
   // Once a frame profile is picked, its catalogue's system type is known
   // — swap the generic title for one naming it (e.g. "New sliding
   // window"), same label text `lookups.json`'s systemType filter uses.
-  const dialogTitle = activeInfo?.systemType
+  const pageTitle = activeInfo?.systemType
     ? t(isEdit ? 'windowDialog.editTitleTyped' : 'windowDialog.createTitleTyped', {
         type: tLookups(`systemType.${activeInfo.systemType}`).toLowerCase(),
       })
@@ -888,7 +952,7 @@ export function WindowDialog({
   // defaults, not just favoriteFrameProfile — a favourite frame that
   // isn't the project's own default catalogue would otherwise leave the
   // tree's "preferred catalogue" expansion pointing at the wrong branch
-  // every time this dialog opens next. `ref` is whichever profile was
+  // every time this screen opens next. `ref` is whichever profile was
   // right-clicked in the tree, not necessarily the one currently
   // selected on the form, so its catalogue/brand are looked up fresh.
   const onSetFavorite = (ref: ScopedRef) => {
@@ -911,41 +975,20 @@ export function WindowDialog({
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* FIXED height and width (not max-h/max-w) with a constant 2rem
-          viewport margin on every side — an intrinsic/auto height up to
-          a cap still resizes the whole centered box every time inner
-          content changes height (a validation message appearing, a
-          tree branch expanding), which reads as the dialog visibly
-          jumping/flickering. Fixing both dimensions means only the
-          inner scroll regions ever move, and the three columns
-          (tree/drawing/panel) get the full available width to lay out
-          in rather than being capped at some fraction of the screen. */}
-      <DialogContent
-        className="flex h-[calc(100svh-4rem)] flex-col sm:max-w-[calc(100vw-4rem)]"
-        // While drawing bars, Escape is `window-drawing.tsx`'s own —
-        // it clears a pending anchor or exits draw mode (arch_windows_
-        // planing.md §6.2). Radix's Dialog ALSO listens for Escape,
-        // globally, to close the whole dialog; without this it wins
-        // too, on the SAME keypress, silently discarding whatever
-        // hasn't been saved yet. Found live in the browser: three
-        // bars fanned from one point, pressed Escape meaning "stop
-        // drawing," and the entire edit dialog closed instead.
-        onEscapeKeyDown={(e) => {
-          if (barDrawMode) e.preventDefault()
-        }}
-      >
-        <form
-          onSubmit={(e) => void handleSubmit(onSubmit)(e)}
-          noValidate
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <DialogHeader className="shrink-0">
-            <DialogTitle>{dialogTitle}</DialogTitle>
-            {/* Kept for Radix's aria-describedby, not shown — the user
-                asked for the visible subtitle gone, not the a11y wiring. */}
-            <DialogDescription className="sr-only">{t('windowDialog.description')}</DialogDescription>
-          </DialogHeader>
+      <div className="flex h-svh flex-col bg-background">
+        <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate className="flex min-h-0 flex-1 flex-col">
+          <header className="flex shrink-0 items-center gap-3 border-b border-border p-4">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t('actions.back')}
+              onClick={() => requestLeave(onDone)}
+            >
+              <ArrowLeft className="size-4 rtl:rotate-180" aria-hidden="true" />
+            </Button>
+            <h1 className="font-heading text-base font-medium">{pageTitle}</h1>
+          </header>
 
           {/* A frame profile tree (18rem) + the drawing (1fr) + a
               fixed-width options column, so all three stay put and
@@ -954,7 +997,7 @@ export function WindowDialog({
               narrowed from its original 22rem — it only ever holds
               short profile codes, and the drawing is what benefits from
               the room. */}
-          <div className="mt-6 grid min-h-0 flex-1 grid-cols-[18rem_1fr_26rem] gap-4 overflow-hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-[18rem_1fr_26rem] gap-4 overflow-hidden p-4">
             <div className="flex min-h-0 min-w-0 flex-col border-e border-border ps-1 pe-3">
               {/* A transom has no frame profile at all (its own
                   transom profile is Step 6's job to edit) — this whole
@@ -1110,10 +1153,10 @@ export function WindowDialog({
                   onDeletePanel={canDeletePanel ? onDeletePanel : undefined}
                   deleteDisabledReason={canDeletePanel ? undefined : t('windowDialog.design.deletePanelBlocked')}
                   name={watch('name')}
-                  onNameChange={(value) => setValue('name', value, { shouldValidate: true })}
+                  onNameChange={(value) => setValue('name', value, { shouldValidate: true, shouldDirty: true })}
                   nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
                   quantity={quantity}
-                  onQuantityChange={(value) => setValue('quantity', value, { shouldValidate: true })}
+                  onQuantityChange={(value) => setValue('quantity', value, { shouldValidate: true, shouldDirty: true })}
                   quantityError={showValidation && errors.quantity ? t('fields.quantityRequired') : undefined}
                   widthMm={activeRaw?.widthMm ?? NaN}
                   heightMm={activeRaw?.heightMm ?? NaN}
@@ -1151,10 +1194,10 @@ export function WindowDialog({
                     canDeletePanel ? undefined : t('windowDialog.design.deletePanelBlocked')
                   }
                   name={watch('name')}
-                  onNameChange={(value) => setValue('name', value, { shouldValidate: true })}
+                  onNameChange={(value) => setValue('name', value, { shouldValidate: true, shouldDirty: true })}
                   nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
                   quantity={quantity}
-                  onQuantityChange={(value) => setValue('quantity', value, { shouldValidate: true })}
+                  onQuantityChange={(value) => setValue('quantity', value, { shouldValidate: true, shouldDirty: true })}
                   quantityError={showValidation && errors.quantity ? t('fields.quantityRequired') : undefined}
                   widthMm={activeRaw?.widthMm ?? NaN}
                   heightMm={activeRaw?.heightMm ?? NaN}
@@ -1254,52 +1297,84 @@ export function WindowDialog({
                   flyScreenAllowed={activeInfo.flyScreenAllowed}
                   onFlyScreenChange={(value) => updateActivePanel({ hasFlyScreen: value })}
                   location={watch('location') ?? null}
-                  onLocationChange={(value) => setValue('location', value, { shouldValidate: true })}
+                  onLocationChange={(value) => setValue('location', value, { shouldValidate: true, shouldDirty: true })}
                   notes={watch('notes') ?? null}
-                  onNotesChange={(value) => setValue('notes', value, { shouldValidate: true })}
+                  onNotesChange={(value) => setValue('notes', value, { shouldValidate: true, shouldDirty: true })}
                 />
               )}
             </div>
           </div>
 
-          <DialogFooter className="shrink-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-muted/50 p-3 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => requestLeave(onDone)}>
               {t('actions.cancel')}
             </Button>
             <Button type="submit" disabled={isSubmitting}>
               {isEdit ? t('actions.save') : t('actions.create')}
             </Button>
-          </DialogFooter>
+          </footer>
         </form>
-      </DialogContent>
-    </Dialog>
+      </div>
 
-    {/* Bar delete confirm — §6.3. The dependents it names are already
-        highlighted in the danger colour on the drawing underneath by
-        the time this renders (window-drawing.tsx reacts to
-        `pendingDeleteBarId` directly), not just described in words
-        here. A plain AlertDialog, not the typed-name confirm client/
-        project deletion use — this is in-memory form state, gone the
-        instant the outer dialog closes without saving, not a
-        server-side cascade. */}
-    <AlertDialog open={pendingDeleteBarId !== null} onOpenChange={(next) => !next && setPendingDeleteBarId(null)}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t('fields.barsDeleteConfirmTitle')}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {pendingDeleteDependentsCount > 0
-              ? t('fields.barsDeleteConfirmDescriptionCascade', { count: pendingDeleteDependentsCount })
-              : t('fields.barsDeleteConfirmDescriptionPlain')}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={confirmDeleteBar}>
-            {tCommon('actions.delete')}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      {/* Bar delete confirm — §6.3. The dependents it names are already
+          highlighted in the danger colour on the drawing underneath by
+          the time this renders (window-drawing.tsx reacts to
+          `pendingDeleteBarId` directly), not just described in words
+          here. A plain AlertDialog, not the typed-name confirm client/
+          project deletion use — this is in-memory form state, gone the
+          instant this screen is left without saving, not a server-side
+          cascade. */}
+      <AlertDialog open={pendingDeleteBarId !== null} onOpenChange={(next) => !next && setPendingDeleteBarId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('fields.barsDeleteConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDeleteDependentsCount > 0
+                ? t('fields.barsDeleteConfirmDescriptionCascade', { count: pendingDeleteDependentsCount })
+                : t('fields.barsDeleteConfirmDescriptionPlain')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmDeleteBar}>
+              {tCommon('actions.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* One gate for every way to leave this screen with unsaved
+          changes — see `requestLeave` above. `onOpenChange(false)` is
+          the single place that decides "Discard" from every other way
+          the dialog closes (Cancel, Escape, an outside click all mean
+          "stay"), via `confirmedRef` set just before Discard's own
+          click closes it. */}
+      <AlertDialog
+        open={confirmLeave !== null}
+        onOpenChange={(open) => {
+          if (open) return
+          if (confirmedRef.current) {
+            confirmLeave?.onConfirm()
+          } else {
+            confirmLeave?.onCancel?.()
+          }
+          confirmedRef.current = false
+          setConfirmLeave(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('windowDialog.discardTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('windowDialog.discardDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('actions.keepEditing')}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => (confirmedRef.current = true)}>
+              {t('actions.discard')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

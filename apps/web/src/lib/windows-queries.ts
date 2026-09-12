@@ -64,7 +64,7 @@ export function useDuplicateWindowMutation(projectId: string) {
         // three-panel unit is a three-panel unit. `widthMm`/`heightMm`
         // are absent deliberately: the API derives them from these.
         // Window-only for now (docs/transom_tasks.md hasn't reached
-        // duplication yet) — same posture as window-dialog.tsx's own
+        // duplication yet) — same posture as window-editor-page.tsx's own
         // cast for the same reason.
         panels: (detail.panels as WindowPanelWindowDetail[]).map((panel) => ({
           ...panel,

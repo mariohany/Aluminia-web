@@ -54,12 +54,12 @@ export function WindowThumbnail({
   // see approaching the building.
   const resolved = useResolvedPanels(panels, 'exterior')
 
-  // Branches per `panelType`, same as `window-dialog.tsx`'s own
+  // Branches per `panelType`, same as `window-editor-page.tsx`'s own
   // `layoutInput` (docs/transom_tasks.md Step 5) — a saved window can
   // genuinely contain a transom now. Found and fixed while finishing
   // Step 7: this file is `useResolvedPanels`'s SECOND real consumer,
   // and hardcoding `panelType: PanelType.WINDOW` here regardless of
-  // the panel's own real type was never updated when window-dialog.tsx
+  // the panel's own real type was never updated when window-editor-page.tsx
   // was — a saved transom would have been handed to `buildWindowLayout`
   // as if it had a frame/sash it doesn't, drawing a fake sash ring
   // inside what should be a plain bar.

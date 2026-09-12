@@ -156,7 +156,7 @@ export function useResolvedPanels(
       // `computeSashWeightKg({ ..., sashProfile: transomProfile })` is
       // literally the same call a window's sash already uses) — `info.
       // sash` holds it under that name deliberately, not by accident,
-      // so window-dialog.tsx's already-panel-type-agnostic
+      // so window-editor-page.tsx's already-panel-type-agnostic
       // `glassOptions`/`glassValue` derivation (built once, keyed off
       // `activeInfo.maxGlassAllowed`) works for a transom with no
       // separate code path. `frame`/`systemType`/`showDoor`/

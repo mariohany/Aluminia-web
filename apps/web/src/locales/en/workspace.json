@@ -209,6 +209,8 @@
     "duplicate": "Duplicate",
     "back": "Back",
     "next": "Next",
+    "discard": "Discard",
+    "keepEditing": "Keep editing",
     "newClient": "New client",
     "newProject": "New project",
     "newWindow": "New window",
@@ -246,6 +248,8 @@
     "created": "Created {{name}}.",
     "updated": "Window saved.",
     "error": "Couldn't save the window. Try again.",
+    "discardTitle": "Discard unsaved changes?",
+    "discardDescription": "This window has unsaved changes. Leaving now will discard them.",
     "design": {
       "interior": "Interior",
       "exterior": "Exterior",

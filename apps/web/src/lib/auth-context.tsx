@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { AuthenticatedUser, LoginResponse } from '@repo/types/auth'
-import { apiFetch, setAccessToken } from '@/lib/api-client'
+import { apiFetch, refreshSession, setAccessToken } from '@/lib/api-client'
 
 interface AuthContextValue {
   user: AuthenticatedUser | null
@@ -17,15 +17,16 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 // Module-level, not component state: refresh tokens are single-use and
 // rotate on every call, so two concurrent restore attempts (React
-// StrictMode double-invoking this effect in development, or just two
-// browser tabs loading at once) would race — the second call presents a
-// token the first one already rotated away, and gets rejected as reuse.
-// Sharing one in-flight promise means only one request ever actually
-// goes out for a given page load.
+// StrictMode double-invoking this effect in development) would race —
+// the second call presents a token the first one already rotated away.
+// `refreshSession` shares its in-flight call with the 401 retry in
+// api-client too, so nothing in this tab can ever refresh twice at once;
+// holding the settled promise here keeps a remount from re-refreshing a
+// session it has already restored.
 let sessionRestorePromise: Promise<LoginResponse | null> | null = null
 
 function restoreSession(): Promise<LoginResponse | null> {
-  sessionRestorePromise ??= apiFetch<LoginResponse>('/auth/refresh', { method: 'POST', skipAuthRetry: true }).catch(() => null)
+  sessionRestorePromise ??= refreshSession()
   return sessionRestorePromise
 }
 

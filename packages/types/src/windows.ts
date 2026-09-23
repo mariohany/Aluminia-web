@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { scopedRefSchema } from '@repo/types/company-lookups'
+import { slidingLayoutSchema, type SlidingLayoutInput } from '@repo/types/sliding'
 
 // Not a relative './company-lookups' import — packages/types has no
 // build step, and a relative cross-file import to a sibling that
@@ -104,39 +105,65 @@ export const windowBarSchema = z.object({
 })
 export type WindowBarInput = z.infer<typeof windowBarSchema>
 
-// `panelType` is a plain string literal, not reusing `HeadShape`-style
-// naming — deliberately not called `kind`, which already means
-// something different (`WindowPart['kind']` in
-// apps/web/src/lib/window-geometry.ts, the *drawn component* within a
-// panel — 'frame'/'sash'/'glass'/'flyScreen'). This is a new,
-// panel-level discriminator one level up from that.
-export const PanelType = {
-  WINDOW: 'window',
-  TRANSOM: 'transom',
+// A section is fixed (bead + glass straight off the frame/divider) or
+// opening (sash + opening type + glass) — see
+// docs/sections_planing.md's vocabulary. Not reusing `PanelType`'s old
+// two-value shape: this discriminates a *cell inside a panel's grid*,
+// not a panel itself — `PanelType` (and the coupled-transom panel it
+// named) is gone; see docs/sections_planing.md decision 3.
+export const SectionKind = {
+  FIXED: 'fixed',
+  OPENING: 'opening',
 } as const
-export type PanelType = (typeof PanelType)[keyof typeof PanelType]
+export type SectionKind = (typeof SectionKind)[keyof typeof SectionKind]
 
-// Shared by both branches below — everything a panel needs regardless
-// of what it actually is. Not itself a schema (a bare object literal,
-// spread into each branch) so each branch's own `z.object` stays the
-// single source of truth for its own shape; a wrapping `.extend()`
-// would work too but reads less plainly at the two call sites.
-const basePanelFields = {
-  xMm: z.number().int().min(0).max(MAX_DIMENSION_MM),
-  yMm: z.number().int().min(0).max(MAX_DIMENSION_MM),
-  widthMm: z.number().int().min(1).max(MAX_DIMENSION_MM),
-  heightMm: z.number().int().min(1).max(MAX_DIMENSION_MM),
-  glassKind: z.enum([GlassKind.SINGLE, GlassKind.COMBINATION]),
-  glass: scopedRefSchema,
-  interiorColor: scopedRefSchema.nullable().optional(),
-  exteriorColor: scopedRefSchema.nullable().optional(),
-}
+// One cell of a panel's grid (`row`/`col`, both 0-based, row-major —
+// see windowPanelSchema's `columnWidths`/`rowHeights`). Everything that
+// varies per-light lives here now; everything shared by the whole
+// frame (profile, divider, grid, head, colours) stays on the panel —
+// docs/sections_planing.md decision 7.
+export const windowSectionSchema = z
+  .object({
+    row: z.number().int().min(0),
+    col: z.number().int().min(0),
+    kind: z.enum([SectionKind.FIXED, SectionKind.OPENING]),
+    sashProfile: scopedRefSchema.nullable(),
+    // A fixed light's glass sits straight in a glazing bead rather than
+    // a sash — required exactly when `kind === 'fixed'`, the mirror
+    // image of `sashProfile`'s "required exactly when opening" rule
+    // below. Existing rows from before this field existed can still
+    // have `null` here (the DB CHECK tolerates it — see the
+    // AddSectionBeadProfile migration's own comment); this schema is
+    // what actually blocks a SAVE until one is picked.
+    beadProfile: scopedRefSchema.nullable(),
+    openingType: z.enum(hingedOpeningTypeValues).nullable(),
+    glassKind: z.enum([GlassKind.SINGLE, GlassKind.COMBINATION]),
+    glass: scopedRefSchema,
+    hasFlyScreen: z.boolean(),
+    // A sliding section's sashes — docs/sliding_windows_planing.md §12
+    // (moved here from the panel 2026-09-20 so a sliding panel can be
+    // divided: a transom light above a sliding opening, two sliding
+    // openings side by side — each section is fixed or sliding on its
+    // own). Non-null exactly when this section is an opening light in
+    // a SLIDING system; null for every hinged / curtain-wall section
+    // AND for a fixed sliding light (decision 6 — "fixed" is the kind,
+    // not a layout). Whether a sliding opening section is REQUIRED to
+    // carry one is the editor's rule (it needs the frame profile's
+    // systemType, same deferral as the hinged openingType rule); this
+    // schema only checks the blob's own shape and that it isn't on a
+    // fixed section. Legacy sliding sections from before this field
+    // read back `null` and are flagged, not backfilled (decision 5).
+    sliding: slidingLayoutSchema.nullable(),
+  })
+  .strict()
+export type WindowSectionInput = z.infer<typeof windowSectionSchema>
 
 /**
  * One panel of an assembly — a whole window unit with its own frame all
- * the way round, not a light within a shared frame. (Two lights sharing
- * one frame is what the fixed-mullion opening types already do; see
- * `splitRectWithMullion` in apps/web/src/lib/window-geometry.ts.)
+ * the way round, not a light within a shared frame. A panel with more
+ * than one section is exactly what the old coupled fixed-mullion
+ * opening types and the old coupled transom panel both used to fake —
+ * see docs/sections_planing.md for why this replaces both.
  *
  * `xMm`/`yMm` place the panel in the assembly's own mm space, origin at
  * the bounding box's top-left. The server re-normalises that origin on
@@ -151,45 +178,47 @@ const basePanelFields = {
  */
 export const windowPanelSchema = z
   .object({
-    ...basePanelFields,
-    panelType: z.literal(PanelType.WINDOW),
+    xMm: z.number().int().min(0).max(MAX_DIMENSION_MM),
+    yMm: z.number().int().min(0).max(MAX_DIMENSION_MM),
+    widthMm: z.number().int().min(1).max(MAX_DIMENSION_MM),
+    heightMm: z.number().int().min(1).max(MAX_DIMENSION_MM),
     frameProfile: scopedRefSchema,
-    sashProfile: scopedRefSchema,
-    hasFlyScreen: z.boolean(),
+    // Required iff the grid is bigger than 1×1 — one divider profile
+    // used by every mullion/transom in this panel (docs/sections_planing.md
+    // decision 4, rejecting a per-divider profile).
+    dividerProfile: scopedRefSchema.nullable(),
+    // Boundary-to-boundary pitches, row-major, summing to `widthMm` /
+    // `heightMm` respectively — NOT clear glass sizes, which derive
+    // from `ProfileMetrics` at layout time so a placeholder change
+    // never moves a stored dimension (decision 8).
+    columnWidths: z.array(z.number().int().min(1).max(MAX_DIMENSION_MM)).min(1).max(12),
+    rowHeights: z.array(z.number().int().min(1).max(MAX_DIMENSION_MM)).min(1).max(12),
+    sections: z.array(windowSectionSchema).min(1).max(144),
     isDoor: z.boolean(),
-    openingType: z.enum(hingedOpeningTypeValues).nullable().optional(),
-    // Required, no `.default()` — matches `hasFlyScreen`/`isDoor` right
-    // above: every panel field the client can vary is required, so the
-    // whole object is always a complete, self-describing panel. (A
-    // `.default()` here would also fight react-hook-form's zodResolver,
-    // whose input/output types genuinely disagree once a field can be
-    // omitted on write but never absent on read — not worth the
-    // complexity for the one caller that would ever omit it.)
+    interiorColor: scopedRefSchema.nullable().optional(),
+    exteriorColor: scopedRefSchema.nullable().optional(),
     headShape: z.enum(headShapeValues),
     headRiseMm: z.number().int().min(1).max(MAX_DIMENSION_MM).nullable().optional(),
     bars: z.array(windowBarSchema).max(200),
+    // The sliding layout lives on each SECTION (`windowSectionSchema`),
+    // not here — planing §12.
   })
-  // `.strict()` — a window panel carrying a `transomProfile` (or any
-  // other stray key) is rejected outright rather than silently
-  // stripped. Without it, Zod's default (strip unknown keys) would
-  // undercut the whole point of the discriminated union: a client
-  // could send both `sashProfile` and `transomProfile` on a `window`
-  // body and get 201 back with the extra field quietly dropped,
-  // masking a real client-side bug instead of surfacing it at the wire
-  // boundary where it's cheap to fix.
+  // A panel carrying a stray key (e.g. a leftover `panelType` from a
+  // pre-sections client) is rejected outright rather than silently
+  // stripped — same reasoning `windowPanelSchema` always had, just
+  // without a union to guard against now.
   .strict()
-  // Four cross-field rules from docs/arch_windows_planing.md §3, none of
+  // Cross-field rules from docs/sections_planing.md Section 1, none of
   // which a single field's own `.min()`/`.max()` can express. NOT
   // reimplemented in windows.service.ts — these are single-panel field
   // checks the global ZodValidationPipe already fully enforces on
   // every write, and nothing calls WindowsService outside the HTTP
-  // path (confirmed while building Step 6, see docs/arch_windows_
-  // tasks.md's own correction there); a `validatePanelHead` was
-  // planned but never written for exactly that reason. Compare
+  // path (confirmed while building the arch-windows feature; see
+  // docs/arch_windows_tasks.md's own correction there). Compare
   // windows.service.ts's `normalizeHeads`, which DOES duplicate work
   // here — but that one CORRECTS a value (round's rise, and every
-  // shape's rise clamped below its own height), which a validator
-  // can only reject, not fix.
+  // shape's rise clamped below its own height), which a validator can
+  // only reject, not fix.
   .superRefine((panel, ctx) => {
     const hasRise = panel.headRiseMm != null
     if (panel.headShape === HeadShape.FLAT && hasRise) {
@@ -224,41 +253,132 @@ export const windowPanelSchema = z
       }
       earlierIds.add(bar.id)
     })
-  })
-export type WindowPanelWindowInput = z.infer<typeof windowPanelSchema>
 
-/**
- * A transom — a profile plus glass, no sash, no opening leaf. See
- * docs/transom_planing.md decision 1: closer to a fixed light than a
- * shrunk window, but its "frame" is a `ProfileType.TRANSOM` profile,
- * not a `ProfileType.FRAME` one. No `hasFlyScreen`/`isDoor`/
- * `openingType` at all — not merely unset, structurally absent, since
- * a fly screen mounts to a sash and a door is a sash that swings, and
- * a transom has no sash. No `headShape`/`headRiseMm`/`bars` either —
- * arched transoms are deliberately deferred (planing doc §7); every
- * transom is flat this phase, so there is nothing for those fields to
- * describe yet.
- */
-export const transomPanelSchema = z
-  .object({
-    ...basePanelFields,
-    panelType: z.literal(PanelType.TRANSOM),
-    transomProfile: scopedRefSchema,
-  })
-  // See windowPanelSchema's own `.strict()` just above for why: a
-  // transom body carrying a `sashProfile`/`hasFlyScreen`/etc. is
-  // rejected, not silently ignored.
-  .strict()
-export type WindowPanelTransomInput = z.infer<typeof transomPanelSchema>
+    // The grid itself: pitches must account for the whole panel, and
+    // every cell they imply must have exactly one section describing
+    // it — see docs/sections_planing.md's V8 `gridMismatch` (this is
+    // that same rule enforced at write time, not just flagged live in
+    // the editor).
+    const cols = panel.columnWidths.length
+    const rows = panel.rowHeights.length
+    const widthSum = panel.columnWidths.reduce((sum, w) => sum + w, 0)
+    if (widthSum !== panel.widthMm) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['columnWidths'],
+        message: `Column widths sum to ${widthSum}, not the panel width ${panel.widthMm}.`,
+      })
+    }
+    const heightSum = panel.rowHeights.reduce((sum, h) => sum + h, 0)
+    if (heightSum !== panel.heightMm) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['rowHeights'],
+        message: `Row heights sum to ${heightSum}, not the panel height ${panel.heightMm}.`,
+      })
+    }
 
-// The wire/storage shape for one panel, either kind. `panelType` is
-// what every downstream caller narrows on before reaching for a
-// branch-only field (`sashProfile`, `transomProfile`, ...) — the
-// union makes the illegal combination (a transom carrying a
-// `sashProfile`, a window carrying a `transomProfile`) a compile
-// error rather than merely unvalidated.
-export const windowPanelInputSchema = z.discriminatedUnion('panelType', [windowPanelSchema, transomPanelSchema])
-export type WindowPanelInput = z.infer<typeof windowPanelInputSchema>
+    if (panel.sections.length !== cols * rows) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['sections'],
+        message: `Expected ${cols * rows} sections for a ${cols}×${rows} grid, got ${panel.sections.length}.`,
+      })
+    } else {
+      const seen = new Set<string>()
+      panel.sections.forEach((section, index) => {
+        if (section.row >= rows || section.col >= cols) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['sections', index],
+            message: `Section (${section.row}, ${section.col}) is outside the ${cols}×${rows} grid.`,
+          })
+          return
+        }
+        const key = `${section.row}:${section.col}`
+        if (seen.has(key)) {
+          ctx.addIssue({ code: 'custom', path: ['sections', index], message: `Duplicate section at (${section.row}, ${section.col}).` })
+        }
+        seen.add(key)
+      })
+    }
+
+    // A divider profile is required exactly when there's a divider to
+    // make (decision 4); a 1×1 panel has none to profile.
+    const isGridded = cols > 1 || rows > 1
+    if (isGridded && panel.dividerProfile == null) {
+      ctx.addIssue({ code: 'custom', path: ['dividerProfile'], message: 'A panel split into more than one section needs a divider profile.' })
+    }
+    if (!isGridded && panel.dividerProfile != null) {
+      ctx.addIssue({ code: 'custom', path: ['dividerProfile'], message: 'A single-section panel has no divider.' })
+    }
+
+    // Per-section kind rules (decision 6 / decision 11): opening needs
+    // a sash; fixed has neither a sash nor an opening type nor a fly
+    // screen. `openingType` is NOT required just because a section is
+    // opening — it's a `HingedOpeningType`, meaningful only once this
+    // panel's frame resolves to a hinged system (same posture the
+    // panel-level field always had: "required iff opening (hinged)",
+    // Section 1's own field comment). A sliding or curtain-wall
+    // section is genuinely "opening" (it has a sash) with no opening
+    // type at all — real data, confirmed the hard way when the
+    // sections migration's stricter CHECK rejected exactly this shape
+    // for a live tenant (2026-09-13, see .wolf/buglog.json). Whether a
+    // HINGED opening section needs one picked is a service-level rule
+    // (it needs the resolved frame profile's systemType, which isn't a
+    // field on this row), not something this schema can decide.
+    panel.sections.forEach((section, index) => {
+      if (section.kind === SectionKind.OPENING) {
+        if (section.sashProfile == null) {
+          ctx.addIssue({ code: 'custom', path: ['sections', index, 'sashProfile'], message: 'An opening section needs a sash profile.' })
+        }
+        if (section.beadProfile != null) {
+          ctx.addIssue({ code: 'custom', path: ['sections', index, 'beadProfile'], message: 'An opening section has no glass beading profile.' })
+        }
+      } else {
+        if (section.sashProfile != null) {
+          ctx.addIssue({ code: 'custom', path: ['sections', index, 'sashProfile'], message: 'A fixed section has no sash profile.' })
+        }
+        if (section.beadProfile == null) {
+          ctx.addIssue({ code: 'custom', path: ['sections', index, 'beadProfile'], message: 'A fixed section needs a glass beading profile.' })
+        }
+        if (section.openingType != null) {
+          ctx.addIssue({ code: 'custom', path: ['sections', index, 'openingType'], message: 'A fixed section has no opening type.' })
+        }
+        if (section.hasFlyScreen) {
+          ctx.addIssue({ code: 'custom', path: ['sections', index, 'hasFlyScreen'], message: 'A fixed section cannot have a fly screen.' })
+        }
+        // A sliding layout describes an OPENING light — a fixed section
+        // has no sashes to lay out (sliding decision 6). Since §12 a
+        // gridded panel may well be sliding: each section on its own.
+        if (section.sliding != null) {
+          ctx.addIssue({ code: 'custom', path: ['sections', index, 'sliding'], message: 'A fixed section has no sliding sashes.' })
+        }
+      }
+    })
+
+    // Arch + grid interaction (decision 5): dividers only run under an
+    // arch as transoms, never as mullions, and a Round head's rise is
+    // pinned to half the width so it can't survive a second row.
+    if (panel.headShape !== HeadShape.FLAT && cols > 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['headShape'],
+        message: 'An arched head needs a single column — vertical dividers are not supported under an arch.',
+      })
+    }
+    if (panel.headShape === HeadShape.ROUND && rows > 1) {
+      ctx.addIssue({ code: 'custom', path: ['headShape'], message: 'A round head needs a single row: its rise is fixed at half the width.' })
+    }
+    if (rows > 1 && panel.headShape !== HeadShape.FLAT && panel.headRiseMm !== panel.rowHeights[0]) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['headRiseMm'],
+        message: `With more than one row, the stored rise must equal the top row's pitch (${panel.rowHeights[0]}).`,
+      })
+    }
+  })
+export type WindowPanelInput = z.infer<typeof windowPanelSchema>
 
 // `projectId` is create-only, deliberately — a window cannot be moved
 // between projects once it exists, for the same reason a project can't
@@ -275,7 +395,7 @@ export const createWindowSchema = z.object({
   projectId: z.uuid(),
   name: z.string().trim().min(1).max(255),
   quantity: z.number().int().min(1),
-  panels: z.array(windowPanelInputSchema).min(1),
+  panels: z.array(windowPanelSchema).min(1),
   location: optionalText,
   notes: optionalText,
 })
@@ -291,53 +411,54 @@ export type CreateWindowInput = z.infer<typeof createWindowSchema>
 export const updateWindowSchema = z.object({
   name: z.string().trim().min(1).max(255).optional(),
   quantity: z.number().int().min(1).optional(),
-  panels: z.array(windowPanelInputSchema).min(1).optional(),
+  panels: z.array(windowPanelSchema).min(1).optional(),
   location: optionalText,
   notes: optionalText,
 })
 export type UpdateWindowInput = z.infer<typeof updateWindowSchema>
 
-// Shared by both branches below — mirrors `basePanelFields` above, but
-// as the READ shape (colours resolved to `string | null`, not the
-// input's `ScopedRef | null | undefined`).
-interface PanelDetailBase {
-  xMm: number
-  yMm: number
-  widthMm: number
-  heightMm: number
+/**
+ * One section as read back — the input shape plus nothing, since every
+ * reference is already client-resolvable (mirrors `windowSectionSchema`,
+ * same reasoning `WindowPanelDetail` below has for the panel).
+ */
+export interface WindowSectionDetail {
+  row: number
+  col: number
+  kind: SectionKind
+  sashProfile: string | null
+  beadProfile: string | null
+  openingType: HingedOpeningType | null
   glassKind: GlassKind
   glass: string
-  interiorColor: string | null
-  exteriorColor: string | null
+  hasFlyScreen: boolean
+  sliding: SlidingLayoutInput | null
 }
 
 /**
  * One panel as read back — the input shape plus nothing, since every
- * field on it is already client-resolvable. A union for the same
- * reason `WindowPanelInput` is: `panel.panelType === 'window'` narrows
- * which of `sashProfile`/`transomProfile` (etc.) is actually there,
- * same as on the way in. Named per-branch, same as the input side
- * (`WindowPanelWindowInput`/`WindowPanelTransomInput`), for every
- * caller that's window-only for now (docs/transom_tasks.md Steps 3-4,
- * 6-7 haven't landed yet) to say so directly instead of intersecting
- * `WindowPanelDetail` with `{ panelType: 'window' }` inline each time.
+ * reference is already client-resolvable. No longer a union:
+ * `PanelType`/the coupled transom panel are gone (docs/sections_planing.md
+ * decision 3) — every panel is this one shape, with `sections`
+ * carrying what used to vary between the two branches.
  */
-export type WindowPanelWindowDetail = PanelDetailBase & {
-  panelType: typeof PanelType.WINDOW
+export interface WindowPanelDetail {
+  xMm: number
+  yMm: number
+  widthMm: number
+  heightMm: number
   frameProfile: string
-  sashProfile: string
-  hasFlyScreen: boolean
+  dividerProfile: string | null
+  columnWidths: number[]
+  rowHeights: number[]
+  sections: WindowSectionDetail[]
   isDoor: boolean
-  openingType: HingedOpeningType | null
+  interiorColor: string | null
+  exteriorColor: string | null
   headShape: HeadShape
   headRiseMm: number | null
   bars: WindowBarInput[]
 }
-export type WindowPanelTransomDetail = PanelDetailBase & {
-  panelType: typeof PanelType.TRANSOM
-  transomProfile: string
-}
-export type WindowPanelDetail = WindowPanelWindowDetail | WindowPanelTransomDetail
 
 /**
  * What a canvas card needs, and nothing more.

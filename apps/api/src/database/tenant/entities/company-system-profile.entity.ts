@@ -64,6 +64,12 @@ export class CompanySystemProfile {
   @Column({ name: 'accepts_fly_screen', type: 'boolean', default: false })
   acceptsFlyScreen: boolean;
 
+  // Rail (track) count of a sliding FRAME profile; null for every other
+  // profile — the service's `normalizeSlidingRails` decides, not the
+  // client. See docs/sliding_windows_planing.md §11.
+  @Column({ name: 'sliding_rails', type: 'integer', nullable: true })
+  slidingRails: number | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

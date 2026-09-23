@@ -3,6 +3,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import {
   LookupEntity,
+  normalizeSlidingRails,
   type BulkDeleteResult,
   type CreateSystemBrandInput,
   type CreateSystemCatalogInput,
@@ -342,7 +343,19 @@ export class SystemLookupsService {
   ): Promise<SystemProfileSummary> {
     let profile: SystemProfile;
     try {
-      profile = await this.profiles.save(this.profiles.create(input));
+      // The catalogue decides whether a rail count applies at all — a
+      // missing catalogue falls through to the FK error below as before.
+      const catalog = await this.catalogs.findOneBy({ id: input.catalogId });
+      profile = await this.profiles.save(
+        this.profiles.create({
+          ...input,
+          slidingRails: normalizeSlidingRails(
+            input.profileType,
+            catalog?.systemType,
+            input.slidingRails,
+          ),
+        }),
+      );
     } catch (error) {
       return translatePostgresError(error, 'That catalogue does not exist.');
     }
@@ -367,8 +380,18 @@ export class SystemLookupsService {
   ): Promise<SystemProfileSummary> {
     const profile = await this.profiles.findOneBy({ id });
     if (!profile) throw new NotFoundException('System profile not found.');
-    Object.assign(profile, input);
+    const { slidingRails, ...rest } = input;
+    Object.assign(profile, rest);
     try {
+      // Re-normalised on EVERY update, not only when `slidingRails` is
+      // sent: moving a frame to a hinged catalogue, or retyping it as a
+      // leaf, must null the count even if the client never mentions it.
+      const catalog = await this.catalogs.findOneBy({ id: profile.catalogId });
+      profile.slidingRails = normalizeSlidingRails(
+        profile.profileType,
+        catalog?.systemType,
+        slidingRails === undefined ? profile.slidingRails : slidingRails,
+      );
       await this.profiles.save(profile);
     } catch (error) {
       return translatePostgresError(error, 'That catalogue does not exist.');
@@ -646,6 +669,7 @@ export class SystemLookupsService {
       };
       const allCatalogs = await queryRunner.manager.find(SystemCatalog);
       const catalogIdsByName = new Map<string, string[]>();
+      const catalogById = new Map(allCatalogs.map((c) => [c.id, c]));
       for (const catalog of allCatalogs) {
         const list = catalogIdsByName.get(catalog.name) ?? [];
         list.push(catalog.id);
@@ -673,6 +697,13 @@ export class SystemLookupsService {
         resolvedProfileRows.set(`${catalogIds[0]}::${row.profileNo}`, {
           ...row,
           catalogId: catalogIds[0],
+          // Normalised here, once, so the create and update branches
+          // below compare and write the same value the service would.
+          slidingRails: normalizeSlidingRails(
+            row.profileType,
+            catalogById.get(catalogIds[0])?.systemType,
+            row.slidingRails,
+          ),
         });
       }
 
@@ -704,7 +735,8 @@ export class SystemLookupsService {
             existing.profileType !== row.profileType ||
             numbersChanged ||
             (existing.image ?? null) !== (row.image ?? null) ||
-            existing.acceptsFlyScreen !== row.acceptsFlyScreen;
+            existing.acceptsFlyScreen !== row.acceptsFlyScreen ||
+            existing.slidingRails !== row.slidingRails;
           if (changed) toUpdate.push({ id: existing.id, row });
           else profilesResult.unchangedCount += 1;
         }
@@ -732,6 +764,7 @@ export class SystemLookupsService {
                       inertiaIy: row.inertiaIy,
                       image: row.image,
                       acceptsFlyScreen: row.acceptsFlyScreen,
+                      slidingRails: row.slidingRails,
                     })),
                   )
                   .execute();
@@ -745,7 +778,7 @@ export class SystemLookupsService {
                 const values = toUpdate
                   .map(
                     (_, i) =>
-                      `($${i * 9 + 1}::uuid, $${i * 9 + 2}::profile_type, $${i * 9 + 3}::integer, $${i * 9 + 4}::real, $${i * 9 + 5}::integer, $${i * 9 + 6}::real, $${i * 9 + 7}::real, $${i * 9 + 8}::varchar, $${i * 9 + 9}::boolean)`,
+                      `($${i * 10 + 1}::uuid, $${i * 10 + 2}::profile_type, $${i * 10 + 3}::integer, $${i * 10 + 4}::real, $${i * 10 + 5}::integer, $${i * 10 + 6}::real, $${i * 10 + 7}::real, $${i * 10 + 8}::varchar, $${i * 10 + 9}::boolean, $${i * 10 + 10}::integer)`,
                   )
                   .join(', ');
                 const params = toUpdate.flatMap(({ id, row }) => [
@@ -758,11 +791,12 @@ export class SystemLookupsService {
                   row.inertiaIy,
                   row.image,
                   row.acceptsFlyScreen,
+                  row.slidingRails,
                 ]);
                 await queryRunner.query(
                   `UPDATE "system_profile" AS t
-                   SET "profile_type" = v.profile_type, "max_glass_thickness" = v.max_glass_thickness, "weight" = v.weight, "perimeter" = v.perimeter, "inertia_ix" = v.inertia_ix, "inertia_iy" = v.inertia_iy, "image" = v.image, "accepts_fly_screen" = v.accepts_fly_screen, "updated_at" = now()
-                   FROM (VALUES ${values}) AS v(id, profile_type, max_glass_thickness, weight, perimeter, inertia_ix, inertia_iy, image, accepts_fly_screen)
+                   SET "profile_type" = v.profile_type, "max_glass_thickness" = v.max_glass_thickness, "weight" = v.weight, "perimeter" = v.perimeter, "inertia_ix" = v.inertia_ix, "inertia_iy" = v.inertia_iy, "image" = v.image, "accepts_fly_screen" = v.accepts_fly_screen, "sliding_rails" = v.sliding_rails, "updated_at" = now()
+                   FROM (VALUES ${values}) AS v(id, profile_type, max_glass_thickness, weight, perimeter, inertia_ix, inertia_iy, image, accepts_fly_screen, sliding_rails)
                    WHERE t.id = v.id`,
                   params,
                 );
@@ -874,6 +908,7 @@ function toSystemProfileSummary(profile: SystemProfile): SystemProfileSummary {
     inertiaIy: profile.inertiaIy,
     image: profile.image,
     acceptsFlyScreen: profile.acceptsFlyScreen,
+    slidingRails: profile.slidingRails,
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
   };

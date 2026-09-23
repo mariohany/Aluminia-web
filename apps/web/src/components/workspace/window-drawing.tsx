@@ -1,22 +1,37 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { Minus, Plus } from 'lucide-react'
 import { SystemType } from '@repo/types/lookups'
 import type { WindowBarInput } from '@repo/types/windows'
+import { Button } from '@/components/ui/button'
 import {
-  NOMINAL_FRAME_FACE_MM,
-  NOMINAL_MULLION_BAR_MM,
-  NOMINAL_SASH_FACE_MM,
+  alignedEdgeMm,
+  cumulativeBoundaries,
+  formatDimensionMm,
+  freeSidesOf,
+  matchedPanelSize,
+  parsePartId,
+  positionFromPanelSize,
+  prospectivePanelSize,
+  sectionLetter,
   type AssemblyLayout,
   type PanelSide,
   type RectMm,
   type WindowPart,
 } from '@/lib/window-geometry'
-import type { PanelRender } from '@/lib/window-render'
+import { sectionRenderFor, type PanelRender } from '@/lib/window-render'
 import { cn } from '@/lib/utils'
 import {
   DEFAULT_FRAME_FILL,
   DEFAULT_GLASS_FILL,
   GLASS_FILL_OPACITY,
   MESH_STROKE,
+  MESH_STROKE_WIDTH_MM,
+  renderDivider,
+  renderFrameDetail,
+  renderGasket,
+  renderSashDetail,
+  seamColorFor,
+  type DetailStyle,
   archOutlinePath,
   archRingPath,
   barPath,
@@ -27,8 +42,15 @@ import {
   mullionGridFor,
   openBottomFramePath,
   outlineOf,
+  renderHardware,
+  renderFixedSymbols,
   renderOpeningTypeSymbols,
+  renderSlidingHardware,
+  renderSlidingSymbols,
   ringPath,
+  slidingHiddenEdges,
+  slidingPaintOrder,
+  slidingStrokeScale,
 } from '@/components/workspace/window-shapes'
 import {
   CROSSING_READOUT,
@@ -52,6 +74,21 @@ import type { TranslatedIssue } from '@/lib/window-weight'
  * that rather than a baked-in mm figure that would snap tighter at a
  * higher zoom and looser at a lower one. */
 const BAR_SNAP_TOLERANCE_PX = 14
+
+/** Real magnet radius (unlike the exact-mm-only edge-position guide,
+ * per Mario's own back-and-forth on that one) for the SIZE-match snap —
+ * "try snaping to match hight or width again." Same zoom-invariant
+ * pixel-radius pattern as `BAR_SNAP_TOLERANCE_PX`. */
+const SIZE_MATCH_SNAP_TOLERANCE_PX = 14
+
+// The drawing's own camera — see the `camera`/`baseViewBox` state in
+// `WindowDrawing` for why this is decoupled from content size entirely.
+const ZOOM_MIN = 0.25
+const ZOOM_MAX = 4
+const ZOOM_STEP = 1.2
+function clampZoom(zoom: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom))
+}
 
 /** Client (screen) coordinates → this SVG's own user-space (mm), via
  * the element's screen CTM rather than hand-inverting
@@ -102,9 +139,6 @@ function computeBarHover(e: MouseEvent<SVGGraphicsElement>, outline: HeadOutline
 
 const ERROR_COLOR = 'var(--destructive)'
 const WARNING_COLOR = 'oklch(0.72 0.15 75)'
-/** Default outline on every shape (frame/sash/glass) — replaced by the
- * selected/issue colour when either applies. */
-const DEFAULT_STROKE = 'var(--border)'
 
 export interface WindowDrawingProps {
   layout: AssemblyLayout
@@ -117,13 +151,14 @@ export interface WindowDrawingProps {
   onHover: (partId: string | null) => void
   /** Panels currently in the selection set, for the "+" affordance. */
   selectedPanelIndices: number[]
-  /** Whose dimension inputs are shown and editable. */
+  /** Which panel's bars/glass-outline/frame-fill below are "active" —
+   * its size is edited from the side panel now (`window-part-panel.tsx`'s
+   * own width/height fields), not from an overlay here (Mario,
+   * 2026-09-13: "show sizes outside the drawing and remove the fields
+   * on the drawing" — the side panel already had an identical pair of
+   * fields wired to the same `onPanelSizeChange`, so the drawing's own
+   * copy was a genuine duplicate, not a second real control). */
   activePanelIndex: number
-  onPanelWidthChange: (mm: number) => void
-  onPanelHeightChange: (mm: number) => void
-  /** aria-labels for the two dimension inputs — translated by the caller (`t('fields.widthMm')`/`t('fields.heightMm')`), since this component takes no i18n dependency of its own. */
-  widthLabel: string
-  heightLabel: string
   /** Where the "+" markers sit (the current selection's bounding box)
    * and which of its sides get one. `WindowEditor` decides both, via
    * `freeSidesOf()` — the drawing renders whatever it's handed and makes
@@ -193,6 +228,27 @@ export interface WindowDrawingProps {
    * on release), so the radius readout in the Bar section updates
    * every frame per the plan's own "done when". */
   onUpdateBarSag: (barId: string, sagMm: number) => void
+
+  /** Dragging a mullion/transom — Mario, 2026-09-15: "move the transom/
+   * mullion in the panel by dragging it." Fires on every mouse-move of a
+   * divider drag with the divider's own full assembly part id (e.g.
+   * `"p0:div-v1"`) and the pointer's desired boundary position, in
+   * PANEL-LOCAL mm along the divider's axis (same coordinate space
+   * `cumulativeBoundaries` uses) — `WindowEditor` parses the id and
+   * calls `moveDivider()`, same division of labour as `onSelect`/
+   * `onUpdateBarAnchor` above (this component only ever resolves screen
+   * pixels to SVG mm; it never touches the panel model itself). */
+  onDividerDrag: (dividerPartId: string, boundaryMm: number) => void
+
+  /** Dragging a panel's own FREE outer edge in/out — Mario: "resize the
+   * window by dragging any side in or out." Fires on every mouse-move
+   * with the panel index, which side, and the pointer's desired ABSOLUTE
+   * assembly-space position along that side's axis (already snapped
+   * onto another panel's edge when one is within tolerance — see
+   * `alignedEdgeMm`); `WindowEditor` calls `resizePanelEdge`/
+   * `resizeSectionEdge` (apps/web/src/lib/window-geometry.ts), same
+   * division of labour as `onDividerDrag` above. */
+  onPanelEdgeDrag: (panelIndex: number, side: PanelSide, positionMm: number) => void
 }
 
 function worstSeverity(issues: TranslatedIssue[] | undefined): TranslatedIssue['severity'] | null {
@@ -216,10 +272,6 @@ export function WindowDrawing({
   onHover,
   selectedPanelIndices,
   activePanelIndex,
-  onPanelWidthChange,
-  onPanelHeightChange,
-  widthLabel,
-  heightLabel,
   attachRect,
   attachSides,
   onPanelHover,
@@ -235,16 +287,103 @@ export function WindowDrawing({
   onRequestDeleteBar,
   onUpdateBarAnchor,
   onUpdateBarSag,
+  onDividerDrag,
+  onPanelEdgeDrag,
 }: WindowDrawingProps) {
   const { outerMm, parts, panelRects } = layout
+  const scale = Math.max(outerMm.width, outerMm.height)
+  // Any panel with its own grid (a mullion and/or a transom) gets an
+  // inner dimension chain of its own (2026-09-14/15, "show sizes
+  // outside the drawing") — reserve extra margin for that second tier
+  // only when at least one panel actually needs it, so an ungridded
+  // window's margin (and every position derived from it below) stays
+  // byte-identical to before this feature.
+  const anyPanelGridded = panels.some((p) => p.columnWidths.length > 1 || p.rowHeights.length > 1)
+  // A coupled (multi-panel) assembly gets its OWN per-window width/height
+  // tier too (2026-09-15, "an outer line size for each side not
+  // covered") — every panel's free side (per `freeSidesOf`, computed
+  // below per-panel) shows that panel's own size, alongside the overall
+  // assembly total already drawn further out. Meaningless for a single
+  // panel, whose own size already IS the overall total.
+  const showPerWindowDims = panels.length > 1
+  // Which side is actually free for EACH panel, on each axis — the same
+  // check the "+" attach marker already relies on, computed once here
+  // and shared by both the per-window callout (`PanelSizeCallout`) and
+  // the gridded section chain (`PanelDimensionCallouts`) below, so they
+  // can never disagree on "where does this panel's own dimension go"
+  // (2026-09-15: "check this image... draw me a suggestion" — the
+  // section chain used to be hardcoded to top/left only, which is why
+  // Panel 1's own mullion split and Panel 2's own transom split could
+  // go missing whenever a panel wasn't flush with the assembly's global
+  // corner).
+  const panelPlacements = panelRects.map((r) => ({ xMm: r.x, yMm: r.y, widthMm: r.width, heightMm: r.height }))
+  // Width prefers BOTTOM now (Mario, 2026-09-16, following the overall
+  // line's own move from top to bottom — "you missed another mesurement
+  // line at top, move it also") — matches the originally-approved
+  // dimension-callouts mock-up in full; height still prefers LEFT,
+  // unaffected, since only the width side was ever asked to move.
+  const widthSideFor = (i: number): 'top' | 'bottom' | null => {
+    const free = freeSidesOf([panelPlacements[i]], panelPlacements)
+    return free.includes('bottom') ? 'bottom' : free.includes('top') ? 'top' : null
+  }
+  const heightSideFor = (i: number): 'left' | 'right' | null => {
+    const free = freeSidesOf([panelPlacements[i]], panelPlacements)
+    return free.includes('left') ? 'left' : free.includes('right') ? 'right' : null
+  }
+  // Only the EARLIEST contributor to a shared bottom/left margin gets
+  // that margin's leading "gap to the assembly's own edge" segment — a
+  // second panel on the same margin (Panel 2 here, whose own bottom is
+  // ALSO free) has its own "before" span already covered by the first
+  // panel's own chain, not genuinely empty. Real bug caught live
+  // (2026-09-15): without this check, Panel 2's per-window width picked
+  // up a spurious "2,300" segment — Panel 1's own width, mistaken for
+  // an unmeasured gap just because Panel 2 itself doesn't start at
+  // x=0. Top/right never get a gap at all (unchanged scoping).
+  const widthGapStartXs = panelRects.map((r, i) => (widthSideFor(i) === 'bottom' ? r.x : Infinity))
+  const leftStartYs = panelRects.map((r, i) => (heightSideFor(i) === 'left' ? r.y : Infinity))
+  const minWidthGapStartX = Math.min(...widthGapStartXs)
+  const minLeftStartY = Math.min(...leftStartYs)
+  const widthGapFor = (i: number): number | undefined =>
+    widthSideFor(i) === 'bottom' && panelRects[i].x === minWidthGapStartX ? panelRects[i].x : undefined
+  const leftGapFor = (i: number): number | undefined =>
+    heightSideFor(i) === 'left' && panelRects[i].y === minLeftStartY ? panelRects[i].y : undefined
+  const wideMargin = anyPanelGridded || showPerWindowDims
   // The margin has to clear the "+" markers as well as the dimension
   // lines now — a marker on the outer edge of the assembly sits a little
   // outside it.
-  const margin = Math.max(outerMm.width, outerMm.height) * 0.16
-  const viewBox = { minX: -margin, minY: -margin, width: outerMm.width + margin * 2, height: outerMm.height + margin * 2 }
-  const meshCell = Math.max(outerMm.width, outerMm.height) * 0.02
-  const tickLen = margin * 0.18
-  const glyphRadius = Math.max(outerMm.width, outerMm.height) * 0.018
+  const margin = scale * (wideMargin ? 0.24 : 0.16)
+  // The CAMERA — deliberately decoupled from the content's own size from
+  // here on (Mario: "stop resizing the whole window while draging and
+  // allow the user to change zoom level to extend more if he want").
+  // `baseViewBox` is the fit-to-content view exactly as it looked the
+  // FIRST time this window opened — captured once via `useState`'s lazy
+  // initializer, which React guarantees never re-runs, so it stays fixed
+  // even as `outerMm`/`margin` above keep changing live with every edit.
+  // `camera` is the user's own zoom/pan on top of that fixed reference;
+  // nothing in this component ever recomputes it from content size again.
+  const [baseViewBox] = useState(() => ({
+    minX: -margin,
+    minY: -margin,
+    width: outerMm.width + margin * 2,
+    height: outerMm.height + margin * 2,
+  }))
+  const [camera, setCamera] = useState({ zoom: 1, panX: 0, panY: 0 })
+  const viewBox = {
+    minX: baseViewBox.minX + camera.panX,
+    minY: baseViewBox.minY + camera.panY,
+    width: baseViewBox.width / camera.zoom,
+    height: baseViewBox.height / camera.zoom,
+  }
+  const meshCell = scale * 0.02
+  // Shrunk from 0.18 (Mario, 2026-09-15, style mockup comparison: "make
+  // the end tip or the tip between the section measurement smaller") —
+  // applies to every tick mark drawn in this component (overall,
+  // per-window, per-section), not just one tier.
+  const tickLen = margin * 0.105
+  // Shrunk from 0.018 (Mario, 2026-09-16: "make the error icon smaller
+  // in this screen") — the badge only needs to read as "something's
+  // wrong here," not compete with the part it's sitting on.
+  const glyphRadius = scale * 0.011
   // The thin outline every shape (frame/sash/glass) gets around its own
   // edges — gray by default, orange (primary) once selected.
   const strokeWeight = Math.max(outerMm.width, outerMm.height) * 0.0028
@@ -260,16 +399,122 @@ export function WindowDrawing({
   const svgRef = useRef<SVGSVGElement>(null)
   const transform = useSvgToClientTransform(svgRef, viewBox)
 
-  const topLineY = -margin * 0.5
-  const leftLineX = -margin * 0.5
+  // Scroll/pinch to zoom, centred on the cursor rather than the
+  // viewport's own corner — the point under the cursor stays under it
+  // after the zoom, matching Figma/Miro-style canvas zoom. A native
+  // (non-React) listener with `{ passive: false }` is required to
+  // actually block the page's own scroll on wheel — React's `onWheel`
+  // is passive by default and can't reliably `preventDefault()` it.
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el) return
+    const onWheel = (e: globalThis.WheelEvent) => {
+      e.preventDefault()
+      const resolved = svgPointFromClient(el, e.clientX, e.clientY)
+      if (!resolved) return
+      const cursorMm = resolved.point
+      setCamera((prev) => {
+        const nextZoom = clampZoom(prev.zoom * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP))
+        if (nextZoom === prev.zoom) return prev
+        const oldWidth = baseViewBox.width / prev.zoom
+        const oldHeight = baseViewBox.height / prev.zoom
+        const oldMinX = baseViewBox.minX + prev.panX
+        const oldMinY = baseViewBox.minY + prev.panY
+        const fx = (cursorMm.x - oldMinX) / oldWidth
+        const fy = (cursorMm.y - oldMinY) / oldHeight
+        const newWidth = baseViewBox.width / nextZoom
+        const newHeight = baseViewBox.height / nextZoom
+        return {
+          zoom: nextZoom,
+          panX: cursorMm.x - fx * newWidth - baseViewBox.minX,
+          panY: cursorMm.y - fy * newHeight - baseViewBox.minY,
+        }
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [baseViewBox])
 
-  const activeRect = panelRects[activePanelIndex] ?? panelRects[0]
+  // Click-and-drag on empty canvas to pan (Mario's own chosen gesture —
+  // "click-and-drag empty canvas to pan"). The background rect this
+  // starts from (rendered first, so any real content painted after it
+  // wins the same pixel) sizes itself to the CURRENT viewBox, but the
+  // drag itself works off screen-pixel deltas from the mousedown point,
+  // same posture as the other drag effects in this file — throttled to
+  // one `requestAnimationFrame` commit per paint, per the bug-048 lesson
+  // (a viewBox-moving drag left uncapped can visibly stutter).
+  const [panDrag, setPanDrag] = useState<{ startClientX: number; startClientY: number; startPanX: number; startPanY: number; pxPerMm: number } | null>(
+    null,
+  )
+  useEffect(() => {
+    if (!panDrag) return
+    let rafId: number | null = null
+    let lastClient: { x: number; y: number } | null = null
+    const commit = () => {
+      rafId = null
+      if (!lastClient) return
+      const dxMm = (lastClient.x - panDrag.startClientX) / panDrag.pxPerMm
+      const dyMm = (lastClient.y - panDrag.startClientY) / panDrag.pxPerMm
+      setCamera((c) => ({ ...c, panX: panDrag.startPanX - dxMm, panY: panDrag.startPanY - dyMm }))
+    }
+    const onMove = (e: globalThis.MouseEvent) => {
+      lastClient = { x: e.clientX, y: e.clientY }
+      if (rafId === null) rafId = requestAnimationFrame(commit)
+    }
+    const onUp = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      setPanDrag(null)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [panDrag])
+
+  // Unchanged position/formula when no extra tier is needed (margin
+  // itself is also unchanged then) — either feature pushes this out to
+  // 0.2, same as before either existed. The overall WIDTH line moved
+  // from the top to the bottom (Mario, 2026-09-16) — this was the one
+  // deliberate deviation from the original approved dimension-callouts
+  // mock-up (2026-09-15, see cerebrum), kept at the top back then only
+  // to avoid relocating an unrelated pre-existing convention; now
+  // relocated to match the mock-up's own bottom placement for real.
+  const bottomLineY = outerMm.height + (wideMargin ? scale * 0.2 : margin * 0.5)
+  const leftLineX = wideMargin ? -scale * 0.2 : -margin * 0.5
+  // A gridded panel's OWN column/row chain — only drawn for a panel
+  // flush with the assembly's own top/left edge (`panelRect.y === 0` /
+  // `.x === 0`), so it always lands in this shared outer margin rather
+  // than risking an overlap with a neighbouring panel elsewhere in a
+  // multi-panel assembly. Sat much closer to the frame than the overall
+  // line at first pass (0.09 vs. topLineY's 0.2), leaving an oversized
+  // gap between the two chains — pulled outward to 0.13 so the detail
+  // chain reads as adjacent to the overall one, while still leaving
+  // clearance for both chains' own tick marks/labels not to touch
+  // (Mario, 2026-09-14: "make the detailed dimension line closer to the
+  // overall one").
+  //
+  // The per-window tier (2026-09-15, "an outer line size for each side
+  // not covered") shares this EXACT same offset rather than sitting in
+  // a tier of its own — `PanelSizeCallout` below suppresses itself on
+  // any side where a panel's own column/row chain already draws, so the
+  // two are mutually exclusive per side and never actually need to
+  // stack (Mario, 2026-09-15: "maximum 2 lines of measurements on any
+  // side" — a gridded panel's section chain already sums to its own
+  // per-window total, so showing both would just be the same
+  // information twice).
+  const innerChainOffset = scale * 0.13
+  const perWindowChainOffset = innerChainOffset
 
   // The active panel's own glass outline, iff it has an arched head —
-  // bars only ever anchor onto ONE glass pane's outline (archable is
-  // scoped to single-sash panels, same restriction Step 7's rendering
-  // already relies on), so there's exactly one outline to draw against.
-  const activeGlassPart = parts.find((p) => p.panelIndex === activePanelIndex && p.kind === 'glass')
+  // bars only ever anchor onto ONE glass pane's outline: the archable
+  // TOP ROW's own glass (docs/sections_planing.md §3 — arch is scoped to
+  // `cols === 1`, and only section 0 ever gets a `head`), never just
+  // whichever glass part happens to come first once a panel can have
+  // more than one section's worth of glass.
+  const activeGlassPart = parts.find((p) => p.panelIndex === activePanelIndex && p.kind === 'glass' && p.head)
   const activeGlassOutline = activeGlassPart ? outlineOf(activeGlassPart) : null
   const activePanelBars = panels[activePanelIndex]?.bars ?? []
   const activeFrameFill = panels[activePanelIndex]?.frameHex ?? DEFAULT_FRAME_FILL
@@ -378,6 +623,143 @@ export function WindowDrawing({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [barSagDragId, activeGlassOutline, activePanelBars, onUpdateBarSag])
 
+  // Which divider (mullion/transom) is being dragged, if any — its full
+  // assembly part id (e.g. `"p0:div-v1"`), same posture as `barDrag`
+  // above: only local "which thing is mid-drag" state lives here, the
+  // actual panel-model edit happens one level up via `onDividerDrag`.
+  const [dividerDragId, setDividerDragId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!dividerDragId) return
+    const parsed = parsePartId(dividerDragId)
+    const match = parsed ? /^div-(v|h)(\d+)$/.exec(parsed.localId) : null
+    const rect = parsed && panelRects[parsed.panelIndex]
+    if (!match || !rect) return
+    const vertical = match[1] === 'v'
+    const onMove = (e: globalThis.MouseEvent) => {
+      if (!svgRef.current) return
+      const resolved = svgPointFromClient(svgRef.current, e.clientX, e.clientY)
+      if (!resolved) return
+      // Panel-local mm along the divider's own axis — a mullion (`v`)
+      // moves along x, a transom (`h`) along y — matching the space
+      // `moveDivider`'s `boundaryMm` expects (see its own doc comment).
+      const boundaryMm = vertical ? resolved.point.x - rect.x : resolved.point.y - rect.y
+      onDividerDrag(dividerDragId, boundaryMm)
+    }
+    const onUp = () => setDividerDragId(null)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dividerDragId, panelRects, onDividerDrag])
+
+  // Which panel's own free outer edge is being dragged, if any — same
+  // posture as `dividerDragId` above: local "which thing is mid-drag"
+  // state only, the actual panel-model edit happens one level up via
+  // `onPanelEdgeDrag`. `edgeAlignment` mirrors what the effect below
+  // just found (or didn't) purely so the render can draw the right
+  // indicator — it is NEVER read to decide what to send
+  // `onPanelEdgeDrag`, the effect already resolved the final position
+  // itself before calling it. Two independent kinds, checked in this
+  // priority order (2026-09-16, "try snaping to match hight or width
+  // again"): a SIZE match (this panel's own resulting width/height
+  // equals some OTHER panel's, wherever it sits) actually SNAPS the
+  // drag and highlights the matching panel(s); an EDGE match (two
+  // panels' edges landing on the exact same coordinate) is
+  // indicator-only, unchanged from the earlier "just show the
+  // indicator" ask, and is only checked against whatever position the
+  // size-match step (if any) already settled on.
+  const [edgeDrag, setEdgeDrag] = useState<{ panelIndex: number; side: PanelSide } | null>(null)
+  const [edgeAlignment, setEdgeAlignment] = useState<
+    { kind: 'edge'; axis: 'x' | 'y'; position: number } | { kind: 'size'; matchedPanelIndices: number[] } | null
+  >(null)
+
+  // `panelPlacements` is a fresh array every render (built inline above)
+  // — reading it through a ref rather than closing over it directly
+  // means the drag effect below never has to list it as a dependency,
+  // so its `window` listeners attach ONCE per drag gesture instead of
+  // being torn down and rebuilt on every mouse-move-triggered re-render.
+  const panelPlacementsRef = useRef(panelPlacements)
+  useEffect(() => {
+    panelPlacementsRef.current = panelPlacements
+  })
+
+  useEffect(() => {
+    if (!edgeDrag) return
+    const { panelIndex, side } = edgeDrag
+    const axis: 'x' | 'y' = side === 'left' || side === 'right' ? 'x' : 'y'
+    // A resize re-lays-out every panel's own geometry on every move —
+    // committing on every raw `mousemove` let the browser queue up a
+    // backlog of stale positions whenever a re-render + revalidate took
+    // longer than one frame, which is what read as "a lot of flickering"
+    // (Mario, live, bug-048 — filed back when this ALSO moved the SVG's
+    // own `viewBox`; the camera is its own fixed thing now, see
+    // `baseViewBox`/`camera` above, but the underlying re-render cost
+    // this throttle addresses is unchanged). One `requestAnimationFrame`
+    // slot coalesces however many mouse-moves land between paints into a
+    // single commit, capping the update rate
+    // at the display's own refresh rate instead of the input device's.
+    let rafId: number | null = null
+    let lastClient: { x: number; y: number } | null = null
+
+    const commit = () => {
+      rafId = null
+      if (!lastClient || !svgRef.current) return
+      const resolved = svgPointFromClient(svgRef.current, lastClient.x, lastClient.y)
+      if (!resolved) return
+      const { point, pxPerMm } = resolved
+      const raw = axis === 'x' ? point.x : point.y
+
+      const target = panelPlacementsRef.current[panelIndex]
+      if (!target) return
+      // SIZE match first — this panel's own resulting width/height
+      // against every OTHER panel's, wherever it sits (unlike the edge
+      // check below, position is irrelevant here). A real magnet: within
+      // tolerance, the drag itself snaps onto the matched size, not just
+      // the indicator.
+      const dimension: 'width' | 'height' = axis === 'x' ? 'width' : 'height'
+      const rawSize = prospectivePanelSize(target, side, raw)
+      const sizeToleranceMm = SIZE_MATCH_SNAP_TOLERANCE_PX / pxPerMm
+      const matchedSize = matchedPanelSize(panelPlacementsRef.current, panelIndex, dimension, rawSize, sizeToleranceMm)
+      const finalPosition = matchedSize !== null ? positionFromPanelSize(target, side, matchedSize) : raw
+
+      if (matchedSize !== null) {
+        const matchedPanelIndices = panelPlacementsRef.current
+          .map((p, i) => (i !== panelIndex && (dimension === 'width' ? p.widthMm : p.heightMm) === matchedSize ? i : -1))
+          .filter((i) => i >= 0)
+        setEdgeAlignment({ kind: 'size', matchedPanelIndices })
+      } else {
+        // EDGE match, indicator only (Mario, earlier: "show indecator
+        // only if same mm") — checked against the FINAL position (still
+        // just the raw pointer here, since no size match won), rounded
+        // first, then an exact (zero-tolerance) coordinate match.
+        const snappedEdge = alignedEdgeMm(panelPlacementsRef.current, panelIndex, axis, Math.round(finalPosition), 0)
+        setEdgeAlignment(snappedEdge !== null ? { kind: 'edge', axis, position: snappedEdge } : null)
+      }
+      onPanelEdgeDrag(panelIndex, side, finalPosition)
+    }
+    const onMove = (e: globalThis.MouseEvent) => {
+      lastClient = { x: e.clientX, y: e.clientY }
+      if (rafId === null) rafId = requestAnimationFrame(commit)
+    }
+    const onUp = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      setEdgeDrag(null)
+      setEdgeAlignment(null)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edgeDrag, onPanelEdgeDrag])
+
   // Delete/Backspace with a bar selected — only when not mid-drawing
   // (a selected bar and draw mode are already mutually exclusive, see
   // window-editor-page.tsx) and only when focus isn't in a text field
@@ -424,7 +806,26 @@ export function WindowDrawing({
     // which sash overlaps which) — it must not mirror in RTL, unlike
     // the rest of the dialog. See docs/window_design_planing.md's
     // rejected-alternatives note.
-    <div dir="ltr" className="relative h-full w-full" onMouseLeave={() => onPanelHover(null)}>
+    <div
+      dir="ltr"
+      className="relative h-full w-full"
+      onMouseLeave={() => onPanelHover(null)}
+      // Same blueprint-style graph-paper grid as the project canvas
+      // (`canvas-page.tsx`) — Mario, 2026-09-16: "add grid behind the
+      // window workspace." Pure CSS gradients (no image asset), so it
+      // costs nothing to load and reuses the exact values already
+      // established for visual consistency across both canvases.
+      style={{
+        backgroundColor: '#ffffff',
+        backgroundImage: [
+          'linear-gradient(to right, rgba(0,0,0,0.12) 1px, transparent 1px)',
+          'linear-gradient(to bottom, rgba(0,0,0,0.12) 1px, transparent 1px)',
+          'linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px)',
+          'linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)',
+        ].join(', '),
+        backgroundSize: '120px 120px, 120px 120px, 20px 20px, 20px 20px',
+      }}
+    >
       <svg
         ref={svgRef}
         viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
@@ -439,7 +840,7 @@ export function WindowDrawing({
         preserveAspectRatio="xMidYMax meet"
         className="h-full max-h-full w-full max-w-full"
         role="img"
-        aria-label={`${Math.round(outerMm.width)} × ${Math.round(outerMm.height)} mm`}
+        aria-label={`${formatDimensionMm(outerMm.width)} × ${formatDimensionMm(outerMm.height)} mm`}
       >
         <defs>
           <pattern id={meshPatternId} width={meshCell} height={meshCell} patternUnits="userSpaceOnUse">
@@ -451,18 +852,76 @@ export function WindowDrawing({
           </pattern>
         </defs>
 
-        {/* Overall assembly dimensions — READ-ONLY now. They're derived
-            from the panels' bounding box (the API refuses to accept them
-            as input at all), so there is nothing here to type into; the
-            editable inputs belong to the selected panel instead. */}
-        <g stroke="var(--muted-foreground)" strokeWidth={Math.max(outerMm.width, outerMm.height) * 0.0018} opacity={0.6}>
-          <line x1={0} y1={topLineY} x2={outerMm.width} y2={topLineY} />
-          <line x1={0} y1={topLineY - tickLen / 2} x2={0} y2={topLineY + tickLen / 2} />
-          <line x1={outerMm.width} y1={topLineY - tickLen / 2} x2={outerMm.width} y2={topLineY + tickLen / 2} />
+        {/* Pan surface — first child, so any real content painted after
+            it wins the same pixel; only genuinely empty canvas falls
+            through to this. */}
+        <rect
+          x={viewBox.minX}
+          y={viewBox.minY}
+          width={viewBox.width}
+          height={viewBox.height}
+          fill="transparent"
+          className={panDrag ? 'cursor-grabbing' : 'cursor-grab'}
+          onMouseDown={(e) => {
+            if (!svgRef.current) return
+            const ctm = svgRef.current.getScreenCTM()
+            if (!ctm) return
+            e.preventDefault()
+            setPanDrag({ startClientX: e.clientX, startClientY: e.clientY, startPanX: camera.panX, startPanY: camera.panY, pxPerMm: ctm.a })
+          }}
+        />
+
+        {/* Overall assembly dimensions — READ-ONLY. They're derived from
+            the panels' bounding box (the API refuses to accept them as
+            input at all), so there is nothing here to type into. The
+            selected PANEL's own size is editable, but from the side
+            panel now, not an overlay on the drawing (Mario, 2026-09-13).
+            Plain numbers, no arrowheads — approved mock-up, 2026-09-15. */}
+        <g stroke="var(--muted-foreground)" strokeWidth={Math.max(outerMm.width, outerMm.height) * 0.0027} opacity={0.6}>
+          <line x1={0} y1={bottomLineY} x2={outerMm.width} y2={bottomLineY} />
+          <line x1={0} y1={bottomLineY - tickLen / 2} x2={0} y2={bottomLineY + tickLen / 2} />
+          <line x1={outerMm.width} y1={bottomLineY - tickLen / 2} x2={outerMm.width} y2={bottomLineY + tickLen / 2} />
           <line x1={leftLineX} y1={0} x2={leftLineX} y2={outerMm.height} />
           <line x1={leftLineX - tickLen / 2} y1={0} x2={leftLineX + tickLen / 2} y2={0} />
           <line x1={leftLineX - tickLen / 2} y1={outerMm.height} x2={leftLineX + tickLen / 2} y2={outerMm.height} />
         </g>
+        <DimensionLabel x={outerMm.width / 2} y={bottomLineY} text={formatDimensionMm(outerMm.width)} fontSize={scale * 0.024} />
+        <DimensionLabel x={leftLineX} y={outerMm.height / 2} text={formatDimensionMm(outerMm.height)} fontSize={scale * 0.024} vertical />
+
+        {anyPanelGridded &&
+          panels.map((panel, panelIndex) => (
+            <PanelDimensionCallouts
+              key={`dim-${panelIndex}`}
+              panel={panel}
+              panelRect={panelRects[panelIndex]}
+              outerMm={outerMm}
+              parts={parts.filter((p) => p.panelIndex === panelIndex)}
+              chainOffset={innerChainOffset}
+              tickLen={tickLen}
+              fontSize={scale * 0.02}
+              letterFontSize={scale * 0.026}
+              columnSide={panel.columnWidths.length > 1 ? widthSideFor(panelIndex) : null}
+              rowSide={panel.rowHeights.length > 1 ? heightSideFor(panelIndex) : null}
+              columnGap={panel.columnWidths.length > 1 ? widthGapFor(panelIndex) : undefined}
+              rowGap={panel.rowHeights.length > 1 ? leftGapFor(panelIndex) : undefined}
+            />
+          ))}
+
+        {showPerWindowDims &&
+          panelRects.map((rect, panelIndex) => (
+            <PanelSizeCallout
+              key={`win-dim-${panelIndex}`}
+              rect={rect}
+              outerMm={outerMm}
+              chainOffset={perWindowChainOffset}
+              tickLen={tickLen}
+              fontSize={scale * 0.02}
+              widthSide={panels[panelIndex].columnWidths.length > 1 ? null : widthSideFor(panelIndex)}
+              heightSide={panels[panelIndex].rowHeights.length > 1 ? null : heightSideFor(panelIndex)}
+              widthGap={panels[panelIndex].columnWidths.length > 1 ? undefined : widthGapFor(panelIndex)}
+              heightGap={panels[panelIndex].rowHeights.length > 1 ? undefined : leftGapFor(panelIndex)}
+            />
+          ))}
 
         {panels.map((panel, panelIndex) => (
           <PanelShapes
@@ -481,8 +940,93 @@ export function WindowDrawing({
             glyphRadius={glyphRadius}
             strokeWeight={strokeWeight}
             georgianBarWidth={georgianBarWidth}
+            onDividerDragStart={(dividerId) => {
+              onSelect(dividerId, false)
+              setDividerDragId(dividerId)
+            }}
           />
         ))}
+
+        {/* Outer-edge resize handles — one invisible hit-strip per FREE
+            side of every panel (never a side another panel already
+            occupies; that boundary belongs to a divider or the coupled
+            panel's own free side instead). Always present, not gated on
+            selection — same posture as a divider's own always-draggable
+            bar. */}
+        {panelRects.map((rect, panelIndex) => {
+          const free = freeSidesOf([panelPlacements[panelIndex]], panelPlacements)
+          const thickness = plusRadius * 0.6
+          return free.map((side) => {
+            const vertical = side === 'left' || side === 'right'
+            const x = side === 'right' ? rect.x + rect.width - thickness / 2 : side === 'left' ? rect.x - thickness / 2 : rect.x
+            const y = side === 'bottom' ? rect.y + rect.height - thickness / 2 : side === 'top' ? rect.y - thickness / 2 : rect.y
+            return (
+              <rect
+                key={`edge-${panelIndex}-${side}`}
+                x={x}
+                y={y}
+                width={vertical ? thickness : rect.width}
+                height={vertical ? rect.height : thickness}
+                fill="transparent"
+                className={vertical ? 'cursor-ew-resize' : 'cursor-ns-resize'}
+                onMouseDown={(e) => {
+                  // Without this, the browser starts its own native
+                  // text/DOM drag-selection the instant the mouse moves —
+                  // which, if the drag point nears the top/bottom of the
+                  // (scrollable) editor page, auto-scrolls it to keep
+                  // extending the selection. Mario, live: "stop scrolling
+                  // while draging the panel side."
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setEdgeDrag({ panelIndex, side })
+                }}
+              />
+            )
+          })
+        })}
+
+        {/* The EDGE-alignment guide — indicator only, purely visual, lights
+            up the instant the dragged edge lands exactly on another
+            panel's edge on the same axis. Never active at the same time
+            as a size match (the commit effect only ever sets one kind). */}
+        {edgeDrag && edgeAlignment?.kind === 'edge' && (
+          <line
+            x1={edgeAlignment.axis === 'y' ? -margin * 0.6 : edgeAlignment.position}
+            x2={edgeAlignment.axis === 'y' ? outerMm.width + margin * 0.6 : edgeAlignment.position}
+            y1={edgeAlignment.axis === 'y' ? edgeAlignment.position : -margin * 0.6}
+            y2={edgeAlignment.axis === 'y' ? edgeAlignment.position : outerMm.height + margin * 0.6}
+            stroke="var(--primary)"
+            strokeWidth={strokeWeight * 1.2}
+            strokeDasharray={`${plusRadius * 0.4} ${plusRadius * 0.3}`}
+            pointerEvents="none"
+          />
+        )}
+
+        {/* The SIZE-match indicator — the dragged panel's own width/height
+            just snapped onto another panel's (wherever it sits); outline
+            whichever panel(s) it now matches so it's obvious WHY the drag
+            stopped there, same dashed styling as the panel-selection
+            outline. */}
+        {edgeDrag &&
+          edgeAlignment?.kind === 'size' &&
+          edgeAlignment.matchedPanelIndices.map((index) => {
+            const rect = panelRects[index]
+            if (!rect) return null
+            return (
+              <rect
+                key={`size-match-${index}`}
+                x={rect.x}
+                y={rect.y}
+                width={rect.width}
+                height={rect.height}
+                fill="none"
+                stroke="var(--primary)"
+                strokeWidth={strokeWeight * 1.2}
+                strokeDasharray={`${plusRadius * 0.4} ${plusRadius * 0.3}`}
+                pointerEvents="none"
+              />
+            )
+          })}
 
         {/* The bar-drawing capture layer — an exact arch-shaped hit
             area (not a bounding rect) covering only the active panel's
@@ -659,7 +1203,7 @@ export function WindowDrawing({
               height={rect.height}
               fill="none"
               stroke="var(--primary)"
-              strokeWidth={strokeWeight * 2.5}
+              strokeWidth={strokeWeight * 0.4}
               strokeDasharray={`${plusRadius * 0.5} ${plusRadius * 0.35}`}
               pointerEvents="none"
             />
@@ -688,41 +1232,13 @@ export function WindowDrawing({
           })}
       </svg>
 
-      {transform && activeRect && (
-        <>
-          {/* Bound to the SELECTED PANEL, not the assembly — for a
-              one-panel window that's the same thing it always was.
-              Placed just INSIDE the panel rather than on its edge:
-              between two coupled panels an edge-straddling input would
-              sit on the joint and read as belonging to either one. */}
-          <DimensionInput
-            style={{
-              left: transform.x(activeRect.x + activeRect.width / 2),
-              top: transform.y(activeRect.y + dimensionInset(activeRect)),
-            }}
-            value={Math.round(activeRect.width)}
-            onChange={onPanelWidthChange}
-            ariaLabel={widthLabel}
-          />
-          <DimensionInput
-            style={{
-              left: transform.x(activeRect.x + dimensionInset(activeRect)),
-              top: transform.y(activeRect.y + activeRect.height / 2),
-            }}
-            value={Math.round(activeRect.height)}
-            onChange={onPanelHeightChange}
-            ariaLabel={heightLabel}
-          />
-        </>
-      )}
-
       {/* The hover readout chip — arch_windows_planing.md §6.1's
           four-row table. HTML, not SVG text, so its size stays legible
-          regardless of the drawing's own zoom, same reasoning as
-          DimensionInput above. Flips to the cursor's other side near
-          the drawing's right edge so it can never run out past the
-          viewBox — "near the edge" reuses the same margin the viewBox
-          itself pads by. */}
+          regardless of the drawing's own zoom (same reasoning the
+          removed dimension-input overlay used to rely on). Flips to the
+          cursor's other side near the drawing's right edge so it can
+          never run out past the viewBox — "near the edge" reuses the
+          same margin the viewBox itself pads by. */}
       {transform && barDrawMode && barHover && (
         <div
           className={cn(
@@ -747,6 +1263,28 @@ export function WindowDrawing({
           {barShadowLengthMm} mm
         </div>
       )}
+
+      {/* Zoom controls — the manual replacement for the auto-fit-to-content
+          behaviour this feature removed (Mario: "allow the user to change
+          zoom level to extend more if he want"). Scroll/pinch over the
+          drawing zooms too (see the `wheel` effect above); this is just
+          the discoverable, precise affordance for the same camera. */}
+      <div className="absolute bottom-3 right-3 flex items-center gap-0.5 rounded-md border border-border bg-card/95 p-1 text-xs shadow-sm backdrop-blur">
+        <Button type="button" variant="ghost" size="icon" className="size-6" aria-label="Zoom out" onClick={() => setCamera((c) => ({ ...c, zoom: clampZoom(c.zoom / ZOOM_STEP) }))}>
+          <Minus className="size-3.5" />
+        </Button>
+        <button
+          type="button"
+          className="w-11 text-center tabular-nums text-muted-foreground hover:text-foreground"
+          aria-label="Reset zoom"
+          onClick={() => setCamera({ zoom: 1, panX: 0, panY: 0 })}
+        >
+          {Math.round(camera.zoom * 100)}%
+        </button>
+        <Button type="button" variant="ghost" size="icon" className="size-6" aria-label="Zoom in" onClick={() => setCamera((c) => ({ ...c, zoom: clampZoom(c.zoom * ZOOM_STEP) }))}>
+          <Plus className="size-3.5" />
+        </Button>
+      </div>
 
       {overlay}
     </div>
@@ -773,6 +1311,7 @@ function PanelShapes({
   glyphRadius,
   strokeWeight,
   georgianBarWidth,
+  onDividerDragStart,
 }: {
   panelIndex: number
   panel: PanelRender
@@ -788,74 +1327,71 @@ function PanelShapes({
   glyphRadius: number
   strokeWeight: number
   georgianBarWidth: number
+  /** Mousedown on a divider's own bar — starts a drag (see
+   * `WindowDrawing`'s `dividerDragId` state/effect) as well as selecting
+   * it, same "select first" posture the bar handles use. */
+  onDividerDragStart: (dividerId: string) => void
 }) {
-  // A fixed-mullion bar, unlike a Georgian one, has a real mm width
-  // already baked into the geometry (it's the actual gap
-  // window-geometry.ts split the two lights by) — draw it at that exact
-  // width rather than a proportional guess, or it won't line up with
-  // the gap between the two glass rects.
-  const mullionGrid = mullionGridFor(panel.openingType)
-
   const frame = parts.find((p) => p.kind === 'frame')
+  const dividers = parts.filter((p) => p.kind === 'divider')
   const sashes = parts.filter((p) => p.kind === 'sash')
   const glasses = parts.filter((p) => p.kind === 'glass')
-  const flyScreen = parts.find((p) => p.kind === 'flyScreen')
-  const flyScreenHandleRect = flyScreen && {
-    x: flyScreen.rectMm.x + flyScreen.rectMm.width / 2 - meshCell * 1.8,
-    y: flyScreen.rectMm.y + flyScreen.rectMm.height - meshCell * 0.8,
-    width: meshCell * 3.6,
-    height: meshCell * 1.6,
-  }
+  const flyScreens = parts.filter((p) => p.kind === 'flyScreen')
   const doorHinged = isDoorHinged(panel.isDoor, panel.systemType)
 
-  // The panel's own opening — the union of all sashes always exactly
-  // fills this rect (see buildSlidingSashRects's own interlock math),
-  // so it doubles as the frame ring's inner boundary regardless of
-  // systemType, without needing a dedicated WindowPart for it. A hinged
-  // door drops the bottom inset so it lines up with the now
-  // flush-to-the-bottom sash/glass.
-  //
-  // A transom's frame has NO sash at all (docs/transom_planing.md
-  // decision 1) — `buildTransomLayout` insets its own glass by
-  // `NOMINAL_TRANSOM_FACE_MM`, a DIFFERENT constant than the
-  // `NOMINAL_FRAME_FACE_MM` this inset math assumes. Found while
-  // verifying Step 4 (transom_tasks.md): re-deriving the opening from
-  // the sash-inset constant when there IS no sash would cut the ring's
-  // hole at the wrong width, so the ring and the glass (drawn
-  // separately below, straight off its own real rect) visibly
-  // disagree — the glass fill spills into what should still read as
-  // frame face. Deriving the opening from the glass parts' own union
-  // instead, whenever there's no sash to derive it from, means the
-  // ring's hole can never disagree with the glass actually drawn,
-  // regardless of what inset constant built it.
-  const frameOpening =
-    frame &&
-    (sashes.length > 0
-      ? {
-          x: frame.rectMm.x + NOMINAL_FRAME_FACE_MM,
-          y: frame.rectMm.y + NOMINAL_FRAME_FACE_MM,
-          width: frame.rectMm.width - 2 * NOMINAL_FRAME_FACE_MM,
-          height: frame.rectMm.height - NOMINAL_FRAME_FACE_MM - (doorHinged ? 0 : NOMINAL_FRAME_FACE_MM),
-        }
-      : glasses.length > 0
-        ? boundingRect(glasses.map((g) => g.rectMm))
-        : null)
+  // The panel's own opening — the frame-face inset rect every mullion/
+  // transom lives inside (docs/sections_planing.md §3's `openingWidth`/
+  // `openingHeight`, mirrored here). True regardless of how many
+  // sections or dividers sit inside it — a divider is its own part,
+  // drawn on top of this same hole, never widening or narrowing it — so
+  // this no longer needs the pre-Sections "no sash anywhere → derive
+  // from the glasses' own bounding box" branch, which existed only for
+  // the now-deleted TRANSOM panel type (its bar sat at a different inset
+  // than `frameFace`, a case that no longer exists).
+  const frameOpening = frame && {
+    x: frame.rectMm.x + panel.metrics.frameFace,
+    y: frame.rectMm.y + panel.metrics.frameFace,
+    width: frame.rectMm.width - 2 * panel.metrics.frameFace,
+    height: frame.rectMm.height - panel.metrics.frameFace - (doorHinged ? 0 : panel.metrics.frameFace),
+  }
 
   const frameFill = panel.frameHex ?? DEFAULT_FRAME_FILL
+  // Every hairline on the panel — part outlines, miters, seams, bead
+  // cuts — in one colour derived from the finish (spec §9), so it
+  // reads on white and on dark anodised alike. Selection and issue
+  // colours still win on the part outlines (`partStroke`).
+  const seamStroke = seamColorFor(frameFill)
+  const detailStyle: DetailStyle = { frameFill, seamStroke, strokeWeight }
 
-  // Arch-aware frame ring. `frame.head`/a single sash's `head` are only
-  // ever set together (see buildWindowLayout's `archable`), so reading
-  // the opening straight off that one sash — rather than hand-deriving
-  // it a second way, as `frameOpening` above still does for every other
-  // case — can't disagree with what was actually built.
+  // Arch-aware frame ring. Only section 0 (the top row of a `cols === 1`
+  // panel) can ever be arched (`canHaveArchedHead`) — its sash, or on a
+  // fixed light its glass, is the one part in the whole panel that
+  // carries a `head`. Finding THAT part directly (rather than assuming
+  // the panel has exactly one sash or one glass overall, which a
+  // multi-section grid no longer guarantees) is what keeps this from
+  // picking up some other row's flat sash by accident.
   const frameOutline = frame && outlineOf(frame)
-  const singleSashOutline = sashes.length === 1 ? outlineOf(sashes[0]) : null
+  const archSash = sashes.find((s) => s.head)
+  const archGlass = glasses.find((g) => g.head)
+  const innerOutline = archSash ? outlineOf(archSash) : archGlass ? outlineOf(archGlass) : null
   const framePathD =
     frame &&
-    (frameOutline && singleSashOutline
-      ? archRingPath(frameOutline, singleSashOutline)
+    (frameOutline && innerOutline
+      ? archRingPath(frameOutline, innerOutline)
       : frameOpening &&
         (doorHinged ? openBottomFramePath(frame.rectMm, frameOpening) : ringPath(frame.rectMm, frameOpening)))
+
+  // The one flag `renderFrameDetail` needs for whichever of its two
+  // branches actually runs (docs/sections_planing.md §4: "frame miters
+  // are unchanged" — kept as a single panel-wide flag rather than a
+  // per-edge-segment rule). Arch branch: does the archable section have
+  // a sash. Flat branch: does ANY section in the panel have one.
+  const frameDetailHasSash = frameOutline ? !!archSash : sashes.length > 0
+  // Glasses whose OWN section has no sash — a fixed section's glass gets
+  // its bead from the frame's own detail layer; a sash-mounted glass
+  // (including a fixed-mullion split of an OPENING section) gets its
+  // bead from `renderSashDetail` instead.
+  const fixedGlasses = glasses.filter((g) => !sashes.some((s) => s.sectionIndex === g.sectionIndex))
 
   return (
     <g data-panel={panelIndex} onMouseEnter={() => onPanelHover(panelIndex)}>
@@ -878,57 +1414,113 @@ function PanelShapes({
             d={framePathD}
             fillRule="evenodd"
             fill={frameFill}
-            stroke={partStroke(selectedPartId === frame.id, issuesByPart.get(frame.id))}
+            stroke={partStroke(selectedPartId === frame.id, issuesByPart.get(frame.id), seamStroke)}
             strokeWidth={strokeWeight}
           />
+          {renderFrameDetail({
+            frame,
+            frameOpening: frameOpening ?? null,
+            frameOutline: frameOutline ?? null,
+            innerOutline,
+            hasSashes: frameDetailHasSash,
+            fixedGlasses,
+            doorHinged,
+            metrics: panel.metrics,
+            style: detailStyle,
+          })}
         </InteractivePart>
       )}
 
+      {/* Dividers — one filled bar per mullion/transom in the frame's
+          own finish, no seams or miters (decision 10). Drawn right
+          after the frame, on the same plane, before anything
+          section-level; selectable like any other part. */}
+      {dividers.map((divider) => (
+        <InteractivePart
+          key={divider.id}
+          part={divider}
+          selected={selectedPartId === divider.id}
+          hovered={hoveredPartId === divider.id}
+          onSelect={onSelect}
+          onHover={onHover}
+          issues={issuesByPart.get(divider.id)}
+          glyphRadius={glyphRadius}
+          onMouseDown={() => onDividerDragStart(divider.id)}
+          // A mullion (`div-v{k}`) moves left/right, a transom
+          // (`div-h{j}`) moves up/down — the resize cursor reads as a
+          // hint that it's draggable, not just clickable.
+          cursorClassName={/div-v\d+$/.test(divider.id) ? 'cursor-ew-resize' : 'cursor-ns-resize'}
+        >
+          {renderDivider(
+            divider,
+            frameFill,
+            partStroke(selectedPartId === divider.id, issuesByPart.get(divider.id), seamStroke),
+            strokeWeight,
+          )}
+        </InteractivePart>
+      ))}
+
       {/* The fly-screen mesh is visual only (pointer-events none) — for
-          a hinged/curtain-wall panel it fully overlaps the sash/glass
+          a hinged/curtain-wall section it fully overlaps the sash/glass
           rect (per the user's own "fill the whole frame" call), so the
           actual hit target is the small handle drawn on top of
-          everything else, below. */}
-      {flyScreen && (() => {
+          everything else, below. One per opening section that has one. */}
+      {flyScreens.map((flyScreen) => {
         const flyScreenOutline = outlineOf(flyScreen)
         return flyScreenOutline ? (
           <path
+            key={flyScreen.id}
             d={archOutlinePath(flyScreenOutline)}
             fill={`url(#${meshPatternId})`}
             stroke={MESH_STROKE}
-            strokeWidth={NOMINAL_SASH_FACE_MM * 0.25}
+            strokeWidth={MESH_STROKE_WIDTH_MM}
             opacity={0.85}
             pointerEvents="none"
           />
         ) : (
           <rect
+            key={flyScreen.id}
             x={flyScreen.rectMm.x}
             y={flyScreen.rectMm.y}
             width={flyScreen.rectMm.width}
             height={flyScreen.rectMm.height}
             fill={`url(#${meshPatternId})`}
             stroke={MESH_STROKE}
-            strokeWidth={NOMINAL_SASH_FACE_MM * 0.25}
+            strokeWidth={MESH_STROKE_WIDTH_MM}
             opacity={0.85}
             pointerEvents="none"
           />
         )
-      })()}
+      })}
 
-      {sashes.map((sash) => {
-        // Each sash's own ring runs from its outer rect in to the
-        // union of its matching glass panes (same index — sliding's
-        // two sashes each hold their own pane; a fixed-mullion opening
-        // type gives a single sash TWO panes sharing its index, split
-        // by the mullion bar, so the ring's own hole has to span both,
-        // not just whichever one `.find()` would happen to hit first)
-        // — same "filled bar, not a centered line" treatment as the
-        // frame above.
-        const glassesForSash = glasses.filter((g) => g.index === sash.index)
+      {/* Painted far-to-near so a sliding sash on a nearer rail covers
+          the one behind it — which rail is "nearer" depends on the face
+          being viewed (docs/sliding_windows_planing.md §5); non-sliding
+          sashes keep their geometry order. */}
+      {slidingPaintOrder(sashes, panel.face, panel.slidingRails ?? undefined).map((sash) => {
+        // Each sash's own ring runs from its outer rect in to the union
+        // of its matching glass panes — same index AND same section:
+        // sliding's sashes each hold their own pane, a fixed-mullion
+        // opening type gives a single sash TWO panes sharing its index
+        // split by the mullion bar, and — now that a panel can have more
+        // than one section — two DIFFERENT sections' sashes can share
+        // the same local `index` (each section numbers its own sashes
+        // from 0), so the section has to match too or this would pull in
+        // another section's glass. Same "filled bar, not a centered
+        // line" treatment as the frame above.
+        const glassesForSash = glasses.filter((g) => g.index === sash.index && g.sectionIndex === sash.sectionIndex)
         if (glassesForSash.length === 0) return null
         const opening = boundingRect(glassesForSash.map((g) => g.rectMm))
         const sashOutline = outlineOf(sash)
         const glassOutline = glassesForSash.length === 1 ? outlineOf(glassesForSash[0]) : null
+        // A fixed-mullion bar, unlike a Georgian one, has a real mm
+        // width already baked into the geometry (it's the actual gap
+        // window-geometry.ts split the two lights by) — draw it at that
+        // exact width rather than a proportional guess, or it won't
+        // line up with the gap between the two glass rects. Resolved
+        // from THIS sash's own section now that opening type is
+        // per-section, not per-panel.
+        const mullionGrid = mullionGridFor(sectionRenderFor(panel, sash)?.openingType ?? null)
         return (
           <InteractivePart
             key={sash.id}
@@ -945,11 +1537,20 @@ function PanelShapes({
               d={sashOutline && glassOutline ? archRingPath(sashOutline, glassOutline) : ringPath(sash.rectMm, opening)}
               fillRule="evenodd"
               fill={frameFill}
-              stroke={partStroke(selectedPartId === sash.id, issuesByPart.get(sash.id))}
-              strokeWidth={strokeWeight}
+              stroke={partStroke(selectedPartId === sash.id, issuesByPart.get(sash.id), seamStroke)}
+              strokeWidth={strokeWeight * slidingStrokeScale(sash, panel.face, panel.slidingRails ?? undefined, sashes)}
             />
+            {renderSashDetail({
+              sash,
+              opening,
+              sashOutline,
+              glassOutline,
+              glassesForSash,
+              metrics: panel.metrics,
+              style: detailStyle,
+            })}
             {mullionGrid && glassesForSash.length > 1 && (
-              <g pointerEvents="none">{georgianBars(opening, mullionGrid, NOMINAL_MULLION_BAR_MM, frameFill)}</g>
+              <g pointerEvents="none">{georgianBars(opening, mullionGrid, panel.metrics.sashBarFace, frameFill)}</g>
             )}
           </InteractivePart>
         )
@@ -957,6 +1558,9 @@ function PanelShapes({
 
       {glasses.map((glass) => {
         const glassOutline = outlineOf(glass)
+        // Glass colour and the Georgian bar grid are per-SECTION now
+        // (docs/sections_planing.md §3), not per-panel.
+        const glassSection = sectionRenderFor(panel, glass)
         return (
           <InteractivePart
             key={glass.id}
@@ -972,9 +1576,9 @@ function PanelShapes({
             {glassOutline ? (
               <path
                 d={archOutlinePath(glassOutline)}
-                fill={panel.glassHex ?? DEFAULT_GLASS_FILL}
+                fill={glassSection?.glassHex ?? DEFAULT_GLASS_FILL}
                 fillOpacity={GLASS_FILL_OPACITY}
-                stroke={partStroke(selectedPartId === glass.id, issuesByPart.get(glass.id))}
+                stroke={partStroke(selectedPartId === glass.id, issuesByPart.get(glass.id), seamStroke)}
                 strokeWidth={strokeWeight}
               />
             ) : (
@@ -983,23 +1587,27 @@ function PanelShapes({
                 y={glass.rectMm.y}
                 width={glass.rectMm.width}
                 height={glass.rectMm.height}
-                fill={panel.glassHex ?? DEFAULT_GLASS_FILL}
+                fill={glassSection?.glassHex ?? DEFAULT_GLASS_FILL}
                 fillOpacity={GLASS_FILL_OPACITY}
-                stroke={partStroke(selectedPartId === glass.id, issuesByPart.get(glass.id))}
+                stroke={partStroke(selectedPartId === glass.id, issuesByPart.get(glass.id), seamStroke)}
                 strokeWidth={strokeWeight}
               />
             )}
-            {panel.georgianGrid && (
-              <g pointerEvents="none">{georgianBars(glass.rectMm, panel.georgianGrid, georgianBarWidth, frameFill)}</g>
+            {renderGasket(glass, glassOutline, strokeWeight)}
+            {glassSection?.georgianGrid && (
+              <g pointerEvents="none">{georgianBars(glass.rectMm, glassSection.georgianGrid, georgianBarWidth, frameFill)}</g>
             )}
             {/* The bar layer itself — pure visual here; the
                 interactive select/highlight/drag overlay for the
                 ACTIVE panel's own bars is a separate layer painted
                 later in `WindowDrawing` (see its own comment), on top
-                of every panel's plain paint below. Drawn above the
-                glass fill, below the opening-type symbol below, same
-                stacking the plan calls for. Same width as a Georgian
-                bar (`georgianBarWidth`), not the hairline `strokeWeight`
+                of every panel's plain paint below. Bars stay panel-
+                level and only ever anchor onto section 0's own arched
+                glass outline (docs/sections_planing.md's own
+                assumptions), so this still needs no section lookup of
+                its own — `glassOutline` alone already picks out that
+                one glass. Same width as a Georgian bar
+                (`georgianBarWidth`), not the hairline `strokeWeight`
                 every outline uses — a glazing bar is a real decorative
                 bar, not a thin selection outline. */}
             {glassOutline && panel.bars.length > 0 && (
@@ -1013,65 +1621,431 @@ function PanelShapes({
         )
       })}
 
-      {panel.hasFrame && panel.systemType === SystemType.HINGED && panel.openingType && (
-        <g pointerEvents="none">{renderOpeningTypeSymbols(sashes, panel.openingType)}</g>
+      {/* A sliding section's depth cues, on top of every sash and pane:
+          the hidden edge of each further sash, dashed where it runs
+          behind its nearer neighbour's stile, and one arrow per sash
+          for the way it slides (§5). Only once a real layout exists —
+          a legacy two-leaf section has no rails to read. */}
+      {panel.hasFrame && panel.systemType === SystemType.SLIDING && panel.sections.some((s) => s.sliding) && (
+        <g pointerEvents="none">
+          {slidingHiddenEdges(sashes, panel.face, panel.slidingRails ?? undefined, strokeWeight * 2).map((edge) => (
+            <line
+              key={edge.key}
+              x1={edge.x}
+              y1={edge.y1}
+              x2={edge.x}
+              y2={edge.y2}
+              stroke={seamStroke}
+              strokeWidth={strokeWeight}
+              strokeDasharray={`${strokeWeight * 5} ${strokeWeight * 4}`}
+            />
+          ))}
+          {renderSlidingSymbols(sashes)}
+          {renderSlidingHardware(sashes, panel.face, panel.metrics)}
+        </g>
       )}
+
+      {/* The dashed `+` on every fixed light — any system, once the
+          frame exists (a frameless placeholder pane is not "fixed",
+          it's unspecified). */}
+      {panel.hasFrame && <g pointerEvents="none">{renderFixedSymbols(fixedGlasses)}</g>}
+
+      {/* Hardware and the schematic opening-type symbols, grouped by
+          SECTION — each section has its own opening type now, so a
+          mixed panel (a fixed light beside an opening one, say) must
+          not paint one section's hinge symbol using another's type. */}
+      {panel.hasFrame &&
+        panel.systemType === SystemType.HINGED &&
+        Array.from(groupSashesBySection(sashes).entries()).map(([sectionIndex, group]) => {
+          const openingType = panel.sections[sectionIndex]?.openingType
+          if (!openingType) return null
+          return (
+            <g key={`hw-${sectionIndex}`} pointerEvents="none">
+              {/* `renderHardware`/`renderOpeningTypeSymbols` each return
+                  their own root keyed "leaf-0" (or "leaf-0"/"leaf-1" for
+                  a double door) — safe as long as they don't land as
+                  DIRECT siblings of one another, which merging their two
+                  panel-level call sites into one per-section block just
+                  made them. Two more wrapper `<g>`s (each un-keyed,
+                  since they're plain sequential JSX children, not an
+                  array) restore the separate parents each one needs. */}
+              <g>{renderHardware(group, openingType, panel.metrics)}</g>
+              <g>{renderOpeningTypeSymbols(group, openingType)}</g>
+            </g>
+          )
+        })}
 
       {/* The fly screen's own hit target — a small pull-handle glyph
           at the bottom edge of its rect, always on top so it stays
           reachable. Its hit box (ringRect) is deliberately just the
           handle itself, not the full mesh rect — the mesh fully
           overlaps the sash/glass beneath it for a hinged/curtain-wall
-          panel, and a full-rect hit box there would swallow every
+          section, and a full-rect hit box there would swallow every
           click meant for them. */}
-      {flyScreen && flyScreenHandleRect && (
-        <InteractivePart
-          part={flyScreen}
-          selected={selectedPartId === flyScreen.id}
-          hovered={hoveredPartId === flyScreen.id}
-          onSelect={onSelect}
-          onHover={onHover}
-          ringRect={flyScreenHandleRect}
-          issues={issuesByPart.get(flyScreen.id)}
-          glyphRadius={glyphRadius}
-        >
-          <rect
-            x={flyScreenHandleRect.x}
-            y={flyScreenHandleRect.y}
-            width={flyScreenHandleRect.width}
-            height={flyScreenHandleRect.height}
-            rx={meshCell * 0.2}
-            fill="var(--surface, var(--background))"
-            stroke={MESH_STROKE}
-            strokeWidth={meshCell * 0.12}
-          />
-          <text
-            x={flyScreenHandleRect.x + flyScreenHandleRect.width / 2}
-            y={flyScreenHandleRect.y + flyScreenHandleRect.height / 2}
-            textAnchor="middle"
-            dominantBaseline="central"
-            fontFamily="ui-monospace, SF Mono, Menlo, Consolas, monospace"
-            fontWeight="600"
-            fontSize={meshCell * 0.95}
-            fill="var(--muted-foreground)"
+      {flyScreens.map((flyScreen) => {
+        const flyScreenHandleRect = {
+          x: flyScreen.rectMm.x + flyScreen.rectMm.width / 2 - meshCell * 1.8,
+          y: flyScreen.rectMm.y + flyScreen.rectMm.height - meshCell * 0.8,
+          width: meshCell * 3.6,
+          height: meshCell * 1.6,
+        }
+        return (
+          <InteractivePart
+            key={`${flyScreen.id}-handle`}
+            part={flyScreen}
+            selected={selectedPartId === flyScreen.id}
+            hovered={hoveredPartId === flyScreen.id}
+            onSelect={onSelect}
+            onHover={onHover}
+            ringRect={flyScreenHandleRect}
+            issues={issuesByPart.get(flyScreen.id)}
+            glyphRadius={glyphRadius}
           >
-            FS
-          </text>
-        </InteractivePart>
-      )}
+            <rect
+              x={flyScreenHandleRect.x}
+              y={flyScreenHandleRect.y}
+              width={flyScreenHandleRect.width}
+              height={flyScreenHandleRect.height}
+              rx={meshCell * 0.2}
+              fill="var(--surface, var(--background))"
+              stroke={MESH_STROKE}
+              strokeWidth={meshCell * 0.12}
+            />
+            <text
+              x={flyScreenHandleRect.x + flyScreenHandleRect.width / 2}
+              y={flyScreenHandleRect.y + flyScreenHandleRect.height / 2}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontFamily="ui-monospace, SF Mono, Menlo, Consolas, monospace"
+              fontWeight="600"
+              fontSize={meshCell * 0.95}
+              fill="var(--muted-foreground)"
+            >
+              FS
+            </text>
+          </InteractivePart>
+        )
+      })}
     </g>
   )
 }
 
+/** Groups a panel's own sash parts by their section — a double-door
+ * section contributes two sashes under the same key, exactly the array
+ * shape `renderHardware`/`renderOpeningTypeSymbols` already expect. */
+function groupSashesBySection(sashes: WindowPart[]): Map<number, WindowPart[]> {
+  const groups = new Map<number, WindowPart[]>()
+  for (const sash of sashes) {
+    const key = sash.sectionIndex ?? -1
+    const group = groups.get(key)
+    if (group) group.push(sash)
+    else groups.set(key, [sash])
+  }
+  return groups
+}
+
+/** A dimension-line number with a background-coloured halo so it reads
+ * as sitting IN the line rather than crossing it — the standard
+ * dimension-chain convention. Bold throughout (Mario, 2026-09-21) —
+ * the numbers are what a fabricator reads off the drawing. */
+function DimensionLabel({
+  x,
+  y,
+  text,
+  fontSize,
+  weight = 700,
+  vertical = false,
+}: {
+  x: number
+  y: number
+  text: string
+  fontSize: number
+  weight?: number
+  vertical?: boolean
+}) {
+  const w = text.length * fontSize * 0.66 + fontSize * 0.5
+  const h = fontSize * 1.4
+  const rectW = vertical ? h : w
+  const rectH = vertical ? w : h
+  return (
+    <>
+      <rect x={x - rectW / 2} y={y - rectH / 2} width={rectW} height={rectH} fill="var(--background)" />
+      <text
+        x={x}
+        y={y + fontSize * 0.34}
+        textAnchor="middle"
+        fontSize={fontSize}
+        fontWeight={weight}
+        fill="var(--muted-foreground)"
+        style={{ fontVariantNumeric: 'tabular-nums' }}
+        transform={vertical ? `rotate(-90 ${x} ${y})` : undefined}
+      >
+        {text}
+      </text>
+    </>
+  )
+}
+
 /**
- * The "+" on a free side of the current selection. Sits just outside the
- * edge it would attach to, so it never covers the panel it belongs to.
- *
- * `onHoverChange` is what keeps it reachable: the panel's own
- * mouseleave fires the moment the pointer crosses onto this button, and
- * without telling the dialog "still hovering", the markers would vanish
- * out from under the cursor.
+ * One tick+label chain along a fixed line — shared by a gridded
+ * panel's own column/row breakdown (multiple segments) and the
+ * per-window total (a single "segment"), so both draw identically and
+ * both get the same optional leading gap for free. `origin` is where
+ * the chain's own segments start along the running axis (a panel's own
+ * `x`/`y`); `gapBefore` (2026-09-15, "check this image... draw me a
+ * suggestion" — the left margin's 620/1680 didn't visually connect to
+ * the assembly's own top, leaving a 362mm span unaccounted for)
+ * prepends that leftover distance back to the assembly's own edge as
+ * one more plain segment — not visually distinct, just another number
+ * in the same chain, per Mario's own call.
  */
+function DimensionChain({
+  orientation,
+  fixedCoord,
+  origin,
+  segments,
+  gapBefore,
+  tickLen,
+  fontSize,
+}: {
+  orientation: 'horizontal' | 'vertical'
+  fixedCoord: number
+  origin: number
+  segments: number[]
+  gapBefore?: number
+  tickLen: number
+  fontSize: number
+}) {
+  const allSegments = gapBefore && gapBefore > 0 ? [gapBefore, ...segments] : segments
+  const start = gapBefore && gapBefore > 0 ? origin - gapBefore : origin
+  const boundaries = cumulativeBoundaries(allSegments)
+  const end = start + boundaries[boundaries.length - 1]
+  // 1.5× the original 0.06 (Mario, 2026-09-21: "make the line thicker
+  // little") — same bump as the overall dimension line above.
+  const tickStroke = Math.max(tickLen * 0.09, 1)
+
+  return (
+    <>
+      <g stroke="var(--muted-foreground)" strokeWidth={tickStroke} opacity={0.6}>
+        {orientation === 'horizontal' ? (
+          <line x1={start} y1={fixedCoord} x2={end} y2={fixedCoord} />
+        ) : (
+          <line x1={fixedCoord} y1={start} x2={fixedCoord} y2={end} />
+        )}
+        {boundaries.map((b, i) =>
+          orientation === 'horizontal' ? (
+            <line key={i} x1={start + b} y1={fixedCoord - tickLen / 2} x2={start + b} y2={fixedCoord + tickLen / 2} />
+          ) : (
+            <line key={i} x1={fixedCoord - tickLen / 2} y1={start + b} x2={fixedCoord + tickLen / 2} y2={start + b} />
+          ),
+        )}
+      </g>
+      {allSegments.map((len, i) => {
+        const mid = start + (boundaries[i] + boundaries[i + 1]) / 2
+        return orientation === 'horizontal' ? (
+          <DimensionLabel key={i} x={mid} y={fixedCoord} text={formatDimensionMm(len)} fontSize={fontSize} />
+        ) : (
+          <DimensionLabel key={i} x={fixedCoord} y={mid} text={formatDimensionMm(len)} fontSize={fontSize} vertical />
+        )
+      })}
+    </>
+  )
+}
+
+/**
+ * One panel's own column-width / row-height chain, plus a letter in
+ * each of its sections — mock-up approved by Mario 2026-09-15. Only
+ * for a gridded panel (a plain 1×1 panel gets neither: nothing to
+ * chain, nothing to distinguish). `columnSide`/`rowSide` (computed by
+ * the caller via `freeSidesOf`, 2026-09-15 — previously hardcoded to
+ * "only if flush with the assembly's global top/left corner", which is
+ * why a panel that wasn't flush could lose its own breakdown entirely)
+ * say WHICH free side each chain lands on, or `null` if neither side on
+ * that axis is free — a panel elsewhere in a multi-panel assembly still
+ * gets its section letters either way, just not a chain if nothing's
+ * open. The gap-to-the-assembly's-own-edge segment only applies on
+ * top/left, matching `DimensionChain`'s own doc comment. Deliberately
+ * no opening-type symbols (fixed cross / slide arrow / interlock
+ * hatch) — left out of this pass on Mario's own call.
+ */
+function PanelDimensionCallouts({
+  panel,
+  panelRect,
+  outerMm,
+  parts,
+  chainOffset,
+  tickLen,
+  fontSize,
+  letterFontSize,
+  columnSide,
+  rowSide,
+  columnGap,
+  rowGap,
+}: {
+  panel: PanelRender
+  panelRect: RectMm
+  outerMm: { width: number; height: number }
+  parts: WindowPart[]
+  chainOffset: number
+  tickLen: number
+  fontSize: number
+  letterFontSize: number
+  columnSide: 'top' | 'bottom' | null
+  rowSide: 'left' | 'right' | null
+  columnGap?: number
+  rowGap?: number
+}) {
+  const cols = panel.columnWidths
+  const rows = panel.rowHeights
+  if (cols.length <= 1 && rows.length <= 1) return null
+
+  return (
+    <>
+      {cols.length > 1 && columnSide && (
+        <DimensionChain
+          orientation="horizontal"
+          // A SHARED tier across the whole margin, not this one panel's
+          // own edge — Mario, 2026-09-15 (annotated screenshot): Panel
+          // 1's own chain needs to land on the same row as Panel 2's,
+          // even though Panel 1's actual frame sits 362mm lower. Using
+          // the assembly's own top/bottom (0 / outerMm.height) rather
+          // than `panelRect.y`/`.y + .height` is what makes every
+          // panel's chain on a given side line up into one row.
+          fixedCoord={columnSide === 'top' ? -chainOffset : outerMm.height + chainOffset}
+          origin={panelRect.x}
+          segments={cols}
+          gapBefore={columnGap}
+          tickLen={tickLen}
+          fontSize={fontSize}
+        />
+      )}
+
+      {rows.length > 1 && rowSide && (
+        <DimensionChain
+          orientation="vertical"
+          fixedCoord={rowSide === 'left' ? -chainOffset : outerMm.width + chainOffset}
+          origin={panelRect.y}
+          segments={rows}
+          gapBefore={rowGap}
+          tickLen={tickLen}
+          fontSize={fontSize}
+        />
+      )}
+
+      {rows.map((_, r) =>
+        cols.map((_, c) => {
+          // `parts`' own `rectMm` is already in ASSEMBLY space (see
+          // `buildAssemblyLayout`'s own offsetting) — no further
+          // `panelRect.x/y` offset belongs here, unlike the chain
+          // ticks above, which start from `cumulativeBoundaries`'
+          // PANEL-local values and so do need it.
+          const sectionIndex = r * cols.length + c
+          const sectionParts = parts.filter(
+            (p) => p.sectionIndex === sectionIndex && (p.kind === 'sash' || p.kind === 'glass' || p.kind === 'flyScreen'),
+          )
+          if (sectionParts.length === 0) return null
+          const rect = boundingRect(sectionParts.map((p) => p.rectMm))
+          return (
+            <text
+              key={sectionIndex}
+              x={rect.x + rect.width / 2}
+              y={rect.y + rect.height * 0.92}
+              textAnchor="middle"
+              fontSize={letterFontSize}
+              fontWeight={600}
+              fill="var(--foreground)"
+            >
+              {sectionLetter(sectionIndex)}
+            </text>
+          )
+        }),
+      )}
+    </>
+  )
+}
+
+/**
+ * One panel's own overall width/height, shown on whichever side is
+ * actually free — Mario, 2026-09-15: "if i have two windows next to
+ * each other or on top or bottom, i want to see an outerline size for
+ * each side of the window not covered". `widthSide`/`heightSide` are
+ * resolved by the caller (via the same `widthSideFor`/`heightSideFor`
+ * `freeSidesOf` helpers `PanelDimensionCallouts` uses) and already come
+ * in as `null` whenever this panel is gridded on that axis — a gridded
+ * panel's own column/row chain always wins that side (its segments
+ * already sum to this total, so showing both would be a third,
+ * redundant line — "maximum 2 lines of measurements on any side",
+ * 2026-09-15), never just "gridded AND flush with the corner" the way
+ * it briefly was.
+ *
+ * Suppressed (by the caller resolving to `null`) on whichever axis this
+ * panel's own size already MATCHES the assembly-level overall line —
+ * Mario, 2026-09-15: "if there's an overall on side no need to add
+ * overall on another side if they match".
+ *
+ * Gains the same leading "gap to the assembly's own edge" segment as
+ * `PanelDimensionCallouts`, via the shared `DimensionChain` — a panel
+ * whose own chain sits on top/left but doesn't start at 0 gets that
+ * leftover distance spelled out too, not left to be inferred from the
+ * overall total alone.
+ */
+function PanelSizeCallout({
+  rect,
+  outerMm,
+  chainOffset,
+  tickLen,
+  fontSize,
+  widthSide,
+  heightSide,
+  widthGap,
+  heightGap,
+}: {
+  rect: RectMm
+  outerMm: { width: number; height: number }
+  chainOffset: number
+  tickLen: number
+  fontSize: number
+  widthSide: 'top' | 'bottom' | null
+  heightSide: 'left' | 'right' | null
+  widthGap?: number
+  heightGap?: number
+}) {
+  const resolvedWidthSide = rect.width === outerMm.width ? null : widthSide
+  const resolvedHeightSide = rect.height === outerMm.height ? null : heightSide
+  if (!resolvedWidthSide && !resolvedHeightSide) return null
+
+  return (
+    <>
+      {resolvedWidthSide && (
+        <DimensionChain
+          orientation="horizontal"
+          // Shared with `PanelDimensionCallouts`'s own tier (assembly
+          // top/bottom, not this panel's own edge) — see its doc
+          // comment: two panels on the same side need to land in the
+          // same row.
+          fixedCoord={resolvedWidthSide === 'top' ? -chainOffset : outerMm.height + chainOffset}
+          origin={rect.x}
+          segments={[rect.width]}
+          gapBefore={widthGap}
+          tickLen={tickLen}
+          fontSize={fontSize}
+        />
+      )}
+      {resolvedHeightSide && (
+        <DimensionChain
+          orientation="vertical"
+          fixedCoord={resolvedHeightSide === 'left' ? -chainOffset : outerMm.width + chainOffset}
+          origin={rect.y}
+          segments={[rect.height]}
+          gapBefore={heightGap}
+          tickLen={tickLen}
+          fontSize={fontSize}
+        />
+      )}
+    </>
+  )
+}
+
 /** Where a side's "+" sits — just outside the edge it would attach to,
  * so it never covers the panel it belongs to. */
 function markerCentre(side: PanelSide, rect: RectMm, radius: number): { x: number; y: number } {
@@ -1083,6 +2057,17 @@ function markerCentre(side: PanelSide, rect: RectMm, radius: number): { x: numbe
   }[side]
 }
 
+/**
+ * The "+" on a free side of the current selection. Sits just outside the
+ * edge it would attach to, so it never covers the panel it belongs to.
+ * Reachable while hovered because `onPanelHover(null)` only fires on the
+ * whole drawing's own `onMouseLeave`, not per-panel — moving from the
+ * panel onto this marker (or onto the popup it opens) never counts as
+ * leaving. Once the popup itself is open, though, WHICH panel it's
+ * attaching to is frozen from the click that opened it
+ * (`AddPanelRequest.panelIndices`, `window-editor-page.tsx`) rather than
+ * re-read live from hover — see that field's own doc comment for why.
+ */
 function AddPanelMarker({
   side,
   centre,
@@ -1135,12 +2120,6 @@ function AddPanelMarker({
   )
 }
 
-/** How far inside a panel its own dimension inputs sit — proportional,
- * so a small panel in a big assembly still keeps them within itself. */
-function dimensionInset(rect: RectMm): number {
-  return Math.min(rect.width, rect.height) * 0.16
-}
-
 function issueStroke(issues: TranslatedIssue[] | undefined): string | null {
   const severity = worstSeverity(issues)
   if (severity === 'error') return ERROR_COLOR
@@ -1148,10 +2127,10 @@ function issueStroke(issues: TranslatedIssue[] | undefined): string | null {
   return null
 }
 
-/** Selected beats an issue beats the default thin gray outline. */
-function partStroke(selected: boolean, issues: TranslatedIssue[] | undefined): string {
+/** Selected beats an issue beats the panel's own seam colour. */
+function partStroke(selected: boolean, issues: TranslatedIssue[] | undefined, seamStroke: string): string {
   if (selected) return 'var(--primary)'
-  return issueStroke(issues) ?? DEFAULT_STROKE
+  return issueStroke(issues) ?? seamStroke
 }
 
 function InteractivePart({
@@ -1165,6 +2144,8 @@ function InteractivePart({
   issues,
   glyphRadius,
   showOverlay = true,
+  onMouseDown,
+  cursorClassName = 'cursor-pointer',
 }: {
   part: WindowPart
   selected: boolean
@@ -1181,6 +2162,13 @@ function InteractivePart({
    * glass sits in (later, on top), the two tints would otherwise
    * alpha-blend into a muddy colour neither part actually has. */
   showOverlay?: boolean
+  /** Divider-only, so far — starts a drag alongside the normal click
+   * selection (a click still fires on mouseup if the pointer barely
+   * moved, so the two never conflict). */
+  onMouseDown?: () => void
+  /** Divider-only — `cursor-ew-resize`/`cursor-ns-resize` hints that the
+   * part is draggable, not just clickable. */
+  cursorClassName?: string
 }) {
   const rect = ringRect ?? part.rectMm
   const severity = worstSeverity(issues)
@@ -1202,7 +2190,14 @@ function InteractivePart({
       onKeyDown={onKeyDown}
       onMouseEnter={() => onHover(part.id)}
       onMouseLeave={() => onHover(null)}
-      className="cursor-pointer outline-none"
+      onMouseDown={
+        onMouseDown &&
+        ((e: MouseEvent<SVGGElement>) => {
+          e.stopPropagation()
+          onMouseDown()
+        })
+      }
+      className={cn('outline-none', cursorClassName)}
     >
       {children}
       {showOverlay && (selected || hovered) && (
@@ -1243,34 +2238,6 @@ function InteractivePart({
         </g>
       )}
     </g>
-  )
-}
-
-function DimensionInput({
-  style,
-  value,
-  onChange,
-  ariaLabel,
-}: {
-  style: { left: number; top: number }
-  value: number
-  onChange: (mm: number) => void
-  ariaLabel: string
-}) {
-  return (
-    <input
-      type="number"
-      min={1}
-      dir="ltr"
-      aria-label={ariaLabel}
-      className="absolute w-16 -translate-x-1/2 -translate-y-1/2 rounded border border-border bg-background px-1 py-0.5 text-center text-xs tabular-nums text-foreground shadow-sm"
-      style={{ left: style.left, top: style.top }}
-      value={Number.isFinite(value) ? value : ''}
-      onChange={(e) => {
-        const parsed = Number(e.target.value)
-        if (Number.isFinite(parsed)) onChange(parsed)
-      }}
-    />
   )
 }
 

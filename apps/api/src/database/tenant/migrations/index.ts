@@ -9,6 +9,11 @@ import { AddWindowOpeningType1786900000000 } from './1786900000000-AddWindowOpen
 import { AddWindowPanels1787632599315 } from './1787632599315-AddWindowPanels';
 import { AddPanelArchHeads1787899610005 } from './1787899610005-AddPanelArchHeads';
 import { AddTransomPanels1788337151528 } from './1788337151528-AddTransomPanels';
+import { AddWindowSections1788500000000 } from './1788500000000-AddWindowSections';
+import { AddSectionBeadProfile1788500100000 } from './1788500100000-AddSectionBeadProfile';
+import { AddPanelSlidingLayout1788600000000 } from './1788600000000-AddPanelSlidingLayout';
+import { AddCompanyProfileSlidingRails1788700000001 } from './1788700000001-AddCompanyProfileSlidingRails';
+import { MoveSlidingLayoutToSections1788800000000 } from './1788800000000-MoveSlidingLayoutToSections';
 
 /**
  * The tenant migration track, explicitly ordered.
@@ -33,6 +38,11 @@ export const tenantMigrations: Array<new () => MigrationInterface> = [
   AddWindowPanels1787632599315,
   AddPanelArchHeads1787899610005,
   AddTransomPanels1788337151528,
+  AddWindowSections1788500000000,
+  AddSectionBeadProfile1788500100000,
+  AddPanelSlidingLayout1788600000000,
+  AddCompanyProfileSlidingRails1788700000001,
+  MoveSlidingLayoutToSections1788800000000,
 ];
 
 /** TypeORM records applied migrations as `{timestamp}-{ClassName}`. */

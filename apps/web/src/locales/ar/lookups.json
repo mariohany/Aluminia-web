@@ -62,7 +62,8 @@
     "perimeter": "المحيط (مم)",
     "inertiaIx": "عزم القصور Ix (سم⁴)",
     "inertiaIy": "عزم القصور Iy (سم⁴)",
-    "acceptsFlyScreen": "سلك ناموس"
+    "acceptsFlyScreen": "سلك ناموس",
+    "slidingRails": "عدد السكك (منزلق)"
   },
   "common": {
     "yes": "أيوه",

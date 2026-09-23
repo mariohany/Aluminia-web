@@ -9,6 +9,7 @@ import {
   boundedBySheetIssue,
   gapThicknessIssue,
   gapThicknessMatchesType,
+  slidingRailsSchema,
   startsAndEndsWithSheet,
   type BulkDeleteResult,
 } from '@repo/types/lookups'
@@ -273,6 +274,7 @@ export const createCompanySystemProfileSchema = z.object({
   inertiaIy: z.number().positive(),
   image: z.url().nullable().optional(),
   acceptsFlyScreen: z.boolean(),
+  slidingRails: slidingRailsSchema,
 })
 export type CreateCompanySystemProfileInput = z.infer<typeof createCompanySystemProfileSchema>
 export const updateCompanySystemProfileSchema = createCompanySystemProfileSchema.partial()
@@ -292,6 +294,7 @@ export interface CompanySystemProfileSummary {
   inertiaIy: number
   image: string | null
   acceptsFlyScreen: boolean
+  slidingRails: number | null
   scope: typeof LookupScope.COMPANY
   createdAt: string
   updatedAt: string

@@ -114,6 +114,7 @@ describe('TenantProvisioning (e2e)', () => {
       'tenant_info',
       'tenant_migrations',
       'window_panels',
+      'window_sections',
       'windows',
     ]);
 

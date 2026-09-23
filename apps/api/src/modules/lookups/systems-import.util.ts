@@ -77,6 +77,10 @@ export interface ParsedProfileRow {
   inertiaIy: number;
   image: string | null;
   acceptsFlyScreen: boolean;
+  // What the sheet said, or null when the column is absent/blank — the
+  // service normalises it against the resolved catalogue (2 for a
+  // sliding frame, null otherwise), the same as the create endpoint.
+  slidingRails: number | null;
   rowNumber: number;
 }
 
@@ -229,6 +233,9 @@ function parseProfileSheet(
   const flyScreenHeader = findColumns(sheet.getRow(header.rowNumber), [
     { key: 'acceptsFlyScreen', hints: ['fly screen', 'flyscreen'] },
   ]);
+  const railsHeader = findColumns(sheet.getRow(header.rowNumber), [
+    { key: 'slidingRails', hints: ['rails', 'tracks'] },
+  ]);
 
   const rows: ParsedProfileRow[] = [];
   for (let i = header.rowNumber + 1; i <= sheet.rowCount; i++) {
@@ -277,6 +284,18 @@ function parseProfileSheet(
     const acceptsFlyScreen = flyScreenHeader
       ? cellBoolean(line.getCell(flyScreenHeader.acceptsFlyScreen))
       : false;
+    const slidingRails = railsHeader
+      ? cellNumber(line.getCell(railsHeader.slidingRails))
+      : null;
+    if (
+      slidingRails !== null &&
+      (!Number.isInteger(slidingRails) || slidingRails < 2 || slidingRails > 4)
+    ) {
+      errors.push(
+        `Profile row ${i}: rails must be a whole number from 2 to 4.`,
+      );
+      continue;
+    }
     rows.push({
       catalogName,
       profileNo,
@@ -288,6 +307,7 @@ function parseProfileSheet(
       inertiaIy,
       image,
       acceptsFlyScreen,
+      slidingRails,
       rowNumber: i,
     });
   }

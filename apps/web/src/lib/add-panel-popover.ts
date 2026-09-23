@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import type { PanelSide } from '@/lib/window-geometry'
 
 export interface AddPanelRequest {
@@ -10,6 +10,18 @@ export interface AddPanelRequest {
    * other comes from the panel being cloned. See `prefillForSide()`. */
   widthMm: number
   heightMm: number
+  /** A SNAPSHOT of which panel(s) this "+" was attaching to, taken the
+   * instant the marker was clicked — not re-derived live from hover/
+   * selection while the popup stays open. Without this, `hoveredPanelIndex`
+   * "following the pointer" (its own deliberate design, see
+   * `window-editor-page.tsx`'s own comment on it) could drift the moment
+   * the pointer settles somewhere the browser hit-tests differently once
+   * the popup itself appears under it — the marker and the popup's own
+   * Mullion/Transom option would then visibly disappear together, since
+   * both ultimately depend on the same "how many panels are we attaching
+   * to" count (Mario, 2026-09-15: "why transom button in divider popup
+   * disappear when + icon disappear"). */
+  panelIndices: number[]
 }
 
 /** Pushes a "+"-anchored popover clear of the marker it belongs to, on
@@ -32,20 +44,60 @@ export const OFFSET_BY_SIDE: Record<PanelSide, string> = {
  * hook exported alongside a component breaks Fast Refresh for that
  * file, and this hook now has three real consumers
  * (`add-panel-card.tsx`, `add-panel-type-step.tsx`,
- * `add-transom-card.tsx`), not just the one it was extracted from.
+ * `add-divider-card.tsx`), not just the one it was extracted from.
  *
  * `remeasureKey` lets a caller trigger a re-measure when ITS OWN
  * content changes height for a reason this hook can't see (an error
  * line appearing, for instance) — pass whatever value should force a
  * fresh measurement, or `undefined` for a popover whose height never
  * changes after mount.
+ *
+ * `onClickOutside`, when given, closes the popover on a pointerdown
+ * anywhere that isn't inside it (Mario, 2026-09-15: "make this popup
+ * close if i clicked anywhere else outside it") — every caller just
+ * passes its own `onCancel`, since "click outside" and "explicit
+ * cancel" already mean the same thing everywhere this hook is used.
+ * The listener is only attached by the effect below once the popover
+ * has already mounted, well after the click that opened it has finished
+ * dispatching — so that opening click is never itself mistaken for one
+ * "outside" the popover it's in the middle of creating.
  */
-export function useAddPanelCardPosition(anchor: { side: PanelSide; at: { left: number; top: number } } | null, remeasureKey?: unknown) {
+export function useAddPanelCardPosition(
+  anchor: { side: PanelSide; at: { left: number; top: number } } | null,
+  remeasureKey?: unknown,
+  onClickOutside?: () => void,
+) {
   const cardRef = useRef<HTMLDivElement>(null)
   // Nudged back inside the drawing box when the preferred side would
   // hang off an edge — attaching above a panel near the top otherwise
   // opens the card half outside the container and clips its heading.
   const [nudge, setNudge] = useState({ x: 0, y: 0 })
+
+  // Capture phase, like every other outside-click implementation in this
+  // codebase's dependencies (Radix included) — a target's own handler
+  // calling `stopPropagation` during the bubble phase must never be able
+  // to suppress this from noticing the click landed outside.
+  useEffect(() => {
+    if (!anchor || !onClickOutside) return
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node
+      if (cardRef.current?.contains(target)) return
+      // A Radix `<Select>` (add-divider-card.tsx's divider-profile
+      // picker) renders its dropdown into a PORTAL under `document.body`,
+      // not inside the card's own DOM subtree — so picking an option
+      // landed as a click "outside" this popover and closed the whole
+      // thing before the selection ever reached state (Mario,
+      // 2026-09-15: "when i try to select transom/mulion profile in the
+      // popup the popup disapears like i clicked outside"). Every
+      // shadcn `SelectContent` carries `data-slot="select-content"`
+      // regardless of which popover opened it, so this check stays
+      // correct if a second Select is ever added to one of these cards.
+      if ((target as Element).closest?.('[data-slot="select-content"]')) return
+      onClickOutside()
+    }
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true)
+  }, [anchor, onClickOutside])
 
   // Measured after the card is laid out at its preferred position, so
   // the correction accounts for its real height (which depends on

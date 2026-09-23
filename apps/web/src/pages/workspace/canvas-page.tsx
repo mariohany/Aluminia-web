@@ -1,13 +1,14 @@
 import { useParams, useOutletContext } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { AppWindow, Copy, DoorOpen, Fan, Folder, Pencil, Trash2 } from 'lucide-react'
+import { AppWindow, Copy, DoorOpen, Fan, Folder, Pencil, Trash2, TriangleAlert } from 'lucide-react'
 import { GlassKind } from '@repo/types/windows'
 import type { WindowSummary } from '@repo/types/windows'
 import { WindowThumbnail } from '@/components/workspace/window-thumbnail'
 import { useClientTreeQuery } from '@/lib/clients-queries'
 import { useDuplicateWindowMutation, useWindowsQuery } from '@/lib/windows-queries'
 import { useMergedGlassCombinationsQuery, useMergedGlassQuery, useMergedSystemProfilesQuery } from '@/lib/lookup-merge'
+import { useWindowIssues } from '@/lib/window-render'
 import { displayName } from '@/lib/bilingual'
 import { apiErrorMessage } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
@@ -73,19 +74,30 @@ export function CanvasPage() {
 
   const Icon = selectedClient && !projectId ? Folder : AppWindow
 
+  // The graph-paper grid is the empty-canvas motif (nothing drawn yet) —
+  // once real window cards fill the canvas, the grid lines showing
+  // through/between them read as visual noise rather than a design
+  // surface, so cards get a plain white background instead (Mario,
+  // 2026-09-16: "remove the grid background behined the window cards").
+  const showGrid = !(projectId && hasWindows)
+
   return (
     <div
       className="relative h-full w-full overflow-y-auto"
-      style={{
-        backgroundColor: '#ffffff',
-        backgroundImage: [
-          'linear-gradient(to right, rgba(0,0,0,0.12) 1px, transparent 1px)',
-          'linear-gradient(to bottom, rgba(0,0,0,0.12) 1px, transparent 1px)',
-          'linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px)',
-          'linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)',
-        ].join(', '),
-        backgroundSize: '120px 120px, 120px 120px, 20px 20px, 20px 20px',
-      }}
+      style={
+        showGrid
+          ? {
+              backgroundColor: '#ffffff',
+              backgroundImage: [
+                'linear-gradient(to right, rgba(0,0,0,0.12) 1px, transparent 1px)',
+                'linear-gradient(to bottom, rgba(0,0,0,0.12) 1px, transparent 1px)',
+                'linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px)',
+                'linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)',
+              ].join(', '),
+              backgroundSize: '120px 120px, 120px 120px, 20px 20px, 20px 20px',
+            }
+          : { backgroundColor: '#ffffff' }
+      }
     >
       {projectId && hasWindows ? (
         // `pt-20` (not `p-6` on top) clears the floating toolbar
@@ -141,8 +153,22 @@ function WindowCard({
       ? glassQuery.data?.find((g) => `${g.scope}:${g.id}` === w.glass)?.name
       : combinationsQuery.data?.find((c) => `${c.scope}:${c.id}` === w.glass)?.name
 
+  // Same `error`-severity rules the design dialog's own issue strip
+  // enforces (a fixed section missing its bead profile, a dangling
+  // profile/glass reference, etc.) — a nudge to open and fix, not a
+  // duplicate of every warning shown inside the editor.
+  const hasErrors = useWindowIssues(w.panels).length > 0
+
   return (
-    <div className="pointer-events-auto flex flex-col overflow-hidden rounded-xl border border-border bg-card/95 shadow-sm backdrop-blur">
+    <div className="pointer-events-auto relative flex flex-col overflow-hidden rounded-xl border border-border bg-card/95 shadow-sm backdrop-blur">
+      {hasErrors && (
+        <div
+          className="absolute end-1.5 top-1.5 z-10 flex size-4 items-center justify-center rounded-full bg-destructive text-white shadow-sm"
+          title={t('canvas.windowHasErrors')}
+        >
+          <TriangleAlert className="size-2.5" aria-hidden="true" />
+        </div>
+      )}
       {/* The elevation leads — it says what this window IS faster than
           the three lines under it do. Fixed height so a grid of cards
           stays on a rhythm regardless of each window's proportions; the

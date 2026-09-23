@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Controller,
   useForm,
+  useWatch,
   type DefaultValues,
   type FieldValues,
   type Path,
@@ -52,7 +53,17 @@ export interface LookupFieldSpec<TInput extends FieldValues> {
   type: 'text' | 'number' | 'select' | 'boolean'
   step?: number
   min?: number
+  max?: number
   options?: { value: string; label: string }[]
+  /** Render only while this holds over the form's live values — for a
+   * field that only means something given OTHER fields (a sliding
+   * frame's rail count). A hidden field keeps whatever value it has;
+   * the API is expected to normalise it, never the form. */
+  visibleWhen?: (values: Partial<TInput>) => boolean
+  /** With `visibleWhen`: the value to put in when the field comes into
+   * view holding nothing (null/undefined/NaN) — so a row saved without
+   * it doesn't reappear as an empty required input. */
+  shownDefault?: TInput[Path<TInput>]
 }
 
 export interface LookupColumnSpec<TSummary> {
@@ -659,11 +670,31 @@ function LookupFormFields<TInput extends FieldValues>({
   const {
     register,
     control,
+    setValue,
     formState: { errors },
   } = form
+  // One subscription for every `visibleWhen` — rerenders on any value
+  // change, which is what a cross-field predicate needs.
+  const values = useWatch({ control }) as Partial<TInput>
+  const visible = fields.filter((field) => field.visibleWhen?.(values) ?? true)
+  const visibleKey = visible.map((f) => f.name).join('|')
+
+  useEffect(() => {
+    for (const field of visible) {
+      if (field.visibleWhen === undefined || field.shownDefault === undefined) continue
+      const current = values[field.name]
+      if (current === null || current === undefined || (typeof current === 'number' && Number.isNaN(current))) {
+        setValue(field.name, field.shownDefault as never, { shouldDirty: true, shouldValidate: true })
+      }
+    }
+    // Only when the SET of visible fields changes — a value edit inside
+    // an already-visible field must not re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleKey])
+
   return (
     <div className="flex flex-col gap-3">
-      {fields.map((field) => {
+      {visible.map((field) => {
         const fieldId = `${idPrefix}-${field.name}`
         const error = errors[field.name]
         return (
@@ -713,6 +744,7 @@ function LookupFormFields<TInput extends FieldValues>({
                     type={field.type === 'number' ? 'number' : 'text'}
                     step={field.step}
                     min={field.min}
+                    max={field.max}
                     className="mt-1.5"
                     aria-invalid={!!error}
                     {...register(field.name, field.type === 'number' ? { valueAsNumber: true } : undefined)}

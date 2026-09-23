@@ -8,13 +8,13 @@ import type { EntityManager } from 'typeorm';
 import {
   GlassKind,
   HeadShape,
-  PanelType,
   type CreateWindowInput,
   type UpdateWindowInput,
   type WindowDetail,
   type WindowPanelInput,
   type WindowPanelDetail,
-  type WindowPanelWindowDetail,
+  type WindowSectionInput,
+  type WindowSectionDetail,
   type WindowSummary,
 } from '@repo/types/windows';
 import {
@@ -25,6 +25,7 @@ import {
 import { Project } from '../../database/tenant/entities/project.entity';
 import { Window } from '../../database/tenant/entities/window.entity';
 import { WindowPanel } from '../../database/tenant/entities/window-panel.entity';
+import { WindowSection } from '../../database/tenant/entities/window-section.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
 import { resolveScopedRef } from '../company-lookups/scoped-ref.util';
 import { translatePostgresError } from '../lookups/pg-error.util';
@@ -49,8 +50,15 @@ export class WindowsService {
     return this.tenantContext.run(async (manager) => {
       const windows = await manager.find(Window, {
         where: { projectId },
-        relations: { panels: true },
-        order: { name: 'ASC', panels: { position: 'ASC' } },
+        // TypeORM does not cascade a nested relation just because the
+        // parent one is requested — `panels: true` alone loads every
+        // panel with `sections: undefined`, not `[]`, so `panels:
+        // { sections: true }` is required here too.
+        relations: { panels: { sections: true } },
+        order: {
+          name: 'ASC',
+          panels: { position: 'ASC', sections: { row: 'ASC', col: 'ASC' } },
+        },
       });
       return windows.map(toSummary);
     });
@@ -168,6 +176,32 @@ export class WindowsService {
         position,
       }),
     );
+    const saved = await manager.save(rows);
+    // Sections reference the panel's real (generated) id, so they can
+    // only be written after the panel row itself exists — same
+    // two-step shape `create()`/`update()` already use for
+    // Window → WindowPanel just above.
+    for (let i = 0; i < saved.length; i++) {
+      saved[i].sections = await this.writeSections(
+        manager,
+        saved[i].id,
+        panels[i].sections,
+      );
+    }
+    return saved;
+  }
+
+  private async writeSections(
+    manager: EntityManager,
+    panelId: string,
+    sections: WindowSectionInput[],
+  ): Promise<WindowSection[]> {
+    const rows = sections.map((section) =>
+      manager.create(WindowSection, {
+        ...toSectionColumns(section),
+        panelId,
+      }),
+    );
     return manager.save(rows);
   }
 
@@ -177,8 +211,12 @@ export class WindowsService {
   ): Promise<Window> {
     const window = await manager.findOne(Window, {
       where: { id },
-      relations: { panels: true },
-      order: { panels: { position: 'ASC' } },
+      // See list()'s own comment: the nested relation needs its own
+      // explicit `true`, TypeORM does not cascade it from the parent.
+      relations: { panels: { sections: true } },
+      order: {
+        panels: { position: 'ASC', sections: { row: 'ASC', col: 'ASC' } },
+      },
     });
     // 404 rather than 403 for another tenant's id — same reasoning as
     // ProjectsService.findOrFail: the search_path makes their rows
@@ -197,7 +235,7 @@ export class WindowsService {
     }
     translatePostgresError(
       error,
-      'That frame, sash, glass, or colour reference does not exist.',
+      'That frame, divider, sash, glass beading, glass, or colour reference does not exist.',
     );
   }
 }
@@ -220,20 +258,26 @@ export class WindowsService {
  *
  * The four structural rules on a panel's own `headShape`/`bars` (flat
  * ⇔ null rise, bars only on a non-flat head, unique bar ids, every
- * anchor referencing something earlier in the array) are NOT
+ * anchor referencing something earlier in the array) — and, as of the
+ * sections feature, every grid rule too (`columnWidths`/`rowHeights`
+ * summing to the panel's own size, one section per cell, the
+ * divider-profile requirement, the arch+grid interaction) — are NOT
  * re-checked here. Unlike overlap/connectivity — genuinely cross-panel
- * relationships a single-object Zod schema cannot see — those four are
- * scoped entirely to one panel's own fields, and `windowPanelSchema`'s
- * `superRefine` (packages/types/src/windows.ts) already enforces them
- * on every request via the global `ZodValidationPipe`
- * (`AppModule`'s `APP_PIPE`) before this method ever runs. Nothing else
- * in the codebase calls `WindowsService.create`/`.update` outside that
- * HTTP path, so re-implementing the same four rules here would be
- * validating input that literally cannot reach this line unvalidated —
- * pure duplication with no defensive value, and not this codebase's
- * actual pattern (see `assertNoOverlap`/`assertConnected`'s own
- * comment: the service re-checks what Zod structurally cannot, not
- * everything a client sends). */
+ * relationships a single-object Zod schema cannot see — all of these
+ * are scoped entirely to one panel's own fields (its `sections` array
+ * included), and `windowPanelSchema`'s `superRefine`
+ * (packages/types/src/windows.ts) already enforces them on every
+ * request via the global `ZodValidationPipe` (`AppModule`'s
+ * `APP_PIPE`) before this method ever runs. `docs/sections_planing.md`
+ * §2 originally called for a separate `validateGrid` here — deliberately
+ * NOT built: nothing else in the codebase calls
+ * `WindowsService.create`/`.update` outside that HTTP path, so it would
+ * validate input that literally cannot reach this line unvalidated,
+ * pure duplication with no defensive value (see `assertNoOverlap`/
+ * `assertConnected`'s own comment: the service re-checks what Zod
+ * structurally cannot see, not everything a client sends — and a
+ * panel's own grid IS something Zod's per-panel `superRefine` can see
+ * in full). */
 function prepareAssembly(panels: WindowPanelInput[]): WindowPanelInput[] {
   const normalized = normalizeHeads(normalizeOrigin(panels));
   assertNoOverlap(normalized);
@@ -267,13 +311,6 @@ function normalizeOrigin(panels: WindowPanelInput[]): WindowPanelInput[] {
  * already was before this fix. */
 function normalizeHeads(panels: WindowPanelInput[]): WindowPanelInput[] {
   return panels.map((panel) => {
-    // A transom has no head to normalise at all — `headShape` isn't
-    // even a field on that branch (docs/transom_planing.md decision
-    // 6: always flat, deferred). Not reachable with real data yet
-    // (transoms aren't stored until Step 2), but this keeps the
-    // function honest about what it operates on rather than assuming
-    // every panel is a window.
-    if (panel.panelType !== PanelType.WINDOW) return panel;
     if (panel.headShape === HeadShape.FLAT) return panel;
     const raw =
       panel.headShape === HeadShape.ROUND
@@ -359,75 +396,58 @@ function assertConnected(panels: WindowPanelInput[]): void {
 
 function toPanelColumns(
   panel: WindowPanelInput,
-): Omit<WindowPanel, 'id' | 'window' | 'windowId' | 'position'> {
-  const glassPair = resolveScopedRef(panel.glass);
+): Omit<WindowPanel, 'id' | 'window' | 'windowId' | 'position' | 'sections'> {
+  const framePair = resolveScopedRef(panel.frameProfile);
+  const dividerPair = resolveOptionalScopedRef(panel.dividerProfile);
   const interiorPair = resolveOptionalScopedRef(panel.interiorColor);
   const exteriorPair = resolveOptionalScopedRef(panel.exteriorColor);
-  const isSingle = panel.glassKind === GlassKind.SINGLE;
-  const glassColumns = {
-    glassKind: panel.glassKind,
-    glassPlatformSingleId: isSingle ? glassPair.platformId : null,
-    glassCompanySingleId: isSingle ? glassPair.companyId : null,
-    glassPlatformCombinationId: isSingle ? null : glassPair.platformId,
-    glassCompanyCombinationId: isSingle ? null : glassPair.companyId,
-    interiorColorPlatformId: interiorPair.platformId,
-    interiorColorCompanyId: interiorPair.companyId,
-    exteriorColorPlatformId: exteriorPair.platformId,
-    exteriorColorCompanyId: exteriorPair.companyId,
-  };
-
-  if (panel.panelType !== PanelType.WINDOW) {
-    // A transom: profile + glass, nothing else (docs/transom_planing.md
-    // decision 1). `frame`/`sash` stay null and `headShape` stays
-    // `'flat'`/`headRiseMm` null/`bars` empty — the migration's
-    // type-aware CHECKs (§2) enforce exactly this shape at the DB
-    // layer too, so this mapping and the constraints agree by
-    // construction rather than by convention.
-    const transomPair = resolveScopedRef(panel.transomProfile);
-    return {
-      xMm: panel.xMm,
-      yMm: panel.yMm,
-      widthMm: panel.widthMm,
-      heightMm: panel.heightMm,
-      panelType: PanelType.TRANSOM,
-      framePlatformProfileId: null,
-      frameCompanyProfileId: null,
-      sashPlatformProfileId: null,
-      sashCompanyProfileId: null,
-      transomPlatformProfileId: transomPair.platformId,
-      transomCompanyProfileId: transomPair.companyId,
-      hasFlyScreen: false,
-      isDoor: false,
-      ...glassColumns,
-      openingType: null,
-      headShape: HeadShape.FLAT,
-      headRiseMm: null,
-      bars: [],
-    };
-  }
-
-  const framePair = resolveScopedRef(panel.frameProfile);
-  const sashPair = resolveScopedRef(panel.sashProfile);
 
   return {
     xMm: panel.xMm,
     yMm: panel.yMm,
     widthMm: panel.widthMm,
     heightMm: panel.heightMm,
-    panelType: PanelType.WINDOW,
     framePlatformProfileId: framePair.platformId,
     frameCompanyProfileId: framePair.companyId,
-    sashPlatformProfileId: sashPair.platformId,
-    sashCompanyProfileId: sashPair.companyId,
-    transomPlatformProfileId: null,
-    transomCompanyProfileId: null,
-    hasFlyScreen: panel.hasFlyScreen,
+    dividerPlatformProfileId: dividerPair.platformId,
+    dividerCompanyProfileId: dividerPair.companyId,
+    columnWidths: panel.columnWidths,
+    rowHeights: panel.rowHeights,
     isDoor: panel.isDoor,
-    ...glassColumns,
-    openingType: panel.openingType ?? null,
+    interiorColorPlatformId: interiorPair.platformId,
+    interiorColorCompanyId: interiorPair.companyId,
+    exteriorColorPlatformId: exteriorPair.platformId,
+    exteriorColorCompanyId: exteriorPair.companyId,
     headShape: panel.headShape,
     headRiseMm: panel.headRiseMm ?? null,
     bars: panel.bars,
+  };
+}
+
+function toSectionColumns(
+  section: WindowSectionInput,
+): Omit<WindowSection, 'id' | 'panel' | 'panelId'> {
+  const sashPair = resolveOptionalScopedRef(section.sashProfile);
+  const beadPair = resolveOptionalScopedRef(section.beadProfile);
+  const glassPair = resolveScopedRef(section.glass);
+  const isSingle = section.glassKind === GlassKind.SINGLE;
+
+  return {
+    row: section.row,
+    col: section.col,
+    sectionKind: section.kind,
+    sashPlatformProfileId: sashPair.platformId,
+    sashCompanyProfileId: sashPair.companyId,
+    beadPlatformProfileId: beadPair.platformId,
+    beadCompanyProfileId: beadPair.companyId,
+    openingType: section.openingType ?? null,
+    glassKind: section.glassKind,
+    glassPlatformSingleId: isSingle ? glassPair.platformId : null,
+    glassCompanySingleId: isSingle ? glassPair.companyId : null,
+    glassPlatformCombinationId: isSingle ? null : glassPair.platformId,
+    glassCompanyCombinationId: isSingle ? null : glassPair.companyId,
+    hasFlyScreen: section.hasFlyScreen,
+    sliding: section.sliding,
   };
 }
 
@@ -484,14 +504,30 @@ function orderedPanels(window: Window): WindowPanel[] {
   return [...panels].sort((a, b) => a.position - b.position);
 }
 
+/**
+ * A panel's sections, row-major (row ascending, then col ascending) —
+ * the same order `columnWidths`/`rowHeights` imply. A panel with none
+ * is impossible through this service for the same reason
+ * `orderedPanels` gives: the grid always has at least one cell.
+ */
+function orderedSections(panel: WindowPanel): WindowSection[] {
+  const sections = panel.sections ?? [];
+  if (sections.length === 0) {
+    throw new Error(`Panel ${panel.id} has no sections.`);
+  }
+  return [...sections].sort((a, b) => a.row - b.row || a.col - b.col);
+}
+
 function toSummary(window: Window): WindowSummary {
   const panels = orderedPanels(window);
-  // The card's frame/glass are the FIRST panel's, not the assembly's —
-  // an assembly has no single frame. The card draws the whole thing, so
-  // the full panel set goes out with the summary: these rows are already
-  // loaded (resolving `first` needs them anyway), and the alternative is
+  // The card's frame is the FIRST panel's, its glass is that panel's
+  // FIRST (row 0, col 0) section's — an assembly has no single frame
+  // or glass. The card draws the whole thing, so the full panel set
+  // goes out with the summary: these rows are already loaded (resolving
+  // `first`/`firstSection` needs them anyway), and the alternative is
   // one detail request per card.
   const first = panels[0];
+  const firstSection = orderedSections(first)[0];
   return {
     id: window.id,
     name: window.name,
@@ -503,29 +539,62 @@ function toSummary(window: Window): WindowSummary {
       first.framePlatformProfileId,
       first.frameCompanyProfileId,
     ),
-    glassKind: first.glassKind as WindowSummary['glassKind'],
-    glass: toGlassRef(first),
-    hasFlyScreen: first.hasFlyScreen,
+    glassKind: firstSection.glassKind as WindowSummary['glassKind'],
+    glass: toGlassRef(firstSection),
+    hasFlyScreen: firstSection.hasFlyScreen,
     isDoor: first.isDoor,
   };
 }
 
-function toGlassRef(panel: WindowPanel): ScopedRef {
-  const isSingle = panel.glassKind === GlassKind.SINGLE;
+function toGlassRef(section: WindowSection): ScopedRef {
+  const isSingle = section.glassKind === GlassKind.SINGLE;
   return toRequiredScopedRef(
-    isSingle ? panel.glassPlatformSingleId : panel.glassPlatformCombinationId,
-    isSingle ? panel.glassCompanySingleId : panel.glassCompanyCombinationId,
+    isSingle
+      ? section.glassPlatformSingleId
+      : section.glassPlatformCombinationId,
+    isSingle ? section.glassCompanySingleId : section.glassCompanyCombinationId,
   );
 }
 
+function toSectionDetail(section: WindowSection): WindowSectionDetail {
+  return {
+    row: section.row,
+    col: section.col,
+    kind: section.sectionKind as WindowSectionDetail['kind'],
+    sashProfile: toOptionalScopedRef(
+      section.sashPlatformProfileId,
+      section.sashCompanyProfileId,
+    ),
+    beadProfile: toOptionalScopedRef(
+      section.beadPlatformProfileId,
+      section.beadCompanyProfileId,
+    ),
+    openingType: section.openingType as WindowSectionDetail['openingType'],
+    glassKind: section.glassKind as WindowSectionDetail['glassKind'],
+    glass: toGlassRef(section),
+    hasFlyScreen: section.hasFlyScreen,
+    sliding: section.sliding,
+  };
+}
+
 function toPanelDetail(panel: WindowPanel): WindowPanelDetail {
-  const base = {
+  return {
     xMm: panel.xMm,
     yMm: panel.yMm,
     widthMm: panel.widthMm,
     heightMm: panel.heightMm,
-    glassKind: panel.glassKind as WindowPanelDetail['glassKind'],
-    glass: toGlassRef(panel),
+    frameProfile: toRequiredScopedRef(
+      panel.framePlatformProfileId,
+      panel.frameCompanyProfileId,
+    ),
+    dividerProfile: toOptionalScopedRef(
+      panel.dividerPlatformProfileId,
+      panel.dividerCompanyProfileId,
+    ),
+    columnWidths: panel.columnWidths,
+    rowHeights: panel.rowHeights,
+    sections: orderedSections(panel).map(toSectionDetail),
+    isDoor: panel.isDoor,
     interiorColor: toOptionalScopedRef(
       panel.interiorColorPlatformId,
       panel.interiorColorCompanyId,
@@ -534,34 +603,7 @@ function toPanelDetail(panel: WindowPanel): WindowPanelDetail {
       panel.exteriorColorPlatformId,
       panel.exteriorColorCompanyId,
     ),
-  };
-
-  if (panel.panelType !== PanelType.WINDOW) {
-    return {
-      ...base,
-      panelType: PanelType.TRANSOM,
-      transomProfile: toRequiredScopedRef(
-        panel.transomPlatformProfileId,
-        panel.transomCompanyProfileId,
-      ),
-    };
-  }
-
-  return {
-    ...base,
-    panelType: PanelType.WINDOW,
-    frameProfile: toRequiredScopedRef(
-      panel.framePlatformProfileId,
-      panel.frameCompanyProfileId,
-    ),
-    sashProfile: toRequiredScopedRef(
-      panel.sashPlatformProfileId,
-      panel.sashCompanyProfileId,
-    ),
-    hasFlyScreen: panel.hasFlyScreen,
-    isDoor: panel.isDoor,
-    openingType: panel.openingType as WindowPanelWindowDetail['openingType'],
-    headShape: panel.headShape as WindowPanelWindowDetail['headShape'],
+    headShape: panel.headShape as WindowPanelDetail['headShape'],
     headRiseMm: panel.headRiseMm,
     bars: panel.bars,
   };

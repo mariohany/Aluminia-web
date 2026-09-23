@@ -4,29 +4,38 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import type { WindowBarInput } from '@repo/types/windows';
 import { Window } from './window.entity';
+import { WindowSection } from './window-section.entity';
 
 /**
  * One panel of a window assembly — a whole unit with its own frame all
  * the way round, coupled to its neighbours along a shared edge. See
- * docs/window_assembly_planing.md.
+ * docs/window_assembly_planing.md and, for the grid inside a panel,
+ * docs/sections_planing.md.
  *
- * This holds everything that describes how a unit is BUILT; `Window`
- * keeps only the header (name, quantity, location, notes, and the
- * derived overall size). Every lookup reference is the same nullable
- * platform/company uuid pair `Window` used to carry, with the same
- * strict posture — CHECK that exactly one half is set, real FK on the
- * company half — because a panel whose profile vanished is broken data,
- * not a stale preference.
+ * This holds everything shared by the WHOLE frame — profile, divider,
+ * grid, head, is-door, colours; `Window` keeps only the header (name,
+ * quantity, location, notes, and the derived overall size). What
+ * varies per-light (sash, opening type, glass, fly screen) lives on
+ * `sections`, one row per grid cell — see `WindowSection`. Every
+ * lookup reference is the same nullable platform/company uuid pair
+ * `Window` used to carry, with the same strict posture — CHECK that at
+ * most/exactly one half is set, real FK on the company half — because a
+ * panel whose profile vanished is broken data, not a stale preference.
  *
  * `xMm`/`yMm` place the panel in the assembly's own mm space, origin at
  * the bounding box's top-left. The remaining assembly invariants (no
  * overlap, every panel edge-connected) live in `WindowsService`, not in
  * a CHECK: they are relationships between rows, which a row-scoped
- * constraint cannot see.
+ * constraint cannot see. Likewise the grid's own cross-row rules
+ * (`columnWidths`/`rowHeights` summing to `widthMm`/`heightMm`, every
+ * cell covered by exactly one section) live in Zod's
+ * `windowPanelSchema.superRefine`, re-checked server-side by
+ * `validateGrid`.
  */
 @Entity('window_panels')
 export class WindowPanel {
@@ -64,70 +73,38 @@ export class WindowPanel {
   @Column({ name: 'frame_company_profile_id', type: 'uuid', nullable: true })
   frameCompanyProfileId: string | null;
 
-  @Column({ name: 'sash_platform_profile_id', type: 'uuid', nullable: true })
-  sashPlatformProfileId: string | null;
+  // One `ProfileType.TRANSOM` profile used by every mullion/transom in
+  // this panel (docs/sections_planing.md decision 4). At most one half
+  // set (`CK_window_panels_divider_profile`); required iff the grid is
+  // bigger than 1×1 is a service rule (`validateGrid`) — a CHECK can't
+  // see `columnWidths`/`rowHeights`' jsonb lengths.
+  @Column({ name: 'divider_platform_profile_id', type: 'uuid', nullable: true })
+  dividerPlatformProfileId: string | null;
 
-  @Column({ name: 'sash_company_profile_id', type: 'uuid', nullable: true })
-  sashCompanyProfileId: string | null;
+  @Column({ name: 'divider_company_profile_id', type: 'uuid', nullable: true })
+  dividerCompanyProfileId: string | null;
 
-  // 'window' | 'transom' — see packages/types/src/windows.ts's PanelType.
-  // Plain varchar for the same reason glassKind/openingType/headShape
-  // above are. Which of frame/sash vs transom profile pair is populated
-  // is enforced per-type by the migration's CHECKs, not by this column
-  // alone.
+  // Boundary-to-boundary pitches, row-major, summing to `widthMm`/
+  // `heightMm` respectively — NOT clear glass sizes (those derive from
+  // `ProfileMetrics` at layout time). jsonb, same posture as `bars`
+  // below: an ordered list whose own shape (summing correctly, one
+  // section per cell) isn't expressible as a CHECK and lives in
+  // `WindowsService.validateGrid` / Zod's `superRefine` instead.
   @Column({
-    name: 'panel_type',
-    type: 'varchar',
-    length: 10,
-    default: 'window',
+    name: 'column_widths',
+    type: 'jsonb',
+    default: () => "'[]'::jsonb",
   })
-  panelType: string;
+  columnWidths: number[];
 
-  @Column({ name: 'transom_platform_profile_id', type: 'uuid', nullable: true })
-  transomPlatformProfileId: string | null;
+  @Column({ name: 'row_heights', type: 'jsonb', default: () => "'[]'::jsonb" })
+  rowHeights: number[];
 
-  @Column({ name: 'transom_company_profile_id', type: 'uuid', nullable: true })
-  transomCompanyProfileId: string | null;
-
-  @Column({ name: 'has_fly_screen', type: 'boolean', default: false })
-  hasFlyScreen: boolean;
+  @OneToMany(() => WindowSection, (section) => section.panel, { cascade: true })
+  sections?: WindowSection[];
 
   @Column({ name: 'is_door', type: 'boolean', default: false })
   isDoor: boolean;
-
-  // 'single' | 'combination' — see packages/types/src/windows.ts's
-  // GlassKind. Plain varchar, not a Postgres enum: the platform enums
-  // live in `public`, which the tenant search_path excludes.
-  @Column({ name: 'glass_kind', type: 'varchar', length: 20 })
-  glassKind: string;
-
-  @Column({ name: 'glass_platform_single_id', type: 'uuid', nullable: true })
-  glassPlatformSingleId: string | null;
-
-  @Column({ name: 'glass_company_single_id', type: 'uuid', nullable: true })
-  glassCompanySingleId: string | null;
-
-  @Column({
-    name: 'glass_platform_combination_id',
-    type: 'uuid',
-    nullable: true,
-  })
-  glassPlatformCombinationId: string | null;
-
-  @Column({
-    name: 'glass_company_combination_id',
-    type: 'uuid',
-    nullable: true,
-  })
-  glassCompanyCombinationId: string | null;
-
-  // 'top_hung' | 'side_hung_left' | ... — see
-  // packages/types/src/windows.ts's HingedOpeningType. Plain varchar for
-  // the same reason glassKind above is. Nullable: only meaningful once
-  // this panel's frame resolves to a hinged system, and stays unset
-  // until the user actually picks an icon in the Type grid.
-  @Column({ name: 'opening_type', type: 'varchar', length: 30, nullable: true })
-  openingType: string | null;
 
   @Column({ name: 'interior_color_platform_id', type: 'uuid', nullable: true })
   interiorColorPlatformId: string | null;
@@ -142,11 +119,11 @@ export class WindowPanel {
   exteriorColorCompanyId: string | null;
 
   // 'flat' | 'round' | 'segmental' | 'gothic' — see
-  // packages/types/src/windows.ts's HeadShape. Plain varchar for the
-  // same reason glassKind/openingType above are. `headRiseMm` is null
-  // iff this is 'flat' — enforced by the migration's CHECK, re-checked
-  // in WindowsService.validatePanelHead rather than trusted from
-  // either.
+  // packages/types/src/windows.ts's HeadShape. Plain varchar, not a
+  // Postgres enum: the platform enums live in `public`, which the
+  // tenant search_path excludes. `headRiseMm` is null iff this is
+  // 'flat' — enforced by the migration's CHECK, re-checked in
+  // WindowsService.validatePanelHead rather than trusted from either.
   @Column({ name: 'head_shape', type: 'varchar', length: 12, default: 'flat' })
   headShape: string;
 
@@ -162,4 +139,9 @@ export class WindowPanel {
   // WindowsService.validatePanelHead.
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   bars: WindowBarInput[];
+
+  // The sliding layout (`sliding` jsonb) lived here from
+  // AddPanelSlidingLayout until MoveSlidingLayoutToSections — it's on
+  // `window_sections` now (docs/sliding_windows_planing.md §12), so a
+  // sliding panel can carry dividers.
 }

@@ -4,6 +4,8 @@ import {
   LookupEntity,
   ProfileType,
   SystemType,
+  DEFAULT_SLIDING_RAILS,
+  isSlidingFrameProfile,
   type CreateGlassInput,
   type CreateSystemBrandInput,
   type CreateSystemCatalogInput,
@@ -39,6 +41,7 @@ import {
   useUpdateSystemCatalogMutation,
   useUpdateSystemProfileMutation,
 } from '@/lib/lookups-queries'
+import { SLIDING_MAX_RAILS, SLIDING_MIN_RAILS } from '@repo/types/sliding'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { LookupTableSection } from '@/components/lookups/lookup-table-section'
@@ -309,6 +312,7 @@ function SystemProfilesTab() {
   const { t } = useTranslation('lookups')
   const { data: catalogs } = useSystemCatalogsQuery()
   const catalogOptions = (catalogs ?? []).map((c) => ({ value: c.id, label: `${c.brandName} · ${c.name}` }))
+  const catalogById = new Map((catalogs ?? []).map((c) => [c.id, c]))
   const profileTypeOptions = Object.values(ProfileType).map((v) => ({
     value: v,
     label: t(`profileType.${v}`),
@@ -334,6 +338,7 @@ function SystemProfilesTab() {
           inertiaIy: 1,
           image: null,
           acceptsFlyScreen: false,
+          slidingRails: 2,
         } as CreateSystemProfileInput
       }
       fields={[
@@ -351,6 +356,17 @@ function SystemProfilesTab() {
         { name: 'inertiaIx', label: t('fields.inertiaIx'), type: 'number', step: 0.01, min: 0 },
         { name: 'inertiaIy', label: t('fields.inertiaIy'), type: 'number', step: 0.01, min: 0 },
         { name: 'acceptsFlyScreen', label: t('fields.acceptsFlyScreen'), type: 'boolean' },
+        // Only a FRAME in a SLIDING catalogue has rails (planing §11);
+        // for anything else the API stores null whatever this holds.
+        {
+          name: 'slidingRails',
+          label: t('fields.slidingRails'),
+          type: 'number',
+          min: SLIDING_MIN_RAILS,
+          max: SLIDING_MAX_RAILS,
+          shownDefault: DEFAULT_SLIDING_RAILS,
+          visibleWhen: (v) => isSlidingFrameProfile(v.profileType ?? ProfileType.FRAME, catalogById.get(v.catalogId ?? '')?.systemType),
+        },
       ]}
       columns={[
         { header: t('fields.catalog'), cell: (row) => row.catalogName },
@@ -368,6 +384,7 @@ function SystemProfilesTab() {
           header: t('fields.acceptsFlyScreen'),
           cell: (row) => (row.acceptsFlyScreen ? t('common.yes') : t('common.no')),
         },
+        { header: t('fields.slidingRails'), cell: (row) => row.slidingRails ?? '—' },
       ]}
       search={{
         placeholder: t('search.systemProfiles'),
@@ -412,6 +429,7 @@ function SystemProfilesTab() {
         inertiaIy: row.inertiaIy,
         image: row.image,
         acceptsFlyScreen: row.acceptsFlyScreen,
+        slidingRails: row.slidingRails,
       })}
       toEditDefaults={(row) => ({
         catalogId: row.catalogId,
@@ -424,6 +442,7 @@ function SystemProfilesTab() {
         inertiaIy: row.inertiaIy,
         image: row.image,
         acceptsFlyScreen: row.acceptsFlyScreen,
+        slidingRails: row.slidingRails,
       })}
       rowLabel={(row) => row.profileNo}
       headerExtra={<SystemsImportButton />}

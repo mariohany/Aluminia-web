@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { SLIDING_MAX_RAILS, SLIDING_MIN_RAILS } from '@repo/types/sliding'
 
 // Same rationale as CompanyStatus in companies.ts: const objects, not TS
 // `enum`s, so they survive erasable-syntax-only TypeScript stripping —
@@ -397,6 +398,37 @@ export interface SystemCatalogSummary {
   updatedAt: string
 }
 
+// A sliding frame's rail count — docs/sliding_windows_planing.md §11.
+// Meaningful ONLY for a FRAME profile in a SLIDING catalogue; the API
+// normalises it on every write (`normalizeSlidingRails`), so clients may
+// omit it (→ 2 on a sliding frame) or send a stale value for a hinged
+// frame (→ null) and the stored row is still right. Both profile tables
+// (platform `system_profile`, tenant `company_system_profile`) carry the
+// same nullable column, the `acceptsFlyScreen` posture.
+export const slidingRailsSchema = z
+  .number()
+  .int()
+  .min(SLIDING_MIN_RAILS)
+  .max(SLIDING_MAX_RAILS)
+  .nullable()
+  .optional()
+
+export const DEFAULT_SLIDING_RAILS = 2
+
+export const isSlidingFrameProfile = (profileType: ProfileType, systemType: SystemType | null | undefined): boolean =>
+  profileType === ProfileType.FRAME && systemType === SystemType.SLIDING
+
+/** What actually gets stored: 2 unless told otherwise on a sliding
+ * frame, null on everything else no matter what was sent. */
+export function normalizeSlidingRails(
+  profileType: ProfileType,
+  systemType: SystemType | null | undefined,
+  input: number | null | undefined,
+): number | null {
+  if (!isSlidingFrameProfile(profileType, systemType)) return null
+  return input ?? DEFAULT_SLIDING_RAILS
+}
+
 export const createSystemProfileSchema = z.object({
   catalogId: z.string().min(1),
   profileNo: z.string().trim().min(1).max(100),
@@ -417,6 +449,7 @@ export const createSystemProfileSchema = z.object({
   inertiaIy: z.number().positive(),
   image: z.url().nullable().optional(),
   acceptsFlyScreen: z.boolean(),
+  slidingRails: slidingRailsSchema,
 })
 export type CreateSystemProfileInput = z.infer<typeof createSystemProfileSchema>
 export const updateSystemProfileSchema = createSystemProfileSchema.partial()
@@ -435,6 +468,7 @@ export interface SystemProfileSummary {
   inertiaIy: number
   image: string | null
   acceptsFlyScreen: boolean
+  slidingRails: number | null
   createdAt: string
   updatedAt: string
 }

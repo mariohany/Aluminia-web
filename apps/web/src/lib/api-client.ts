@@ -1,3 +1,5 @@
+import type { LoginResponse } from '@repo/types/auth'
+
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
 export class ApiError extends Error {
@@ -30,18 +32,23 @@ export function setAccessToken(token: string | null): void {
   accessToken = token
 }
 
-// Queues concurrent 401s behind a single refresh call, instead of firing
-// one refresh request per failed request.
-let refreshPromise: Promise<string | null> | null = null
+// One refresh in flight per tab, ever: a burst of 401s and the session
+// restore on page load all queue behind the same call. This is not just
+// a request-count optimisation — the refresh token is single-use and
+// rotates, so two parallel calls would each rotate it and one of them
+// would be left holding a token the server has already replaced. The
+// server keeps the rotated-away token valid for a short grace window to
+// cover the same race *across* tabs, which this can't see.
+let refreshPromise: Promise<LoginResponse | null> | null = null
 
-async function refreshAccessToken(): Promise<string | null> {
+export function refreshSession(): Promise<LoginResponse | null> {
   refreshPromise ??= (async () => {
     try {
       const res = await fetch(`${API_URL}/auth/refresh`, { method: 'POST', credentials: 'include' })
       if (!res.ok) return null
-      const data = (await res.json()) as { accessToken: string }
+      const data = (await res.json()) as LoginResponse
       setAccessToken(data.accessToken)
-      return data.accessToken
+      return data
     } catch {
       return null
     } finally {
@@ -76,8 +83,8 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   let res = await doFetch(accessToken)
 
   if (res.status === 401 && !options.skipAuthRetry) {
-    const newToken = await refreshAccessToken()
-    if (newToken) res = await doFetch(newToken)
+    const refreshed = await refreshSession()
+    if (refreshed) res = await doFetch(refreshed.accessToken)
   }
 
   if (!res.ok) {

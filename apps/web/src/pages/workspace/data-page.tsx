@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import {
   ProfileType,
   SystemType,
+  DEFAULT_SLIDING_RAILS,
+  isSlidingFrameProfile,
   createGlassSchema,
   createSystemBrandSchema,
   updateGlassSchema,
@@ -19,6 +21,7 @@ import {
   type CreateCompanySystemCatalogInput,
   type CreateCompanySystemProfileInput,
 } from '@repo/types/company-lookups'
+import { SLIDING_MAX_RAILS, SLIDING_MIN_RAILS } from '@repo/types/sliding'
 import * as companyLookupsApi from '@/lib/company-lookups-api'
 import {
   useCreateCompanyColorMutation,
@@ -331,6 +334,7 @@ function SystemCatalogsTab() {
 function SystemProfilesTab() {
   const { t } = useTranslation('lookups')
   const { data: catalogs } = useMergedSystemCatalogsQuery()
+  const catalogByRef = new Map((catalogs ?? []).map((c) => [`${c.scope}:${c.id}`, c]))
   const catalogOptions = (catalogs ?? []).map((c) => ({
     value: `${c.scope}:${c.id}`,
     label:
@@ -363,6 +367,7 @@ function SystemProfilesTab() {
           inertiaIy: 1,
           image: null,
           acceptsFlyScreen: false,
+          slidingRails: 2,
         } as CreateCompanySystemProfileInput
       }
       fields={[
@@ -380,6 +385,17 @@ function SystemProfilesTab() {
         { name: 'inertiaIx', label: t('fields.inertiaIx'), type: 'number', step: 0.01, min: 0 },
         { name: 'inertiaIy', label: t('fields.inertiaIy'), type: 'number', step: 0.01, min: 0 },
         { name: 'acceptsFlyScreen', label: t('fields.acceptsFlyScreen'), type: 'boolean' },
+        // Only a FRAME in a SLIDING catalogue has rails (planing §11);
+        // for anything else the API stores null whatever this holds.
+        {
+          name: 'slidingRails',
+          label: t('fields.slidingRails'),
+          type: 'number',
+          min: SLIDING_MIN_RAILS,
+          max: SLIDING_MAX_RAILS,
+          shownDefault: DEFAULT_SLIDING_RAILS,
+          visibleWhen: (v) => isSlidingFrameProfile(v.profileType ?? ProfileType.FRAME, catalogByRef.get(v.catalog ?? '')?.systemType),
+        },
       ]}
       columns={[
         {
@@ -401,6 +417,7 @@ function SystemProfilesTab() {
           header: t('fields.acceptsFlyScreen'),
           cell: (row) => (row.acceptsFlyScreen ? t('common.yes') : t('common.no')),
         },
+        { header: t('fields.slidingRails'), cell: (row) => row.slidingRails ?? '—' },
       ]}
       search={{
         placeholder: t('search.systemProfiles'),
@@ -438,6 +455,7 @@ function SystemProfilesTab() {
           inertiaIy: row.inertiaIy,
           image: row.image,
           acceptsFlyScreen: row.acceptsFlyScreen,
+          slidingRails: row.slidingRails,
         }),
       }}
       useList={useMergedSystemProfilesQuery}
@@ -457,6 +475,7 @@ function SystemProfilesTab() {
         inertiaIy: row.inertiaIy,
         image: row.image,
         acceptsFlyScreen: row.acceptsFlyScreen,
+        slidingRails: row.slidingRails,
       })}
       toEditDefaults={(row) => ({
         catalog: row.catalog,
@@ -469,6 +488,7 @@ function SystemProfilesTab() {
         inertiaIy: row.inertiaIy,
         image: row.image,
         acceptsFlyScreen: row.acceptsFlyScreen,
+        slidingRails: row.slidingRails,
       })}
       rowLabel={(row) => row.profileNo}
     />

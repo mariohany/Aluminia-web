@@ -1,18 +1,13 @@
 import { SystemType } from '@repo/types/lookups'
-import { PanelType, type WindowPanelDetail } from '@repo/types/windows'
-import {
-  NOMINAL_FRAME_FACE_MM,
-  NOMINAL_MULLION_BAR_MM,
-  NOMINAL_SASH_FACE_MM,
-  buildAssemblyLayout,
-  type AssemblyPanelInput,
-} from '@/lib/window-geometry'
-import { useResolvedPanels } from '@/lib/window-render'
+import { type WindowPanelDetail } from '@repo/types/windows'
+import { buildAssemblyLayout, type AssemblyPanelInput, type WindowPart } from '@/lib/window-geometry'
+import { sectionRenderFor, useResolvedPanels } from '@/lib/window-render'
 import {
   DEFAULT_FRAME_FILL,
   DEFAULT_GLASS_FILL,
   GLASS_FILL_OPACITY,
   MESH_STROKE,
+  MESH_STROKE_WIDTH_MM,
   archOutlinePath,
   archRingPath,
   barPathsFor,
@@ -22,8 +17,21 @@ import {
   mullionGridFor,
   openBottomFramePath,
   outlineOf,
+  renderDivider,
+  renderFrameDetail,
+  renderGasket,
+  renderHardware,
+  renderFixedSymbols,
   renderOpeningTypeSymbols,
+  renderSashDetail,
+  renderSlidingHardware,
+  renderSlidingSymbols,
   ringPath,
+  seamColorFor,
+  slidingHiddenEdges,
+  slidingPaintOrder,
+  slidingStrokeScale,
+  type DetailStyle,
 } from '@/components/workspace/window-shapes'
 
 /**
@@ -39,8 +47,8 @@ import {
  *
  * No numbers of any kind — no dimension lines, no sizes, no labels. It
  * shows the LAYOUT and the options: how many panels and where, how many
- * sashes each has, which way they open, the frame and glass colours, a
- * fly screen if there is one.
+ * sections/sashes each has, which way they open, the frame and glass
+ * colours, a fly screen if there is one.
  */
 export function WindowThumbnail({
   panels,
@@ -52,54 +60,30 @@ export function WindowThumbnail({
 }) {
   // Exterior is the face a card should show — it's the elevation you'd
   // see approaching the building.
-  const resolved = useResolvedPanels(panels, 'exterior')
+  const resolved = useResolvedPanels(panels)
 
-  // Branches per `panelType`, same as `window-editor-page.tsx`'s own
-  // `layoutInput` (docs/transom_tasks.md Step 5) — a saved window can
-  // genuinely contain a transom now. Found and fixed while finishing
-  // Step 7: this file is `useResolvedPanels`'s SECOND real consumer,
-  // and hardcoding `panelType: PanelType.WINDOW` here regardless of
-  // the panel's own real type was never updated when window-editor-page.tsx
-  // was — a saved transom would have been handed to `buildWindowLayout`
-  // as if it had a frame/sash it doesn't, drawing a fake sash ring
-  // inside what should be a plain bar.
-  const layoutInput: AssemblyPanelInput[] = panels.map((panel, i) =>
-    panel.panelType === PanelType.WINDOW
-      ? {
-          panelType: PanelType.WINDOW,
-          xMm: panel.xMm,
-          yMm: panel.yMm,
-          widthMm: panel.widthMm,
-          heightMm: panel.heightMm,
-          systemType: resolved[i].info.systemType,
-          hasFlyScreen: panel.hasFlyScreen,
-          flyScreenAllowed: resolved[i].info.flyScreenAllowed,
-          isDoor: panel.isDoor,
-          openingType: panel.openingType,
-          headShape: panel.headShape,
-          headRiseMm: panel.headRiseMm,
-        }
-      : {
-          panelType: PanelType.TRANSOM,
-          xMm: panel.xMm,
-          yMm: panel.yMm,
-          widthMm: panel.widthMm,
-          heightMm: panel.heightMm,
-        },
-  )
+  // `PanelRender` already carries everything `AssemblyPanelInput` needs
+  // (docs/sections_planing.md §3 — `SectionRender extends
+  // WindowSectionLayoutInput` specifically so this never has to
+  // remap section fields); the only thing it doesn't include is
+  // `flyScreenAllowed`, resolved separately on `info`.
+  const layoutInput: AssemblyPanelInput[] = resolved.map(({ info, render }) => ({
+    ...render.placement,
+    systemType: render.systemType,
+    flyScreenAllowed: info.flyScreenAllowed,
+    isDoor: render.isDoor,
+    headShape: render.headShape,
+    headRiseMm: render.headRiseMm,
+    metrics: render.metrics,
+    columnWidths: render.columnWidths,
+    rowHeights: render.rowHeights,
+    sections: render.sections,
+  }))
   const { outerMm, parts } = buildAssemblyLayout(layoutInput)
 
   // A hair of padding so the outermost frame stroke isn't clipped by the
   // viewBox edge. Far tighter than the interactive drawing's margin,
   // which has to leave room for dimension lines and "+" markers.
-  // `--border` is too faint to define a WHITE frame (the default when
-  // no colour is picked) against the card's own light panel — the
-  // profile disappears and the window reads as a floating pane of
-  // glass. A muted foreground at low opacity outlines both a white and
-  // a coloured frame without competing with the fill.
-  const outline = 'var(--muted-foreground)'
-  const outlineOpacity = 0.45
-
   const pad = Math.max(outerMm.width, outerMm.height) * 0.02
   const strokeWeight = Math.max(outerMm.width, outerMm.height) * 0.004
   const meshCell = Math.max(outerMm.width, outerMm.height) * 0.03
@@ -132,86 +116,102 @@ export function WindowThumbnail({
         {resolved.map(({ render }, panelIndex) => {
           const panelParts = parts.filter((p) => p.panelIndex === panelIndex)
           const frame = panelParts.find((p) => p.kind === 'frame')
+          const dividers = panelParts.filter((p) => p.kind === 'divider')
           const sashes = panelParts.filter((p) => p.kind === 'sash')
           const glasses = panelParts.filter((p) => p.kind === 'glass')
-          const flyScreen = panelParts.find((p) => p.kind === 'flyScreen')
+          const flyScreens = panelParts.filter((p) => p.kind === 'flyScreen')
           if (!frame) return null
 
           const doorHinged = isDoorHinged(render.isDoor, render.systemType)
-          // A transom has no sash — see window-drawing.tsx's own
-          // `frameOpening` comment (same bug, same fix, duplicated
-          // here for the same pre-existing reason the arch-aware
-          // comment just below already notes).
-          const frameOpening =
-            sashes.length > 0
-              ? {
-                  x: frame.rectMm.x + NOMINAL_FRAME_FACE_MM,
-                  y: frame.rectMm.y + NOMINAL_FRAME_FACE_MM,
-                  width: frame.rectMm.width - 2 * NOMINAL_FRAME_FACE_MM,
-                  height: frame.rectMm.height - NOMINAL_FRAME_FACE_MM - (doorHinged ? 0 : NOMINAL_FRAME_FACE_MM),
-                }
-              : boundingRect(glasses.map((g) => g.rectMm))
+          // The frame-face inset rect every mullion/transom lives
+          // inside — see window-drawing.tsx's own comment on why this
+          // no longer branches on "any sash in the panel" now that the
+          // TRANSOM panel type (a different inset) is gone.
+          const frameOpening = {
+            x: frame.rectMm.x + render.metrics.frameFace,
+            y: frame.rectMm.y + render.metrics.frameFace,
+            width: frame.rectMm.width - 2 * render.metrics.frameFace,
+            height: frame.rectMm.height - render.metrics.frameFace - (doorHinged ? 0 : render.metrics.frameFace),
+          }
           const frameFill = render.frameHex ?? DEFAULT_FRAME_FILL
-          const mullionGrid = mullionGridFor(render.openingType)
+          // Same finish-derived hairline as the editor (spec §9) — it
+          // defines a white frame against the card's light panel and
+          // flips lighter on a dark finish, so the card and the editor
+          // agree on every outline.
+          const outline = seamColorFor(frameFill)
+          const detailStyle: DetailStyle = { frameFill, seamStroke: outline, strokeWeight }
 
-          // Arch-aware frame ring — only ever set when `buildWindowLayout`
-          // judged the panel `archable` (a single, non-door sash), in
-          // which case the frame's own opening IS that sash's rect, so
-          // there's no separate outline to derive: read it straight off
-          // the one sash instead of hand-computing it a second way, the
-          // same "trust the built part" rule `frameOpening` above already
-          // breaks for every non-arch case (a pre-existing, untouched
-          // duplication this only avoids repeating for the new one).
+          // Arch-aware frame ring — only ever set on section 0 (the top
+          // row of a `cols === 1` panel), same lookup as
+          // window-drawing.tsx's own `innerOutline`.
           const frameOutline = outlineOf(frame)
-          const singleSashOutline = sashes.length === 1 ? outlineOf(sashes[0]) : null
+          const archSash = sashes.find((s) => s.head)
+          const archGlass = glasses.find((g) => g.head)
+          const innerOutline = archSash ? outlineOf(archSash) : archGlass ? outlineOf(archGlass) : null
           const framePathD =
-            frameOutline && singleSashOutline
-              ? archRingPath(frameOutline, singleSashOutline)
+            frameOutline && innerOutline
+              ? archRingPath(frameOutline, innerOutline)
               : doorHinged
                 ? openBottomFramePath(frame.rectMm, frameOpening)
                 : ringPath(frame.rectMm, frameOpening)
 
+          const hasSashes = frameOutline ? !!archSash : sashes.length > 0
+          const fixedGlasses = glasses.filter((g) => !sashes.some((s) => s.sectionIndex === g.sectionIndex))
+
           return (
             <g key={panelIndex}>
-              <path
-                d={framePathD}
-                fillRule="evenodd"
-                fill={frameFill}
-                stroke={outline}
-                strokeOpacity={outlineOpacity}
-                strokeWidth={strokeWeight}
-              />
+              <path d={framePathD} fillRule="evenodd" fill={frameFill} stroke={outline} strokeWidth={strokeWeight} />
+              {renderFrameDetail({
+                frame,
+                frameOpening,
+                frameOutline,
+                innerOutline,
+                hasSashes,
+                fixedGlasses,
+                doorHinged,
+                metrics: render.metrics,
+                style: detailStyle,
+              })}
 
-              {flyScreen && (() => {
+              {dividers.map((divider) => (
+                <g key={divider.id}>{renderDivider(divider, frameFill, outline, strokeWeight)}</g>
+              ))}
+
+              {flyScreens.map((flyScreen) => {
                 const flyScreenOutline = outlineOf(flyScreen)
                 return flyScreenOutline ? (
                   <path
+                    key={flyScreen.id}
                     d={archOutlinePath(flyScreenOutline)}
                     fill={`url(#${meshPatternId})`}
                     stroke={MESH_STROKE}
-                    strokeWidth={NOMINAL_SASH_FACE_MM * 0.25}
+                    strokeWidth={MESH_STROKE_WIDTH_MM}
                     opacity={0.85}
                   />
                 ) : (
                   <rect
+                    key={flyScreen.id}
                     x={flyScreen.rectMm.x}
                     y={flyScreen.rectMm.y}
                     width={flyScreen.rectMm.width}
                     height={flyScreen.rectMm.height}
                     fill={`url(#${meshPatternId})`}
                     stroke={MESH_STROKE}
-                    strokeWidth={NOMINAL_SASH_FACE_MM * 0.25}
+                    strokeWidth={MESH_STROKE_WIDTH_MM}
                     opacity={0.85}
                   />
                 )
-              })()}
+              })}
 
-              {sashes.map((sash) => {
-                const glassesForSash = glasses.filter((g) => g.index === sash.index)
+              {/* Far-to-near, same as the interactive drawing — see
+                  window-shapes.tsx's sliding helpers. */}
+              {slidingPaintOrder(sashes, render.face, render.slidingRails ?? undefined).map((sash) => {
+                const glassesForSash = glasses.filter((g) => g.index === sash.index && g.sectionIndex === sash.sectionIndex)
                 if (glassesForSash.length === 0) return null
                 const opening = boundingRect(glassesForSash.map((g) => g.rectMm))
                 const sashOutline = outlineOf(sash)
                 const glassOutline = glassesForSash.length === 1 ? outlineOf(glassesForSash[0]) : null
+                const mullionGrid = mullionGridFor(sectionRenderFor(render, sash)?.openingType ?? null)
                 return (
                   <g key={sash.id}>
                     <path
@@ -219,26 +219,34 @@ export function WindowThumbnail({
                       fillRule="evenodd"
                       fill={frameFill}
                       stroke={outline}
-                      strokeOpacity={outlineOpacity}
-                      strokeWidth={strokeWeight}
+                      strokeWidth={strokeWeight * slidingStrokeScale(sash, render.face, render.slidingRails ?? undefined, sashes)}
                     />
+                    {renderSashDetail({
+                      sash,
+                      opening,
+                      sashOutline,
+                      glassOutline,
+                      glassesForSash,
+                      metrics: render.metrics,
+                      style: detailStyle,
+                    })}
                     {mullionGrid && glassesForSash.length > 1 &&
-                      georgianBars(opening, mullionGrid, NOMINAL_MULLION_BAR_MM, frameFill)}
+                      georgianBars(opening, mullionGrid, render.metrics.sashBarFace, frameFill)}
                   </g>
                 )
               })}
 
               {glasses.map((glass) => {
                 const glassOutline = outlineOf(glass)
+                const glassSection = sectionRenderFor(render, glass)
                 return (
                   <g key={glass.id}>
                     {glassOutline ? (
                       <path
                         d={archOutlinePath(glassOutline)}
-                        fill={render.glassHex ?? DEFAULT_GLASS_FILL}
+                        fill={glassSection?.glassHex ?? DEFAULT_GLASS_FILL}
                         fillOpacity={GLASS_FILL_OPACITY}
                         stroke={outline}
-                        strokeOpacity={outlineOpacity}
                         strokeWidth={strokeWeight}
                       />
                     ) : (
@@ -247,15 +255,15 @@ export function WindowThumbnail({
                         y={glass.rectMm.y}
                         width={glass.rectMm.width}
                         height={glass.rectMm.height}
-                        fill={render.glassHex ?? DEFAULT_GLASS_FILL}
+                        fill={glassSection?.glassHex ?? DEFAULT_GLASS_FILL}
                         fillOpacity={GLASS_FILL_OPACITY}
                         stroke={outline}
-                        strokeOpacity={outlineOpacity}
                         strokeWidth={strokeWeight}
                       />
                     )}
-                    {render.georgianGrid &&
-                      georgianBars(glass.rectMm, render.georgianGrid, georgianBarWidth, frameFill)}
+                    {renderGasket(glass, glassOutline, strokeWeight)}
+                    {glassSection?.georgianGrid &&
+                      georgianBars(glass.rectMm, glassSection.georgianGrid, georgianBarWidth, frameFill)}
                     {glassOutline && render.bars.length > 0 &&
                       barPathsFor(render.bars, glassOutline).map((bar) => (
                         <path
@@ -270,12 +278,68 @@ export function WindowThumbnail({
                 )
               })}
 
-              {render.hasFrame && render.systemType === SystemType.HINGED && render.openingType &&
-                renderOpeningTypeSymbols(sashes, render.openingType)}
+              {/* Sliding depth cues + arrows — the card shows the full
+                  elevation detail (decision reversed 2026-09-12), so
+                  the same cues as the editor, minus interactivity. */}
+              {render.hasFrame && renderFixedSymbols(fixedGlasses)}
+
+              {render.hasFrame && render.systemType === SystemType.SLIDING && render.sections.some((s) => s.sliding) && (
+                <g>
+                  {slidingHiddenEdges(sashes, render.face, render.slidingRails ?? undefined, strokeWeight * 2).map((edge) => (
+                    <line
+                      key={edge.key}
+                      x1={edge.x}
+                      y1={edge.y1}
+                      x2={edge.x}
+                      y2={edge.y2}
+                      stroke={outline}
+                      strokeWidth={strokeWeight}
+                      strokeDasharray={`${strokeWeight * 5} ${strokeWeight * 4}`}
+                    />
+                  ))}
+                  {renderSlidingSymbols(sashes)}
+                  {renderSlidingHardware(sashes, render.face, render.metrics)}
+                </g>
+              )}
+
+              {render.hasFrame &&
+                render.systemType === SystemType.HINGED &&
+                Array.from(groupSashesBySection(sashes).entries()).map(([sectionIndex, group]) => {
+                  const openingType = render.sections[sectionIndex]?.openingType
+                  if (!openingType) return null
+                  return (
+                    // Two nested wrapper `<g>`s — see window-drawing.tsx's
+                    // own comment on this exact spot: `renderHardware`/
+                    // `renderOpeningTypeSymbols` each return a root
+                    // keyed "leaf-0", which collides once both sit as
+                    // direct siblings under the same parent.
+                    <g key={`hw-${sectionIndex}`}>
+                      <g>{renderHardware(group, openingType, render.metrics)}</g>
+                      <g>{renderOpeningTypeSymbols(group, openingType)}</g>
+                    </g>
+                  )
+                })}
             </g>
           )
         })}
       </svg>
     </div>
   )
+}
+
+/** Groups a panel's own sash parts by their section — a double-door
+ * section contributes two sashes under the same key, exactly the array
+ * shape `renderHardware`/`renderOpeningTypeSymbols` already expect.
+ * Mirrors window-drawing.tsx's own copy: this file takes no dependency
+ * on that one (see the doc comment above on why they stay separate
+ * components), so the tiny helper is duplicated rather than shared. */
+function groupSashesBySection(sashes: WindowPart[]): Map<number, WindowPart[]> {
+  const groups = new Map<number, WindowPart[]>()
+  for (const sash of sashes) {
+    const key = sash.sectionIndex ?? -1
+    const group = groups.get(key)
+    if (group) group.push(sash)
+    else groups.set(key, [sash])
+  }
+  return groups
 }

@@ -48,6 +48,19 @@ interface ProfileTreePickerProps {
    */
   preferredCatalogRef?: string | null
   preferredBrandRef?: string | null
+  /**
+   * A HARD filter, unlike `preferredCatalogRef` above — when set, every
+   * OTHER catalogue is excluded from the tree entirely (not just
+   * de-prioritised by search), and the search bar only narrows within
+   * this one. For a divider profile: a mullion/transom is part of the
+   * same frame, so it has to come from the frame's own catalogue
+   * (Mario, 2026-09-13 — "the transom profile must be from the same
+   * catalogue of the frame, don't allow the user to see or search
+   * another catalogue"), the same way a sash is already scoped to the
+   * frame's catalogue via a plain filtered `<Select>` rather than a
+   * tree. `undefined`/`null` means unrestricted (every other caller).
+   */
+  catalogRef?: string | null
 }
 
 /**
@@ -69,6 +82,7 @@ export function ProfileTreePicker({
   onSetFavorite,
   preferredCatalogRef,
   preferredBrandRef,
+  catalogRef,
 }: ProfileTreePickerProps) {
   const { t } = useTranslation('workspace')
   const { t: tLookups } = useTranslation('lookups')
@@ -124,10 +138,12 @@ export function ProfileTreePicker({
 
     const catalogsByBrand = new Map<string, CatalogNode[]>()
     for (const catalog of catalogsQuery.data) {
-      const profiles = profilesByCatalog.get(formatScopedRef(catalog.scope, catalog.id))
+      const ref = formatScopedRef(catalog.scope, catalog.id)
+      if (catalogRef && ref !== catalogRef) continue
+      const profiles = profilesByCatalog.get(ref)
       if (!profiles || profiles.length === 0) continue
       const list = catalogsByBrand.get(catalog.brand) ?? []
-      list.push({ ...catalog, ref: formatScopedRef(catalog.scope, catalog.id), profiles })
+      list.push({ ...catalog, ref, profiles })
       catalogsByBrand.set(catalog.brand, list)
     }
     for (const list of catalogsByBrand.values()) {
@@ -142,7 +158,7 @@ export function ProfileTreePicker({
     }
     brands.sort((a, b) => a.name.localeCompare(b.name))
     return brands
-  }, [brandsQuery.data, catalogsQuery.data, profilesQuery.data, profileType])
+  }, [brandsQuery.data, catalogsQuery.data, profilesQuery.data, profileType, catalogRef])
 
   // Same cascading match as ProjectTree: a matching brand or catalogue
   // keeps all its children, otherwise children are filtered on their

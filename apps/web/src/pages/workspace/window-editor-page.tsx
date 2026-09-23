@@ -4,18 +4,27 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate, useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Loader2 } from 'lucide-react'
 import {
   GlassKind,
   HeadShape,
-  PanelType,
+  HingedOpeningType,
+  SectionKind,
   createWindowSchema,
   type CreateWindowInput,
   type WindowPanelInput,
-  type WindowPanelTransomInput,
-  type WindowPanelWindowInput,
+  type WindowSectionInput,
 } from '@repo/types/windows'
-import { ProfileType } from '@repo/types/lookups'
+import { ProfileType, SystemType } from '@repo/types/lookups'
+import {
+  SlidingDirectionSource,
+  SlidingOpeningType,
+  defaultSlidingLayout,
+  remapSlidingRails,
+  resolveSlidingLayout,
+  suggestSlidingOpeningType,
+  type SlidingLayoutInput,
+} from '@repo/types/sliding'
 import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
 import { apiErrorMessage } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
@@ -29,26 +38,35 @@ import {
 import { useProjectQuery, useUpdateProjectMutation } from '@/lib/projects-queries'
 import { useCreateWindowMutation, useUpdateWindowMutation, useWindowQuery } from '@/lib/windows-queries'
 import { Button } from '@/components/ui/button'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { FieldLabel } from '@/components/workspace/field-label'
 import { ProfileTreePicker } from '@/components/workspace/profile-tree-picker'
 import { WindowDrawing } from '@/components/workspace/window-drawing'
-import { useResolvedPanels, type PanelRender } from '@/lib/window-render'
+import { slidingSectionArgs, useResolvedPanels, type PanelRender, type SectionRender } from '@/lib/window-render'
 import { WindowPartPanel } from '@/components/workspace/window-part-panel'
-import { TransomPartPanel } from '@/components/workspace/transom-part-panel'
 import { AddPanelCard, type AddPanelRequest } from '@/components/workspace/add-panel-card'
-import { AddPanelTypeStep } from '@/components/workspace/add-panel-type-step'
-import { AddTransomCard, type AddTransomInput } from '@/components/workspace/add-transom-card'
+import { AddPanelTypeStep, type AddChoice } from '@/components/workspace/add-panel-type-step'
+import { AddDividerCard } from '@/components/workspace/add-divider-card'
 import {
   buildAssemblyLayout,
   canHaveArchedHead,
+  cumulativeBoundaries,
+  findMisalignedDividers,
   freeSidesOf,
+  insertColumn,
   insertPanel,
+  insertRow,
+  moveDivider,
   panelRect,
   panelsConnected,
   parsePartId,
   prefillForSide,
+  removeDivider,
   removePanel,
   resizePanel,
+  resizePanelEdge,
+  resizeSection,
+  resizeSectionEdge,
   tilesExactly,
   touchesTopEdge,
   unionRect,
@@ -56,10 +74,10 @@ import {
   type PanelPlacement,
   type PanelSide,
 } from '@/lib/window-geometry'
-import { minGothicRiseMm, normalizeHeadRise, radiusFromSag, sagFromRadius } from '@/lib/arch-geometry'
+import { headBendRadiusMm, minGothicRiseMm, normalizeHeadRise, radiusFromSag, sagFromRadius } from '@/lib/arch-geometry'
 import { barLengthMm, dependentsOf, removeBarCascade, resolveBar } from '@/lib/arch-bars'
 import { outlineOf } from '@/components/workspace/window-shapes'
-import { collectTransomIssues, collectWindowIssues, computeSashWeightKg, resolveGlassWeightPerSqm, type TranslatedIssue } from '@/lib/window-weight'
+import { collectPanelIssues, collectWindowIssues, computeSashWeightKg, resolveGlassWeightPerSqm, type TranslatedIssue } from '@/lib/window-weight'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -103,7 +121,10 @@ export function WindowEditorPage() {
  * Create or edit a window ASSEMBLY — one screen, one `useForm`, one
  * submit: a frame profile tree, a clickable elevation of every panel
  * (`window-drawing.tsx`), and an options panel (`window-part-panel.tsx`)
- * that edits whichever panel owns the selected part.
+ * that edits whichever panel owns the selected part, and within it
+ * whichever SECTION owns the selected sash/glass/fly-screen (docs/
+ * sections_planing.md — a panel is now a grid of sections, not always a
+ * single light).
  *
  * Hovering a panel puts a "+" on each of its free sides; selecting
  * several panels (ctrl/cmd-click) offers one on the sides of their
@@ -134,10 +155,15 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // the options panel's scroll-to-and-highlight behaviour.
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null)
   const [hoveredPartId, setHoveredPartId] = useState<string | null>(null)
-  const [drawingFace, setDrawingFace] = useState<'interior' | 'exterior'>('exterior')
   // Which panel the options column edits, and which panels a new one
   // would attach to. They coincide except while multi-selecting.
   const [activePanelIndex, setActivePanelIndex] = useState(0)
+  // Which of the active panel's own sections the Section block shows —
+  // docs/sections_planing.md §5. Reset to the panel's first section
+  // whenever the active panel itself changes, same posture as
+  // barDrawMode below.
+  const [activeSectionIndex, setActiveSectionIndex] = useState(0)
+  useEffect(() => setActiveSectionIndex(0), [activePanelIndex])
   const [selectedPanelIndices, setSelectedPanelIndices] = useState<number[]>([0])
   // Sticky: set when the pointer enters a panel, cleared only when it
   // leaves the whole drawing. Deriving it from `hoveredPartId` instead
@@ -145,13 +171,10 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // onto one of them — the panel's own mouseleave had already fired.
   const [hoveredPanelIndex, setHoveredPanelIndex] = useState<number | null>(null)
   const [addRequest, setAddRequest] = useState<AddPanelRequest | null>(null)
-  // `null` while the type-step (Window/Transom) is still showing — set
-  // the instant one is chosen, cleared together with `addRequest` on
-  // cancel/confirm. Two independent pieces of state, not a single
-  // `AddPanelRequest & { type }`, because the size/side pre-fill is
-  // identical either way (`prefillForSide` doesn't know or care what
-  // kind of panel is coming) while the type is a separate later choice.
-  const [addPanelType, setAddPanelType] = useState<PanelType | null>(null)
+  // `null` while the type-step (Window/Mullion-or-Transom) is still
+  // showing — set the instant one is chosen, cleared together with
+  // `addRequest` on cancel/confirm.
+  const [addChoice, setAddChoice] = useState<AddChoice | null>(null)
   const [addError, setAddError] = useState<string | undefined>(undefined)
   // Bar-drawing toggle — arch_windows_planing.md §6.1/§6.2. Owned here
   // (not inside WindowDrawing) so switching the active panel can turn
@@ -214,6 +237,15 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // the effect and wipe out whatever the user had already typed —
   // confirmed live in the browser, not hypothetical (bug-012).
   const initialized = useRef(false)
+  // Mirrors `initialized.current` as real state (a ref alone can't
+  // trigger the re-render the loading-guard below needs): `reset()` only
+  // runs inside THIS effect, which fires after the first paint — so even
+  // when `editingWindow` is already cache-warm and available on that
+  // first paint, `watch('panels')` elsewhere in this component still
+  // reads `emptyWindow()`'s placeholder defaults until this effect
+  // actually runs. See the guard's own comment for why that one frame
+  // matters.
+  const [formReady, setFormReady] = useState(false)
 
   useEffect(() => {
     if (initialized.current) return
@@ -227,37 +259,27 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
             projectId,
             name: editingWindow.name,
             quantity: editingWindow.quantity,
-            // Docs/transom_tasks.md Step 5: a saved window can now
-            // genuinely contain a transom panel, so this branches per
-            // `panelType` rather than asserting every row is a window
-            // the way it used to. Both branches share the same
-            // string→ScopedRef re-cast — `WindowPanelDetail`'s own
-            // refs are already exactly `ScopedRef`-shaped strings, this
-            // is just recovering the narrower type react-hook-form's
-            // generic loses.
-            panels: editingWindow.panels.map((p) =>
-              p.panelType === PanelType.WINDOW
-                ? {
-                    ...p,
-                    frameProfile: p.frameProfile as ScopedRef,
-                    sashProfile: p.sashProfile as ScopedRef,
-                    glass: p.glass as ScopedRef,
-                    interiorColor: p.interiorColor as ScopedRef | null,
-                    exteriorColor: p.exteriorColor as ScopedRef | null,
-                  }
-                : {
-                    ...p,
-                    transomProfile: p.transomProfile as ScopedRef,
-                    glass: p.glass as ScopedRef,
-                    interiorColor: p.interiorColor as ScopedRef | null,
-                    exteriorColor: p.exteriorColor as ScopedRef | null,
-                  },
-            ),
+            // `WindowPanelDetail`'s own refs are already exactly
+            // `ScopedRef`-shaped strings — this just recovers the
+            // narrower type react-hook-form's generic loses.
+            panels: editingWindow.panels.map((p) => ({
+              ...p,
+              frameProfile: p.frameProfile as ScopedRef,
+              dividerProfile: p.dividerProfile as ScopedRef | null,
+              interiorColor: p.interiorColor as ScopedRef | null,
+              exteriorColor: p.exteriorColor as ScopedRef | null,
+              sections: p.sections.map((s) => ({
+                ...s,
+                sashProfile: s.sashProfile as ScopedRef | null,
+                glass: s.glass as ScopedRef,
+              })),
+            })),
             location: editingWindow.location,
             notes: editingWindow.notes,
           }
         : emptyWindow(projectId, project?.favoriteFrameProfile ?? null),
     )
+    setFormReady(true)
   }, [isEdit, editingWindow, reset, projectId, project?.favoriteFrameProfile])
 
   // ---- Leaving with unsaved changes -------------------------------------
@@ -339,8 +361,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     return () => window.removeEventListener('popstate', onPopState)
   }, [isDirty, requestLeave])
 
-  // The full union, not window-only — the "+" flow can genuinely append
-  // a transom now (docs/transom_tasks.md Step 5).
   const panels = watch('panels') as WindowPanelInput[]
   const quantity = watch('quantity')
 
@@ -348,34 +368,32 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   //
   // Every one of these used to be computed once for the whole window.
   // An assembly's panels each have their own frame, so each has its own
-  // system type, its own sash options, its own glass thickness ceiling
-  // and its own weight limit.
+  // system type, weight limit, etc — and now, per SECTION, its own sash
+  // options, glass ceiling and weight (docs/sections_planing.md decision
+  // 7).
 
   // Resolved once, shared with the canvas card's own thumbnail — see
-  // lib/window-render.ts. `drawingFace` picks which side's colour the
-  // elevation is painted in.
-  const resolved = useResolvedPanels(panels, drawingFace)
+  // lib/window-render.ts. Always the interior face (`DRAWING_FACE`).
+  const resolved = useResolvedPanels(panels)
   const panelInfos = resolved.map((r) => r.info)
 
-  // A panel's door/opening-type/fly-screen flags are only meaningful for
-  // certain frames. Rather than an effect that writes back into the form
-  // (one per panel, each a chance to loop), the stale value is simply
-  // never READ: the drawing, the options column and the submitted body
-  // all use this sanitised view. Changing a frame away and back
-  // therefore restores what you had, instead of silently destroying it.
-  //
-  // A transom has none of those three fields AT ALL (not merely unset —
-  // structurally absent, `transomPanelSchema.strict()`) — passed through
-  // unchanged rather than run through this window-only sanitisation,
-  // which would otherwise inject fields the storage schema rejects.
+  // A section's opening-type/fly-screen flags are only meaningful for
+  // certain frames/kinds. Rather than an effect that writes back into
+  // the form (one per section, each a chance to loop), the stale value
+  // is simply never READ: the drawing, the options column and the
+  // submitted body all use this sanitised view. Changing a frame away
+  // and back therefore restores what you had, instead of silently
+  // destroying it. `isDoor` stays the one panel-level field this needs.
   const sanitizedPanels: WindowPanelInput[] = panels.map((panel, i) => {
-    if (panel.panelType !== PanelType.WINDOW) return panel
     const info = panelInfos[i]
     return {
       ...panel,
       isDoor: info.showDoor ? panel.isDoor : false,
-      openingType: info.showOpeningTypes ? (panel.openingType ?? null) : null,
-      hasFlyScreen: info.flyScreenAllowed ? panel.hasFlyScreen : false,
+      sections: panel.sections.map((section) => ({
+        ...section,
+        openingType: info.showOpeningTypes && section.kind === SectionKind.OPENING ? (section.openingType ?? null) : null,
+        hasFlyScreen: info.flyScreenAllowed && section.kind === SectionKind.OPENING ? section.hasFlyScreen : false,
+      })),
     }
   })
 
@@ -388,50 +406,60 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
 
   // ---- Layout ---------------------------------------------------------
 
-  // Recomputed on every render (cheap, pure) rather than memoized —
-  // both the drawing and the panel's per-part sizes need it, so it's
-  // lifted here instead of built twice. Branches per `panelType`
-  // (`AssemblyPanelInput`'s own union, docs/transom_tasks.md Step 3) —
-  // a transom needs nothing beyond its own placement and drawable size.
-  const layoutInput: AssemblyPanelInput[] = sanitizedPanels.map((panel, i) =>
-    panel.panelType === PanelType.WINDOW
-      ? {
-          panelType: PanelType.WINDOW,
-          xMm: panel.xMm,
-          yMm: panel.yMm,
-          widthMm: drawableMm(panel.widthMm, PLACEHOLDER_WIDTH_MM),
-          heightMm: drawableMm(panel.heightMm, PLACEHOLDER_HEIGHT_MM),
-          systemType: panelInfos[i].systemType,
-          hasFlyScreen: panel.hasFlyScreen,
-          flyScreenAllowed: panelInfos[i].flyScreenAllowed,
-          isDoor: panel.isDoor,
-          openingType: panel.openingType ?? null,
-          headShape: panel.headShape,
-          headRiseMm: panel.headRiseMm,
-        }
-      : {
-          panelType: PanelType.TRANSOM,
-          xMm: panel.xMm,
-          yMm: panel.yMm,
-          widthMm: drawableMm(panel.widthMm, PLACEHOLDER_WIDTH_MM),
-          heightMm: drawableMm(panel.heightMm, PLACEHOLDER_HEIGHT_MM),
-        },
-  )
+  // Recomputed on every render (cheap, pure) rather than memoized — both
+  // the drawing and the panel's per-part sizes need it, so it's lifted
+  // here instead of built twice.
+  //
+  // A brand-new panel's `columnWidths`/`rowHeights` are `[NaN]` (mirroring
+  // its own `widthMm`/`heightMm`, both NaN until the user picks a real
+  // size) — substituted with the same drawable placeholder here so
+  // `buildWindowLayout`'s arithmetic never has to see a NaN pitch. Every
+  // OTHER panel (any panel that has ever had a real size) keeps its own
+  // real `columnWidths`/`rowHeights` untouched, grid or not.
+  const sectionRendersFor = (i: number): SectionRender[] =>
+    resolved[i].render.sections.map((sr, j) => ({
+      ...sr,
+      openingType: sanitizedPanels[i].sections[j].openingType,
+      hasFlyScreen: sanitizedPanels[i].sections[j].hasFlyScreen,
+    }))
+
+  const layoutInput: AssemblyPanelInput[] = sanitizedPanels.map((panel, i) => {
+    const columnWidths = Number.isFinite(panel.widthMm) ? panel.columnWidths : [drawableMm(panel.widthMm, PLACEHOLDER_WIDTH_MM)]
+    const rowHeights = Number.isFinite(panel.heightMm) ? panel.rowHeights : [drawableMm(panel.heightMm, PLACEHOLDER_HEIGHT_MM)]
+    return {
+      xMm: panel.xMm,
+      yMm: panel.yMm,
+      widthMm: drawableMm(panel.widthMm, PLACEHOLDER_WIDTH_MM),
+      heightMm: drawableMm(panel.heightMm, PLACEHOLDER_HEIGHT_MM),
+      systemType: panelInfos[i].systemType,
+      flyScreenAllowed: panelInfos[i].flyScreenAllowed,
+      isDoor: panel.isDoor,
+      headShape: panel.headShape,
+      headRiseMm: panel.headRiseMm,
+      metrics: resolved[i].render.metrics,
+      columnWidths,
+      rowHeights,
+      sections: sectionRendersFor(i).map((sr) => ({ kind: sr.kind, hasSash: sr.hasSash, openingType: sr.openingType, hasFlyScreen: sr.hasFlyScreen, sliding: sr.sliding })),
+    }
+  })
   const drawingLayout = buildAssemblyLayout(layoutInput)
 
   const activePanel = sanitizedPanels[activePanelIndex] ?? sanitizedPanels[0]
   const activeInfo = panelInfos[activePanelIndex] ?? panelInfos[0]
   const activeRaw = panels[activePanelIndex] ?? panels[0]
-  // Bars only exist on a window's own head — a transom is always flat
-  // and has no `bars` field at all (decision 6). `[]` here means
-  // "nothing to select", the same as if no bar were selected — every
-  // control below that used to read `activePanel.bars` directly reads
-  // this instead, safe regardless of which kind of panel is active.
-  const activeBars = activePanel.panelType === PanelType.WINDOW ? activePanel.bars : []
+  const activeSection = activePanel.sections[activeSectionIndex] ?? activePanel.sections[0]
+  const activeSectionInfo = activeInfo.sections[activeSectionIndex] ?? activeInfo.sections[0]
+  const activeIsGridded = activePanel.columnWidths.length > 1 || activePanel.rowHeights.length > 1
+  const activeBars = activePanel.bars
 
   // ---- Bars — select/delete/drag/bow (§6.3/§6.4/§6.5) ------------------
 
-  const activeGlassPart = drawingLayout.parts.find((p) => p.panelIndex === activePanelIndex && p.kind === 'glass')
+  // Bars only ever anchor onto the archable TOP ROW's own glass outline
+  // (docs/sections_planing.md — arch is scoped to `cols === 1`, and only
+  // section 0 ever carries a `head`) — filtering by `.head` is what
+  // keeps this from picking up some OTHER section's flat glass now that
+  // a panel can have more than one.
+  const activeGlassPart = drawingLayout.parts.find((p) => p.panelIndex === activePanelIndex && p.kind === 'glass' && p.head)
   const activeGlassOutline = activeGlassPart ? outlineOf(activeGlassPart) : null
   const selectedBar = selectedBarId ? (activeBars.find((b) => b.id === selectedBarId) ?? null) : null
   const selectedBarLengthMm =
@@ -462,19 +490,28 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   //
   // With two or more panels selected the markers stay put — that
   // selection was deliberate. With one or none they follow the pointer,
-  // which is the user's own "when I hover over a window" ask.
-
-  const effectiveAttachIndices =
-    selectedPanelIndices.length >= 2
+  // which is the user's own "when I hover over a window" ask. Once a
+  // "+" has actually been clicked, though, this STOPS following the
+  // pointer — `addRequest.panelIndices` is a snapshot taken at that
+  // click, and every downstream user of `attachPanels` (the marker
+  // itself, `allowDivider`, both confirm handlers, the divider-profile
+  // popup's own catalogue scoping) reads that frozen value for as long
+  // as the popup stays open. Without this, `hoveredPanelIndex` drifting
+  // while the popup is up (a real risk the instant it renders under the
+  // cursor — the browser re-hit-tests) made the marker and the popup's
+  // own Mullion/Transom option disappear together (Mario, 2026-09-15).
+  const effectiveAttachIndices = addRequest
+    ? addRequest.panelIndices
+    : selectedPanelIndices.length >= 2
       ? selectedPanelIndices
       : hoveredPanelIndex !== null
         ? [hoveredPanelIndex]
         : []
 
   // Geometry runs on the raw panels, whose placement fields are the same
-  // as the sanitised ones — sanitising only touches door/opening/fly
-  // screen. Identity matters: freeSidesOf excludes the selection by
-  // reference.
+  // as the sanitised ones — sanitising only touches per-section opening/
+  // fly-screen fields. Identity matters: freeSidesOf excludes the
+  // selection by reference.
   const attachPanels = effectiveAttachIndices.map((i) => panels[i]).filter(Boolean)
   // An assembly still being filled in has no real size yet — there is
   // nothing coherent to attach to, so no "+" until every panel has one.
@@ -488,8 +525,8 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const attachRect = canAttach ? unionRect(attachPanels.map(panelRect)) : null
   // A panel is "arched" here iff it actually DREW arched (has a real
   // `.head` on its built frame part) — a panel whose headShape is
-  // non-flat but isn't archable (sliding, a hinged door, …) silently
-  // draws flat per Step 7's own scope, and attaching above it is
+  // non-flat but isn't archable (sliding, a hinged door, more than one
+  // column, …) silently draws flat, and attaching above it is
   // perfectly fine.
   const hasArchedHead = (p: PanelPlacement) => {
     // `p` is always one of `panels`' own elements by reference (the
@@ -501,13 +538,17 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     return !!drawingLayout.parts.find((part) => part.panelIndex === index && part.kind === 'frame')?.head
   }
   const attachSides = canAttach ? freeSidesOf(attachPanels, panels, hasArchedHead) : []
+  // Growing the SAME panel via a divider only makes sense for a single-
+  // panel selection (docs/sections_planing.md decision 2) — offering it
+  // for a multi-panel selection would leave "which one grows?" undefined.
+  const allowDivider = attachPanels.length === 1
 
   const onAddPanel = (side: PanelSide, at: { left: number; top: number }) => {
     if (attachPanels.length === 0) return
     const source = attachPanels[0]
     setAddError(undefined)
-    setAddPanelType(null)
-    setAddRequest({ side, at, ...prefillForSide(side, attachPanels, source) })
+    setAddChoice(null)
+    setAddRequest({ side, at, panelIndices: effectiveAttachIndices, ...prefillForSide(side, attachPanels, source) })
   }
 
   // Shared by every stage of the flow (the type-step, either size
@@ -515,15 +556,13 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // nothing showing, same as the single "X" the old two-stage flow had.
   const onCancelAddPanel = () => {
     setAddRequest(null)
-    setAddPanelType(null)
+    setAddChoice(null)
     setAddError(undefined)
   }
 
   // Lands the newly-appended panel as the active one with its frame/
   // ring selected, so the options column is already showing what to
-  // change — shared by both confirm handlers below, not duplicated,
-  // since only WHICH part id to select differs (a transom has no sash,
-  // but its frame ring is still `:frame`, so even that's the same).
+  // change — shared by both confirm handlers below.
   const landOnNewPanel = (next: WindowPanelInput[]) => {
     setValue('panels', next, { shouldValidate: true, shouldDirty: true })
     const newIndex = next.length - 1
@@ -541,15 +580,28 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const onConfirmAddPanel = (widthMm: number, heightMm: number) => {
     if (!addRequest || attachPanels.length === 0) return
     const source = attachPanels[0]
-    // Clones the panel attached to — same frame, sash, glass, colours,
-    // opening type and flags. Only the size differs. A transom has none
-    // of those fields to clone (it's a genuinely different shape), so
-    // adding a WINDOW next to one falls back to the same blank defaults
-    // a window with no neighbour at all starts from, rather than
-    // spreading a transom's fields onto a `panelType: 'window'` object.
-    const base = source.panelType === PanelType.WINDOW ? source : emptyPanel()
+    // Clones the panel attached to — same frame, colours, is-door, and
+    // its first section's kind/sash/glass/opening type/fly screen. A
+    // NEW coupled panel always starts as a plain 1×1 grid at the given
+    // size, even when the source is itself gridded — "+ → Window" adds
+    // a normal frame, never a copy of a whole multi-section layout.
+    const sourceSection = source.sections[0]
     const next = insertPanel(panels, addRequest.side, attachPanels, {
-      ...base,
+      frameProfile: source.frameProfile,
+      dividerProfile: null,
+      columnWidths: [Math.round(widthMm)],
+      rowHeights: [Math.round(heightMm)],
+      sections: [{ ...sourceSection, row: 0, col: 0 }],
+      isDoor: source.isDoor,
+      interiorColor: source.interiorColor,
+      exteriorColor: source.exteriorColor,
+      headShape: HeadShape.FLAT,
+      headRiseMm: null,
+      bars: [],
+      // Same frame ⇒ same system: a coupled panel added next to a
+      // sliding one is sliding too, and (via `sourceSection`'s own
+      // `sliding`) starts with that section's sashes rather than a
+      // blank the user has to fill twice.
       widthMm: Math.round(widthMm),
       heightMm: Math.round(heightMm),
       xMm: 0,
@@ -562,61 +614,120 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     landOnNewPanel(next)
   }
 
-  const onConfirmAddTransom = (input: AddTransomInput) => {
-    if (!addRequest || attachPanels.length === 0) return
-    const widthMm = addRequest.side === 'top' || addRequest.side === 'bottom' ? addRequest.widthMm : input.sizeMm
-    const heightMm = addRequest.side === 'top' || addRequest.side === 'bottom' ? input.sizeMm : addRequest.heightMm
-    const next = insertPanel(panels, addRequest.side, attachPanels, {
-      panelType: PanelType.TRANSOM,
-      xMm: 0,
-      yMm: 0,
-      widthMm: Math.round(widthMm),
-      heightMm: Math.round(heightMm),
-      transomProfile: input.transomProfile,
-      glassKind: input.glassKind,
-      glass: input.glass,
-      interiorColor: null,
-      exteriorColor: null,
-    })
-    if (!next) {
-      setAddError(t('windowDialog.design.addPanel.wouldOverlap'))
-      return
+  // "+" → Mullion/Transom (docs/sections_planing.md decision 2): grows
+  // the SAME panel via `insertRow`/`insertColumn` and inserts a
+  // full-length divider — never a new coupled frame. The new section
+  // always starts FIXED, cloning the panel's own first section's glass.
+  const onConfirmDivider = (sizeMm: number, dividerProfile: ScopedRef) => {
+    if (!addRequest || attachPanels.length !== 1) return
+    const panel = attachPanels[0]
+    const index = panels.indexOf(panel)
+    if (index < 0) return
+    const pitch = Math.round(sizeMm)
+    const makeSection = (row: number, col: number): WindowSectionInput => {
+      const source = panel.sections[0]
+      return {
+        row,
+        col,
+        kind: SectionKind.FIXED,
+        sashProfile: null,
+        // Not-yet-picked, same posture as a fresh OPENING section's
+        // `sashProfile: '' as ScopedRef` below — a real ref is required
+        // to save, `''` just means nothing's chosen yet. Not cloned
+        // from `source` even when it's also fixed: a bead profile is
+        // this section's own choice, not a copy of a sibling's.
+        beadProfile: '' as ScopedRef,
+        openingType: null,
+        glassKind: source.glassKind,
+        glass: source.glass,
+        hasFlyScreen: false,
+        sliding: null,
+      }
     }
-    landOnNewPanel(next)
+
+    const isColumn = addRequest.side === 'left' || addRequest.side === 'right'
+    let next = isColumn
+      ? insertColumn(panels, index, addRequest.side as 'left' | 'right', pitch, makeSection)
+      : insertRow(panels, index, addRequest.side as 'top' | 'bottom', pitch, makeSection)
+
+    // A mullion (a new COLUMN) is never compatible with an arched head
+    // (decision 5) — flatten defensively rather than let the UI reach
+    // an invalid state the schema would only reject at Save. A new ROW
+    // keeps the arch (decision 5's whole point of allowing transoms
+    // under one), but ROUND specifically can't survive more than one
+    // row (its rise is pinned to width / 2), and a surviving Segmental/
+    // Gothic head's STORED rise has to track whichever row ends up on
+    // top — unchanged if the new row was appended at the bottom, reset
+    // to the new row's own height if it was inserted above.
+    // The picked divider profile is set on the SAME panel object here —
+    // one profile per panel (decision 4), so picking it in this popup
+    // is exactly the same field the side panel's own picker edits, just
+    // asked for up front instead of as a separate follow-up step.
+    next = next.map((p, i) => {
+      if (i !== index) return p
+      const withProfile = { ...p, dividerProfile }
+      if (withProfile.headShape === HeadShape.FLAT) return withProfile
+      if (isColumn || withProfile.headShape === HeadShape.ROUND) {
+        return { ...withProfile, headShape: HeadShape.FLAT, headRiseMm: null, bars: [] }
+      }
+      if (addRequest.side === 'top') {
+        return { ...withProfile, headRiseMm: withProfile.rowHeights[0] }
+      }
+      return withProfile
+    })
+
+    setValue('panels', next, { shouldValidate: true, shouldDirty: true })
+    setSelectedPartId(`p${index}:frame`)
+    setActiveSectionIndex(0)
+    setHoveredPanelIndex(null)
+    onCancelAddPanel()
   }
 
-  // ---- Panel mutation ---------------------------------------------------
+  // ---- Panel / section mutation ------------------------------------------
 
-  const updateActivePanel = (changes: Partial<WindowPanelWindowInput>) => {
+  const updateActivePanel = (changes: Partial<WindowPanelInput>) => {
     setValue(
       'panels',
-      // Only ever touches an ACTUAL window panel — the `&&` narrows
-      // `panel` inside this ternary's true branch, so the spread below
-      // type-checks against the window branch specifically. Falls
-      // through unchanged (a defensive no-op, not expected to fire) if
-      // `activePanelIndex` somehow pointed at a transom: every caller
-      // of this function lives inside JSX that only renders once the
-      // active panel is confirmed to be a window (see the
-      // `WindowPartPanel` gate below).
+      panels.map((panel, i) => (i === activePanelIndex ? { ...panel, ...changes } : panel)),
+      { shouldValidate: true, shouldDirty: true },
+    )
+  }
+
+  const updateActiveSection = (changes: Partial<WindowSectionInput>) => {
+    setValue(
+      'panels',
       panels.map((panel, i) =>
-        i === activePanelIndex && panel.panelType === PanelType.WINDOW ? { ...panel, ...changes } : panel,
+        i === activePanelIndex
+          ? { ...panel, sections: panel.sections.map((s, j) => (j === activeSectionIndex ? { ...s, ...changes } : s)) }
+          : panel,
       ),
       { shouldValidate: true, shouldDirty: true },
     )
   }
 
-  // The transom counterpart to `updateActivePanel` above — same
-  // shape, same defensive narrowing, just the other branch of the
-  // union (docs/transom_tasks.md Step 6).
-  const updateActiveTransomPanel = (changes: Partial<WindowPanelTransomInput>) => {
-    setValue(
-      'panels',
-      panels.map((panel, i) =>
-        i === activePanelIndex && panel.panelType === PanelType.TRANSOM ? { ...panel, ...changes } : panel,
-      ),
-      { shouldValidate: true, shouldDirty: true },
-    )
+  // ---- Sliding layout (docs/sliding_windows_planing.md §7) ---------------
+
+  const activeIsSliding = activeInfo?.systemType === SystemType.SLIDING
+  // The last layout each SECTION had before it was set to Fixed (or
+  // before its frame was re-picked) — component state only, gone when
+  // this screen is left, so "Opening" can restore it (decision 6).
+  // Keyed `panelIndex:sectionIndex` (planing §12: a sliding panel can
+  // hold several sliding sections).
+  const rememberedSlidingLayouts = useRef(new Map<string, SlidingLayoutInput>())
+  const rememberKey = (panelIndex: number, sectionIndex: number) => `${panelIndex}:${sectionIndex}`
+  const onSlidingRailsShrunk = (moved: number[]) => {
+    toast.info(t('fields.sliding.railsShrunkToast', { sashes: moved.join(', '), count: moved.length }))
   }
+  const systemTypeOfFrame = (ref: ScopedRef | null): SystemType | null => {
+    const frame = profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === ref)
+    const catalog = catalogsQuery.data?.find((c) => formatScopedRef(c.scope, c.id) === frame?.catalog)
+    return catalog?.systemType ?? null
+  }
+  // The rail count is the frame PROFILE's (planing §11) — read straight
+  // off the merged catalogue row, never stored on the panel.
+  const slidingRailsOfFrame = (ref: ScopedRef | null): number | null =>
+    profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === ref)?.slidingRails ?? null
+  const activeSlidingRails = slidingRailsOfFrame(activePanel.frameProfile)
 
   const confirmDeleteBar = () => {
     if (!pendingDeleteBarId) return
@@ -637,8 +748,54 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     updateActivePanel({ bars: activeBars.map((b) => (b.id === selectedBar.id ? { ...b, sagMm } : b)) })
   }
 
+  // Panel-level dimension inputs. A plain (1×1) panel resizes exactly as
+  // before. A GRIDDED panel routes the delta to the column/row nearest
+  // the edge that moves — the right column for width, the top row for
+  // height (docs/sections_planing.md §5 — matching `resizePanel`'s own
+  // left-/bottom-anchor rule) — via `resizeSection`, so every OTHER
+  // section keeps its own pitch untouched.
   const onPanelSizeChange = (widthMm: number, heightMm: number) => {
-    setValue('panels', resizePanel(panels, activePanelIndex, widthMm, heightMm), { shouldValidate: true, shouldDirty: true })
+    const panel = panels[activePanelIndex]
+    if (!panel) return
+    if (panel.columnWidths.length === 1 && panel.rowHeights.length === 1) {
+      // `resizePanel` is grid-agnostic (it only moves placements), so
+      // the single cell has to follow the panel here — otherwise a
+      // brand-new panel's `[NaN]` grid never becomes real, the Section
+      // size fields stay blank and `gridMismatch` fires on save (bug-058).
+      const resized = resizePanel(panels, activePanelIndex, widthMm, heightMm)
+      setValue(
+        'panels',
+        resized.map((p, i) => (i === activePanelIndex ? { ...p, columnWidths: [p.widthMm], rowHeights: [p.heightMm] } : p)),
+        { shouldValidate: true, shouldDirty: true },
+      )
+      return
+    }
+    const lastCol = panel.columnWidths.length - 1
+    const nextColWidth = panel.columnWidths[lastCol] + (Math.round(widthMm) - panel.widthMm)
+    const nextRowHeight = panel.rowHeights[0] + (Math.round(heightMm) - panel.heightMm)
+    setValue('panels', resizeSection(panels, activePanelIndex, 0, lastCol, nextColWidth, nextRowHeight), {
+      shouldValidate: true,
+      shouldDirty: true,
+    })
+  }
+
+  // The active SECTION's own width/height inputs — docs/sections_planing.md's
+  // assumption that resizing a section grows the PANEL by the same
+  // delta (never steals from a neighbour section), reusing
+  // `resizeSection` directly at this one cell's own row/col.
+  const onSectionWidthChange = (mm: number) => {
+    setValue(
+      'panels',
+      resizeSection(panels, activePanelIndex, activeSection.row, activeSection.col, mm, activePanel.rowHeights[activeSection.row]),
+      { shouldValidate: true, shouldDirty: true },
+    )
+  }
+  const onSectionHeightChange = (mm: number) => {
+    setValue(
+      'panels',
+      resizeSection(panels, activePanelIndex, activeSection.row, activeSection.col, activePanel.columnWidths[activeSection.col], mm),
+      { shouldValidate: true, shouldDirty: true },
+    )
   }
 
   const canDeletePanel = panels.length > 1 && removePanel(panels, activePanelIndex) !== null
@@ -652,8 +809,61 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     setSelectedPartId(null)
   }
 
+  const onRemoveDivider = (orientation: 'horizontal' | 'vertical', k: number) => {
+    const next = removeDivider(panels, activePanelIndex, orientation, k)
+    const updated = next[activePanelIndex]
+    if (!updated) return
+    const stillGridded = updated.columnWidths.length > 1 || updated.rowHeights.length > 1
+    // A 1×1 panel has no divider to profile (the schema forbids one) —
+    // null it out the moment the last one is merged away.
+    const final = stillGridded ? next : next.map((p, i) => (i === activePanelIndex ? { ...p, dividerProfile: null } : p))
+    setValue('panels', final, { shouldValidate: true, shouldDirty: true })
+    setSelectedPartId(`p${activePanelIndex}:frame`)
+    setActiveSectionIndex(0)
+  }
+
+  // Dragging a mullion/transom on the drawing itself (Mario, 2026-09-15:
+  // "move the transom/mullion in the panel by dragging it"). `dividerId`
+  // is the divider's own full assembly part id — parsed the same way
+  // `selectedDividerMatch` below reads a selected divider's id, since
+  // this can be ANY panel's divider, not just the active one. Unlike
+  // `onRemoveDivider`/`resizeSection` above, `moveDivider` REDISTRIBUTES
+  // between the two sections the divider separates (steals from one,
+  // gives to the other) rather than growing the panel — the behaviour
+  // Mario chose specifically for dragging, distinct from the side
+  // panel's numeric fields.
+  const onDividerDrag = (dividerId: string, boundaryMm: number) => {
+    const parsed = parsePartId(dividerId)
+    const match = parsed ? /^div-(v|h)(\d+)$/.exec(parsed.localId) : null
+    if (!parsed || !match) return
+    const orientation: 'vertical' | 'horizontal' = match[1] === 'v' ? 'vertical' : 'horizontal'
+    setValue('panels', moveDivider(panels, parsed.panelIndex, orientation, Number(match[2]), boundaryMm), {
+      shouldValidate: true,
+      shouldDirty: true,
+    })
+  }
+
+  // Dragging a panel's own FREE outer edge in/out (Mario: "resize the
+  // window by dragging any side in or out"). `positionMm` is already
+  // resolved by the drawing — snapped onto another coupled panel's edge
+  // when one was within tolerance, raw pointer position otherwise — so
+  // this only has to route to the right geometry function, same
+  // 1×1-vs-gridded split `onPanelSizeChange` already makes for the
+  // numeric fields.
+  const onPanelEdgeDrag = (panelIndex: number, side: PanelSide, positionMm: number) => {
+    const panel = panels[panelIndex]
+    if (!panel) return
+    const gridded = panel.columnWidths.length > 1 || panel.rowHeights.length > 1
+    setValue(
+      'panels',
+      gridded ? resizeSectionEdge(panels, panelIndex, side, positionMm) : resizePanelEdge(panels, panelIndex, side, positionMm),
+      { shouldValidate: true, shouldDirty: true },
+    )
+  }
+
   const onSelectPart = (partId: string, additive: boolean) => {
-    const panelIndex = parsePartId(partId)?.panelIndex ?? 0
+    const parsed = parsePartId(partId)
+    const panelIndex = parsed?.panelIndex ?? 0
     if (additive) {
       // Toggles this panel into the selection WITHOUT moving which part
       // is selected — the options column stays where it was.
@@ -667,126 +877,266 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     setSelectedPanelIndices([panelIndex])
     setSelectedBarId(null)
     setPendingDeleteBarId(null)
+    // A sash/glass/fly-screen part carries its own section — a divider
+    // or the frame carries none (`sectionIndex: null`), so the active
+    // section simply stays whatever it already was.
+    if (parsed?.sectionIndex !== null && parsed?.sectionIndex !== undefined) {
+      setActiveSectionIndex(parsed.sectionIndex)
+    }
   }
 
-  // ---- Active panel's options -------------------------------------------
+  // ---- Active panel/section options --------------------------------------
 
   const sashOptions = (profilesQuery.data ?? [])
     .filter((p) => p.profileType === ProfileType.LEAF && p.catalog === activeInfo?.frame?.catalog)
     .sort((a, b) => a.profileNo.localeCompare(b.profileNo))
 
+  // A fixed section's sash equivalent — same catalogue-scoping rule.
+  const beadOptions = (profilesQuery.data ?? [])
+    .filter((p) => p.profileType === ProfileType.GLASS_BEADING && p.catalog === activeInfo?.frame?.catalog)
+    .sort((a, b) => a.profileNo.localeCompare(b.profileNo))
+
+  // For the "+" → Mullion/Transom popup's own profile picker — scoped to
+  // whichever panel is actually being attached to (`attachPanels[0]`),
+  // NOT `activeInfo`: hovering to attach a divider to panel 2 while panel
+  // 1 is still the "active" one in the side panel are two different
+  // panels in a multi-panel assembly, and a divider is hard-scoped to
+  // ITS OWN frame's catalogue (bug-040), never the active panel's.
+  const attachInfo = panelInfos[effectiveAttachIndices[0] ?? activePanelIndex] ?? activeInfo
+  const dividerOptions = (profilesQuery.data ?? [])
+    .filter((p) => p.profileType === ProfileType.TRANSOM && p.catalog === attachInfo?.frame?.catalog)
+    .sort((a, b) => a.profileNo.localeCompare(b.profileNo))
+
   const glassOptions = [
     ...(glassQuery.data ?? [])
-      .filter((g) => activeInfo?.maxGlassAllowed != null && g.thickness <= activeInfo.maxGlassAllowed)
+      .filter((g) => activeSectionInfo?.maxGlassAllowed != null && g.thickness <= activeSectionInfo.maxGlassAllowed)
       .map((g) => ({
         value: `${GlassKind.SINGLE}|${formatScopedRef(g.scope, g.id)}`,
         label: `${g.name} — ${g.thickness} mm`,
         scope: g.scope,
       })),
     ...(combinationsQuery.data ?? [])
-      .filter((c) => activeInfo?.maxGlassAllowed != null && c.totalThickness <= activeInfo.maxGlassAllowed)
+      .filter((c) => activeSectionInfo?.maxGlassAllowed != null && c.totalThickness <= activeSectionInfo.maxGlassAllowed)
       .map((c) => ({
         value: `${GlassKind.COMBINATION}|${formatScopedRef(c.scope, c.id)}`,
         label: `${c.name} — ${c.totalThickness} mm`,
         scope: c.scope,
       })),
   ]
-  const glassValue = activePanel?.glass ? `${activePanel.glassKind}|${activePanel.glass}` : ''
+  const glassValue = activeSection?.glass ? `${activeSection.glassKind}|${activeSection.glass}` : ''
 
-  // The active panel's own weight estimate, for the options column's
-  // weight line. Recomputed here rather than plucked out of `issuesByPart`,
-  // which only carries the translated message, not the number — and which
-  // stays empty until `showValidation`. Window-only (the `panelType`
-  // check first in the chain also narrows `activePanel` for the rest of
-  // it) — the transom mirror is `activeTransomWeightKg`, right below.
-  const activeSashPart = drawingLayout.parts.find((p) => p.panelIndex === activePanelIndex && p.kind === 'sash')
+  // The active SECTION's own weight estimate, for the options column's
+  // weight line. Recomputed here rather than plucked out of
+  // `issuesByPart`, which only carries the translated message, not the
+  // number — and which stays empty until `showValidation`.
+  const activeSashPart = drawingLayout.parts.find(
+    (p) => p.panelIndex === activePanelIndex && p.kind === 'sash' && p.sectionIndex === activeSectionIndex,
+  )
   const activeSashWeightKg =
-    activePanel.panelType === PanelType.WINDOW &&
-    activeInfo?.sash &&
-    (activeInfo.currentGlass ?? activeInfo.currentCombination) &&
-    activeSashPart
+    activeSectionInfo?.sash && (activeSectionInfo.currentGlass ?? activeSectionInfo.currentCombination) && activeSashPart
       ? computeSashWeightKg({
           rectMm: activeSashPart.rectMm,
           glassWeightPerSqm: resolveGlassWeightPerSqm(
-            activePanel.glassKind,
-            activeInfo.currentGlass,
-            activeInfo.currentCombination,
+            activeSection.glassKind,
+            activeSectionInfo.currentGlass,
+            activeSectionInfo.currentCombination,
             glassQuery.data ?? [],
           ),
-          sashProfile: activeInfo.sash,
+          sashProfile: activeSectionInfo.sash,
           head: activeSashPart.head,
           bars: activePanel.bars,
         })
       : null
 
-  // §6: literally the same `computeSashWeightKg` call, sourcing
-  // `weight`/`maxGlassThickness` from the transom's own profile
-  // (already resolved under `info.sash` — see window-render.ts's own
-  // comment on why) instead of a window's sash. `rectMm` is the FRAME
-  // part's own rect, not a `sash` one — a transom has no separate sash
-  // part at all, its frame ring IS the whole extrusion
-  // (`buildTransomLayout`). No `head`/`bars`: a transom is always flat
-  // with no bars (decision 6), so the plain rectangular perimeter
-  // `computeSashWeightKg` falls back to without those args is already
-  // exactly right.
-  const activeFramePart = drawingLayout.parts.find((p) => p.panelIndex === activePanelIndex && p.kind === 'frame')
-  const activeTransomWeightKg =
-    activePanel.panelType === PanelType.TRANSOM &&
-    activeInfo?.sash &&
-    (activeInfo.currentGlass ?? activeInfo.currentCombination) &&
-    activeFramePart
-      ? computeSashWeightKg({
-          rectMm: activeFramePart.rectMm,
-          glassWeightPerSqm: resolveGlassWeightPerSqm(
-            activePanel.glassKind,
-            activeInfo.currentGlass,
-            activeInfo.currentCombination,
-            glassQuery.data ?? [],
-          ),
-          sashProfile: activeInfo.sash,
-        })
-      : null
-
-  // Changing the frame invalidates the sash (scoped to its catalogue)
-  // and, transitively, the glass (scoped to the sash's max thickness) —
-  // same cascade rule ProjectPreferencesFields uses for brand →
-  // catalogue. Applies to the ACTIVE panel only.
+  // Changing the frame invalidates every SECTION's sash (scoped to its
+  // catalogue) and, transitively, glass — same cascade rule
+  // ProjectPreferencesFields uses for brand → catalogue, just applied
+  // across the whole panel's sections now instead of one panel-level
+  // field.
   const onFrameChange = (ref: ScopedRef) => {
-    updateActivePanel({ frameProfile: ref, sashProfile: '' as ScopedRef, glass: '' as ScopedRef })
+    // What system the NEW frame belongs to — resolved here rather than
+    // waiting for `useResolvedPanels` to catch up next render, so the
+    // sliding layout can be written in the same update as the frame.
+    const nextSystem = systemTypeOfFrame(ref)
+    const rails = slidingRailsOfFrame(ref)
+    // Every OPENING section of a panel that becomes sliding gets the
+    // default layout (decision 5) — or its remembered one if it was
+    // sliding before and the user only re-picked the frame; a panel
+    // that stops being sliding drops every layout (the schema forbids
+    // one elsewhere). Either way each layout is fitted to the NEW
+    // profile's rail count (planing §11, decision 14): sashes on rails
+    // the new frame doesn't have move to its front rail, and one toast
+    // says which (sash numbers, across sections).
+    const moved: number[] = []
+    const slidingFor = (s: WindowSectionInput, sectionIndex: number): SlidingLayoutInput | null => {
+      if (nextSystem !== SystemType.SLIDING || s.kind !== SectionKind.OPENING) return null
+      const kept = s.sliding ?? rememberedSlidingLayouts.current.get(rememberKey(activePanelIndex, sectionIndex)) ?? defaultSlidingLayout()
+      if (rails === null) return kept
+      const remapped = remapSlidingRails(kept, rails)
+      moved.push(...remapped.moved.map((i) => i + 1))
+      return remapped.layout
+    }
+    const sections = activePanel.sections.map((s, sectionIndex) => ({
+      ...s,
+      sashProfile: s.kind === SectionKind.OPENING ? ('' as ScopedRef) : null,
+      // Bead options are scoped to the frame's catalogue exactly like
+      // sash options are — a frame change invalidates a fixed
+      // section's pick the same way it invalidates an opening one's.
+      beadProfile: s.kind === SectionKind.FIXED ? ('' as ScopedRef) : null,
+      glass: '' as ScopedRef,
+      sliding: slidingFor(s, sectionIndex),
+    }))
+    if (moved.length > 0) onSlidingRailsShrunk(moved)
+    updateActivePanel({ frameProfile: ref, sections })
   }
 
-  // The transom mirror of `onFrameChange` — its own profile is the
-  // whole glass-ceiling, so changing it invalidates glass the same way.
-  const onTransomProfileChange = (ref: ScopedRef) => {
-    updateActiveTransomPanel({ transomProfile: ref, glass: '' as ScopedRef })
+  const onDividerProfileChange = (ref: ScopedRef) => updateActivePanel({ dividerProfile: ref })
+
+  // Switching a section's own kind — decision 6: fixed by default,
+  // switching to opening resets sash/glass to "not yet chosen" (the
+  // drawing shows no sash until one is picked) with a sensible default
+  // opening type; switching back to fixed clears everything an opening
+  // section carries that a fixed one can't (the schema itself forbids
+  // them).
+  const onSectionKindChange = (kind: SectionKind) => {
+    if (kind === SectionKind.FIXED) {
+      // A fixed sliding light has no layout (decision 6) — but keep the
+      // one being dropped in component state so "Opening" brings it
+      // back instead of a blank default (handoff: "change back to
+      // sliding restores it").
+      if (activeSection.sliding) rememberedSlidingLayouts.current.set(rememberKey(activePanelIndex, activeSectionIndex), activeSection.sliding)
+      updateActiveSection({ kind, sashProfile: null, beadProfile: '' as ScopedRef, openingType: null, hasFlyScreen: false, sliding: null })
+      return
+    }
+    // A sliding section is "opening" with no hinge type at all (the
+    // schema's own rule) — only a hinged one gets the default type.
+    updateActiveSection({
+      kind,
+      sashProfile: '' as ScopedRef,
+      beadProfile: null,
+      openingType: activeIsSliding ? null : HingedOpeningType.SIDE_HUNG_RIGHT,
+      sliding: activeIsSliding
+        ? (rememberedSlidingLayouts.current.get(rememberKey(activePanelIndex, activeSectionIndex)) ?? defaultSlidingLayout())
+        : null,
+    })
   }
 
-  // ---- The face toggle ---------------------------------------------------
+  // The sliding layout editor's one write path (planing §7): every
+  // control in `sliding-layout-editor.tsx` — and any future context
+  // menu or keyboard shortcut — lands here, already re-derived, so an
+  // `auto` sash can never be stored disagreeing with its rails.
+  // A layout landing on a FIXED sliding section (its tiles double as
+  // the fixed/opening choice, 2026-09-20) flips that section to
+  // opening in the same write — the `onSectionKindChange(OPENING)`
+  // reset, minus the layout it would restore, since this IS the layout.
+  const setSlidingLayoutOf = (panelIndex: number, sectionIndex: number, layout: SlidingLayoutInput) => {
+    const next = resolveSlidingLayout(layout)
+    rememberedSlidingLayouts.current.set(rememberKey(panelIndex, sectionIndex), next)
+    const write = (section: WindowSectionInput): WindowSectionInput =>
+      section.kind === SectionKind.FIXED
+        ? { ...section, kind: SectionKind.OPENING, sashProfile: '' as ScopedRef, beadProfile: null, openingType: null, sliding: next }
+        : { ...section, sliding: next }
+    setValue(
+      'panels',
+      panels.map((panel, i) =>
+        i === panelIndex ? { ...panel, sections: panel.sections.map((s, j) => (j === sectionIndex ? write(s) : s)) } : panel,
+      ),
+      { shouldValidate: true, shouldDirty: true },
+    )
+  }
+  const setSlidingLayout = (layout: SlidingLayoutInput) => setSlidingLayoutOf(activePanelIndex, activeSectionIndex, layout)
+  // One sash of one section — the quick menu's and the keyboard's entry
+  // point (planing §7/§10), so both land on exactly the same write as
+  // the part panel's rows.
+  const updateSlidingSash = (
+    panelIndex: number,
+    sectionIndex: number,
+    sashIndex: number,
+    changes: Partial<SlidingLayoutInput['sashes'][number]>,
+  ) => {
+    const layout = panels[panelIndex]?.sections[sectionIndex]?.sliding
+    if (!layout) return
+    setSlidingLayoutOf(panelIndex, sectionIndex, {
+      ...layout,
+      sashes: layout.sashes.map((sash, i) => (i === sashIndex ? { ...sash, ...changes } : sash)),
+    })
+  }
+  /** The sliding sash a part id names — `null` for anything else
+   * (frame, glass, a legacy sash with no layout, a hinged sash). */
+  const slidingSashOf = (partId: string | null) => {
+    if (!partId) return null
+    const hit = drawingLayout.parts.find((p) => p.id === partId)
+    if (!hit) return null
+    // The pointer is far more often over a sash's GLASS than its stiles
+    // — a glass part carries its sash's `index`, so it resolves to the
+    // same sash (bug-059: the menu never opened from the glass).
+    const part =
+      hit.kind === 'glass'
+        ? drawingLayout.parts.find(
+            (p) => p.kind === 'sash' && p.panelIndex === hit.panelIndex && p.sectionIndex === hit.sectionIndex && p.index === hit.index,
+          )
+        : hit
+    if (!part || part.kind !== 'sash' || !part.sliding) return null
+    const sectionIndex = part.sectionIndex ?? 0
+    const layout = panels[part.panelIndex]?.sections[sectionIndex]?.sliding
+    if (!layout) return null
+    // A sash beyond the profile's rails can still move BACK (that's the
+    // fix), so the bound only stops moving further forward.
+    const rails = slidingRailsOfFrame(panels[part.panelIndex]?.frameProfile ?? null) ?? 0
+    return { partId, panelIndex: part.panelIndex, sectionIndex, index: part.index, layout, rails, sash: layout.sashes[part.index] }
+  }
+  // Which sash the right-click menu is open FOR — captured on open,
+  // since `hoveredPartId` keeps moving with the pointer while the menu
+  // is up. The trigger is disabled unless the pointer is over a sliding
+  // sash, so a right-click anywhere else is the browser's own menu.
+  const [menuSashPartId, setMenuSashPartId] = useState<string | null>(null)
+  const hoveredSlidingSash = slidingSashOf(hoveredPartId)
+  const menuSashEntry = slidingSashOf(menuSashPartId)
+  const menuSash = menuSashEntry?.sash ? { ...menuSashEntry, sash: menuSashEntry.sash } : null
 
-  // Only matters when it would actually show something different — both
-  // colours picked on some panel, and they don't resolve to the same hex
-  // (two different colour entries can still be visually identical).
-  const showFaceToggle = sanitizedPanels.some((panel) => {
-    if (!panel.interiorColor || !panel.exteriorColor) return false
-    const interiorHex = colorOptions.find((c) => c.value === panel.interiorColor)?.hex ?? null
-    const exteriorHex = colorOptions.find((c) => c.value === panel.exteriorColor)?.hex ?? null
-    return interiorHex !== exteriorHex
-  })
+  // The hinged opening-type grid IS the fixed/opening choice now (Mario,
+  // 2026-09-13: a separate Fixed/Opening toggle is redundant once the
+  // grid already carries `FIXED_CLOSED`) — picking it does exactly what
+  // `onSectionKindChange(FIXED)` does above; picking any real hinge type
+  // does what `onSectionKindChange(OPENING)` does, but with the ACTUAL
+  // type clicked rather than always defaulting to `SIDE_HUNG_RIGHT`, and
+  // keeps whatever sash profile was already picked rather than resetting
+  // it — switching from one hinge style to another shouldn't lose it.
+  // The plain Fixed/Opening toggle still exists for sliding/curtain-wall
+  // sections (`window-part-panel.tsx`'s `!showOpeningTypes` branch),
+  // which have no opening-type grid to fold this into.
+  const onSectionOpeningTypeChange = (value: HingedOpeningType | null) => {
+    if (value === null || value === HingedOpeningType.FIXED_CLOSED) {
+      updateActiveSection({
+        kind: SectionKind.FIXED,
+        sashProfile: null,
+        beadProfile: activeSection.kind === SectionKind.FIXED ? activeSection.beadProfile : ('' as ScopedRef),
+        openingType: null,
+        hasFlyScreen: false,
+      })
+      return
+    }
+    updateActiveSection({
+      kind: SectionKind.OPENING,
+      sashProfile: activeSection.kind === SectionKind.OPENING ? activeSection.sashProfile : ('' as ScopedRef),
+      beadProfile: null,
+      openingType: value,
+    })
+  }
 
   // ---- Per-panel render descriptors --------------------------------------
 
   // `useResolvedPanels` already did the catalogue work (colours, glass
-  // tint, Georgian grid). Two fields are overridden here: `placement`
-  // uses the drawable fallback so an unsized panel still renders, and
-  // the door/opening-type flags come from the sanitised view rather than
-  // the raw form value — window-only fields, so a transom entry keeps
-  // whatever `useResolvedPanels` already defaulted them to (false/null).
-  const panelRenders: PanelRender[] = resolved.map((r, i) => {
-    const panel = sanitizedPanels[i]
-    return panel.panelType === PanelType.WINDOW
-      ? { ...r.render, placement: layoutInput[i], isDoor: panel.isDoor, openingType: panel.openingType ?? null }
-      : { ...r.render, placement: layoutInput[i] }
-  })
+  // tint, Georgian grid) per section. Two fields are overridden here:
+  // `placement` uses the drawable fallback so an unsized panel still
+  // renders, and each section's opening-type/fly-screen come from the
+  // sanitised view rather than the raw form value.
+  const panelRenders: PanelRender[] = resolved.map((r, i) => ({
+    ...r.render,
+    placement: layoutInput[i],
+    isDoor: sanitizedPanels[i].isDoor,
+    sections: sectionRendersFor(i),
+  }))
 
   // ---- Issues ------------------------------------------------------------
 
@@ -799,72 +1149,34 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const issuesByPart = new Map<string, TranslatedIssue[]>()
   if (showValidation) {
     sanitizedPanels.forEach((panel, i) => {
-      if (panel.panelType !== PanelType.WINDOW) {
-        const info = panelInfos[i]
-        const glassPart = drawingLayout.parts.find((p) => p.panelIndex === i && p.kind === 'glass')
-        for (const issue of collectTransomIssues({
-          transomProfile: info.sash,
-          hasGlass: !!panel.glass,
-          glassThickness: info.currentGlass?.thickness ?? info.currentCombination?.totalThickness ?? null,
-          maxGlassAllowed: info.maxGlassAllowed,
-          glassPartId: glassPart?.id ?? `p${i}:glass-0`,
-        })) {
-          const translated: TranslatedIssue = {
-            severity: issue.severity,
-            messageKey: issue.messageKey,
-            message: t(`windowDialog.design.issues.${issue.messageKey}`, issue.values),
-          }
-          issuesByPart.set(issue.partId, [...(issuesByPart.get(issue.partId) ?? []), translated])
-        }
-        return
-      }
       const info = panelInfos[i]
       const parts = drawingLayout.parts.filter((p) => p.panelIndex === i)
       const framePart = parts.find((p) => p.kind === 'frame')
-      const sashPart = parts.find((p) => p.kind === 'sash')
-      const sashPartIds = parts.filter((p) => p.kind === 'sash').map((p) => p.id)
-      const glassPartIds = parts.filter((p) => p.kind === 'glass').map((p) => p.id)
-      const flyScreenPartId = parts.find((p) => p.kind === 'flyScreen')?.id ?? null
-      const glassWeightPerSqm = resolveGlassWeightPerSqm(
-        panel.glassKind,
-        info.currentGlass,
-        info.currentCombination,
-        glassQuery.data ?? [],
-      )
-      const sashWeightKg =
-        info.sash && (info.currentGlass ?? info.currentCombination) && sashPart
-          ? computeSashWeightKg({
-              rectMm: sashPart.rectMm,
-              glassWeightPerSqm,
-              sashProfile: info.sash,
-              head: sashPart.head,
-              bars: panel.bars,
-            })
-          : null
       // §7's archObstructed: a panel resting on an arched panel's own
       // curved head carves a void inside the assembly rather than at
       // its outline — checked against the RAW placements (`panels`),
       // same as `irregularOutline`/`panelsConnected` above use, not the
-      // drawable-fallback `layoutInput`.
-      const hasArchedHead = !!framePart?.head
+      // drawable-fallback `layoutInput`. Panel-level, so it's computed
+      // once per panel, not once per section.
+      const hasArchedHeadHere = !!framePart?.head
       const hasPanelOnTop = panels.some((other, j) => j !== i && touchesTopEdge(panels[i], other))
 
-      for (const issue of collectWindowIssues({
-        frameProfile: info.frame,
-        sashProfile: info.sash,
-        hasGlass: !!panel.glass,
-        glassThickness: info.currentGlass?.thickness ?? info.currentCombination?.totalThickness ?? null,
-        maxGlassAllowed: info.maxGlassAllowed,
-        sashWeightKg,
-        maxSashWeight: info.maxSashWeight,
-        hasFlyScreen: panel.hasFlyScreen,
-        flyScreenAllowed: info.flyScreenAllowed,
-        sashPartIds,
-        glassPartIds,
-        flyScreenPartId,
+      // Panel-level rules (V1, V8, archWithMullion) plus each section's
+      // sliding-layout rules — computed once per panel, not once per
+      // section (docs/sections_tasks.md Step 7 / §6's own note on why
+      // these can't live inside the loop below).
+      for (const issue of collectPanelIssues({
+        dividerProfile: panel.dividerProfile,
+        columnWidths: panel.columnWidths,
+        rowHeights: panel.rowHeights,
+        widthMm: panel.widthMm,
+        heightMm: panel.heightMm,
+        headShape: panel.headShape,
+        systemType: info.systemType,
         framePartId: framePart?.id ?? `p${i}:frame`,
-        hasArchedHead,
-        hasPanelOnTop,
+        slidingRails: info.frame?.slidingRails ?? null,
+        hasFrame: !!info.frame,
+        sections: slidingSectionArgs(panel.sections, parts),
       })) {
         const translated: TranslatedIssue = {
           severity: issue.severity,
@@ -873,7 +1185,86 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
         }
         issuesByPart.set(issue.partId, [...(issuesByPart.get(issue.partId) ?? []), translated])
       }
+
+      panel.sections.forEach((section, sectionIndex) => {
+        const sectionInfo = info.sections[sectionIndex]
+        const sectionParts = parts.filter((p) => p.sectionIndex === sectionIndex)
+        const sashPart = sectionParts.find((p) => p.kind === 'sash')
+        const sashPartIds = sectionParts.filter((p) => p.kind === 'sash').map((p) => p.id)
+        const glassPartIds = sectionParts.filter((p) => p.kind === 'glass').map((p) => p.id)
+        const flyScreenPartId = sectionParts.find((p) => p.kind === 'flyScreen')?.id ?? null
+        const glassWeightPerSqm = resolveGlassWeightPerSqm(
+          section.glassKind,
+          sectionInfo?.currentGlass,
+          sectionInfo?.currentCombination,
+          glassQuery.data ?? [],
+        )
+        const sashWeightKg =
+          sectionInfo?.sash && (sectionInfo.currentGlass ?? sectionInfo.currentCombination) && sashPart
+            ? computeSashWeightKg({
+                rectMm: sashPart.rectMm,
+                glassWeightPerSqm,
+                sashProfile: sectionInfo.sash,
+                head: sashPart.head,
+                bars: panel.bars,
+              })
+            : null
+
+        for (const issue of collectWindowIssues({
+          frameProfile: info.frame,
+          sectionKind: section.kind,
+          sashProfile: sectionInfo?.sash,
+          beadProfile: sectionInfo?.bead,
+          hasGlass: !!section.glass,
+          glassThickness: sectionInfo?.currentGlass?.thickness ?? sectionInfo?.currentCombination?.totalThickness ?? null,
+          maxGlassAllowed: sectionInfo?.maxGlassAllowed ?? null,
+          sashWeightKg,
+          maxSashWeight: info.maxSashWeight,
+          hasFlyScreen: section.hasFlyScreen,
+          flyScreenAllowed: info.flyScreenAllowed,
+          sashPartIds,
+          glassPartIds,
+          flyScreenPartId,
+          framePartId: framePart?.id ?? `p${i}:frame`,
+          hasArchedHead: hasArchedHeadHere,
+          hasPanelOnTop,
+          headBendRadiusMm: framePart?.head
+            ? headBendRadiusMm({ rect: framePart.rectMm, shape: framePart.head.shape, riseMm: framePart.head.riseMm })
+            : null,
+          minBendRadiusMm: resolved[i].render.metrics.minBendRadius,
+          metricsSource: resolved[i].render.metrics.source,
+          columnWidthMm: panel.columnWidths[section.col] ?? panel.widthMm,
+          rowHeightMm: panel.rowHeights[section.row] ?? panel.heightMm,
+          isArchedOpeningSection: hasArchedHeadHere && section.row === 0 && section.kind === SectionKind.OPENING,
+          // `info.showOpeningTypes` is exactly `systemType === HINGED`
+          // (window-render.ts) — the same flag `sanitizedPanels` already
+          // uses to decide whether `openingType` survives at all, so a
+          // sliding/curtain-wall section (genuinely opening, always
+          // null — bug-034) can never reach here with this true.
+          openingTypeRequired: section.kind === SectionKind.OPENING && info.showOpeningTypes && section.openingType == null,
+        })) {
+          const translated: TranslatedIssue = {
+            severity: issue.severity,
+            messageKey: issue.messageKey,
+            message: t(`windowDialog.design.issues.${issue.messageKey}`, issue.values),
+          }
+          issuesByPart.set(issue.partId, [...(issuesByPart.get(issue.partId) ?? []), translated])
+        }
+      })
     })
+
+    // V9 `dividerMisaligned` — cross-panel, so it runs once over the
+    // whole assembly rather than inside the per-panel loop above (same
+    // posture as `irregularOutline`/`disconnectedPanels` below).
+    for (const { panelIndex, localId } of findMisalignedDividers(sanitizedPanels)) {
+      const translated: TranslatedIssue = {
+        severity: 'warning',
+        messageKey: 'dividerMisaligned',
+        message: t('windowDialog.design.issues.dividerMisaligned'),
+      }
+      const partId = `p${panelIndex}:${localId}`
+      issuesByPart.set(partId, [...(issuesByPart.get(partId) ?? []), translated])
+    }
   }
 
   // Assembly-level, so they belong to no drawn part.
@@ -904,15 +1295,25 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
 
   if (assemblyIssues.length > 0) issuesByPart.set(ASSEMBLY_PART_ID, assemblyIssues)
 
-  // The strip below the drawing — one row per distinct message, not per
-  // part (four panels all missing a sash profile would otherwise repeat
-  // "Pick a sash profile." four times).
+  // The strip below the drawing — one row per distinct (part, message)
+  // pair, not per message alone. Deduping by message text ONLY (as this
+  // used to) collapses every panel sharing the identical issue (four
+  // panels all missing a sash profile, say) down to a single clickable
+  // link pointing at whichever panel happened to iterate first — Mario
+  // caught this live ("if all the panels has errors show error inside
+  // each one of them not on the main window frame"): the other panels'
+  // identical issues silently had nowhere to click through to. Keying
+  // on `partId` too still collapses a genuinely redundant repeat of the
+  // SAME message on the SAME part (the scenario the original comment
+  // actually had in mind), while giving every troubled panel its own
+  // row.
   const stripIssues: { partId: string; severity: TranslatedIssue['severity']; message: string }[] = []
-  const seenMessages = new Set<string>()
+  const seenPartMessages = new Set<string>()
   for (const [partId, issues] of issuesByPart) {
     for (const issue of issues) {
-      if (seenMessages.has(issue.message)) continue
-      seenMessages.add(issue.message)
+      const key = `${partId} ${issue.message}`
+      if (seenPartMessages.has(key)) continue
+      seenPartMessages.add(key)
       stripIssues.push({ partId, ...issue })
     }
   }
@@ -922,8 +1323,9 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const onSubmit = async (data: CreateWindowInput) => {
     try {
       // Submits the sanitised panels, never the raw ones — a stale
-      // openingType on a panel whose frame is no longer hinged must not
-      // reach the API just because the control that set it is hidden.
+      // openingType on a section whose frame is no longer hinged must
+      // not reach the API just because the control that set it is
+      // hidden.
       const body: CreateWindowInput = { ...data, panels: sanitizedPanels }
       if (isEdit) {
         const { projectId: _ignored, ...editable } = body
@@ -973,6 +1375,159 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     )
   }
 
+  // ---- Selected divider ---------------------------------------------------
+  //
+  // A divider's own id is panel-level (`div-v{k}`/`div-h{j}`, `sectionIndex:
+  // null`) — matched here from `selectedPartId` rather than threaded
+  // through as separate state, since the drawing's own selection is
+  // already the single source of truth for "what's selected".
+  const selectedDividerMatch = selectedPartId ? /^div-(v|h)(\d+)$/.exec(parsePartId(selectedPartId)?.localId ?? '') : null
+  const selectedDividerOrientation: 'vertical' | 'horizontal' | null = selectedDividerMatch
+    ? selectedDividerMatch[1] === 'v'
+      ? 'vertical'
+      : 'horizontal'
+    : null
+  const selectedDividerK = selectedDividerMatch ? Number(selectedDividerMatch[2]) : null
+  const selectedDividerPart = selectedDividerMatch ? drawingLayout.parts.find((p) => p.id === selectedPartId) : null
+  const selectedDivider =
+    selectedDividerPart && selectedDividerOrientation && selectedDividerK !== null
+      ? {
+          label:
+            selectedDividerOrientation === 'vertical'
+              ? t('windowDialog.design.parts.mullion')
+              : t('windowDialog.design.parts.transom'),
+          profileNumber: activeInfo?.dividerProfile?.profileNo,
+          lengthMm: selectedDividerOrientation === 'vertical' ? selectedDividerPart.rectMm.height : selectedDividerPart.rectMm.width,
+          onRemove: () => onRemoveDivider(selectedDividerOrientation, selectedDividerK),
+        }
+      : null
+
+  // Keyboard control of the selected divider: arrow keys nudge it 1mm
+  // (a press moves it once, holding the key repeats via the browser's
+  // own native key-repeat — same redistribute-between-neighbours
+  // behaviour and 100mm floor as `onDividerDrag`'s drag), Delete/
+  // Backspace removes it (same merge-into-neighbour behaviour as
+  // `onRemoveDivider`'s own button). Both are inlined here rather than
+  // called through those two functions so this effect doesn't need to
+  // depend on functions recreated every render. The drawing is fixed
+  // `dir="ltr"` regardless of app locale (see its own note elsewhere in
+  // this file), so Left/Right always means the same physical direction
+  // here too.
+  useEffect(() => {
+    if (!selectedPartId || !selectedDividerOrientation || selectedDividerK === null) return
+    const panelIndex = parsePartId(selectedPartId)?.panelIndex
+    if (panelIndex === undefined) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return
+      }
+
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault()
+        const next = removeDivider(panels, panelIndex, selectedDividerOrientation, selectedDividerK)
+        const updated = next[panelIndex]
+        if (!updated) return
+        const stillGridded = updated.columnWidths.length > 1 || updated.rowHeights.length > 1
+        const final = stillGridded ? next : next.map((p, i) => (i === panelIndex ? { ...p, dividerProfile: null } : p))
+        setValue('panels', final, { shouldValidate: true, shouldDirty: true })
+        setSelectedPartId(`p${panelIndex}:frame`)
+        setActiveSectionIndex(0)
+        return
+      }
+
+      const deltaMm =
+        selectedDividerOrientation === 'vertical'
+          ? event.key === 'ArrowLeft'
+            ? -1
+            : event.key === 'ArrowRight'
+              ? 1
+              : null
+          : event.key === 'ArrowUp'
+            ? -1
+            : event.key === 'ArrowDown'
+              ? 1
+              : null
+      if (deltaMm === null) return
+
+      const panel = panels[panelIndex]
+      if (!panel) return
+      const pitches = selectedDividerOrientation === 'vertical' ? panel.columnWidths : panel.rowHeights
+      const currentBoundary = cumulativeBoundaries(pitches)[selectedDividerK]
+      if (currentBoundary === undefined) return
+
+      event.preventDefault()
+      setValue('panels', moveDivider(panels, panelIndex, selectedDividerOrientation, selectedDividerK, currentBoundary + deltaMm), {
+        shouldValidate: true,
+        shouldDirty: true,
+      })
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedPartId, selectedDividerOrientation, selectedDividerK, panels, setValue, setSelectedPartId, setActiveSectionIndex])
+
+  // Keyboard control of a selected SLIDING sash (planing §10, the
+  // handoff's shortcuts): `[` moves it one rail back (toward the
+  // outside), `]` one rail forward, `←`/`→` select its neighbour sash.
+  // Same input-focus guard as the divider handler above; `[`/`]` are
+  // deliberately not arrows so they can't collide with the divider's.
+  useEffect(() => {
+    const selected = slidingSashOf(selectedPartId)
+    if (!selected) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      const { panelIndex, sectionIndex, index, layout, rails, sash } = selected
+      if (!sash) return
+      if (event.key === '[' || event.key === ']') {
+        const rail = sash.rail + (event.key === '[' ? -1 : 1)
+        if (rail < 0 || rail >= rails) return
+        event.preventDefault()
+        updateSlidingSash(panelIndex, sectionIndex, index, { rail })
+        return
+      }
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        const next = index + (event.key === 'ArrowLeft' ? -1 : 1)
+        if (next < 0 || next >= layout.sashes.length) return
+        event.preventDefault()
+        setSelectedPartId(`p${panelIndex}:s${sectionIndex}:sash-${next}`)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+    // `slidingSashOf`/`updateSlidingSash` are plain closures over
+    // `panels`/`drawingLayout`, recreated every render — depending on
+    // their inputs is the honest dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPartId, panels, drawingLayout])
+
+  // The form hasn't been `reset()` with real data yet: `panels` above is
+  // still `emptyWindow()`'s single 1000×1200 placeholder panel.
+  // `WindowDrawing` must not mount against that placeholder geometry —
+  // its `baseViewBox` fit-to-content view is captured ONCE via a lazy
+  // `useState` initializer and never recomputed, so mounting it here
+  // would freeze the "whole window" fit at the placeholder's tiny size
+  // forever, leaving the real (usually much larger) assembly cropped
+  // once `reset()` swaps the real data in one render later. Bug caught
+  // live testing the new pan/zoom camera: opening any existing
+  // multi-panel window showed it zoomed in and cut off from the very
+  // first frame — even gating on `editingWindow` alone wasn't enough,
+  // since a cache-warm query can already have data on the FIRST paint,
+  // before the `reset()` effect (which only runs after that paint) has
+  // actually applied it. `formReady` is set true in that same effect,
+  // right after `reset()`, so it's the one signal that's actually true
+  // only once `watch('panels')` reflects the real data.
+  if (!formReady) {
+    return (
+      <div className="flex h-svh flex-col items-center justify-center gap-3 bg-background text-muted-foreground">
+        <Loader2 className="size-6 animate-spin" aria-hidden="true" />
+        <p>{t('windowDialog.loading')}</p>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="flex h-svh flex-col bg-background">
@@ -999,58 +1554,43 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               the room. */}
           <div className="grid min-h-0 flex-1 grid-cols-[18rem_1fr_26rem] gap-4 overflow-hidden p-4">
             <div className="flex min-h-0 min-w-0 flex-col border-e border-border ps-1 pe-3">
-              {/* A transom has no frame profile at all (its own
-                  transom profile is Step 6's job to edit) — this whole
-                  tree is window-only, same stopgap posture as the
-                  options column's own transom placeholder. */}
-              {activePanel?.panelType === PanelType.WINDOW && (
-                <>
-                  <FieldLabel htmlFor="window-frame" required>
-                    {t('fields.frameProfile')}
-                  </FieldLabel>
-                  <div className="mt-1.5 min-h-0 min-w-0 flex-1">
-                    <ProfileTreePicker
-                      profileType={ProfileType.FRAME}
-                      value={activePanel.frameProfile || null}
-                      onChange={onFrameChange}
-                      favoriteRef={project?.favoriteFrameProfile}
-                      onSetFavorite={project ? onSetFavorite : undefined}
-                      preferredCatalogRef={isEdit ? undefined : project?.defaultSystemCatalog}
-                      preferredBrandRef={isEdit ? undefined : project?.defaultSystemBrand}
-                    />
-                  </div>
-                </>
-              )}
-              {showValidation && errors.panels && activePanel?.panelType === PanelType.WINDOW && (
+              <FieldLabel htmlFor="window-frame" required>
+                {t('fields.frameProfile')}
+              </FieldLabel>
+              <div className="mt-1.5 min-h-0 min-w-0 flex-1">
+                <ProfileTreePicker
+                  profileType={ProfileType.FRAME}
+                  value={activePanel.frameProfile || null}
+                  onChange={onFrameChange}
+                  favoriteRef={project?.favoriteFrameProfile}
+                  onSetFavorite={project ? onSetFavorite : undefined}
+                  preferredCatalogRef={isEdit ? undefined : project?.defaultSystemCatalog}
+                  preferredBrandRef={isEdit ? undefined : project?.defaultSystemBrand}
+                />
+              </div>
+              {showValidation && errors.panels && (
                 <p className="mt-1 shrink-0 text-xs text-destructive">{t('fields.frameProfileRequired')}</p>
               )}
             </div>
 
             <div className="flex min-h-0 flex-col gap-1.5">
-              {showFaceToggle && (
-                <div className="flex shrink-0 justify-center gap-1 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setDrawingFace('interior')}
-                    className={cn(
-                      'rounded px-2 py-0.5',
-                      drawingFace === 'interior' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground',
-                    )}
-                  >
-                    {t('windowDialog.design.interior')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDrawingFace('exterior')}
-                    className={cn(
-                      'rounded px-2 py-0.5',
-                      drawingFace === 'exterior' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground',
-                    )}
-                  >
-                    {t('windowDialog.design.exterior')}
-                  </button>
-                </div>
-              )}
+              {/* No Interior/Exterior toggle: the elevation is always the
+                  interior view for now (`DRAWING_FACE`, 2026-09-20). */}
+              <ContextMenu
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setMenuSashPartId(null)
+                    return
+                  }
+                  // Opening also selects the sash, like a left-click —
+                  // so the part panel below shows the row being acted on.
+                  if (hoveredSlidingSash) {
+                    setMenuSashPartId(hoveredSlidingSash.partId)
+                    onSelectPart(hoveredSlidingSash.partId, false)
+                  }
+                }}
+              >
+              <ContextMenuTrigger asChild disabled={!hoveredSlidingSash}>
               <div className="min-h-0 flex-1">
                 <WindowDrawing
                   layout={drawingLayout}
@@ -1061,32 +1601,28 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   onHover={setHoveredPartId}
                   selectedPanelIndices={panels.length > 1 ? selectedPanelIndices : []}
                   activePanelIndex={activePanelIndex}
-                  onPanelWidthChange={(mm) => onPanelSizeChange(mm, activeRaw?.heightMm ?? mm)}
-                  onPanelHeightChange={(mm) => onPanelSizeChange(activeRaw?.widthMm ?? mm, mm)}
-                  widthLabel={t('fields.widthMm')}
-                  heightLabel={t('fields.heightMm')}
                   attachRect={attachRect}
                   attachSides={attachSides}
                   onPanelHover={setHoveredPanelIndex}
                   onAddPanel={onAddPanel}
                   overlay={
-                    addPanelType === null ? (
-                      <AddPanelTypeStep anchor={addRequest} onCancel={onCancelAddPanel} onChoose={setAddPanelType} />
-                    ) : addPanelType === PanelType.WINDOW ? (
-                      <AddPanelCard
-                        request={addRequest}
-                        error={addError}
-                        onCancel={onCancelAddPanel}
-                        onConfirm={onConfirmAddPanel}
-                      />
+                    addChoice === null ? (
+                      <AddPanelTypeStep anchor={addRequest} allowDivider={allowDivider} onCancel={onCancelAddPanel} onChoose={setAddChoice} />
+                    ) : addChoice === 'window' ? (
+                      <AddPanelCard request={addRequest} error={addError} onCancel={onCancelAddPanel} onConfirm={onConfirmAddPanel} />
                     ) : (
-                      <AddTransomCard
+                      <AddDividerCard
                         request={addRequest}
+                        title={
+                          addRequest?.side === 'left' || addRequest?.side === 'right'
+                            ? t('windowDialog.design.addPanel.mullion')
+                            : t('windowDialog.design.addPanel.transom')
+                        }
                         error={addError}
                         onCancel={onCancelAddPanel}
-                        onConfirm={onConfirmAddTransom}
-                        preferredCatalogRef={isEdit ? undefined : project?.defaultSystemCatalog}
-                        preferredBrandRef={isEdit ? undefined : project?.defaultSystemBrand}
+                        onConfirm={onConfirmDivider}
+                        initialDividerProfile={attachPanels[0]?.dividerProfile ?? ''}
+                        dividerOptions={dividerOptions}
                       />
                     )
                   }
@@ -1104,8 +1640,75 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   onUpdateBarSag={(barId, sagMm) =>
                     updateActivePanel({ bars: activeBars.map((b) => (b.id === barId ? { ...b, sagMm } : b)) })
                   }
+                  onDividerDrag={onDividerDrag}
+                  onPanelEdgeDrag={onPanelEdgeDrag}
                 />
               </div>
+              </ContextMenuTrigger>
+              {menuSash && (
+                <ContextMenuContent>
+                  <ContextMenuItem
+                    disabled={menuSash.sash.rail === 0}
+                    onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { rail: menuSash.sash.rail - 1 })}
+                  >
+                    {t('fields.sliding.moveBack')}
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    disabled={menuSash.sash.rail >= menuSash.rails - 1}
+                    onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { rail: menuSash.sash.rail + 1 })}
+                  >
+                    {t('fields.sliding.moveForward')}
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  {(
+                    [SlidingOpeningType.LEFT, SlidingOpeningType.FREE, SlidingOpeningType.RIGHT] as const
+                  ).map((type) => {
+                    const suggested = suggestSlidingOpeningType(
+                      menuSash.layout.sashes.map((x) => x.rail),
+                      menuSash.index,
+                    )
+                    const current = menuSash.sash.openingType === type
+                    return (
+                      <ContextMenuItem
+                        key={type}
+                        onSelect={() =>
+                          updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { openingType: type, directionSource: SlidingDirectionSource.MANUAL })
+                        }
+                      >
+                        <span className="w-4 text-center">{current ? '✓' : ''}</span>
+                        {t(`fields.sliding.types.${type}`)}
+                        {suggested === type && <span className="ms-auto text-xs text-muted-foreground">{t('fields.sliding.suggested')}</span>}
+                      </ContextMenuItem>
+                    )
+                  })}
+                  {menuSash.sash.directionSource === SlidingDirectionSource.MANUAL && (
+                    <ContextMenuItem
+                      onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { directionSource: SlidingDirectionSource.AUTO })}
+                    >
+                      <span className="w-4" />
+                      {t('fields.sliding.resetAuto')}
+                    </ContextMenuItem>
+                  )}
+                  <ContextMenuSeparator />
+                  {/* Acts on the ACTIVE section — opening the menu selected this
+                      sash, so that is its own section by the time this fires. */}
+                  <ContextMenuItem onSelect={() => onSectionKindChange(SectionKind.FIXED)}>
+                    {t('fields.sliding.wholeFrameFixed')}
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              )}
+              </ContextMenu>
+              {/* Every band width the drawing is built from is a
+                  placeholder until profiles carry their own (planing
+                  decision 10) — say so under the drawing, gated on
+                  the resolver's own `source`, not a flag, so the
+                  caption disappears by itself the day real numbers
+                  arrive. */}
+              {resolved.some((r) => r.render.metrics.source === 'PLACEHOLDER') && (
+                <p className="shrink-0 pt-1 text-[11px] text-muted-foreground">
+                  {t('windowDialog.design.illustrationOnly')}
+                </p>
+              )}
               {stripIssues.length > 0 && (
                 <ul className="flex shrink-0 flex-wrap gap-x-3 gap-y-1 border-t border-border pt-1.5 text-xs">
                   {stripIssues.map((issue) =>
@@ -1137,46 +1740,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
             </div>
 
             <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto border-s border-border px-3 pe-0 pb-4">
-              {activePanel && activePanel.panelType === PanelType.TRANSOM && (
-                <TransomPartPanel
-                  layout={{
-                    outerMm: {
-                      width: layoutInput[activePanelIndex]?.widthMm ?? 0,
-                      height: layoutInput[activePanelIndex]?.heightMm ?? 0,
-                    },
-                    parts: drawingLayout.parts.filter((p) => p.panelIndex === activePanelIndex),
-                  }}
-                  selectedPartId={selectedPartId}
-                  issuesByPart={issuesByPart}
-                  panelIndex={activePanelIndex}
-                  panelCount={panels.length}
-                  onDeletePanel={canDeletePanel ? onDeletePanel : undefined}
-                  deleteDisabledReason={canDeletePanel ? undefined : t('windowDialog.design.deletePanelBlocked')}
-                  name={watch('name')}
-                  onNameChange={(value) => setValue('name', value, { shouldValidate: true, shouldDirty: true })}
-                  nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
-                  quantity={quantity}
-                  onQuantityChange={(value) => setValue('quantity', value, { shouldValidate: true, shouldDirty: true })}
-                  quantityError={showValidation && errors.quantity ? t('fields.quantityRequired') : undefined}
-                  widthMm={activeRaw?.widthMm ?? NaN}
-                  heightMm={activeRaw?.heightMm ?? NaN}
-                  onWidthChange={(mm) => onPanelSizeChange(mm, activeRaw?.heightMm ?? mm)}
-                  onHeightChange={(mm) => onPanelSizeChange(activeRaw?.widthMm ?? mm, mm)}
-                  widthError={showValidation && errors.panels ? t('fields.widthMmRequired') : undefined}
-                  heightError={showValidation && errors.panels ? t('fields.heightMmRequired') : undefined}
-                  transomProfile={activePanel.transomProfile}
-                  onTransomChange={onTransomProfileChange}
-                  transomProfileError={showValidation && errors.panels ? t('fields.transomProfileRequired') : undefined}
-                  preferredCatalogRef={isEdit ? undefined : project?.defaultSystemCatalog}
-                  preferredBrandRef={isEdit ? undefined : project?.defaultSystemBrand}
-                  glassValue={glassValue}
-                  glassOptions={glassOptions}
-                  onGlassChange={(kind, ref) => updateActiveTransomPanel({ glassKind: kind, glass: ref })}
-                  maxGlassAllowed={activeInfo?.maxGlassAllowed ?? null}
-                  weightKg={activeTransomWeightKg}
-                />
-              )}
-              {activePanel && activePanel.panelType === PanelType.WINDOW && activeInfo && (
+              {activeInfo && (
                 <WindowPartPanel
                   layout={{
                     outerMm: {
@@ -1190,9 +1754,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   panelIndex={activePanelIndex}
                   panelCount={panels.length}
                   onDeletePanel={canDeletePanel ? onDeletePanel : undefined}
-                  deleteDisabledReason={
-                    canDeletePanel ? undefined : t('windowDialog.design.deletePanelBlocked')
-                  }
+                  deleteDisabledReason={canDeletePanel ? undefined : t('windowDialog.design.deletePanelBlocked')}
                   name={watch('name')}
                   onNameChange={(value) => setValue('name', value, { shouldValidate: true, shouldDirty: true })}
                   nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
@@ -1220,13 +1782,16 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                     // below gothic's own minimum (see
                     // arch-geometry.ts's minGothicRiseMm), where gothic
                     // stops being a point and turns into a
-                    // self-intersecting "heart" shape. The button that
-                    // re-selects the ALREADY active shape never reaches
-                    // here — window-part-panel.tsx's button skips the
-                    // call entirely — so this never resets a rise the
-                    // user is still editing.
+                    // self-intersecting "heart" shape. With more than
+                    // one row, the rise is pinned to the top row's own
+                    // pitch instead of a freely-chosen default — the
+                    // Rise input is read-only in that case anyway.
                     const widthForRise = drawableMm(activeRaw?.widthMm ?? NaN, PLACEHOLDER_WIDTH_MM)
                     const heightForRise = drawableMm(activeRaw?.heightMm ?? NaN, PLACEHOLDER_HEIGHT_MM)
+                    if (activePanel.rowHeights.length > 1) {
+                      updateActivePanel({ headShape: shape, headRiseMm: activePanel.rowHeights[0] })
+                      return
+                    }
                     const defaultRise =
                       shape === HeadShape.SEGMENTAL
                         ? Math.round(widthForRise / 3)
@@ -1251,8 +1816,11 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   headShapeAllowed={canHaveArchedHead({
                     isDoor: activePanel.isDoor,
                     systemType: activeInfo.systemType,
-                    openingType: activePanel.openingType ?? null,
+                    cols: activePanel.columnWidths.length,
+                    topRowOpeningType: activePanel.sections[0]?.openingType ?? null,
                   })}
+                  headRiseReadOnly={activePanel.rowHeights.length > 1}
+                  roundDisallowedGridded={activePanel.rowHeights.length > 1}
                   barDrawMode={barDrawMode}
                   onBarDrawModeChange={setBarDrawMode}
                   barCount={activePanel.bars.length}
@@ -1270,32 +1838,53 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   onBarRadiusChange={onBarRadiusChange}
                   interiorColor={activePanel.interiorColor ?? null}
                   exteriorColor={activePanel.exteriorColor ?? null}
-                  onInteriorColorChange={(value) =>
-                    updateActivePanel({ interiorColor: value as ScopedRef | null })
-                  }
-                  onExteriorColorChange={(value) =>
-                    updateActivePanel({ exteriorColor: value as ScopedRef | null })
-                  }
+                  onInteriorColorChange={(value) => updateActivePanel({ interiorColor: value as ScopedRef | null })}
+                  onExteriorColorChange={(value) => updateActivePanel({ exteriorColor: value as ScopedRef | null })}
                   colorOptions={colorOptions}
                   showDoor={activeInfo.showDoor}
                   isDoor={activePanel.isDoor}
                   onDoorChange={(value) => updateActivePanel({ isDoor: value })}
-                  showOpeningTypes={activeInfo.showOpeningTypes}
-                  openingType={activePanel.openingType ?? null}
-                  onOpeningTypeChange={(value) => updateActivePanel({ openingType: value })}
-                  sashProfile={activePanel.sashProfile}
-                  sashOptions={sashOptions}
-                  onSashChange={(ref) => updateActivePanel({ sashProfile: ref, glass: '' as ScopedRef })}
-                  sashWeightKg={activeSashWeightKg}
-                  maxSashWeight={activeInfo.maxSashWeight}
-                  glassValue={glassValue}
-                  glassOptions={glassOptions}
-                  onGlassChange={(kind, ref) => updateActivePanel({ glassKind: kind, glass: ref })}
-                  maxGlassAllowed={activeInfo.maxGlassAllowed}
-                  sashMaxGlassThickness={activeInfo.sashMaxGlassThickness}
-                  hasFlyScreen={activePanel.hasFlyScreen}
-                  flyScreenAllowed={activeInfo.flyScreenAllowed}
-                  onFlyScreenChange={(value) => updateActivePanel({ hasFlyScreen: value })}
+                  isGridded={activeIsGridded}
+                  dividerProfile={activePanel.dividerProfile}
+                  onDividerProfileChange={onDividerProfileChange}
+                  dividerProfileError={showValidation && errors.panels ? t('fields.dividerProfileRequired') : undefined}
+                  frameCatalogRef={activeInfo.frame?.catalog}
+                  activeSection={{
+                    sectionIndex: activeSectionIndex,
+                    row: activeSection.row,
+                    col: activeSection.col,
+                    kind: activeSection.kind,
+                    onKindChange: onSectionKindChange,
+                    widthMm: activePanel.columnWidths[activeSection.col] ?? NaN,
+                    heightMm: activePanel.rowHeights[activeSection.row] ?? NaN,
+                    onWidthChange: onSectionWidthChange,
+                    onHeightChange: onSectionHeightChange,
+                    showOpeningTypes: activeInfo.showOpeningTypes,
+                    openingType: activeSection.openingType ?? null,
+                    onOpeningTypeChange: onSectionOpeningTypeChange,
+                    sashProfile: activeSection.sashProfile ?? '',
+                    sashOptions,
+                    onSashChange: (ref) => updateActiveSection({ sashProfile: ref, glass: '' as ScopedRef }),
+                    sashWeightKg: activeSashWeightKg,
+                    maxSashWeight: activeInfo.maxSashWeight,
+                    beadProfile: activeSection.beadProfile ?? '',
+                    beadOptions,
+                    onBeadChange: (ref) => updateActiveSection({ beadProfile: ref, glass: '' as ScopedRef }),
+                    hasFlyScreen: activeSection.hasFlyScreen,
+                    flyScreenAllowed: activeInfo.flyScreenAllowed,
+                    onFlyScreenChange: (value) => updateActiveSection({ hasFlyScreen: value }),
+                    isSliding: activeIsSliding,
+                    slidingLayout: activeSection.sliding ?? null,
+                    slidingRails: activeSlidingRails,
+                    onSlidingLayoutChange: setSlidingLayout,
+                    glassValue,
+                    glassOptions,
+                    onGlassChange: (kind, ref) => updateActiveSection({ glassKind: kind, glass: ref }),
+                    maxGlassAllowed: activeSectionInfo?.maxGlassAllowed ?? null,
+                    sashMaxGlassThickness: activeSectionInfo?.sashMaxGlassThickness ?? null,
+                    beadMaxGlassThickness: activeSectionInfo?.beadMaxGlassThickness ?? null,
+                  }}
+                  selectedDivider={selectedDivider}
                   location={watch('location') ?? null}
                   onLocationChange={(value) => setValue('location', value, { shouldValidate: true, shouldDirty: true })}
                   notes={watch('notes') ?? null}
@@ -1395,26 +1984,52 @@ function emptyWindow(projectId: string, favoriteFrameProfile?: string | null): C
   }
 }
 
-/** A blank panel. Width/height are NaN, not 0, so their inputs render
- * empty rather than showing a number nobody typed (the drawing falls
- * back to PLACEHOLDER_* for the elevation). Always a WINDOW — the "+"
- * flow that can create a TRANSOM panel instead is a later step
- * (docs/transom_tasks.md Step 5); this is only ever the assembly's
- * very first panel, or the create-mode default. */
-function emptyPanel(favoriteFrameProfile?: string | null): WindowPanelWindowInput {
+/** A blank panel — a 1×1 grid whose single section starts `kind:
+ * 'opening'` (the 2026-09-13 fixed-light rule: no sash is drawn until
+ * the sash profile is picked, and "opening ⇒ sashProfile set" is a
+ * submit rule, not a draw-time one). Width/height are NaN, not 0, so
+ * their inputs render empty rather than showing a number nobody typed
+ * (the drawing falls back to PLACEHOLDER_* for the elevation) — and
+ * `columnWidths`/`rowHeights` mirror that same NaN rather than `[NaN]`
+ * disagreeing with a real `widthMm`. Always this panel's very first
+ * panel, or the create-mode default — the "+" flow that grows a real
+ * grid is `insertRow`/`insertColumn`, not this factory. */
+function emptyPanel(favoriteFrameProfile?: string | null): WindowPanelInput {
   return {
-    panelType: PanelType.WINDOW,
     xMm: 0,
     yMm: 0,
     widthMm: NaN,
     heightMm: NaN,
     frameProfile: (favoriteFrameProfile ?? '') as ScopedRef,
-    sashProfile: '' as ScopedRef,
-    hasFlyScreen: false,
+    dividerProfile: null,
+    columnWidths: [NaN],
+    rowHeights: [NaN],
+    sections: [
+      {
+        row: 0,
+        col: 0,
+        // A new window starts fixed (Mario, 2026-09-13) — matching
+        // decision 6's general "a section is fixed by default" rule,
+        // which this initial section used to carve an exception out of
+        // (started `opening`/`SIDE_HUNG_RIGHT` to preserve the pre-Sections
+        // "a new window opens" default). Same shape a "+"-added section
+        // starts with (`onConfirmDivider`'s `makeSection`).
+        kind: SectionKind.FIXED,
+        sashProfile: null,
+        beadProfile: '' as ScopedRef,
+        openingType: null,
+        glassKind: GlassKind.SINGLE,
+        glass: '' as ScopedRef,
+        hasFlyScreen: false,
+        // No frame picked yet ⇒ no system yet ⇒ no sliding layout; the
+        // editor writes `defaultSlidingLayout()` the moment this panel's
+        // frame resolves to a sliding system (docs/sliding_windows_planing.md
+        // §7), which is also what tells a brand-new section apart from
+        // a saved legacy one that must NOT be backfilled.
+        sliding: null,
+      },
+    ],
     isDoor: false,
-    glassKind: GlassKind.SINGLE,
-    glass: '' as ScopedRef,
-    openingType: null,
     interiorColor: null,
     exteriorColor: null,
     // Flat/empty — the arch-heads feature's own UI (a Head section in

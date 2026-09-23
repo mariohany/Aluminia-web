@@ -62,7 +62,8 @@
     "perimeter": "Perimeter (mm)",
     "inertiaIx": "Inertia Ix (cm⁴)",
     "inertiaIy": "Inertia Iy (cm⁴)",
-    "acceptsFlyScreen": "Fly screen"
+    "acceptsFlyScreen": "Fly screen",
+    "slidingRails": "Sliding rails"
   },
   "common": {
     "yes": "Yes",

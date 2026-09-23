@@ -5,6 +5,7 @@ import { queryClient } from '@/lib/query-client'
 import { UserRole } from '@repo/types/auth'
 import { AuthProvider } from '@/lib/auth-context'
 import { ProtectedRoute } from '@/components/protected-route'
+import { PublicRoute } from '@/components/public-route'
 import { RoleRoute } from '@/components/role-route'
 import { Toaster } from '@/components/ui/sonner'
 import { isRtlLanguage } from '@/lib/i18n'
@@ -42,8 +43,31 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<LoginPage />} />
+            {/* Both are wrapped in PublicRoute so someone who is
+                already signed in is sent to their own home instead of
+                being asked to log in again — the session outlives the
+                tab, so arriving at the marketing page or the login form
+                with a live session is the normal case, not the odd one.
+                The landing page renders while the session resolves (a
+                stranger shouldn't wait on /auth/refresh to read it);
+                the login form holds, so it never flashes at someone
+                about to be redirected. */}
+            <Route
+              path="/"
+              element={
+                <PublicRoute whileResolving="children">
+                  <LandingPage />
+                </PublicRoute>
+              }
+            />
+            <Route
+              path="/login"
+              element={
+                <PublicRoute>
+                  <LoginPage />
+                </PublicRoute>
+              }
+            />
 
             {/* The platform owner's console — unchanged by Phase 11. */}
             <Route

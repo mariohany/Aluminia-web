@@ -43,7 +43,7 @@ export function AddPanelCard({
   const { t } = useTranslation('workspace')
   const [widthMm, setWidthMm] = useState(0)
   const [heightMm, setHeightMm] = useState(0)
-  const { cardRef, style } = useAddPanelCardPosition(request, error)
+  const { cardRef, style } = useAddPanelCardPosition(request, error, onCancel)
 
   // Re-seed whenever a different "+" is pressed. Keyed on the side and
   // the pre-filled numbers rather than object identity — `request` is a

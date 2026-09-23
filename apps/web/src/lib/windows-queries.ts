@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { CreateWindowInput, UpdateWindowInput, WindowPanelWindowDetail } from '@repo/types/windows'
+import type { CreateWindowInput, UpdateWindowInput } from '@repo/types/windows'
 import type { ScopedRef } from '@repo/types/company-lookups'
 import * as windowsApi from '@/lib/windows-api'
 
@@ -63,16 +63,20 @@ export function useDuplicateWindowMutation(projectId: string) {
         // The whole assembly, panel for panel — a duplicate of a
         // three-panel unit is a three-panel unit. `widthMm`/`heightMm`
         // are absent deliberately: the API derives them from these.
-        // Window-only for now (docs/transom_tasks.md hasn't reached
-        // duplication yet) — same posture as window-editor-page.tsx's own
-        // cast for the same reason.
-        panels: (detail.panels as WindowPanelWindowDetail[]).map((panel) => ({
+        // `WindowPanelDetail`'s own refs are already exactly
+        // `ScopedRef`-shaped strings — this just recovers the narrower
+        // type this endpoint's input wants.
+        panels: detail.panels.map((panel) => ({
           ...panel,
           frameProfile: panel.frameProfile as ScopedRef,
-          sashProfile: panel.sashProfile as ScopedRef,
-          glass: panel.glass as ScopedRef,
+          dividerProfile: panel.dividerProfile as ScopedRef | null,
           interiorColor: panel.interiorColor as ScopedRef | null,
           exteriorColor: panel.exteriorColor as ScopedRef | null,
+          sections: panel.sections.map((section) => ({
+            ...section,
+            sashProfile: section.sashProfile as ScopedRef | null,
+            glass: section.glass as ScopedRef,
+          })),
         })),
         location: detail.location,
         notes: detail.notes,

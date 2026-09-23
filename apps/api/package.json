@@ -12,7 +12,7 @@
     "dev": "nest start --watch",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/src/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "check-types": "tsc --noEmit -p tsconfig.json",
     "test": "jest",
@@ -24,6 +24,9 @@
     "migration:generate": "npm run typeorm -- migration:generate",
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
+    "typeorm:dist": "typeorm -d dist/src/database/control-plane/data-source.js",
+    "migrate:all": "npm run typeorm:dist -- migration:run && node dist/src/database/tenant/migrate-all-tenants.js",
+    "migrate:deploy": "npm run build && npm run migrate:all",
     "seed:super-admin": "ts-node -r tsconfig-paths/register src/database/control-plane/seed-super-admin.ts",
     "seed:dev": "ts-node -r tsconfig-paths/register src/database/seed-dev-data.ts",
     "migrate:tenants": "ts-node -r tsconfig-paths/register src/database/tenant/migrate-all-tenants.ts"

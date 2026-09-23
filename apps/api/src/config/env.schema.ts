@@ -26,7 +26,9 @@ export const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  // Sliding, not absolute: every refresh pushes it out again, so a user
+  // who opens the app at all within a month never sees the login screen.
+  JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 });
 
 export type Env = z.infer<typeof envSchema>;

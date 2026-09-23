@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import type { EntityManager } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import {
   LookupScope,
   formatScopedRef,
@@ -18,9 +19,11 @@ import {
   type UpdateCompanySystemCatalogInput,
   type UpdateCompanySystemProfileInput,
 } from '@repo/types/company-lookups';
+import { normalizeSlidingRails } from '@repo/types/lookups';
 import type {
   BulkDeleteResult,
   CreateSystemBrandInput,
+  SystemType,
   UpdateSystemBrandInput,
 } from '@repo/types/lookups';
 import { SystemBrand } from '../../database/control-plane/entities/system-brand.entity';
@@ -370,6 +373,11 @@ export class CompanySystemLookupsService {
         inertiaIy: input.inertiaIy,
         image: input.image ?? null,
         acceptsFlyScreen: input.acceptsFlyScreen,
+        slidingRails: normalizeSlidingRails(
+          input.profileType,
+          await this.catalogSystemType(manager, platformId, companyId),
+          input.slidingRails,
+        ),
       });
       try {
         await manager.save(profile);
@@ -418,6 +426,16 @@ export class CompanySystemLookupsService {
       if (input.image !== undefined) profile.image = input.image ?? null;
       if (input.acceptsFlyScreen !== undefined)
         profile.acceptsFlyScreen = input.acceptsFlyScreen;
+      // Re-normalised on every update (see the platform service): a
+      // catalogue or type change must null the count even when the
+      // client didn't send `slidingRails` at all.
+      profile.slidingRails = normalizeSlidingRails(
+        profile.profileType,
+        await this.catalogSystemType(manager, platformId, companyId),
+        input.slidingRails === undefined
+          ? profile.slidingRails
+          : input.slidingRails,
+      );
 
       try {
         await manager.save(profile);
@@ -462,25 +480,36 @@ export class CompanySystemLookupsService {
     }
     return this.tenantContext.run(async (manager) => {
       try {
+        const values: QueryDeepPartialEntity<CompanySystemProfile>[] = [];
+        for (const { item, ref } of resolved) {
+          values.push({
+            platformCatalogId: ref.platformId,
+            companyCatalogId: ref.companyId,
+            profileNo: item.profileNo,
+            profileType: item.profileType,
+            maxGlassThickness: item.maxGlassThickness,
+            weight: item.weight,
+            perimeter: item.perimeter,
+            inertiaIx: item.inertiaIx,
+            inertiaIy: item.inertiaIy,
+            image: item.image ?? null,
+            acceptsFlyScreen: item.acceptsFlyScreen,
+            slidingRails: normalizeSlidingRails(
+              item.profileType,
+              await this.catalogSystemType(
+                manager,
+                ref.platformId,
+                ref.companyId,
+              ),
+              item.slidingRails,
+            ),
+          });
+        }
         const insertResult = await manager
           .createQueryBuilder()
           .insert()
           .into(CompanySystemProfile)
-          .values(
-            resolved.map(({ item, ref }) => ({
-              platformCatalogId: ref.platformId,
-              companyCatalogId: ref.companyId,
-              profileNo: item.profileNo,
-              profileType: item.profileType,
-              maxGlassThickness: item.maxGlassThickness,
-              weight: item.weight,
-              perimeter: item.perimeter,
-              inertiaIx: item.inertiaIx,
-              inertiaIy: item.inertiaIy,
-              image: item.image ?? null,
-              acceptsFlyScreen: item.acceptsFlyScreen,
-            })),
-          )
+          .values(values)
           .execute();
         const newIds = insertResult.identifiers.map((i) => i.id as string);
         const created = await manager.findBy(CompanySystemProfile, {
@@ -503,6 +532,27 @@ export class CompanySystemLookupsService {
         'You already have a profile with that number under that catalogue.',
       );
     translatePostgresError(error, 'That catalogue does not exist.');
+  }
+
+  /** The system type of whichever catalogue a profile ref points at —
+   * platform (`public.system_catalog`) or the company's own. `null`
+   * for a dangling ref, which the save's FK/collision check reports. */
+  private async catalogSystemType(
+    manager: EntityManager,
+    platformId: string | null,
+    companyId: string | null,
+  ): Promise<SystemType | null> {
+    if (platformId) {
+      const catalog = await this.platformCatalogs.findOneBy({ id: platformId });
+      return catalog?.systemType ?? null;
+    }
+    if (companyId) {
+      const catalog = await manager.findOneBy(CompanySystemCatalog, {
+        id: companyId,
+      });
+      return catalog?.systemType ?? null;
+    }
+    return null;
   }
 
   private async resolveProfileSummaries(
@@ -546,6 +596,7 @@ export class CompanySystemLookupsService {
         inertiaIy: profile.inertiaIy,
         image: profile.image,
         acceptsFlyScreen: profile.acceptsFlyScreen,
+        slidingRails: profile.slidingRails,
         scope: LookupScope.COMPANY,
         createdAt: profile.createdAt.toISOString(),
         updatedAt: profile.updatedAt.toISOString(),

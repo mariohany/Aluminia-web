@@ -254,6 +254,16 @@ function upperCircleCrossing(arc: Arc, atX: number): PointMm | null {
  * `insetRect`. `d` is clamped so the result never collapses to a
  * negative span, same posture as `insetRect`'s own `Math.max(…, 1)`
  * floor. */
+/** The radius the head is bent to — what a profile's minimum bend
+ * radius is checked against (spec §5 V7). Round and segmental: the one
+ * arc's radius (a semicircle's is simply half the width); gothic: each
+ * of its two equal arcs' radius. `null` for a flat head. */
+export function headBendRadiusMm(o: HeadOutline): number | null {
+  if (o.shape === HeadShape.FLAT || o.riseMm <= 0) return null
+  if (o.shape === HeadShape.GOTHIC) return gothicArcs(o).left.r
+  return segmentalArc(o).r
+}
+
 export function insetHeadOutline(o: HeadOutline, d: number): HeadOutline {
   const maxD = Math.min(o.rect.width / 2 - 0.5, o.rect.height / 2 - 0.5, o.shape === HeadShape.FLAT ? Infinity : o.riseMm - 0.5)
   const clampedD = Math.min(Math.max(d, 0), Math.max(maxD, 0))

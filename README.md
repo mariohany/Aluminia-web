@@ -148,6 +148,25 @@ npm run migration:run
 npm run migration:revert
 ```
 
+### Applying migrations (and deploying)
+
+There are **two** migration tracks — the shared control plane, and the
+per-company tenant schemas — and both have to be applied before new
+code runs. One command does both, against the compiled output:
+
+```sh
+npm run migrate:deploy --workspace=apps/api   # build, then migrate both tracks
+npm run migrate:all --workspace=apps/api      # same, skipping the build
+```
+
+So the deploy order is: **install → `migrate:deploy` → `start:prod`**.
+
+The API enforces that order rather than trusting it: at boot it
+compares both tracks against what the database has actually run, and
+refuses to start — naming the pending migrations — if it is ahead of
+the schema. An unapplied migration is a loud failure at startup, not a
+500 on every request that touches the new column.
+
 ## Conventions
 
 Branching, commit style, and how work moves from a feature branch into

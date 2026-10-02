@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { Minus, Plus } from 'lucide-react'
 import { SystemType } from '@repo/types/lookups'
 import type { WindowBarInput } from '@repo/types/windows'
 import { Button } from '@/components/ui/button'
 import {
   alignedEdgeMm,
+  nearestDividerMm,
   cumulativeBoundaries,
   formatDimensionMm,
   freeSidesOf,
@@ -249,6 +250,13 @@ export interface WindowDrawingProps {
    * `resizeSectionEdge` (apps/web/src/lib/window-geometry.ts), same
    * division of labour as `onDividerDrag` above. */
   onPanelEdgeDrag: (panelIndex: number, side: PanelSide, positionMm: number) => void
+
+  /** How far the assembly's (0,0) has moved since this drawing mounted,
+   * in the frame the camera was captured in — accumulated by
+   * `WindowEditor`'s `commitPanels` every time an edit re-normalises the
+   * origin after growing up/left. Added to the camera's own position so
+   * the elevation stays still on screen instead of jumping down/right. */
+  originOffsetMm: { x: number; y: number }
 }
 
 function worstSeverity(issues: TranslatedIssue[] | undefined): TranslatedIssue['severity'] | null {
@@ -289,6 +297,7 @@ export function WindowDrawing({
   onUpdateBarSag,
   onDividerDrag,
   onPanelEdgeDrag,
+  originOffsetMm,
 }: WindowDrawingProps) {
   const { outerMm, parts, panelRects } = layout
   const scale = Math.max(outerMm.width, outerMm.height)
@@ -359,18 +368,39 @@ export function WindowDrawing({
   // FIRST time this window opened — captured once via `useState`'s lazy
   // initializer, which React guarantees never re-runs, so it stays fixed
   // even as `outerMm`/`margin` above keep changing live with every edit.
-  // `camera` is the user's own zoom/pan on top of that fixed reference;
-  // nothing in this component ever recomputes it from content size again.
-  const [baseViewBox] = useState(() => ({
+  // `camera` is the user's own zoom/pan on top of that fixed reference.
+  // Edits never recompute it; only "Reset zoom" (the % button) does, via
+  // `resetView` below — Mario: re-fit to the window's CURRENT size after
+  // dragging edges, so 100% centres it again exactly as on open.
+  const [baseViewBox, setBaseViewBox] = useState(() => ({
     minX: -margin,
     minY: -margin,
     width: outerMm.width + margin * 2,
     height: outerMm.height + margin * 2,
   }))
   const [camera, setCamera] = useState({ zoom: 1, panX: 0, panY: 0 })
+  // The fixed reference shifted by `originOffsetMm` — what `camera`'s
+  // pan/zoom are relative to.
+  const viewOrigin = { x: baseViewBox.minX + originOffsetMm.x, y: baseViewBox.minY + originOffsetMm.y }
+  const viewOriginRef = useRef(viewOrigin)
+  useEffect(() => {
+    viewOriginRef.current = viewOrigin
+  })
+  // Same fit-to-content as the lazy initializer above, from TODAY's
+  // size. `originOffsetMm` is subtracted back out because `viewOrigin`
+  // adds it, so the resulting view starts exactly at (-margin, -margin).
+  const resetView = () => {
+    setBaseViewBox({
+      minX: -margin - originOffsetMm.x,
+      minY: -margin - originOffsetMm.y,
+      width: outerMm.width + margin * 2,
+      height: outerMm.height + margin * 2,
+    })
+    setCamera({ zoom: 1, panX: 0, panY: 0 })
+  }
   const viewBox = {
-    minX: baseViewBox.minX + camera.panX,
-    minY: baseViewBox.minY + camera.panY,
+    minX: viewOrigin.x + camera.panX,
+    minY: viewOrigin.y + camera.panY,
     width: baseViewBox.width / camera.zoom,
     height: baseViewBox.height / camera.zoom,
   }
@@ -418,16 +448,17 @@ export function WindowDrawing({
         if (nextZoom === prev.zoom) return prev
         const oldWidth = baseViewBox.width / prev.zoom
         const oldHeight = baseViewBox.height / prev.zoom
-        const oldMinX = baseViewBox.minX + prev.panX
-        const oldMinY = baseViewBox.minY + prev.panY
+        const origin = viewOriginRef.current
+        const oldMinX = origin.x + prev.panX
+        const oldMinY = origin.y + prev.panY
         const fx = (cursorMm.x - oldMinX) / oldWidth
         const fy = (cursorMm.y - oldMinY) / oldHeight
         const newWidth = baseViewBox.width / nextZoom
         const newHeight = baseViewBox.height / nextZoom
         return {
           zoom: nextZoom,
-          panX: cursorMm.x - fx * newWidth - baseViewBox.minX,
-          panY: cursorMm.y - fy * newHeight - baseViewBox.minY,
+          panX: cursorMm.x - fx * newWidth - origin.x,
+          panY: cursorMm.y - fy * newHeight - origin.y,
         }
       })
     }
@@ -628,25 +659,44 @@ export function WindowDrawing({
   // above: only local "which thing is mid-drag" state lives here, the
   // actual panel-model edit happens one level up via `onDividerDrag`.
   const [dividerDragId, setDividerDragId] = useState<string | null>(null)
+  // Where the dragged divider just snapped onto another panel's, in
+  // assembly mm — drives the guide line only; the effect below already
+  // sent the snapped position itself.
+  const [dividerSnap, setDividerSnap] = useState<{ axis: 'x' | 'y'; position: number } | null>(null)
 
   useEffect(() => {
     if (!dividerDragId) return
     const parsed = parsePartId(dividerDragId)
     const match = parsed ? /^div-(v|h)(\d+)$/.exec(parsed.localId) : null
     const rect = parsed && panelRects[parsed.panelIndex]
-    if (!match || !rect) return
+    if (!parsed || !match || !rect) return
     const vertical = match[1] === 'v'
     const onMove = (e: globalThis.MouseEvent) => {
       if (!svgRef.current) return
       const resolved = svgPointFromClient(svgRef.current, e.clientX, e.clientY)
       if (!resolved) return
+      // Snap onto another panel's mullion/transom within the same
+      // screen-pixel pull as the edge drag's size snap (Mario,
+      // 2026-10-02) — assembly space here, panel-local below.
+      const raw = vertical ? resolved.point.x : resolved.point.y
+      const snapped = nearestDividerMm(
+        parts,
+        parsed.panelIndex,
+        vertical ? 'vertical' : 'horizontal',
+        raw,
+        SIZE_MATCH_SNAP_TOLERANCE_PX / resolved.pxPerMm,
+      )
+      setDividerSnap(snapped === null ? null : { axis: vertical ? 'x' : 'y', position: snapped })
       // Panel-local mm along the divider's own axis — a mullion (`v`)
       // moves along x, a transom (`h`) along y — matching the space
       // `moveDivider`'s `boundaryMm` expects (see its own doc comment).
-      const boundaryMm = vertical ? resolved.point.x - rect.x : resolved.point.y - rect.y
+      const boundaryMm = (snapped ?? raw) - (vertical ? rect.x : rect.y)
       onDividerDrag(dividerDragId, boundaryMm)
     }
-    const onUp = () => setDividerDragId(null)
+    const onUp = () => {
+      setDividerDragId(null)
+      setDividerSnap(null)
+    }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => {
@@ -654,7 +704,7 @@ export function WindowDrawing({
       window.removeEventListener('mouseup', onUp)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dividerDragId, panelRects, onDividerDrag])
+  }, [dividerDragId, panelRects, parts, onDividerDrag])
 
   // Which panel's own free outer edge is being dragged, if any — same
   // posture as `dividerDragId` above: local "which thing is mid-drag"
@@ -682,9 +732,21 @@ export function WindowDrawing({
   // means the drag effect below never has to list it as a dependency,
   // so its `window` listeners attach ONCE per drag gesture instead of
   // being torn down and rebuilt on every mouse-move-triggered re-render.
+  //
+  // Synced in a LAYOUT effect, together with `onPanelEdgeDragRef`: the
+  // drag's `requestAnimationFrame` commit reads the pointer through the
+  // SVG's live CTM, which reflects the newest committed render the
+  // moment React touches the DOM. A passive `useEffect` only catches up
+  // after paint, and a rAF landing in that gap mixed the NEW camera with
+  // the OLD panels and editor callback — invisible while the camera
+  // never moved, but once a left/top edge drag started moving it (via
+  // `originOffsetMm`) the mismatch was a full step and the whole view
+  // shook on every move (bug-067).
   const panelPlacementsRef = useRef(panelPlacements)
-  useEffect(() => {
+  const onPanelEdgeDragRef = useRef(onPanelEdgeDrag)
+  useLayoutEffect(() => {
     panelPlacementsRef.current = panelPlacements
+    onPanelEdgeDragRef.current = onPanelEdgeDrag
   })
 
   useEffect(() => {
@@ -739,7 +801,7 @@ export function WindowDrawing({
         const snappedEdge = alignedEdgeMm(panelPlacementsRef.current, panelIndex, axis, Math.round(finalPosition), 0)
         setEdgeAlignment(snappedEdge !== null ? { kind: 'edge', axis, position: snappedEdge } : null)
       }
-      onPanelEdgeDrag(panelIndex, side, finalPosition)
+      onPanelEdgeDragRef.current(panelIndex, side, finalPosition)
     }
     const onMove = (e: globalThis.MouseEvent) => {
       lastClient = { x: e.clientX, y: e.clientY }
@@ -757,8 +819,7 @@ export function WindowDrawing({
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [edgeDrag, onPanelEdgeDrag])
+  }, [edgeDrag])
 
   // Delete/Backspace with a bar selected — only when not mid-drawing
   // (a selected bar and draw mode are already mutually exclusive, see
@@ -829,15 +890,15 @@ export function WindowDrawing({
       <svg
         ref={svgRef}
         viewBox={`${viewBox.minX} ${viewBox.minY} ${viewBox.width} ${viewBox.height}`}
-        // Bottom-anchored, not the default xMidYMid: adding a panel grows
-        // outerMm (most visibly its height, from a top/bottom "+"), and a
-        // centred viewBox would re-centre the whole elevation in its box
-        // every time, making already-placed panels appear to jump. Pinning
-        // the bottom means growth reads as the drawing extending upward
-        // from a fixed baseline instead. `useSvgToClientTransform` below
-        // mirrors this offset for the HTML overlay (dimension inputs, "+"
-        // markers, the add-panel card) so they stay aligned to the shapes.
-        preserveAspectRatio="xMidYMax meet"
+        // Centred both ways (Mario, 2026-10-02: on open and on "Reset
+        // zoom"). This used to be bottom-anchored (xMidYMax) because the
+        // viewBox once grew with every edit and re-centring made placed
+        // panels jump — but the camera is fixed now (`baseViewBox`) and
+        // only changes on open/reset, so centring can't cause that any
+        // more. `useSvgToClientTransform` below mirrors this offset for
+        // the HTML overlay (dimension inputs, "+" markers, the add-panel
+        // card) so they stay aligned to the shapes.
+        preserveAspectRatio="xMidYMid meet"
         className="h-full max-h-full w-full max-w-full"
         role="img"
         aria-label={`${formatDimensionMm(outerMm.width)} × ${formatDimensionMm(outerMm.height)} mm`}
@@ -989,6 +1050,22 @@ export function WindowDrawing({
             up the instant the dragged edge lands exactly on another
             panel's edge on the same axis. Never active at the same time
             as a size match (the commit effect only ever sets one kind). */}
+        {/* Same dashed guide as the edge-alignment one below, across the
+            whole assembly, while a dragged mullion/transom is snapped
+            onto another panel's. */}
+        {dividerDragId && dividerSnap && (
+          <line
+            x1={dividerSnap.axis === 'y' ? -margin * 0.6 : dividerSnap.position}
+            x2={dividerSnap.axis === 'y' ? outerMm.width + margin * 0.6 : dividerSnap.position}
+            y1={dividerSnap.axis === 'y' ? dividerSnap.position : -margin * 0.6}
+            y2={dividerSnap.axis === 'y' ? dividerSnap.position : outerMm.height + margin * 0.6}
+            stroke="var(--primary)"
+            strokeWidth={strokeWeight * 1.2}
+            strokeDasharray={`${plusRadius * 0.4} ${plusRadius * 0.3}`}
+            pointerEvents="none"
+          />
+        )}
+
         {edgeDrag && edgeAlignment?.kind === 'edge' && (
           <line
             x1={edgeAlignment.axis === 'y' ? -margin * 0.6 : edgeAlignment.position}
@@ -1277,7 +1354,7 @@ export function WindowDrawing({
           type="button"
           className="w-11 text-center tabular-nums text-muted-foreground hover:text-foreground"
           aria-label="Reset zoom"
-          onClick={() => setCamera({ zoom: 1, panX: 0, panY: 0 })}
+          onClick={resetView}
         >
           {Math.round(camera.zoom * 100)}%
         </button>
@@ -2261,9 +2338,9 @@ function useSvgToClientTransform(
 
   const scale = Math.min(box.width / viewBox.width, box.height / viewBox.height)
   const offsetX = (box.width - viewBox.width * scale) / 2
-  // Matches the SVG's own `preserveAspectRatio="xMidYMax meet"`: bottom-
-  // aligned, not centred — see the comment on the `<svg>` element above.
-  const offsetY = box.height - viewBox.height * scale
+  // Matches the SVG's own `preserveAspectRatio="xMidYMid meet"` — see
+  // the comment on the `<svg>` element above.
+  const offsetY = (box.height - viewBox.height * scale) / 2
 
   return {
     x: (userX: number) => offsetX + (userX - viewBox.minX) * scale,

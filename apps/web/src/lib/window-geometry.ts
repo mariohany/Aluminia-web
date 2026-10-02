@@ -792,8 +792,9 @@ export function prefillForSide(
 
 /**
  * Places a new panel against `side` of the selection, aligned to that
- * side's leading edge (left for top/bottom, top for left/right), then
- * re-normalises the origin.
+ * side's leading edge (left for top/bottom, top for left/right). Like
+ * every edit below, the result stays in the INCOMING frame — the caller
+ * re-normalises (see `normalizeOrigin`).
  *
  * Returns `null` when the result would overlap something — which the
  * free-side check already prevents at the pre-filled size, but not once
@@ -814,7 +815,7 @@ export function insertPanel<T extends PanelPlacement>(
     yMm: side === 'top' ? box.y - newPanel.heightMm : side === 'bottom' ? box.y + box.height : box.y,
   }
   if (panels.some((p) => panelsOverlap(p, placed))) return null
-  return normalizeOrigin([...panels, placed])
+  return [...panels, placed]
 }
 
 /**
@@ -1080,7 +1081,36 @@ export function resizePanel<T extends PanelPlacement>(
     return next
   })
 
-  return normalizeOrigin(resized)
+  return resized
+}
+
+/**
+ * The nearest OTHER panel's mullion (`orientation: 'vertical'`, compared
+ * along x) or transom (`'horizontal'`, along y) within `toleranceMm` of
+ * `positionMm`, as an assembly-space coordinate — or `null`. Reads the
+ * divider parts `buildAssemblyLayout` already placed (their rect centre
+ * is the boundary itself), so it needs no grid data of its own. Mario,
+ * 2026-10-02: a dragged mullion/transom snaps onto any other panel's in
+ * the same window, same pull as the edge drag's size snap; dividers in
+ * the SAME panel and plain panel edges deliberately don't count.
+ */
+export function nearestDividerMm(
+  parts: WindowPart[],
+  excludePanelIndex: number,
+  orientation: 'horizontal' | 'vertical',
+  positionMm: number,
+  toleranceMm: number,
+): number | null {
+  const prefix = orientation === 'vertical' ? 'div-v' : 'div-h'
+  let best: number | null = null
+  for (const part of parts) {
+    if (part.kind !== 'divider' || part.panelIndex === excludePanelIndex) continue
+    if (!part.id.slice(part.id.indexOf(':') + 1).startsWith(prefix)) continue
+    const centre = orientation === 'vertical' ? part.rectMm.x + part.rectMm.width / 2 : part.rectMm.y + part.rectMm.height / 2
+    const distance = Math.abs(centre - positionMm)
+    if (distance <= toleranceMm && (best === null || distance < Math.abs(best - positionMm))) best = centre
+  }
+  return best
 }
 
 /** Screen-space alignment tolerance is the drawing's job (`window-drawing.tsx`
@@ -1211,7 +1241,7 @@ export function resizePanelEdge<T extends PanelPlacement>(panels: T[], index: nu
       if (!pushed.has(i)) return panel
       return { ...panel, xMm: panel.xMm + (side === 'right' ? dW : -dW) }
     })
-    return normalizeOrigin(resized)
+    return resized
   }
 
   const fixedY = side === 'bottom' ? target.yMm : target.yMm + target.heightMm
@@ -1227,7 +1257,7 @@ export function resizePanelEdge<T extends PanelPlacement>(panels: T[], index: nu
     if (!pushed.has(i)) return panel
     return { ...panel, yMm: panel.yMm + (side === 'top' ? -dH : dH) }
   })
-  return normalizeOrigin(resized)
+  return resized
 }
 
 /**
@@ -1276,7 +1306,7 @@ export function removePanel<T extends PanelPlacement>(panels: T[], index: number
 
   if (collapsed.some((a, i) => collapsed.some((b, j) => j > i && panelsOverlap(a, b)))) return null
   if (!panelsConnected(collapsed)) return null
-  return normalizeOrigin(collapsed)
+  return collapsed
 }
 
 // ---- Grid editing (docs/sections_planing.md §3) -----------------------
@@ -1583,9 +1613,26 @@ export function moveDivider<T extends GridPanelLike<S>, S extends GridSection>(
   return panels.map((p, i) => (i === index ? updated : p))
 }
 
+/** How far `normalizeOrigin` is about to shift `panels` — the bounding
+ * box's own top-left corner.
+ *
+ * The edit functions above (`insertPanel`, `resizePanel`,
+ * `resizePanelEdge`, `removePanel` and everything built on them) do NOT
+ * normalise themselves — they return positions in the frame they were
+ * given, which may run negative after growing up/left. The editor
+ * normalises in one place and reads this off the raw result first: the
+ * drawing's camera is fixed once the editor opens, so it has to move by
+ * that same shift or the whole elevation would visibly jump down/right
+ * every time something grew up/left (and a dragged left/top edge would
+ * slide out from under the pointer). */
+export function originShiftMm(panels: PanelPlacement[]): { x: number; y: number } {
+  if (panels.length === 0) return { x: 0, y: 0 }
+  return { x: Math.min(...panels.map((p) => p.xMm)), y: Math.min(...panels.map((p) => p.yMm)) }
+}
+
 /** Shifts the whole assembly so its bounding box starts at (0,0). The
  * API does the same on write, so this keeps the client's own model
- * identical to what a round trip would return. */
+ * identical to what a round trip would return. See `originShiftMm`. */
 export function normalizeOrigin<T extends PanelPlacement>(panels: T[]): T[] {
   if (panels.length === 0) return panels
   const minX = Math.min(...panels.map((p) => p.xMm))
@@ -1594,15 +1641,45 @@ export function normalizeOrigin<T extends PanelPlacement>(panels: T[]): T[] {
   return panels.map((p) => ({ ...p, xMm: p.xMm - minX, yMm: p.yMm - minY }))
 }
 
-function hasDividerAt(panel: GridPanelLike<GridSection>, position: number, axis: 'x' | 'y'): boolean {
+/** Every divider boundary of `panel` along `axis`, in assembly mm. */
+function dividerPositions(panel: GridPanelLike<GridSection>, axis: 'x' | 'y'): number[] {
   const pitches = axis === 'x' ? panel.columnWidths : panel.rowHeights
-  const origin = axis === 'x' ? panel.xMm : panel.yMm
-  let cumulative = origin
+  const positions: number[] = []
+  let cumulative = axis === 'x' ? panel.xMm : panel.yMm
   for (let i = 0; i < pitches.length - 1; i++) {
     cumulative += pitches[i]
-    if (cumulative === position) return true
+    positions.push(cumulative)
   }
-  return false
+  return positions
+}
+
+/**
+ * Which of `mine` are paired with one of `theirs` but don't line up.
+ * Exact matches pair off first; the rest pair greedily, closest gap
+ * first, so the result is the same whichever panel is asking (each
+ * side of a clash warns on its own divider). A divider left without a
+ * partner — the neighbour simply has fewer — is never a mismatch.
+ */
+function unpairedMismatches(mine: number[], theirs: number[]): Set<number> {
+  const freeMine = new Set(mine.keys())
+  const freeTheirs = new Set(theirs.keys())
+  for (const i of [...freeMine]) {
+    const j = [...freeTheirs].find((t) => theirs[t] === mine[i])
+    if (j === undefined) continue
+    freeMine.delete(i)
+    freeTheirs.delete(j)
+  }
+  const candidates: { i: number; j: number; gap: number }[] = []
+  for (const i of freeMine) for (const j of freeTheirs) candidates.push({ i, j, gap: Math.abs(mine[i] - theirs[j]) })
+  candidates.sort((a, b) => a.gap - b.gap || a.i - b.i || a.j - b.j)
+  const misaligned = new Set<number>()
+  for (const { i, j } of candidates) {
+    if (!freeMine.has(i) || !freeTheirs.has(j)) continue
+    freeMine.delete(i)
+    freeTheirs.delete(j)
+    misaligned.add(i)
+  }
+  return misaligned
 }
 
 /**
@@ -1614,14 +1691,15 @@ function hasDividerAt(panel: GridPanelLike<GridSection>, position: number, axis:
  * `buildWindowLayout`'s own `div-v{k}`/`div-h{j}` scheme, for the
  * caller to prefix into an assembly id and turn into a `WindowIssue`.
  *
- * A neighbour that hasn't been divided on the relevant axis at all yet
- * (still a plain 1-wide/1-tall span there) is never a mismatch by
- * itself — Mario, 2026-09-14: don't warn about a brand-new coupled
- * panel until ITS OWN divider actually exists and lands somewhere
- * else. Only a neighbour that already has its own divider on that axis
- * can be "misaligned"; `hasDividerAt` alone can't distinguish those two
- * cases (a still-undivided neighbour and a divided-but-off-position one
- * both have "no divider at this exact x/y").
+ * A divider only warns when it has a PARTNER to couple with in that
+ * neighbour and misses it. Per neighbour, both sides' dividers within
+ * the shared span are paired (exact matches first, then closest gap —
+ * `unpairedMismatches`); leftovers on the side with more dividers stay
+ * quiet (Mario, 2026-10-02: "dont show warning on transom/mulion if
+ * there's no other transom/mulion to couple with"). This also covers
+ * the earlier 2026-09-14 rule — a neighbour not yet divided on that
+ * axis has nothing to pair with, so a brand-new coupled panel never
+ * warns until its own divider exists and lands somewhere else.
  */
 export function findMisalignedDividers<T extends GridPanelLike<GridSection>>(
   panels: T[],
@@ -1629,39 +1707,29 @@ export function findMisalignedDividers<T extends GridPanelLike<GridSection>>(
   const mismatches: { panelIndex: number; localId: string }[] = []
 
   panels.forEach((panel, panelIndex) => {
-    const cols = panel.columnWidths.length
-    const rows = panel.rowHeights.length
-
-    if (cols > 1) {
-      const stackedNeighbours = panels.filter(
-        (other, j) => j !== panelIndex && other.columnWidths.length > 1 && (touchesTopEdge(panel, other) || touchesTopEdge(other, panel)),
-      )
-      let x = panel.xMm
-      for (let k = 1; k < cols; k++) {
-        x += panel.columnWidths[k - 1]
-        const aligned = stackedNeighbours.every(
-          (n) => x <= n.xMm || x >= n.xMm + n.widthMm || hasDividerAt(n, x, 'x'),
-        )
-        if (!aligned) mismatches.push({ panelIndex, localId: `div-v${k}` })
+    // Mullions (x) against panels stacked above/below; transoms (y)
+    // against panels beside it.
+    for (const axis of ['x', 'y'] as const) {
+      const mine = dividerPositions(panel, axis)
+      if (mine.length === 0) continue
+      const neighbours = panels.filter((other, j) => {
+        if (j === panelIndex) return false
+        const stacked = touchesTopEdge(panel, other) || touchesTopEdge(other, panel)
+        return axis === 'x' ? stacked : panelsTouch(panel, other) && !stacked
+      })
+      const bad = new Set<number>()
+      for (const n of neighbours) {
+        const lo = axis === 'x' ? n.xMm : n.yMm
+        const hi = lo + (axis === 'x' ? n.widthMm : n.heightMm)
+        const myLo = axis === 'x' ? panel.xMm : panel.yMm
+        const myHi = myLo + (axis === 'x' ? panel.widthMm : panel.heightMm)
+        // Only dividers inside the span the two panels share can couple.
+        const mineInSpan = mine.map((p, k) => ({ p, k })).filter(({ p }) => p > lo && p < hi)
+        const theirs = dividerPositions(n, axis).filter((p) => p > myLo && p < myHi)
+        for (const i of unpairedMismatches(mineInSpan.map(({ p }) => p), theirs)) bad.add(mineInSpan[i].k)
       }
-    }
-
-    if (rows > 1) {
-      const sideNeighbours = panels.filter(
-        (other, j) =>
-          j !== panelIndex &&
-          other.rowHeights.length > 1 &&
-          panelsTouch(panel, other) &&
-          !touchesTopEdge(panel, other) &&
-          !touchesTopEdge(other, panel),
-      )
-      let y = panel.yMm
-      for (let j = 1; j < rows; j++) {
-        y += panel.rowHeights[j - 1]
-        const aligned = sideNeighbours.every(
-          (n) => y <= n.yMm || y >= n.yMm + n.heightMm || hasDividerAt(n, y, 'y'),
-        )
-        if (!aligned) mismatches.push({ panelIndex, localId: `div-h${j}` })
+      for (const k of [...bad].sort((a, b) => a - b)) {
+        mismatches.push({ panelIndex, localId: `div-${axis === 'x' ? 'v' : 'h'}${k + 1}` })
       }
     }
   })

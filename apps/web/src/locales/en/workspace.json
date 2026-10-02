@@ -318,6 +318,19 @@
     "discardDescription": "This window has unsaved changes. Leaving now will discard them.",
     "design": {
       "illustrationOnly": "Illustration only — profile dimensions are indicative.",
+      "issuesPanel": {
+        "title": "Issues",
+        "none": "No issues",
+        "errors_one": "1 error",
+        "errors_other": "{{count}} errors",
+        "warnings_one": "1 warning",
+        "warnings_other": "{{count}} warnings",
+        "notes_one": "1 note",
+        "notes_other": "{{count}} notes",
+        "resize": "Resize the issues panel",
+        "expand": "Show issues",
+        "collapse": "Hide issues"
+      },
       "untitled": "Untitled window",
       "computedSize": "{{width}} × {{height}} mm (indicative)",
       "sashWeight": "Estimated weight: {{weight}} kg (catalogue limit {{max}} kg)",

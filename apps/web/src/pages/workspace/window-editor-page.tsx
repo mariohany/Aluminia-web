@@ -27,7 +27,6 @@ import {
 } from '@repo/types/sliding'
 import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
 import { apiErrorMessage } from '@/lib/api-client'
-import { cn } from '@/lib/utils'
 import {
   useMergedColorsQuery,
   useMergedGlassCombinationsQuery,
@@ -42,6 +41,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
 import { FieldLabel } from '@/components/workspace/field-label'
 import { ProfileTreePicker } from '@/components/workspace/profile-tree-picker'
 import { WindowDrawing } from '@/components/workspace/window-drawing'
+import { WindowIssuesPanel } from '@/components/workspace/window-issues-panel'
 import { slidingSectionArgs, useResolvedPanels, type PanelRender, type SectionRender } from '@/lib/window-render'
 import { WindowPartPanel } from '@/components/workspace/window-part-panel'
 import { AddPanelCard, type AddPanelRequest } from '@/components/workspace/add-panel-card'
@@ -57,6 +57,8 @@ import {
   insertPanel,
   insertRow,
   moveDivider,
+  normalizeOrigin,
+  originShiftMm,
   panelRect,
   panelsConnected,
   parsePartId,
@@ -225,6 +227,29 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     resolver: zodResolver(createWindowSchema),
     defaultValues: emptyWindow(projectId),
   })
+
+  // How far the drawing's fixed camera has to follow the assembly's own
+  // origin. Every panel edit lands through `commitPanels` below, which
+  // re-normalises the origin to (0,0) — so anything that grew up or left
+  // shifts every stored position down/right, and the drawing moves its
+  // view by the same amount to keep the elevation still on screen (the
+  // bottom-anchored height, the edge NOT being dragged, the panels a new
+  // one was added above). See `originShiftMm` in window-geometry.ts.
+  const [originOffsetMm, setOriginOffsetMm] = useState({ x: 0, y: 0 })
+  // The offset is set from THIS render's value, not accumulated through
+  // a functional update: `next` was derived from this render's `panels`,
+  // so its shift is relative to this render's offset too. Two drag
+  // frames landing before React re-renders both build on the same base
+  // and the later one simply wins — accumulating would count the same
+  // shift twice and drift the view off over a drag (bug-067).
+  const commitPanels = useCallback(
+    (next: WindowPanelInput[]) => {
+      const shift = originShiftMm(next)
+      if (shift.x !== 0 || shift.y !== 0) setOriginOffsetMm({ x: originOffsetMm.x - shift.x, y: originOffsetMm.y - shift.y })
+      setValue('panels', normalizeOrigin(next), { shouldValidate: true, shouldDirty: true })
+    },
+    [setValue, originOffsetMm],
+  )
 
   // `WindowEditor` is remounted (via the `key` on `windowId` above)
   // every time the route switches to a different window, so this only
@@ -564,7 +589,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // ring selected, so the options column is already showing what to
   // change — shared by both confirm handlers below.
   const landOnNewPanel = (next: WindowPanelInput[]) => {
-    setValue('panels', next, { shouldValidate: true, shouldDirty: true })
+    commitPanels(next)
     const newIndex = next.length - 1
     setActivePanelIndex(newIndex)
     setSelectedPanelIndices([newIndex])
@@ -676,7 +701,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       return withProfile
     })
 
-    setValue('panels', next, { shouldValidate: true, shouldDirty: true })
+    commitPanels(next)
     setSelectedPartId(`p${index}:frame`)
     setActiveSectionIndex(0)
     setHoveredPanelIndex(null)
@@ -686,22 +711,18 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // ---- Panel / section mutation ------------------------------------------
 
   const updateActivePanel = (changes: Partial<WindowPanelInput>) => {
-    setValue(
-      'panels',
+    commitPanels(
       panels.map((panel, i) => (i === activePanelIndex ? { ...panel, ...changes } : panel)),
-      { shouldValidate: true, shouldDirty: true },
     )
   }
 
   const updateActiveSection = (changes: Partial<WindowSectionInput>) => {
-    setValue(
-      'panels',
+    commitPanels(
       panels.map((panel, i) =>
         i === activePanelIndex
           ? { ...panel, sections: panel.sections.map((s, j) => (j === activeSectionIndex ? { ...s, ...changes } : s)) }
           : panel,
       ),
-      { shouldValidate: true, shouldDirty: true },
     )
   }
 
@@ -763,20 +784,15 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       // brand-new panel's `[NaN]` grid never becomes real, the Section
       // size fields stay blank and `gridMismatch` fires on save (bug-058).
       const resized = resizePanel(panels, activePanelIndex, widthMm, heightMm)
-      setValue(
-        'panels',
+      commitPanels(
         resized.map((p, i) => (i === activePanelIndex ? { ...p, columnWidths: [p.widthMm], rowHeights: [p.heightMm] } : p)),
-        { shouldValidate: true, shouldDirty: true },
       )
       return
     }
     const lastCol = panel.columnWidths.length - 1
     const nextColWidth = panel.columnWidths[lastCol] + (Math.round(widthMm) - panel.widthMm)
     const nextRowHeight = panel.rowHeights[0] + (Math.round(heightMm) - panel.heightMm)
-    setValue('panels', resizeSection(panels, activePanelIndex, 0, lastCol, nextColWidth, nextRowHeight), {
-      shouldValidate: true,
-      shouldDirty: true,
-    })
+    commitPanels(resizeSection(panels, activePanelIndex, 0, lastCol, nextColWidth, nextRowHeight))
   }
 
   // The active SECTION's own width/height inputs — docs/sections_planing.md's
@@ -784,17 +800,13 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // delta (never steals from a neighbour section), reusing
   // `resizeSection` directly at this one cell's own row/col.
   const onSectionWidthChange = (mm: number) => {
-    setValue(
-      'panels',
+    commitPanels(
       resizeSection(panels, activePanelIndex, activeSection.row, activeSection.col, mm, activePanel.rowHeights[activeSection.row]),
-      { shouldValidate: true, shouldDirty: true },
     )
   }
   const onSectionHeightChange = (mm: number) => {
-    setValue(
-      'panels',
+    commitPanels(
       resizeSection(panels, activePanelIndex, activeSection.row, activeSection.col, activePanel.columnWidths[activeSection.col], mm),
-      { shouldValidate: true, shouldDirty: true },
     )
   }
 
@@ -802,7 +814,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const onDeletePanel = () => {
     const next = removePanel(panels, activePanelIndex)
     if (!next) return
-    setValue('panels', next, { shouldValidate: true, shouldDirty: true })
+    commitPanels(next)
     const fallback = Math.max(0, activePanelIndex - 1)
     setActivePanelIndex(fallback)
     setSelectedPanelIndices([fallback])
@@ -817,7 +829,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     // A 1×1 panel has no divider to profile (the schema forbids one) —
     // null it out the moment the last one is merged away.
     const final = stillGridded ? next : next.map((p, i) => (i === activePanelIndex ? { ...p, dividerProfile: null } : p))
-    setValue('panels', final, { shouldValidate: true, shouldDirty: true })
+    commitPanels(final)
     setSelectedPartId(`p${activePanelIndex}:frame`)
     setActiveSectionIndex(0)
   }
@@ -837,10 +849,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     const match = parsed ? /^div-(v|h)(\d+)$/.exec(parsed.localId) : null
     if (!parsed || !match) return
     const orientation: 'vertical' | 'horizontal' = match[1] === 'v' ? 'vertical' : 'horizontal'
-    setValue('panels', moveDivider(panels, parsed.panelIndex, orientation, Number(match[2]), boundaryMm), {
-      shouldValidate: true,
-      shouldDirty: true,
-    })
+    commitPanels(moveDivider(panels, parsed.panelIndex, orientation, Number(match[2]), boundaryMm))
   }
 
   // Dragging a panel's own FREE outer edge in/out (Mario: "resize the
@@ -854,10 +863,8 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     const panel = panels[panelIndex]
     if (!panel) return
     const gridded = panel.columnWidths.length > 1 || panel.rowHeights.length > 1
-    setValue(
-      'panels',
+    commitPanels(
       gridded ? resizeSectionEdge(panels, panelIndex, side, positionMm) : resizePanelEdge(panels, panelIndex, side, positionMm),
-      { shouldValidate: true, shouldDirty: true },
     )
   }
 
@@ -1036,12 +1043,10 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       section.kind === SectionKind.FIXED
         ? { ...section, kind: SectionKind.OPENING, sashProfile: '' as ScopedRef, beadProfile: null, openingType: null, sliding: next }
         : { ...section, sliding: next }
-    setValue(
-      'panels',
+    commitPanels(
       panels.map((panel, i) =>
         i === panelIndex ? { ...panel, sections: panel.sections.map((s, j) => (j === sectionIndex ? write(s) : s)) } : panel,
       ),
-      { shouldValidate: true, shouldDirty: true },
     )
   }
   const setSlidingLayout = (layout: SlidingLayoutInput) => setSlidingLayoutOf(activePanelIndex, activeSectionIndex, layout)
@@ -1431,7 +1436,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
         if (!updated) return
         const stillGridded = updated.columnWidths.length > 1 || updated.rowHeights.length > 1
         const final = stillGridded ? next : next.map((p, i) => (i === panelIndex ? { ...p, dividerProfile: null } : p))
-        setValue('panels', final, { shouldValidate: true, shouldDirty: true })
+        commitPanels(final)
         setSelectedPartId(`p${panelIndex}:frame`)
         setActiveSectionIndex(0)
         return
@@ -1458,15 +1463,12 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       if (currentBoundary === undefined) return
 
       event.preventDefault()
-      setValue('panels', moveDivider(panels, panelIndex, selectedDividerOrientation, selectedDividerK, currentBoundary + deltaMm), {
-        shouldValidate: true,
-        shouldDirty: true,
-      })
+      commitPanels(moveDivider(panels, panelIndex, selectedDividerOrientation, selectedDividerK, currentBoundary + deltaMm))
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedPartId, selectedDividerOrientation, selectedDividerK, panels, setValue, setSelectedPartId, setActiveSectionIndex])
+  }, [selectedPartId, selectedDividerOrientation, selectedDividerK, panels, commitPanels, setSelectedPartId, setActiveSectionIndex])
 
   // Keyboard control of a selected SLIDING sash (planing §10, the
   // handoff's shortcuts): `[` moves it one rail back (toward the
@@ -1642,6 +1644,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   }
                   onDividerDrag={onDividerDrag}
                   onPanelEdgeDrag={onPanelEdgeDrag}
+                  originOffsetMm={originOffsetMm}
                 />
               </div>
               </ContextMenuTrigger>
@@ -1698,45 +1701,26 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                 </ContextMenuContent>
               )}
               </ContextMenu>
-              {/* Every band width the drawing is built from is a
-                  placeholder until profiles carry their own (planing
-                  decision 10) — say so under the drawing, gated on
-                  the resolver's own `source`, not a flag, so the
-                  caption disappears by itself the day real numbers
-                  arrive. */}
-              {resolved.some((r) => r.render.metrics.source === 'PLACEHOLDER') && (
-                <p className="shrink-0 pt-1 text-[11px] text-muted-foreground">
-                  {t('windowDialog.design.illustrationOnly')}
-                </p>
-              )}
-              {stripIssues.length > 0 && (
-                <ul className="flex shrink-0 flex-wrap gap-x-3 gap-y-1 border-t border-border pt-1.5 text-xs">
-                  {stripIssues.map((issue) =>
-                    // The assembly-level note points at no part, so it's
-                    // plain text rather than a click-to-select button.
-                    issue.partId === ASSEMBLY_PART_ID ? (
-                      <li key={issue.message} className="font-medium text-amber-600 dark:text-amber-500">
-                        {issue.message}
-                      </li>
-                    ) : (
-                      <li key={issue.partId + issue.message}>
-                        <button
-                          type="button"
-                          onClick={() => onSelectPart(issue.partId, false)}
-                          className={cn(
-                            'underline decoration-dotted underline-offset-2',
-                            issue.severity === 'error'
-                              ? 'text-destructive'
-                              : 'font-medium text-amber-600 dark:text-amber-500',
-                          )}
-                        >
-                          {issue.message}
-                        </button>
-                      </li>
-                    ),
-                  )}
-                </ul>
-              )}
+              {/* Fixed-height and always present, so messages coming and
+                  going never resize the drawing (see the component). The
+                  "illustration only" caption rides along as an info row —
+                  still gated on the resolver's own `source`, not a flag,
+                  so it disappears by itself once profiles carry real
+                  band widths (planing decision 10). */}
+              <WindowIssuesPanel
+                rows={[
+                  ...stripIssues.map((issue) => ({
+                    // The assembly-level note points at no part.
+                    partId: issue.partId === ASSEMBLY_PART_ID ? null : issue.partId,
+                    severity: issue.severity,
+                    message: issue.message,
+                  })),
+                  ...(resolved.some((r) => r.render.metrics.source === 'PLACEHOLDER')
+                    ? [{ partId: null, severity: 'info' as const, message: t('windowDialog.design.illustrationOnly') }]
+                    : []),
+                ]}
+                onSelectPart={(partId) => onSelectPart(partId, false)}
+              />
             </div>
 
             <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto border-s border-border px-3 pe-0 pb-4">

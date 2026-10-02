@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { Minus, Plus } from 'lucide-react'
+import { Minus, MousePointer2, Plus, Redo2, Ruler, Spline, Undo2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { SystemType } from '@repo/types/lookups'
 import type { WindowBarInput } from '@repo/types/windows'
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,7 @@ import { cn } from '@/lib/utils'
 import {
   DEFAULT_FRAME_FILL,
   DEFAULT_GLASS_FILL,
+  GLASS_BACKING_FILL,
   GLASS_FILL_OPACITY,
   MESH_STROKE,
   MESH_STROKE_WIDTH_MM,
@@ -200,6 +202,11 @@ export interface WindowDrawingProps {
    * it knows whether one exists; a pending anchor gets cleared locally
    * instead. */
   onExitBarDrawMode: () => void
+  /** The floating tool pill's Bars tool (redesign §3): whether the active
+   * panel can take bars at all (an arched head — same rule as the
+   * options panel's own Bars button), and how to switch draw mode. */
+  barsAvailable: boolean
+  onBarDrawModeChange: (on: boolean) => void
   /** Fires once a bar's second endpoint lands — always a fresh straight
    * (`sagMm: 0`) bar; bowing it is Step 11. */
   onAddBar: (bar: WindowBarInput) => void
@@ -288,6 +295,8 @@ export function WindowDrawing({
   issuesByPart,
   barDrawMode,
   onExitBarDrawMode,
+  barsAvailable,
+  onBarDrawModeChange,
   onAddBar,
   selectedBarId,
   onSelectBar,
@@ -299,6 +308,7 @@ export function WindowDrawing({
   onPanelEdgeDrag,
   originOffsetMm,
 }: WindowDrawingProps) {
+  const { t } = useTranslation('workspace')
   const { outerMm, parts, panelRects } = layout
   const scale = Math.max(outerMm.width, outerMm.height)
   // Any panel with its own grid (a mullion and/or a transom) gets an
@@ -874,15 +884,15 @@ export function WindowDrawing({
       // Same blueprint-style graph-paper grid as the project canvas
       // (`canvas-page.tsx`) — Mario, 2026-09-16: "add grid behind the
       // window workspace." Pure CSS gradients (no image asset), so it
-      // costs nothing to load and reuses the exact values already
-      // established for visual consistency across both canvases.
+      // costs nothing to load. Colours are the `--canvas*` theme tokens
+      // (index.css): "Drafting paper" in light, Graphite in dark.
       style={{
-        backgroundColor: '#ffffff',
+        backgroundColor: 'var(--canvas)',
         backgroundImage: [
-          'linear-gradient(to right, rgba(0,0,0,0.12) 1px, transparent 1px)',
-          'linear-gradient(to bottom, rgba(0,0,0,0.12) 1px, transparent 1px)',
-          'linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px)',
-          'linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)',
+          'linear-gradient(to right, var(--canvas-grid-major) 1px, transparent 1px)',
+          'linear-gradient(to bottom, var(--canvas-grid-major) 1px, transparent 1px)',
+          'linear-gradient(to right, var(--canvas-grid-minor) 1px, transparent 1px)',
+          'linear-gradient(to bottom, var(--canvas-grid-minor) 1px, transparent 1px)',
         ].join(', '),
         backgroundSize: '120px 120px, 120px 120px, 20px 20px, 20px 20px',
       }}
@@ -899,7 +909,10 @@ export function WindowDrawing({
         // the HTML overlay (dimension inputs, "+" markers, the add-panel
         // card) so they stay aligned to the shapes.
         preserveAspectRatio="xMidYMid meet"
-        className="h-full max-h-full w-full max-w-full"
+        // Starts below the floating tool pill (redesign §3) so the pill
+        // never sits on the elevation; `useSvgToClientTransform` adds
+        // this offset back for the HTML overlay.
+        className="absolute inset-x-0 top-14 h-[calc(100%-3.5rem)] w-full"
         role="img"
         aria-label={`${formatDimensionMm(outerMm.width)} × ${formatDimensionMm(outerMm.height)} mm`}
       >
@@ -1225,38 +1238,38 @@ export function WindowDrawing({
                 const peak = pointAlongBar(resolved.from, resolved.to, bar.sagMm, 0.5)
                 return (
                   <>
-                    {(['from', 'to'] as const).map((end) => {
-                      const p = resolved[end]
-                      return (
-                        <circle
-                          key={end}
-                          cx={p.x}
-                          cy={p.y}
-                          r={strokeWeight * 2.4}
-                          fill="var(--background)"
-                          stroke="var(--primary)"
-                          strokeWidth={strokeWeight}
-                          className="cursor-move"
-                          onMouseDown={(e) => {
-                            e.stopPropagation()
-                            setBarDrag({ barId: bar.id, end })
-                          }}
-                        />
-                      )
-                    })}
-                    <circle
-                      cx={peak.x}
-                      cy={peak.y}
-                      r={strokeWeight * 2}
-                      fill="var(--primary)"
-                      stroke="var(--background)"
-                      strokeWidth={strokeWeight * 0.6}
-                      className="cursor-move"
-                      onMouseDown={(e) => {
-                        e.stopPropagation()
-                        setBarSagDragId(bar.id)
-                      }}
-                    />
+                      {(['from', 'to'] as const).map((end) => {
+                        const p = resolved[end]
+                        return (
+                          <circle
+                            key={end}
+                            cx={p.x}
+                            cy={p.y}
+                            r={strokeWeight * 2.4}
+                            fill="var(--background)"
+                            stroke="var(--primary)"
+                            strokeWidth={strokeWeight}
+                            className="cursor-move"
+                            onMouseDown={(e) => {
+                              e.stopPropagation()
+                              setBarDrag({ barId: bar.id, end })
+                            }}
+                          />
+                        )
+                      })}
+                      <circle
+                        cx={peak.x}
+                        cy={peak.y}
+                        r={strokeWeight * 2}
+                        fill="var(--primary)"
+                        stroke="var(--background)"
+                        strokeWidth={strokeWeight * 0.6}
+                        className="cursor-move"
+                        onMouseDown={(e) => {
+                          e.stopPropagation()
+                          setBarSagDragId(bar.id)
+                        }}
+                      />
                   </>
                 )
               })()}
@@ -1341,27 +1354,72 @@ export function WindowDrawing({
         </div>
       )}
 
-      {/* Zoom controls — the manual replacement for the auto-fit-to-content
+      {/* Canvas chrome (docs/window_editor_redesign_planing.md §3): view
+          label top-left, tool pill top-centre, zoom card top-right,
+          pointer readout bottom-left. Physical sides on purpose — the
+          drawing is always `dir="ltr"` (see the root div). */}
+      <span className="pointer-events-none absolute top-4 left-4 font-mono text-[11px] text-muted-foreground">
+        {t('windowDialog.design.canvas.interiorView')}
+      </span>
+
+      <div
+        role="toolbar"
+        aria-label={t('windowDialog.design.tools.label')}
+        className="absolute top-3 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-border bg-card p-1 shadow-md"
+      >
+        <ToolButton
+          label={t('windowDialog.design.tools.select')}
+          active={!barDrawMode}
+          onClick={() => onBarDrawModeChange(false)}
+        >
+          <MousePointer2 className="size-4" />
+        </ToolButton>
+        <ToolButton
+          label={barsAvailable ? t('windowDialog.design.tools.bars') : t('windowDialog.design.tools.barsNeedArch')}
+          active={barDrawMode}
+          unavailable={!barsAvailable}
+          onClick={() => onBarDrawModeChange(!barDrawMode)}
+        >
+          <Spline className="size-4" />
+        </ToolButton>
+        <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+        {/* Shown, not built yet (decision 4) — `aria-disabled` rather than
+            `disabled` so the "Coming soon" tooltip still appears on hover. */}
+        <ToolButton label={`${t('windowDialog.design.tools.measure')} — ${t('windowDialog.design.tools.comingSoon')}`} unavailable>
+          <Ruler className="size-4" />
+        </ToolButton>
+        <ToolButton label={`${t('windowDialog.design.tools.undo')} — ${t('windowDialog.design.tools.comingSoon')}`} unavailable>
+          <Undo2 className="size-4" />
+        </ToolButton>
+        <ToolButton label={`${t('windowDialog.design.tools.redo')} — ${t('windowDialog.design.tools.comingSoon')}`} unavailable>
+          <Redo2 className="size-4" />
+        </ToolButton>
+      </div>
+
+      {/* Zoom — the manual replacement for the auto-fit-to-content
           behaviour this feature removed (Mario: "allow the user to change
           zoom level to extend more if he want"). Scroll/pinch over the
-          drawing zooms too (see the `wheel` effect above); this is just
-          the discoverable, precise affordance for the same camera. */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-0.5 rounded-md border border-border bg-card/95 p-1 text-xs shadow-sm backdrop-blur">
-        <Button type="button" variant="ghost" size="icon" className="size-6" aria-label="Zoom out" onClick={() => setCamera((c) => ({ ...c, zoom: clampZoom(c.zoom / ZOOM_STEP) }))}>
+          drawing zooms too (see the `wheel` effect above). The % button
+          re-fits and centres (`resetView`). */}
+      <div className="absolute top-3 right-3 flex items-center gap-0.5 rounded-xl border border-border bg-card p-1 text-xs shadow-md">
+        <Button type="button" variant="ghost" size="icon" className="size-7" aria-label={t('windowDialog.design.zoom.out')} onClick={() => setCamera((c) => ({ ...c, zoom: clampZoom(c.zoom / ZOOM_STEP) }))}>
           <Minus className="size-3.5" />
         </Button>
         <button
           type="button"
-          className="w-11 text-center tabular-nums text-muted-foreground hover:text-foreground"
-          aria-label="Reset zoom"
+          className="w-11 text-center font-mono tabular-nums text-muted-foreground hover:text-foreground"
+          aria-label={t('windowDialog.design.zoom.reset')}
+          title={t('windowDialog.design.zoom.reset')}
           onClick={resetView}
         >
           {Math.round(camera.zoom * 100)}%
         </button>
-        <Button type="button" variant="ghost" size="icon" className="size-6" aria-label="Zoom in" onClick={() => setCamera((c) => ({ ...c, zoom: clampZoom(c.zoom * ZOOM_STEP) }))}>
+        <Button type="button" variant="ghost" size="icon" className="size-7" aria-label={t('windowDialog.design.zoom.in')} onClick={() => setCamera((c) => ({ ...c, zoom: clampZoom(c.zoom * ZOOM_STEP) }))}>
           <Plus className="size-3.5" />
         </Button>
       </div>
+
+      <PointerReadout svgRef={svgRef} snapLabel={t('windowDialog.design.canvas.snap', { px: SIZE_MATCH_SNAP_TOLERANCE_PX })} />
 
       {overlay}
     </div>
@@ -1536,6 +1594,27 @@ function PanelShapes({
           )}
         </InteractivePart>
       ))}
+
+      {/* Solid pale ground under every glass pane, drawn BEFORE the
+          fly-screen mesh so the mesh still shows through the tinted glass
+          above it — glass looks the same on either theme
+          (`GLASS_BACKING_FILL`). */}
+      {glasses.map((glass) => {
+        const glassOutline = outlineOf(glass)
+        return glassOutline ? (
+          <path key={glass.id} d={archOutlinePath(glassOutline)} fill={GLASS_BACKING_FILL} pointerEvents="none" />
+        ) : (
+          <rect
+            key={glass.id}
+            x={glass.rectMm.x}
+            y={glass.rectMm.y}
+            width={glass.rectMm.width}
+            height={glass.rectMm.height}
+            fill={GLASS_BACKING_FILL}
+            pointerEvents="none"
+          />
+        )
+      })}
 
       {/* The fly-screen mesh is visual only (pointer-events none) — for
           a hinged/curtain-wall section it fully overlaps the sash/glass
@@ -1846,19 +1925,19 @@ function DimensionLabel({
   const rectH = vertical ? w : h
   return (
     <>
-      <rect x={x - rectW / 2} y={y - rectH / 2} width={rectW} height={rectH} fill="var(--background)" />
-      <text
-        x={x}
-        y={y + fontSize * 0.34}
-        textAnchor="middle"
-        fontSize={fontSize}
-        fontWeight={weight}
-        fill="var(--muted-foreground)"
-        style={{ fontVariantNumeric: 'tabular-nums' }}
-        transform={vertical ? `rotate(-90 ${x} ${y})` : undefined}
-      >
-        {text}
-      </text>
+        <rect x={x - rectW / 2} y={y - rectH / 2} width={rectW} height={rectH} fill="var(--background)" />
+        <text
+          x={x}
+          y={y + fontSize * 0.34}
+          textAnchor="middle"
+          fontSize={fontSize}
+          fontWeight={weight}
+          fill="var(--muted-foreground)"
+          style={{ fontVariantNumeric: 'tabular-nums' }}
+          transform={vertical ? `rotate(-90 ${x} ${y})` : undefined}
+        >
+          {text}
+        </text>
     </>
   )
 }
@@ -1903,28 +1982,28 @@ function DimensionChain({
 
   return (
     <>
-      <g stroke="var(--muted-foreground)" strokeWidth={tickStroke} opacity={0.6}>
-        {orientation === 'horizontal' ? (
-          <line x1={start} y1={fixedCoord} x2={end} y2={fixedCoord} />
-        ) : (
-          <line x1={fixedCoord} y1={start} x2={fixedCoord} y2={end} />
-        )}
-        {boundaries.map((b, i) =>
-          orientation === 'horizontal' ? (
-            <line key={i} x1={start + b} y1={fixedCoord - tickLen / 2} x2={start + b} y2={fixedCoord + tickLen / 2} />
+        <g stroke="var(--muted-foreground)" strokeWidth={tickStroke} opacity={0.6}>
+          {orientation === 'horizontal' ? (
+            <line x1={start} y1={fixedCoord} x2={end} y2={fixedCoord} />
           ) : (
-            <line key={i} x1={fixedCoord - tickLen / 2} y1={start + b} x2={fixedCoord + tickLen / 2} y2={start + b} />
-          ),
-        )}
-      </g>
-      {allSegments.map((len, i) => {
-        const mid = start + (boundaries[i] + boundaries[i + 1]) / 2
-        return orientation === 'horizontal' ? (
-          <DimensionLabel key={i} x={mid} y={fixedCoord} text={formatDimensionMm(len)} fontSize={fontSize} />
-        ) : (
-          <DimensionLabel key={i} x={fixedCoord} y={mid} text={formatDimensionMm(len)} fontSize={fontSize} vertical />
-        )
-      })}
+            <line x1={fixedCoord} y1={start} x2={fixedCoord} y2={end} />
+          )}
+          {boundaries.map((b, i) =>
+            orientation === 'horizontal' ? (
+              <line key={i} x1={start + b} y1={fixedCoord - tickLen / 2} x2={start + b} y2={fixedCoord + tickLen / 2} />
+            ) : (
+              <line key={i} x1={fixedCoord - tickLen / 2} y1={start + b} x2={fixedCoord + tickLen / 2} y2={start + b} />
+            ),
+          )}
+        </g>
+        {allSegments.map((len, i) => {
+          const mid = start + (boundaries[i] + boundaries[i + 1]) / 2
+          return orientation === 'horizontal' ? (
+            <DimensionLabel key={i} x={mid} y={fixedCoord} text={formatDimensionMm(len)} fontSize={fontSize} />
+          ) : (
+            <DimensionLabel key={i} x={fixedCoord} y={mid} text={formatDimensionMm(len)} fontSize={fontSize} vertical />
+          )
+        })}
     </>
   )
 }
@@ -1978,65 +2057,65 @@ function PanelDimensionCallouts({
 
   return (
     <>
-      {cols.length > 1 && columnSide && (
-        <DimensionChain
-          orientation="horizontal"
-          // A SHARED tier across the whole margin, not this one panel's
-          // own edge — Mario, 2026-09-15 (annotated screenshot): Panel
-          // 1's own chain needs to land on the same row as Panel 2's,
-          // even though Panel 1's actual frame sits 362mm lower. Using
-          // the assembly's own top/bottom (0 / outerMm.height) rather
-          // than `panelRect.y`/`.y + .height` is what makes every
-          // panel's chain on a given side line up into one row.
-          fixedCoord={columnSide === 'top' ? -chainOffset : outerMm.height + chainOffset}
-          origin={panelRect.x}
-          segments={cols}
-          gapBefore={columnGap}
-          tickLen={tickLen}
-          fontSize={fontSize}
-        />
-      )}
+        {cols.length > 1 && columnSide && (
+          <DimensionChain
+            orientation="horizontal"
+            // A SHARED tier across the whole margin, not this one panel's
+            // own edge — Mario, 2026-09-15 (annotated screenshot): Panel
+            // 1's own chain needs to land on the same row as Panel 2's,
+            // even though Panel 1's actual frame sits 362mm lower. Using
+            // the assembly's own top/bottom (0 / outerMm.height) rather
+            // than `panelRect.y`/`.y + .height` is what makes every
+            // panel's chain on a given side line up into one row.
+            fixedCoord={columnSide === 'top' ? -chainOffset : outerMm.height + chainOffset}
+            origin={panelRect.x}
+            segments={cols}
+            gapBefore={columnGap}
+            tickLen={tickLen}
+            fontSize={fontSize}
+          />
+        )}
 
-      {rows.length > 1 && rowSide && (
-        <DimensionChain
-          orientation="vertical"
-          fixedCoord={rowSide === 'left' ? -chainOffset : outerMm.width + chainOffset}
-          origin={panelRect.y}
-          segments={rows}
-          gapBefore={rowGap}
-          tickLen={tickLen}
-          fontSize={fontSize}
-        />
-      )}
+        {rows.length > 1 && rowSide && (
+          <DimensionChain
+            orientation="vertical"
+            fixedCoord={rowSide === 'left' ? -chainOffset : outerMm.width + chainOffset}
+            origin={panelRect.y}
+            segments={rows}
+            gapBefore={rowGap}
+            tickLen={tickLen}
+            fontSize={fontSize}
+          />
+        )}
 
-      {rows.map((_, r) =>
-        cols.map((_, c) => {
-          // `parts`' own `rectMm` is already in ASSEMBLY space (see
-          // `buildAssemblyLayout`'s own offsetting) — no further
-          // `panelRect.x/y` offset belongs here, unlike the chain
-          // ticks above, which start from `cumulativeBoundaries`'
-          // PANEL-local values and so do need it.
-          const sectionIndex = r * cols.length + c
-          const sectionParts = parts.filter(
-            (p) => p.sectionIndex === sectionIndex && (p.kind === 'sash' || p.kind === 'glass' || p.kind === 'flyScreen'),
-          )
-          if (sectionParts.length === 0) return null
-          const rect = boundingRect(sectionParts.map((p) => p.rectMm))
-          return (
-            <text
-              key={sectionIndex}
-              x={rect.x + rect.width / 2}
-              y={rect.y + rect.height * 0.92}
-              textAnchor="middle"
-              fontSize={letterFontSize}
-              fontWeight={600}
-              fill="var(--foreground)"
-            >
-              {sectionLetter(sectionIndex)}
-            </text>
-          )
-        }),
-      )}
+        {rows.map((_, r) =>
+          cols.map((_, c) => {
+            // `parts`' own `rectMm` is already in ASSEMBLY space (see
+            // `buildAssemblyLayout`'s own offsetting) — no further
+            // `panelRect.x/y` offset belongs here, unlike the chain
+            // ticks above, which start from `cumulativeBoundaries`'
+            // PANEL-local values and so do need it.
+            const sectionIndex = r * cols.length + c
+            const sectionParts = parts.filter(
+              (p) => p.sectionIndex === sectionIndex && (p.kind === 'sash' || p.kind === 'glass' || p.kind === 'flyScreen'),
+            )
+            if (sectionParts.length === 0) return null
+            const rect = boundingRect(sectionParts.map((p) => p.rectMm))
+            return (
+              <text
+                key={sectionIndex}
+                x={rect.x + rect.width / 2}
+                y={rect.y + rect.height * 0.92}
+                textAnchor="middle"
+                fontSize={letterFontSize}
+                fontWeight={600}
+                fill="var(--foreground)"
+              >
+                {sectionLetter(sectionIndex)}
+              </text>
+            )
+          }),
+        )}
     </>
   )
 }
@@ -2093,32 +2172,32 @@ function PanelSizeCallout({
 
   return (
     <>
-      {resolvedWidthSide && (
-        <DimensionChain
-          orientation="horizontal"
-          // Shared with `PanelDimensionCallouts`'s own tier (assembly
-          // top/bottom, not this panel's own edge) — see its doc
-          // comment: two panels on the same side need to land in the
-          // same row.
-          fixedCoord={resolvedWidthSide === 'top' ? -chainOffset : outerMm.height + chainOffset}
-          origin={rect.x}
-          segments={[rect.width]}
-          gapBefore={widthGap}
-          tickLen={tickLen}
-          fontSize={fontSize}
-        />
-      )}
-      {resolvedHeightSide && (
-        <DimensionChain
-          orientation="vertical"
-          fixedCoord={resolvedHeightSide === 'left' ? -chainOffset : outerMm.width + chainOffset}
-          origin={rect.y}
-          segments={[rect.height]}
-          gapBefore={heightGap}
-          tickLen={tickLen}
-          fontSize={fontSize}
-        />
-      )}
+        {resolvedWidthSide && (
+          <DimensionChain
+            orientation="horizontal"
+            // Shared with `PanelDimensionCallouts`'s own tier (assembly
+            // top/bottom, not this panel's own edge) — see its doc
+            // comment: two panels on the same side need to land in the
+            // same row.
+            fixedCoord={resolvedWidthSide === 'top' ? -chainOffset : outerMm.height + chainOffset}
+            origin={rect.x}
+            segments={[rect.width]}
+            gapBefore={widthGap}
+            tickLen={tickLen}
+            fontSize={fontSize}
+          />
+        )}
+        {resolvedHeightSide && (
+          <DimensionChain
+            orientation="vertical"
+            fixedCoord={resolvedHeightSide === 'left' ? -chainOffset : outerMm.width + chainOffset}
+            origin={rect.y}
+            segments={[rect.height]}
+            gapBefore={heightGap}
+            tickLen={tickLen}
+            fontSize={fontSize}
+          />
+        )}
     </>
   )
 }
@@ -2322,12 +2401,23 @@ function useSvgToClientTransform(
   svgRef: React.RefObject<SVGSVGElement | null>,
   viewBox: { minX: number; minY: number; width: number; height: number },
 ): { x: (userX: number) => number; y: (userY: number) => number } | null {
-  const [box, setBox] = useState<{ width: number; height: number } | null>(null)
+  const [box, setBox] = useState<{ width: number; height: number; left: number; top: number } | null>(null)
 
   useEffect(() => {
     const svg = svgRef.current
     if (!svg) return
-    const update = () => setBox({ width: svg.clientWidth, height: svg.clientHeight })
+    // `left`/`top`: where the SVG sits inside the overlay's own box — it
+    // starts below the floating tool pill, not at the container's top.
+    const update = () => {
+      const rect = svg.getBoundingClientRect()
+      const parent = svg.parentElement?.getBoundingClientRect()
+      setBox({
+        width: svg.clientWidth,
+        height: svg.clientHeight,
+        left: parent ? rect.left - parent.left : 0,
+        top: parent ? rect.top - parent.top : 0,
+      })
+    }
     update()
     const observer = new ResizeObserver(update)
     observer.observe(svg)
@@ -2337,13 +2427,85 @@ function useSvgToClientTransform(
   if (!box || box.width === 0 || box.height === 0) return null
 
   const scale = Math.min(box.width / viewBox.width, box.height / viewBox.height)
-  const offsetX = (box.width - viewBox.width * scale) / 2
+  const offsetX = box.left + (box.width - viewBox.width * scale) / 2
   // Matches the SVG's own `preserveAspectRatio="xMidYMid meet"` — see
   // the comment on the `<svg>` element above.
-  const offsetY = (box.height - viewBox.height * scale) / 2
+  const offsetY = box.top + (box.height - viewBox.height * scale) / 2
 
   return {
     x: (userX: number) => offsetX + (userX - viewBox.minX) * scale,
     y: (userY: number) => offsetY + (userY - viewBox.minY) * scale,
   }
+}
+
+/** One button of the floating tool pill. `unavailable` greys it out with
+ * `aria-disabled` (not `disabled`) so its tooltip still shows on hover. */
+function ToolButton({
+  label,
+  active = false,
+  unavailable = false,
+  onClick,
+  children,
+}: {
+  label: string
+  active?: boolean
+  unavailable?: boolean
+  onClick?: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      aria-pressed={unavailable ? undefined : active}
+      aria-disabled={unavailable || undefined}
+      onClick={unavailable ? undefined : onClick}
+      className={cn(
+        'flex size-8 items-center justify-center rounded-lg transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+        unavailable
+          ? 'cursor-default text-muted-foreground/50'
+          : active
+            ? 'bg-primary/15 text-primary'
+            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * Live pointer position in assembly mm, bottom-left of the canvas
+ * (redesign §3). Its own component with its own state, listening on the
+ * SVG directly — tracking the pointer in `WindowDrawing` itself would
+ * re-render the whole elevation on every mouse move.
+ */
+function PointerReadout({ svgRef, snapLabel }: { svgRef: React.RefObject<SVGSVGElement | null>; snapLabel: string }) {
+  const [point, setPoint] = useState<PointMm | null>(null)
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const onMove = (e: globalThis.MouseEvent) => {
+      const resolved = svgPointFromClient(svg, e.clientX, e.clientY)
+      setPoint(resolved ? { x: Math.round(resolved.point.x), y: Math.round(resolved.point.y) } : null)
+    }
+    const onLeave = () => setPoint(null)
+    svg.addEventListener('mousemove', onMove)
+    svg.addEventListener('mouseleave', onLeave)
+    return () => {
+      svg.removeEventListener('mousemove', onMove)
+      svg.removeEventListener('mouseleave', onLeave)
+    }
+  }, [svgRef])
+  return (
+    <div className="pointer-events-none absolute bottom-3 left-4 flex gap-3 font-mono text-[11px] text-muted-foreground tabular-nums">
+      {point && (
+        <span>
+          X {point.x} · Y {point.y}
+        </span>
+      )}
+      <span>{snapLabel}</span>
+    </div>
+  )
 }

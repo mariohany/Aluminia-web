@@ -37,6 +37,12 @@
       "body": "Our terms of service are being finalized and will be published here."
     }
   },
+  "theme": {
+    "switchLabel": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "Match system"
+  },
   "language": {
     "switchLabel": "Language",
     "en": "English",

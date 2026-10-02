@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { LanguageSwitcher } from '@/components/language-switcher'
+import { ThemeSwitch } from '@/components/theme-switch'
 import { AdminNav } from '@/components/admin/admin-nav'
 
 export function AdminSidebarContent({ onNavigate }: { onNavigate?: () => void }) {
@@ -27,7 +28,10 @@ export function AdminSidebarContent({ onNavigate }: { onNavigate?: () => void })
       <div className="mt-auto flex flex-col gap-3">
         <Separator />
         {user && <p className="truncate px-1 text-xs text-muted-foreground">{t('sidebar.loggedInAs', { email: user.email })}</p>}
-        <LanguageSwitcher className="self-start" />
+        <div className="flex flex-wrap items-center gap-2">
+          <LanguageSwitcher />
+          <ThemeSwitch />
+        </div>
         <Button variant="outline" size="sm" className="justify-start" onClick={() => void handleLogout()}>
           <LogOut className="size-4" aria-hidden="true" />
           {t('sidebar.logout')}

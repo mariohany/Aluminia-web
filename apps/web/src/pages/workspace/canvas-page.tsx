@@ -87,16 +87,18 @@ export function CanvasPage() {
       style={
         showGrid
           ? {
-              backgroundColor: '#ffffff',
+              // `--board*` theme tokens (index.css): today's white graph
+              // paper in light, Graphite in dark.
+              backgroundColor: 'var(--board)',
               backgroundImage: [
-                'linear-gradient(to right, rgba(0,0,0,0.12) 1px, transparent 1px)',
-                'linear-gradient(to bottom, rgba(0,0,0,0.12) 1px, transparent 1px)',
-                'linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px)',
-                'linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)',
+                'linear-gradient(to right, var(--board-grid-major) 1px, transparent 1px)',
+                'linear-gradient(to bottom, var(--board-grid-major) 1px, transparent 1px)',
+                'linear-gradient(to right, var(--board-grid-minor) 1px, transparent 1px)',
+                'linear-gradient(to bottom, var(--board-grid-minor) 1px, transparent 1px)',
               ].join(', '),
               backgroundSize: '120px 120px, 120px 120px, 20px 20px, 20px 20px',
             }
-          : { backgroundColor: '#ffffff' }
+          : { backgroundColor: 'var(--board)' }
       }
     >
       {projectId && hasWindows ? (

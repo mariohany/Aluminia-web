@@ -57,8 +57,9 @@
 /*
  * Aluminia brand tokens — cool "steel" neutrals with one confident
  * accent (burnt-orange, evoking anodized aluminium / workshop precision).
- * Light theme only for v1; kept as plain custom properties so a `.dark`
- * block can be added later without touching any component.
+ * Light by default; `.dark` (set on <html> by next-themes, see main.tsx)
+ * redefines every token below — Mario, 2026-10-02: app-wide dark mode
+ * in the "Graphite" palette picked on the redesign canvas.
  */
 :root {
     --background: oklch(0.995 0.002 250);
@@ -93,6 +94,65 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    /* Drawing canvases (window editor, project canvas). Light = the
+       "Drafting paper" look: pale paper with a blue-ink grid. */
+    --canvas: #f4f7fa;
+    --canvas-grid-major: rgba(31, 92, 153, 0.16);
+    --canvas-grid-minor: rgba(31, 92, 153, 0.06);
+    /* The project canvas (workspace page) keeps today's plain white
+       graph paper in light — only the window editor gets the drafting
+       look. */
+    --board: #ffffff;
+    --board-grid-major: rgba(0, 0, 0, 0.12);
+    --board-grid-minor: rgba(0, 0, 0, 0.05);
+}
+
+/*
+ * Graphite: neutral charcoal, no blue tint, with the SAME burnt-orange
+ * primary as light (Mario, 2026-10-02) so the brand colour doesn't shift
+ * between themes. Window MATERIAL colours (RAL
+ * frame fills, glass, gaskets, hardware) are never themed — only the
+ * chrome around them reads these tokens.
+ */
+.dark {
+    --background: #141618;
+    --foreground: #eceef0;
+    --card: #1b1e22;
+    --card-foreground: #eceef0;
+    --popover: #1b1e22;
+    --popover-foreground: #eceef0;
+    --primary: oklch(0.58 0.19 42);
+    --primary-foreground: oklch(0.99 0.002 90);
+    --secondary: #22262b;
+    --secondary-foreground: #eceef0;
+    --muted: #22262b;
+    --muted-foreground: #9aa1aa;
+    --accent: #262a30;
+    --accent-foreground: #eceef0;
+    --destructive: #f2706b;
+    --border: #2e3238;
+    --input: #2e3238;
+    --ring: oklch(0.62 0.19 42);
+    --chart-1: oklch(0.488 0.243 264.376);
+    --chart-2: oklch(0.696 0.17 162.48);
+    --chart-3: oklch(0.769 0.188 70.08);
+    --chart-4: oklch(0.627 0.265 303.9);
+    --chart-5: oklch(0.645 0.246 16.439);
+    --sidebar: #1b1e22;
+    --sidebar-foreground: #eceef0;
+    --sidebar-primary: oklch(0.58 0.19 42);
+    --sidebar-primary-foreground: oklch(0.99 0.002 90);
+    --sidebar-accent: #262a30;
+    --sidebar-accent-foreground: #eceef0;
+    --sidebar-border: #2e3238;
+    --sidebar-ring: oklch(0.62 0.19 42);
+    --canvas: #141618;
+    --canvas-grid-major: rgba(255, 255, 255, 0.07);
+    --canvas-grid-minor: rgba(255, 255, 255, 0.025);
+    --board: #141618;
+    --board-grid-major: rgba(255, 255, 255, 0.07);
+    --board-grid-minor: rgba(255, 255, 255, 0.025);
+    color-scheme: dark;
 }
 
 html:lang(ar) {

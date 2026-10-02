@@ -22,7 +22,12 @@
     "error": "Couldn't load profiles. Try again.",
     "empty": "No profiles of this type yet.",
     "noMatches": "Nothing matches that search.",
-    "setFavorite": "Set as favourite"
+    "setFavorite": "Set as favourite",
+    "browse": "Browse",
+    "typeToSearch": "Type a profile number, catalogue or brand — or Browse the full list.",
+    "favorite": "Favourite",
+    "moreMatches_one": "1 more match — refine the search or Browse.",
+    "moreMatches_other": "{{count}} more matches — refine the search or Browse."
   },
   "canvas": {
     "nothingSelected": "No project selected",
@@ -330,6 +335,40 @@
         "resize": "Resize the issues panel",
         "expand": "Show issues",
         "collapse": "Hide issues"
+      },
+      "structure": {
+        "title": "Structure",
+        "assembly": "Assembly",
+        "panel": "Panel {{index}}",
+        "hasErrors": "Has errors",
+        "hasWarnings": "Has warnings",
+        "glassArea": "Glass area",
+        "squareMetres": "{{value}} m²"
+      },
+      "inspector": "Options",
+      "saveState": {
+        "new": "New window, not saved yet",
+        "unsaved": "Unsaved changes",
+        "saved": "All changes saved"
+      },
+      "tools": {
+        "label": "Drawing tools",
+        "select": "Select",
+        "bars": "Draw bars",
+        "barsNeedArch": "Bars need an arched head",
+        "measure": "Measure",
+        "undo": "Undo",
+        "redo": "Redo",
+        "comingSoon": "Coming soon"
+      },
+      "zoom": {
+        "in": "Zoom in",
+        "out": "Zoom out",
+        "reset": "Fit and centre (100%)"
+      },
+      "canvas": {
+        "interiorView": "Interior view",
+        "snap": "Snap {{px}} px"
       },
       "untitled": "Untitled window",
       "computedSize": "{{width}} × {{height}} mm (indicative)",

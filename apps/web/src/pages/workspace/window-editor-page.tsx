@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate, useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
 import {
   GlassKind,
   HeadShape,
@@ -39,9 +39,12 @@ import { useCreateWindowMutation, useUpdateWindowMutation, useWindowQuery } from
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { FieldLabel } from '@/components/workspace/field-label'
-import { ProfileTreePicker } from '@/components/workspace/profile-tree-picker'
 import { WindowDrawing } from '@/components/workspace/window-drawing'
 import { WindowIssuesPanel } from '@/components/workspace/window-issues-panel'
+import { cn } from '@/lib/utils'
+import { displayName } from '@/lib/bilingual'
+import { WindowStructurePanel } from '@/components/workspace/window-structure-panel'
+import { ProfileSearchPicker } from '@/components/workspace/profile-search-picker'
 import { slidingSectionArgs, useResolvedPanels, type PanelRender, type SectionRender } from '@/lib/window-render'
 import { WindowPartPanel } from '@/components/workspace/window-part-panel'
 import { AddPanelCard, type AddPanelRequest } from '@/components/workspace/add-panel-card'
@@ -145,7 +148,7 @@ export function WindowEditorPage() {
  */
 function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: string }) {
   const navigate = useNavigate()
-  const { t } = useTranslation('workspace')
+  const { t, i18n } = useTranslation('workspace')
   const { t: tLookups } = useTranslation('lookups')
   const { t: tCommon } = useTranslation('common')
   const isEdit = !!windowId
@@ -1534,48 +1537,29 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     <>
       <div className="flex h-svh flex-col bg-background">
         <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate className="flex min-h-0 flex-1 flex-col">
-          <header className="flex shrink-0 items-center gap-3 border-b border-border p-4">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t('actions.back')}
-              onClick={() => requestLeave(onDone)}
-            >
-              <ArrowLeft className="size-4 rtl:rotate-180" aria-hidden="true" />
-            </Button>
-            <h1 className="font-heading text-base font-medium">{pageTitle}</h1>
-          </header>
+          {/* Blueprint layout (docs/window_editor_redesign_planing.md §2):
+              structure tree | drawing | options, full height — no header
+              or footer bar. Fixed widths on both sides so neither column
+              reflows when a different part is selected, per
+              docs/window_design_planing.md's decisions table. */}
+          <div className="grid min-h-0 flex-1 grid-cols-[16.25rem_1fr_21.25rem] overflow-hidden">
+            <WindowStructurePanel
+              projectName={project ? displayName(project, i18n.resolvedLanguage ?? 'en') : undefined}
+              title={watch('name')?.trim() || pageTitle}
+              onBack={() => requestLeave(onDone)}
+              quantity={quantity}
+              onQuantityChange={(value) => setValue('quantity', value, { shouldValidate: true, shouldDirty: true })}
+              quantityError={showValidation && errors.quantity ? t('fields.quantityRequired') : undefined}
+              panels={panels}
+              parts={drawingLayout.parts}
+              outerMm={drawingLayout.outerMm}
+              issuesByPart={issuesByPart}
+              activePanelIndex={activePanelIndex}
+              activeSectionIndex={activeSectionIndex}
+              onSelectPart={(partId) => onSelectPart(partId, false)}
+            />
 
-          {/* A frame profile tree (18rem) + the drawing (1fr) + a
-              fixed-width options column, so all three stay put and
-              never reflow when a different part is selected, per
-              docs/window_design_planing.md's decisions table. Tree
-              narrowed from its original 22rem — it only ever holds
-              short profile codes, and the drawing is what benefits from
-              the room. */}
-          <div className="grid min-h-0 flex-1 grid-cols-[18rem_1fr_26rem] gap-4 overflow-hidden p-4">
-            <div className="flex min-h-0 min-w-0 flex-col border-e border-border ps-1 pe-3">
-              <FieldLabel htmlFor="window-frame" required>
-                {t('fields.frameProfile')}
-              </FieldLabel>
-              <div className="mt-1.5 min-h-0 min-w-0 flex-1">
-                <ProfileTreePicker
-                  profileType={ProfileType.FRAME}
-                  value={activePanel.frameProfile || null}
-                  onChange={onFrameChange}
-                  favoriteRef={project?.favoriteFrameProfile}
-                  onSetFavorite={project ? onSetFavorite : undefined}
-                  preferredCatalogRef={isEdit ? undefined : project?.defaultSystemCatalog}
-                  preferredBrandRef={isEdit ? undefined : project?.defaultSystemBrand}
-                />
-              </div>
-              {showValidation && errors.panels && (
-                <p className="mt-1 shrink-0 text-xs text-destructive">{t('fields.frameProfileRequired')}</p>
-              )}
-            </div>
-
-            <div className="flex min-h-0 flex-col gap-1.5">
+            <div className="flex min-h-0 min-w-0 flex-col">
               {/* No Interior/Exterior toggle: the elevation is always the
                   interior view for now (`DRAWING_FACE`, 2026-09-20). */}
               <ContextMenu
@@ -1631,6 +1615,8 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   issuesByPart={issuesByPart}
                   barDrawMode={barDrawMode}
                   onExitBarDrawMode={() => setBarDrawMode(false)}
+                  barsAvailable={activePanel.headShape !== HeadShape.FLAT}
+                  onBarDrawModeChange={setBarDrawMode}
                   onAddBar={(bar) => updateActivePanel({ bars: [...activeBars, bar] })}
                   selectedBarId={selectedBarId}
                   onSelectBar={onSelectBar}
@@ -1723,7 +1709,29 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               />
             </div>
 
-            <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto border-s border-border px-3 pe-0 pb-4">
+            <aside aria-label={t('windowDialog.design.inspector')} className="flex min-h-0 min-w-0 flex-col border-s border-border bg-card">
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pt-3 pb-4">
+              {/* Frame profile — search + favourite + Browse
+                  (docs/window_editor_redesign_planing.md §4), replacing
+                  the old always-open left-column tree. */}
+              <div className="mb-4 flex flex-col gap-1.5">
+                <FieldLabel htmlFor="window-frame" required>
+                  {t('fields.frameProfile')}
+                </FieldLabel>
+                <ProfileSearchPicker
+                  id="window-frame"
+                  profileType={ProfileType.FRAME}
+                  value={activePanel.frameProfile || null}
+                  onChange={onFrameChange}
+                  favoriteRef={project?.favoriteFrameProfile}
+                  onSetFavorite={project ? onSetFavorite : undefined}
+                  preferredCatalogRef={isEdit ? undefined : project?.defaultSystemCatalog}
+                  preferredBrandRef={isEdit ? undefined : project?.defaultSystemBrand}
+                />
+                {showValidation && errors.panels && (
+                  <p className="text-xs text-destructive">{t('fields.frameProfileRequired')}</p>
+                )}
+              </div>
               {activeInfo && (
                 <WindowPartPanel
                   layout={{
@@ -1742,9 +1750,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   name={watch('name')}
                   onNameChange={(value) => setValue('name', value, { shouldValidate: true, shouldDirty: true })}
                   nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
-                  quantity={quantity}
-                  onQuantityChange={(value) => setValue('quantity', value, { shouldValidate: true, shouldDirty: true })}
-                  quantityError={showValidation && errors.quantity ? t('fields.quantityRequired') : undefined}
                   widthMm={activeRaw?.widthMm ?? NaN}
                   heightMm={activeRaw?.heightMm ?? NaN}
                   onWidthChange={(mm) => onPanelSizeChange(mm, activeRaw?.heightMm ?? mm)}
@@ -1876,16 +1881,34 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                 />
               )}
             </div>
+            {/* Save lives with the options it commits (redesign §2,
+                decision 8). No autosave — the line only reports the
+                form's own dirty state. */}
+            <div className="flex shrink-0 flex-col gap-2.5 border-t border-border p-3">
+              <span
+                className={cn(
+                  'flex items-center gap-1.5 text-xs',
+                  isEdit && !isDirty ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground',
+                )}
+              >
+                {isEdit && !isDirty && <Check className="size-3.5" aria-hidden="true" />}
+                {!isEdit
+                  ? t('windowDialog.design.saveState.new')
+                  : isDirty
+                    ? t('windowDialog.design.saveState.unsaved')
+                    : t('windowDialog.design.saveState.saved')}
+              </span>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => requestLeave(onDone)}>
+                  {t('actions.cancel')}
+                </Button>
+                <Button type="submit" className="flex-[2]" disabled={isSubmitting}>
+                  {isEdit ? t('actions.save') : t('actions.create')}
+                </Button>
+              </div>
+            </div>
+            </aside>
           </div>
-
-          <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-muted/50 p-3 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" onClick={() => requestLeave(onDone)}>
-              {t('actions.cancel')}
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isEdit ? t('actions.save') : t('actions.create')}
-            </Button>
-          </footer>
         </form>
       </div>
 

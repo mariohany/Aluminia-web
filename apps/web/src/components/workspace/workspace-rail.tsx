@@ -1,11 +1,20 @@
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Database, LayoutGrid, LogOut, Menu, Settings } from 'lucide-react'
+import { Database, LayoutGrid, LogOut, Menu, Users } from 'lucide-react'
 import { UserRole } from '@repo/types/auth'
 import { useAuth } from '@/lib/auth-context'
+import { useCompanyOverviewQuery } from '@/lib/company-queries'
 import { Button } from '@/components/ui/button'
-import { LanguageSwitcher } from '@/components/language-switcher'
-import { ThemeSwitch } from '@/components/theme-switch'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { LanguageToggle } from '@/components/language-switcher'
+import { ThemeToggle } from '@/components/theme-switch'
 import { cn } from '@/lib/utils'
 
 /**
@@ -17,6 +26,10 @@ import { cn } from '@/lib/utils'
  * Below `lg`, where the client/project tree panel is hidden, the rail
  * is the tree's only way back: `onOpenTree` (when provided) renders a
  * menu button that opens it in a Sheet.
+ *
+ * Redesign (docs/workspace_redesign_planing.md §1): brand mark on top,
+ * theme + language as single toggles, and the account behind the
+ * avatar — its menu carries the email, role, company and Log out.
  */
 export function WorkspaceRail({
   onNavigate,
@@ -28,6 +41,12 @@ export function WorkspaceRail({
   const { t } = useTranslation('workspace')
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  // Open to plain users too (CompanyController) — the company's name and
+  // plan belong in everyone's account menu.
+  const { data: company } = useCompanyOverviewQuery()
+  // Radix places by physical side and there is no DirectionProvider, so
+  // "toward the canvas" is right in English and left in Arabic.
+  const menuSide = document.documentElement.dir === 'rtl' ? 'left' : 'right'
   const { pathname } = useLocation()
 
   const handleLogout = async () => {
@@ -54,14 +73,24 @@ export function WorkspaceRail({
   // didn't line up as matching squares.
   const itemClass = (isActive: boolean) =>
     cn(
-      'flex size-14 shrink-0 flex-col items-center justify-center gap-1 rounded-lg text-[11px] font-medium',
+      'flex size-13 shrink-0 flex-col items-center justify-center gap-[3px] rounded-[10px] text-[10.5px] font-medium',
       isActive
         ? 'bg-primary text-primary-foreground'
         : 'text-muted-foreground hover:bg-accent hover:text-foreground',
     )
 
+  const roleLabel = user?.role === UserRole.COMPANY_ADMIN ? t('roles.company_admin') : t('roles.user')
+
   return (
-    <nav className="flex h-full w-17 shrink-0 flex-col items-center gap-1.5 border-e border-border bg-background py-3">
+    <nav className="flex h-full w-17 shrink-0 flex-col items-center gap-1.5 border-e border-border bg-card py-3.5">
+      {/* Same mark as the admin sidebar's brand block. */}
+      <span
+        aria-hidden="true"
+        className="mb-2.5 flex size-[34px] shrink-0 items-center justify-center rounded-[9px] bg-primary font-heading font-bold text-primary-foreground"
+      >
+        A
+      </span>
+
       {onOpenTree && (
         <Button
           variant="ghost"
@@ -80,7 +109,7 @@ export function WorkspaceRail({
         aria-current={section === 'projects' ? 'page' : undefined}
         onClick={onNavigate}
       >
-        <LayoutGrid className="size-5" aria-hidden="true" />
+        <LayoutGrid className="size-[19px]" aria-hidden="true" />
         {t('rail.projects')}
       </Link>
 
@@ -90,7 +119,7 @@ export function WorkspaceRail({
         aria-current={section === 'data' ? 'page' : undefined}
         onClick={onNavigate}
       >
-        <Database className="size-5" aria-hidden="true" />
+        <Database className="size-[19px]" aria-hidden="true" />
         {t('rail.data')}
       </Link>
 
@@ -105,23 +134,45 @@ export function WorkspaceRail({
           aria-current={section === 'manage' ? 'page' : undefined}
           onClick={onNavigate}
         >
-          <Settings className="size-5" aria-hidden="true" />
+          <Users className="size-[19px]" aria-hidden="true" />
           {t('rail.manage')}
         </Link>
       )}
 
-      <div className="mt-auto flex flex-col items-center gap-2">
-        <ThemeSwitch compact />
-        <LanguageSwitcher compact />
+      <div className="mt-auto flex flex-col items-center gap-1">
+        <ThemeToggle />
+        <LanguageToggle />
 
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t('rail.logout')}
-          onClick={() => void handleLogout()}
-        >
-          <LogOut className="size-5" aria-hidden="true" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={t('rail.account')}
+              title={user?.email}
+              className="mt-1 flex size-[34px] items-center justify-center rounded-full bg-accent text-xs font-semibold text-foreground uppercase outline-none hover:ring-2 hover:ring-border focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              {user?.email.slice(0, 2)}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side={menuSide} align="end" className="w-64">
+            <DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
+              <span className="truncate text-sm font-medium text-foreground" title={user?.email}>
+                {user?.email}
+              </span>
+              <span className="text-xs text-muted-foreground">{roleLabel}</span>
+              {company && (
+                <span className="truncate text-xs text-muted-foreground">
+                  {t('rail.companyPlan', { company: company.name, plan: company.plan })}
+                </span>
+              )}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => void handleLogout()}>
+              <LogOut className="rtl:rotate-180" aria-hidden="true" />
+              {t('rail.logout')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </nav>
   )

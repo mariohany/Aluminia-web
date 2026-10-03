@@ -55,6 +55,7 @@ import { ProfileTypePill } from '@/components/lookups/profile-type-pill'
 import { GlassCombinationSection } from '@/components/lookups/glass-combination-editor'
 import { ColorGridSection } from '@/components/lookups/color-grid-section'
 import { PaintingPricesSection } from '@/components/lookups/painting-prices-section'
+import { cn } from '@/lib/utils'
 
 // Phase 2 (docs/company_lookups_planing.md): every tab now shows the
 // platform catalogue AND this company's own rows in one merged table
@@ -79,30 +80,46 @@ export function DataPage() {
   const { t: tWorkspace } = useTranslation('workspace')
   const [tab, setTab] = useState<Tab>('systemBrands')
 
+  // Workspace redesign §4: the admin Data warehouse's header + underline
+  // tabs (no counts — the open table's own heading carries them), and
+  // the open table in a card.
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-4 md:p-6">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <h1 className="font-heading text-xl font-semibold text-foreground">{tWorkspace('dataPage.title')}</h1>
+    <div className="flex h-full min-h-0 flex-col gap-4 p-4 md:px-7 md:py-6">
+      <div className="flex shrink-0 flex-col gap-0.5">
+        <h1 className="font-heading text-[22px] font-semibold tracking-tight text-foreground">
+          {tWorkspace('dataPage.title')}
+        </h1>
+        <p className="text-sm text-muted-foreground">{tWorkspace('dataPage.subtitle')}</p>
       </div>
 
-      <div className="flex shrink-0 flex-wrap gap-1 border-b border-border pb-2">
-        {TABS.map((tabId) => (
-          <button
-            key={tabId}
-            type="button"
-            className={
-              tab === tabId
-                ? 'rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground'
-                : 'rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground'
-            }
-            onClick={() => setTab(tabId)}
-          >
-            {t(`tables.${tabId}`)}
-          </button>
-        ))}
+      <div
+        role="tablist"
+        aria-label={tWorkspace('dataPage.tablesLabel')}
+        className="flex shrink-0 gap-5 overflow-x-auto border-b border-border"
+      >
+        {TABS.map((tabId) => {
+          const on = tab === tabId
+          return (
+            <button
+              key={tabId}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => setTab(tabId)}
+              className={cn(
+                '-mb-px flex h-10 shrink-0 items-center border-b-2 px-0.5 text-[13px] whitespace-nowrap transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                on
+                  ? 'border-primary font-semibold text-foreground'
+                  : 'border-transparent font-medium text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t(`tables.${tabId}`)}
+            </button>
+          )
+        })}
       </div>
 
-      <div className="min-h-0 flex-1">
+      <div role="tabpanel" className="min-h-0 flex-1 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
         {tab === 'systemBrands' && <SystemBrandsTab />}
         {tab === 'systemCatalogs' && <SystemCatalogsTab />}
         {tab === 'systemProfiles' && <SystemProfilesTab />}

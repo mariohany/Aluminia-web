@@ -5,7 +5,6 @@ import type { ClientWithProjects } from '@repo/types/clients'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { WorkspaceRail } from '@/components/workspace/workspace-rail'
 import { ProjectTree } from '@/components/workspace/project-tree'
-import { WorkspaceToolbar } from '@/components/workspace/workspace-toolbar'
 import { PropertiesPanel } from '@/components/workspace/properties-panel'
 import { ClientDialog } from '@/components/workspace/client-dialog'
 import { ProjectDialog } from '@/components/workspace/project-dialog'
@@ -21,7 +20,7 @@ import { cn } from '@/lib/utils'
 const EMPTY_CLIENTS: ClientWithProjects[] = []
 
 const TREE_WIDTH_STORAGE_KEY = 'aluminia.workspace.treeWidth'
-const DEFAULT_TREE_WIDTH = 288 // matches the old static w-72
+const DEFAULT_TREE_WIDTH = 272 // workspace redesign §1 (was 288, the old static w-72)
 const MIN_TREE_WIDTH = 224 // 14rem — the floor it can shrink to; it never collapses to hidden
 const MAX_TREE_WIDTH = 480
 const TREE_WIDTH_STEP = 16 // px per arrow-key press when resizing via keyboard
@@ -157,13 +156,11 @@ export function WorkspaceLayout() {
   const clientMatch = useMatch('/workspace/clients/:clientId')
   const selectedClientId = clientMatch?.params.clientId
 
-  // The tree, toolbar, and properties panel all act on the Projects
-  // section — they create/edit/select clients and projects. `Manage`
-  // and `Data` each replace the tree's CONTENT area entirely rather
-  // than sitting beside it (see §3), so all three must be suppressed on
-  // both. Without this the toolbar's absolute positioning floats on top
-  // of whatever those pages render underneath — exactly what happened
-  // when Data first shipped without being added here.
+  // The tree and properties panel both act on the Projects section —
+  // they create/edit/select clients and projects. `Manage` and `Data`
+  // each replace the tree's CONTENT area entirely rather than sitting
+  // beside it (see §3), so both are suppressed there. (The canvas's
+  // floating pill lives in CanvasPage itself, so it goes with the route.)
   const { pathname } = useLocation()
   const onManage = pathname.startsWith('/workspace/manage')
   const onData = pathname.startsWith('/workspace/data')
@@ -271,7 +268,7 @@ export function WorkspaceLayout() {
 
   // What "New project" should default its client to: the client that's
   // directly selected, or — if a project is selected instead — that
-  // project's own client. Either way the toolbar button starts from
+  // project's own client. Either way the tree's New project starts from
   // wherever the user is already looking, rather than an empty picker.
   const contextClientId = selectedClientId ?? (selectedProjectId ? projectQuery.data?.clientId : undefined)
 
@@ -324,11 +321,18 @@ export function WorkspaceLayout() {
     setDeleteProjectOpen(true)
   }
 
+  const openNewClient = () => {
+    setEditingClient(undefined)
+    setClientDialogOpen(true)
+  }
+
   const tree = (onNavigate?: () => void) => (
     <ProjectTree
       clients={clients}
       isLoading={treeQuery.isLoading}
       onNavigate={onNavigate}
+      onNewClient={openNewClient}
+      onNewProject={openNewProject}
       onEditClient={(client) => {
         setEditingClient(client)
         setClientDialogOpen(true)
@@ -358,7 +362,7 @@ export function WorkspaceLayout() {
         <>
           <aside
             style={{ width: treeWidth }}
-            className="hidden shrink-0 overflow-hidden border-e border-border bg-background p-3 lg:block"
+            className="hidden shrink-0 overflow-hidden border-e border-border bg-card px-2.5 py-4 lg:block"
           >
             {tree()}
           </aside>
@@ -392,7 +396,9 @@ export function WorkspaceLayout() {
       )}
 
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side={mobileSheetSide} className="w-80 p-3">
+        {/* pt-12 clears the sheet's own close button (absolute, top end),
+            which would otherwise sit on the tree header's New project. */}
+        <SheetContent side={mobileSheetSide} className="w-80 bg-card px-2.5 pt-12 pb-4">
           <SheetHeader className="sr-only">
             <SheetTitle>{t('openMenu')}</SheetTitle>
           </SheetHeader>
@@ -403,20 +409,7 @@ export function WorkspaceLayout() {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex min-h-0 flex-1">
           <main className="relative min-w-0 flex-1 overflow-y-auto">
-            {!outsideProjectsSection && (
-              <WorkspaceToolbar
-                hasSelection={!!selectedProjectId}
-                hasProjectSelection={!!selectedProjectId}
-                onNewClient={() => {
-                  setEditingClient(undefined)
-                  setClientDialogOpen(true)
-                }}
-                onNewProject={openNewProject}
-                onNewWindow={openNewWindow}
-                onEdit={openEditProject}
-              />
-            )}
-            <Outlet context={{ openEditWindow, openDeleteWindow }} />
+            <Outlet context={{ openNewWindow, openEditWindow, openDeleteWindow }} />
           </main>
 
           {!outsideProjectsSection && (
@@ -425,7 +418,9 @@ export function WorkspaceLayout() {
                 project={selectedProjectId ? projectQuery.data : undefined}
                 isLoading={!!selectedProjectId && projectQuery.isLoading}
                 onEdit={openEditProject}
+                onEditPreferences={openEditProjectPreferences}
                 onDelete={openDeleteProject}
+                onOpenWindow={openEditWindow}
               />
             </div>
           )}

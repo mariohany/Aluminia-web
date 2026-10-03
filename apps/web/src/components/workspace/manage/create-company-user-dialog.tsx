@@ -29,9 +29,26 @@ import {
  * the super admin does that (the recovery path for a locked-out
  * company).
  */
-export function CreateCompanyUserDialog({ disabled }: { disabled?: boolean }) {
+export function CreateCompanyUserDialog({
+  disabled,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  disabled?: boolean
+  /**
+   * Optional outside control — the Manage page's free-seat slots open
+   * this same dialog (workspace redesign §5). Uncontrolled otherwise.
+   */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) {
   const { t } = useTranslation('workspace')
-  const [open, setOpen] = useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const open = controlledOpen ?? uncontrolledOpen
+  const setOpen = (next: boolean) => {
+    setUncontrolledOpen(next)
+    onOpenChange?.(next)
+  }
   const mutation = useCreateCompanyUserMutation()
 
   const {

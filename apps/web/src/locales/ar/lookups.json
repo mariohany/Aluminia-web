@@ -185,7 +185,13 @@
     "platform": "المنصة",
     "ours": "بتاعتنا",
     "columnHeader": "المصدر",
-    "copyToOurs": "انسخ لبياناتنا"
+    "copyToOurs": "انسخ لبياناتنا",
+    "oursCount_zero": "ولا واحد بتاعنا",
+    "oursCount_one": "{{count}} بتاعنا",
+    "oursCount_two": "{{count}} بتاعنا",
+    "oursCount_few": "{{count}} بتاعنا",
+    "oursCount_many": "{{count}} بتاعنا",
+    "oursCount_other": "{{count}} بتاعنا"
   },
   "rowMenu": {
     "label": "إجراءات {{name}}",

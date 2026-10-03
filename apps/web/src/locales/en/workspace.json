@@ -4,17 +4,24 @@
     "projects": "Projects",
     "data": "Data",
     "manage": "Manage",
-    "logout": "Log out"
+    "logout": "Log out",
+    "account": "Account",
+    "companyPlan": "{{company}} · {{plan}}"
+  },
+  "roles": {
+    "company_admin": "Company admin",
+    "user": "User"
   },
   "tree": {
-    "searchPlaceholder": "Search…",
+    "searchPlaceholder": "Search clients and projects",
     "loading": "Loading…",
     "empty": "No clients yet. Add one to get started.",
     "noMatches": "Nothing matches that search.",
     "noProjects": "No projects yet",
     "expand": "Expand",
     "collapse": "Collapse",
-    "resizeLabel": "Resize the client and project panel"
+    "resizeLabel": "Resize the client and project panel",
+    "clientsTitle": "Clients"
   },
   "profilePicker": {
     "searchPlaceholder": "Search brand, catalogue, or profile no…",
@@ -33,18 +40,33 @@
     "nothingSelected": "No project selected",
     "nothingSelectedHint": "Pick a project from the tree, or create your first client.",
     "noWindowsTitle": "No windows yet",
-    "noWindowsHint": "Add your first window from the toolbar above.",
+    "noWindowsHint": "Add your first window with New window above.",
     "clientSelectedHint": "Create a project for this client, or pick one from the tree.",
     "copySuffix": "copy",
     "duplicateError": "Couldn't duplicate the window. Try again.",
-    "windowHasErrors": "This window has an issue — open it to fix."
+    "windowHasErrors": "This window has an issue — open it to fix.",
+    "windowCount_one": "{{count}} window",
+    "windowCount_other": "{{count}} windows",
+    "unitCount_one": "{{count}} unit",
+    "unitCount_other": "{{count}} units",
+    "searchPlaceholder": "Search windows",
+    "noMatches": "No windows match that search.",
+    "windowActions": "Window actions",
+    "sort": {
+      "label": "Sort by",
+      "created": "Created",
+      "name": "Name",
+      "size": "Size",
+      "quantity": "Quantity"
+    }
   },
   "dataPage": {
-    "title": "Data"
+    "title": "Data",
+    "subtitle": "The platform catalogue plus your own rows. Platform rows are read-only — copy one to make it yours.",
+    "tablesLabel": "Tables"
   },
   "manage": {
     "title": "Manage",
-    "seats": "{{used}} of {{max}} seats",
     "addUser": "Add user",
     "loadError": "Couldn't load the team. Try again.",
     "fields": {
@@ -99,14 +121,27 @@
       "delete": "Delete"
     },
     "table": {
-      "email": "Email",
       "status": "Status",
       "lastActivity": "Last activity",
       "actions": "Actions",
-      "online": "Online",
       "never": "Never",
-      "empty": "No one else on your team yet."
-    }
+      "empty": "No one else on your team yet.",
+      "user": "User",
+      "role": "Role",
+      "added": "Added",
+      "onlineNow": "Online now"
+    },
+    "seatsTitle": "Seats",
+    "seatsLeft_one": "{{count}} seat left",
+    "seatsLeft_other": "{{count}} seats left",
+    "seatsFull": "No seats left",
+    "onlineNow_one": "{{count}} online now",
+    "onlineNow_other": "{{count}} online now",
+    "teamTitle": "Team",
+    "searchPlaceholder": "Search by email",
+    "noMatches": "No one matches that search.",
+    "you": "You",
+    "addUserSlot": "Add a user to this free seat"
   },
   "fields": {
     "client": "Client",
@@ -288,7 +323,8 @@
     "editClient": "Edit client",
     "editPreferences": "Preferences",
     "deleteClient": "Delete client",
-    "deleteProject": "Delete project"
+    "deleteProject": "Delete project",
+    "editDetails": "Edit details"
   },
   "clientDialog": {
     "createTitle": "New client",
@@ -472,11 +508,17 @@
     "error": "Couldn't delete the window."
   },
   "properties": {
-    "title": "Properties",
     "collapse": "Collapse properties",
     "expand": "Show properties",
     "notSet": "Not set",
     "preferencesTitle": "Preferences",
-    "unavailable": "Unavailable"
+    "unavailable": "Unavailable",
+    "details": "Details",
+    "address": "Site address",
+    "issues": "Issues",
+    "projectActions": "Project actions",
+    "openWindow": "Open this window",
+    "moreIssues_one": "(+{{count}} more)",
+    "moreIssues_other": "(+{{count}} more)"
   }
 }

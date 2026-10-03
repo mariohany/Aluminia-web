@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { NavLink, useMatch, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, Folder, PencilRuler } from 'lucide-react'
+import { ChevronDown, ChevronRight, Folder, FolderPlus, PencilRuler, Plus } from 'lucide-react'
 import type { ClientWithProjects } from '@repo/types/clients'
+import { Button } from '@/components/ui/button'
 import { SearchInput } from '@/components/ui/search-input'
 import {
   ContextMenu,
@@ -17,6 +18,9 @@ interface ProjectTreeProps {
   clients: ClientWithProjects[]
   isLoading: boolean
   onNavigate?: () => void
+  /** The header's two create buttons (docs/workspace_redesign_planing.md §1). */
+  onNewClient: () => void
+  onNewProject: () => void
   onEditClient: (client: ClientWithProjects) => void
   onDeleteClient: (client: ClientWithProjects) => void
   /**
@@ -37,11 +41,16 @@ interface ProjectTreeProps {
  *
  * Selection lives in the URL, not in state here, so a project is
  * linkable and survives a refresh. `NavLink` reads it back.
+ *
+ * Its own header carries New client / New project — they used to live
+ * on the canvas's floating toolbar (workspace redesign §1).
  */
 export function ProjectTree({
   clients,
   isLoading,
   onNavigate,
+  onNewClient,
+  onNewProject,
   onEditClient,
   onDeleteClient,
   onEditProject,
@@ -121,12 +130,34 @@ export function ProjectTree({
   // kept it in the list.
   const searching = search.trim().length > 0
 
-  if (isLoading) {
-    return <p className="p-2 text-sm text-muted-foreground">{t('tree.loading')}</p>
-  }
-
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full flex-col gap-2.5">
+      <div className="flex items-center gap-2 px-1">
+        <h2 className="text-sm font-semibold text-foreground">{t('tree.clientsTitle')}</h2>
+        {!isLoading && <span className="font-mono text-[11px] text-muted-foreground">{clients.length}</span>}
+        <span className="flex-1" />
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-7.5"
+          aria-label={t('actions.newClient')}
+          title={t('actions.newClient')}
+          onClick={onNewClient}
+        >
+          <FolderPlus className="size-4" aria-hidden="true" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-7.5"
+          aria-label={t('actions.newProject')}
+          title={t('actions.newProject')}
+          onClick={onNewProject}
+        >
+          <Plus className="size-4" aria-hidden="true" />
+        </Button>
+      </div>
+
       <SearchInput
         value={search}
         onChange={setSearch}
@@ -134,12 +165,14 @@ export function ProjectTree({
         aria-label={t('tree.searchPlaceholder')}
       />
 
-      {clients.length === 0 ? (
+      {isLoading ? (
+        <p className="px-1 py-2 text-sm text-muted-foreground">{t('tree.loading')}</p>
+      ) : clients.length === 0 ? (
         <p className="px-1 py-2 text-sm text-muted-foreground">{t('tree.empty')}</p>
       ) : filtered.length === 0 ? (
         <p className="px-1 py-2 text-sm text-muted-foreground">{t('tree.noMatches')}</p>
       ) : (
-        <ul ref={treeRef} className="-mx-1 flex-1 overflow-y-auto" role="tree">
+        <ul ref={treeRef} className="flex flex-1 flex-col gap-px overflow-y-auto" role="tree">
           {filtered.map((client) => {
             const isCollapsed = !searching && collapsed[client.id]
             const isActive = client.id === selectedClientId
@@ -166,8 +199,10 @@ export function ProjectTree({
                         NavLink. */}
                     <div
                       className={cn(
-                        'group flex items-center rounded-md',
-                        isActive ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent',
+                        'group flex h-8 items-center rounded-md',
+                        // Primary tint, not a solid fill — same selected
+                        // treatment as the admin sidebar's nav links.
+                        isActive ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-accent',
                       )}
                       // Same toggle as the chevron, just reachable from
                       // anywhere on the row — a faster way to drill in
@@ -186,7 +221,7 @@ export function ProjectTree({
                         onClick={() =>
                           setCollapsed((prev) => ({ ...prev, [client.id]: !prev[client.id] }))
                         }
-                        className="flex shrink-0 items-center rounded-md p-1.5"
+                        className="flex shrink-0 items-center rounded-md p-1.5 text-muted-foreground"
                         aria-label={isCollapsed ? t('tree.expand') : t('tree.collapse')}
                       >
                         {/* Chevron direction is a reading-order decision,
@@ -194,16 +229,16 @@ export function ProjectTree({
                             right in English and left in Arabic. RTL
                             flips it. */}
                         {isCollapsed ? (
-                          <ChevronRight className="size-4 shrink-0 rtl:rotate-180" aria-hidden="true" />
+                          <ChevronRight className="size-3.5 shrink-0 rtl:rotate-180" aria-hidden="true" />
                         ) : (
-                          <ChevronDown className="size-4 shrink-0" aria-hidden="true" />
+                          <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
                         )}
                       </button>
 
                       <NavLink
                         to={`/workspace/clients/${client.id}`}
                         onClick={onNavigate}
-                        className="flex min-w-0 flex-1 items-center gap-1.5 py-1 pe-2 text-sm font-medium"
+                        className="flex h-full min-w-0 flex-1 items-center gap-1.5 pe-2 text-[13px] font-medium"
                         data-tree-row
                         data-client-row={client.id}
                         onKeyDown={(event) => {
@@ -233,7 +268,7 @@ export function ProjectTree({
                           className={cn('size-4 shrink-0', isActive ? '' : 'text-muted-foreground')}
                           aria-hidden="true"
                         />
-                        <span className="truncate">{displayName(client, language)}</span>
+                        <span className="min-w-0 flex-1 truncate">{displayName(client, language)}</span>
                       </NavLink>
                     </div>
                   </ContextMenuTrigger>
@@ -271,9 +306,9 @@ export function ProjectTree({
                                     // ps-* is logical: indentation flips with
                                     // the writing direction rather than
                                     // needing a second rule for RTL.
-                                    'flex items-center gap-1.5 rounded-md ps-9 pe-2 py-1 text-sm',
+                                    'flex h-8 items-center gap-1.5 rounded-md ps-9 pe-2 text-[13px]',
                                     isProjectActive
-                                      ? 'bg-primary text-primary-foreground'
+                                      ? 'bg-primary/10 font-semibold text-primary'
                                       : 'text-foreground hover:bg-accent',
                                   )}
                                   data-tree-row
@@ -295,7 +330,13 @@ export function ProjectTree({
                                     }
                                   }}
                                 >
-                                  <PencilRuler className="size-4 shrink-0" aria-hidden="true" />
+                                  <PencilRuler
+                                    className={cn(
+                                      'size-3.5 shrink-0',
+                                      isProjectActive ? '' : 'text-muted-foreground',
+                                    )}
+                                    aria-hidden="true"
+                                  />
                                   <span className="truncate">{displayName(project, language)}</span>
                                 </NavLink>
                               </ContextMenuTrigger>

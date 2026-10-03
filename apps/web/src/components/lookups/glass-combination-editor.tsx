@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowDown, ArrowUp, Copy, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react'
 import {
   CombinationItemKind,
   GlassGapType,
@@ -51,6 +51,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Dialog,
   DialogContent,
@@ -188,7 +195,7 @@ export function GlassCombinationSection({
   canEdit?: (row: MergedGlassCombinationSummary) => boolean
   copyToScope?: { label: string }
 } = {}) {
-  const { t } = useTranslation('lookups')
+  const { t, i18n } = useTranslation('lookups')
   const { t: tCommon } = useTranslation('common')
   const queryClient = useQueryClient()
   const { data: combos, isLoading, isError } = useList()
@@ -334,34 +341,14 @@ export function GlassCombinationSection({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex shrink-0 items-center justify-between gap-3">
-        <h2 className="font-heading text-base font-semibold text-foreground">
-          {t('tables.glassCombinations')}
-        </h2>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            setCopySeed(null)
-            setCreateOpen(true)
-          }}
-        >
-          <Plus className="size-4" aria-hidden="true" />
-          {t('combinationEditor.createButton')}
-        </Button>
-      </div>
+      {/* The tab already names the table (Mario, 2026-10-03): kept for screen readers only. */}
+      <h2 className="sr-only">{t('tables.glassCombinations')}</h2>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <SearchInput
-          icon
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder={t('search.glassCombinations')}
-          className="w-full max-w-xs"
-        />
-
-        {someSelected && (
-          <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted/60 px-3 py-0.5">
+      {/* One toolbar row, same as LookupTableSection: search at the start,
+          Add at the end; ticking rows swaps the row for the bulk bar. */}
+      <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-2">
+        {someSelected ? (
+          <div className="flex flex-1 flex-wrap items-center gap-3 rounded-md bg-muted/60 px-3 py-0.5">
             <span className="text-sm font-medium text-foreground">
               {t('bulk.selectedCount', { count: selected.size })}
             </span>
@@ -380,11 +367,40 @@ export function GlassCombinationSection({
                 <Trash2 className="size-4" aria-hidden="true" />
                 {t('bulk.delete')}
               </Button>
-              <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
-                {t('bulk.clear')}
-              </Button>
             </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ms-auto"
+              disabled={bulkBusy}
+              onClick={() => setSelected(new Set())}
+            >
+              <X className="size-4" aria-hidden="true" />
+              {t('bulk.clear')}
+            </Button>
           </div>
+        ) : (
+          <>
+            <SearchInput
+              icon
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder={t('search.glassCombinations')}
+              className="w-full max-w-xs"
+            />
+            <Button
+              className="ms-auto"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setCopySeed(null)
+                setCreateOpen(true)
+              }}
+            >
+              <Plus className="size-4" aria-hidden="true" />
+              {t('combinationEditor.createButton')}
+            </Button>
+          </>
         )}
       </div>
 
@@ -401,7 +417,9 @@ export function GlassCombinationSection({
             <TableHead>{t('combinationEditor.items')}</TableHead>
             <TableHead>{t('combinationEditor.buildUp')}</TableHead>
             {rowScope && <TableHead className="w-24">{t('scope.columnHeader')}</TableHead>}
-            <TableHead className="w-40" />
+            <TableHead className="w-12">
+              <span className="sr-only">{t('rowMenu.actions')}</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -456,48 +474,44 @@ export function GlassCombinationSection({
                     </span>
                   </TableCell>
                 )}
-                <TableCell className="flex justify-end gap-2">
-                  {editable ? (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
-                        title={t('combinationEditor.editButton')}
-                        onClick={() => setEditTarget(combo)}
+                <TableCell className="text-end">
+                  {(editable || copyToScope) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" aria-label={t('rowMenu.label', { name: combo.name })}>
+                          <MoreHorizontal className="size-4" aria-hidden="true" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align={i18n.dir() === 'rtl' ? 'start' : 'end'}
+                        className="w-auto min-w-44 whitespace-nowrap *:data-[slot=dropdown-menu-item]:gap-2.5 *:data-[slot=dropdown-menu-item]:px-2.5 *:data-[slot=dropdown-menu-item]:py-1.5"
                       >
-                        <Pencil className="size-3.5" aria-hidden="true" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
-                        title={t('bulk.duplicate')}
-                        onClick={() => void onDuplicateRow(combo)}
-                      >
-                        <Copy className="size-3.5" aria-hidden="true" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTarget(combo)}
-                      >
-                        <Trash2 className="size-3.5" aria-hidden="true" />
-                      </Button>
-                    </>
-                  ) : (
-                    copyToScope && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
-                        title={copyToScope.label}
-                        onClick={() => onCopyToScope(combo)}
-                      >
-                        <Copy className="size-3.5" aria-hidden="true" />
-                      </Button>
-                    )
+                        {editable ? (
+                          <>
+                            <DropdownMenuItem onClick={() => setEditTarget(combo)}>
+                              <Pencil className="text-muted-foreground" aria-hidden="true" />
+                              {t('rowMenu.edit')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void onDuplicateRow(combo)}>
+                              <Copy className="text-muted-foreground" aria-hidden="true" />
+                              {t('bulk.duplicate')}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(combo)}>
+                              <Trash2 aria-hidden="true" />
+                              {t('rowMenu.delete')}
+                            </DropdownMenuItem>
+                          </>
+                        ) : (
+                          copyToScope && (
+                            <DropdownMenuItem onClick={() => onCopyToScope(combo)}>
+                              <Copy className="text-muted-foreground" aria-hidden="true" />
+                              {copyToScope.label}
+                            </DropdownMenuItem>
+                          )
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </TableCell>
               </TableRow>

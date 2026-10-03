@@ -20,7 +20,11 @@ function telHref(phone: string): string {
   return `tel:${phone.replace(/[^\d+]/g, '')}`
 }
 
-export function LeadsList() {
+/**
+ * `className` lets the dashboard size the card; the table scrolls inside
+ * it once there are more leads than fit.
+ */
+export function LeadsList({ className }: { className?: string }) {
   const { t, i18n } = useTranslation('admin')
   const { data, isLoading, isError } = useLeadsQuery()
   const markContacted = useMarkLeadContactedMutation()
@@ -33,6 +37,8 @@ export function LeadsList() {
   )
 
   const leads = data ?? []
+  // Not called yet — what the admin still has to get to.
+  const newCount = leads.filter((lead) => lead.contactedAt === null).length
   // Selection can only ever reference rows that still exist — filtered
   // on every render rather than reconciled in an effect, so a delete
   // (single-row or bulk) can never leave a stale id selected. Plain
@@ -57,14 +63,19 @@ export function LeadsList() {
   }
 
   return (
-    <Card size="sm">
+    <Card size="sm" className={cn('flex flex-col', className)}>
       <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-        <CardTitle>{t('leadsSection.title')}</CardTitle>
+        <div className="flex items-center gap-2">
+          <CardTitle>{t('leadsSection.title')}</CardTitle>
+          {newCount > 0 && (
+            <Badge className="h-5 bg-primary/10 px-2 text-[11px] text-primary">{t('leadsSection.newCount', { count: newCount })}</Badge>
+          )}
+        </div>
         {selectedIds.length > 0 && (
           <DeleteSelectedLeadsDialog ids={selectedIds} onDeleted={() => setSelected(new Set())} />
         )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-h-0 flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="h-24 animate-pulse rounded bg-muted" />
         ) : isError ? (

@@ -246,8 +246,9 @@ export function ColorGridSection({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex shrink-0 items-center justify-between gap-3">
-        <h2 className="font-heading text-base font-semibold text-foreground">{t('tables.colors')}</h2>
-        <div className="flex items-center gap-2">
+        {/* The tab already names the table (Mario, 2026-10-03): kept for screen readers only. */}
+        <h2 className="sr-only">{t('tables.colors')}</h2>
+        <div className="ms-auto flex items-center gap-2">
           {editableRows.length > 0 && (
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <Checkbox checked={allSelected} onCheckedChange={toggleAll} />

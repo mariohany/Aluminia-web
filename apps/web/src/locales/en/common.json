@@ -40,8 +40,7 @@
   "theme": {
     "switchLabel": "Theme",
     "light": "Light",
-    "dark": "Dark",
-    "system": "Match system"
+    "dark": "Dark"
   },
   "language": {
     "switchLabel": "Language",

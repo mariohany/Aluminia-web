@@ -14,7 +14,7 @@ export function AdminLayout() {
 
   return (
     <div className="flex h-svh">
-      <aside className="hidden w-64 shrink-0 border-e border-border bg-background p-4 md:flex">
+      <aside className="hidden w-61 shrink-0 border-e border-border bg-card px-3 py-4 md:flex">
         <AdminSidebarContent />
       </aside>
 

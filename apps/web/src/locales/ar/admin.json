@@ -4,21 +4,34 @@
     "companies": "الشركات",
     "users": "المستخدمون",
     "dataWarehouse": "مستودع البيانات",
-    "logs": "السجلات"
+    "logs": "السجلات",
+    "groups": {
+      "overview": "نظرة عامة",
+      "tenants": "الحسابات",
+      "catalogue": "الكتالوج",
+      "system": "النظام"
+    }
   },
   "sidebar": {
     "openMenu": "فتح القائمة",
-    "loggedInAs": "مسجل دخول بـ {{email}}",
-    "logout": "تسجيل الخروج"
+    "logout": "تسجيل الخروج",
+    "navLabel": "الإدارة",
+    "console": "لوحة الإدارة",
+    "capacity": "سعة المنصة",
+    "capacityValue": "{{used}} / {{limit}}"
   },
   "dashboardPage": {
-    "title": "لوحة التحكم",
+    "greeting": {
+      "morning": "صباح الخير",
+      "afternoon": "نهارك سعيد",
+      "evening": "مساء الخير"
+    },
+    "subtitle": "{{date}} · نظرة على المنصة النهارده",
     "error": "حصل خطأ أثناء تحميل لوحة التحكم. حاول تاني.",
     "tiles": {
       "companies": {
         "title": "الشركات",
-        "active": "نشطة",
-        "archived": "مؤرشفة"
+        "caption": "{{active}} نشطة · {{archived}} مؤرشفة"
       },
       "liveSessions": {
         "title": "جلسات متصلة الآن",
@@ -30,7 +43,8 @@
       },
       "revenue": {
         "title": "إيرادات الاشتراكات",
-        "unavailable": "غير متاح لسه — سجل الفوترة مفيهوش سعر."
+        "unavailable": "غير متاح لسه — سجل الفوترة مفيهوش سعر.",
+        "soon": "قريبًا"
       }
     },
     "chart": {
@@ -43,6 +57,61 @@
         "to": "إلى",
         "clear": "مسح"
       }
+    },
+    "activity": {
+      "title": "آخر نشاط إداري",
+      "openLogs": "فتح السجلات",
+      "empty": "لسه مفيش نشاط إداري.",
+      "error": "حصل خطأ أثناء تحميل النشاط. حاول تاني.",
+      "byline": "{{actor}} · {{date}}",
+      "removedActor": "حساب محذوف",
+      "actions": {
+        "company": {
+          "created": "أنشأ {{name}} · {{plan}}، {{maxUsers}} مقاعد",
+          "updated": "عدّل {{name}}",
+          "plan_changed": "نقل {{name}} إلى {{plan}}، {{maxUsers}} مقاعد",
+          "archived": "أرشف {{name}}",
+          "reactivated": "أعاد تفعيل {{name}}",
+          "deleted": "حذف {{name}} نهائيًا"
+        },
+        "user": {
+          "created": "أضاف {{email}}",
+          "updated": "عدّل {{email}}",
+          "deactivated": "أوقف {{email}}",
+          "reactivated": "أعاد تفعيل {{email}}",
+          "password_reset": "أعاد تعيين كلمة مرور {{email}}",
+          "session_ended": "أنهى جلسة {{email}}",
+          "deleted": "حذف {{email}} نهائيًا"
+        },
+        "lead": {
+          "deleted": "حذف العميل المحتمل {{name}}",
+          "deletedBulk_zero": "حذف {{count}} عميل محتمل",
+          "deletedBulk_one": "حذف عميل محتمل واحد",
+          "deletedBulk_two": "حذف عميلين محتملين",
+          "deletedBulk_few": "حذف {{count}} عملاء محتملين",
+          "deletedBulk_many": "حذف {{count}} عميل محتمل",
+          "deletedBulk_other": "حذف {{count}} عميل محتمل"
+        }
+      },
+      "lookup": {
+        "created": "أضاف إلى {{table}}",
+        "updated": "عدّل في {{table}}",
+        "deleted": "حذف من {{table}}",
+        "bulk_deleted_zero": "حذف {{count}} صف من {{table}}",
+        "bulk_deleted_one": "حذف صف واحد من {{table}}",
+        "bulk_deleted_two": "حذف صفين من {{table}}",
+        "bulk_deleted_few": "حذف {{count}} صفوف من {{table}}",
+        "bulk_deleted_many": "حذف {{count}} صف من {{table}}",
+        "bulk_deleted_other": "حذف {{count}} صف من {{table}}",
+        "bulk_duplicated_zero": "كرر {{count}} صف في {{table}}",
+        "bulk_duplicated_one": "كرر صف واحد في {{table}}",
+        "bulk_duplicated_two": "كرر صفين في {{table}}",
+        "bulk_duplicated_few": "كرر {{count}} صفوف في {{table}}",
+        "bulk_duplicated_many": "كرر {{count}} صف في {{table}}",
+        "bulk_duplicated_other": "كرر {{count}} صف في {{table}}",
+        "imported": "استورد {{table}} من Excel",
+        "systemsImported": "استورد الأنظمة من Excel"
+      }
     }
   },
   "logsPage": {
@@ -50,7 +119,18 @@
     "filters": {
       "from": "من",
       "to": "إلى",
-      "clear": "مسح"
+      "area": "القسم",
+      "allAreas": "كل الأقسام",
+      "areas": {
+        "company": "الشركات",
+        "user": "المستخدمون",
+        "lookup": "الكتالوج",
+        "lead": "العملاء المحتملون"
+      },
+      "allActors": "كل المشرفين",
+      "clearAll": "مسح الفلاتر",
+      "searchAudit": "ابحث بالاسم أو البريد…",
+      "searchActivity": "ابحث عن شركة…"
     },
     "tabs": {
       "activity": "النشاط",
@@ -73,11 +153,11 @@
       "table": {
         "actor": "المستخدم",
         "action": "الإجراء",
-        "target": "الهدف",
         "date": "التاريخ"
       }
     },
-    "loadingMore": "جارٍ تحميل المزيد…"
+    "loadingMore": "جارٍ تحميل المزيد…",
+    "noMatches": "لا توجد سجلات تطابق هذه الفلاتر."
   },
   "leadsSection": {
     "title": "العملاء المحتملون",
@@ -103,17 +183,24 @@
     "deleteSelectedConfirmTitle": "حذف الطلبات المحددة؟",
     "deleteSelectedConfirmDescription": "ده هيمسح {{count}} طلب نهائيًا. الإجراء ده مينفعش يتراجع فيه.",
     "deleteSelectedConfirmAction": "حذف",
-    "deleteSelectedSuccess": "تم حذف {{count}} طلب."
+    "deleteSelectedSuccess": "تم حذف {{count}} طلب.",
+    "newCount_zero": "{{count}} جديد",
+    "newCount_one": "واحد جديد",
+    "newCount_two": "اثنان جديدان",
+    "newCount_few": "{{count}} جديدة",
+    "newCount_many": "{{count}} جديد",
+    "newCount_other": "{{count}} جديد"
   },
   "companiesPage": {
     "title": "الشركات",
+    "subtitle": "{{count}} من {{limit}} · الحد الأقصى للمنصة",
     "createButton": "إنشاء شركة",
     "search": {
       "placeholder": "ابحث بالاسم…"
     },
     "filters": {
-      "allStatuses": "كل الحالات",
-      "allPlans": "كل الباقات"
+      "allPlans": "كل الباقات",
+      "all": "الكل"
     },
     "status": {
       "active": "نشطة",
@@ -126,7 +213,14 @@
       "seats": "المقاعد",
       "createdAt": "تاريخ الإنشاء",
       "empty": "لا توجد شركات بعد.",
-      "noResults": "لا توجد شركات مطابقة لبحثك."
+      "noResults": "لا توجد شركات مطابقة لبحثك.",
+      "projects": "المشاريع",
+      "actions": "الإجراءات",
+      "seatsOf": "المقاعد المستخدمة في {{name}}"
+    },
+    "rowMenu": {
+      "label": "إجراءات {{name}}",
+      "open": "فتح"
     }
   },
   "createCompany": {
@@ -149,9 +243,6 @@
   "companyDetail": {
     "back": "العودة للشركات",
     "notFound": "الشركة غير موجودة.",
-    "schemaName": "السكيمة",
-    "createdAt": "تاريخ الإنشاء",
-    "updatedAt": "آخر تحديث",
     "editSection": {
       "title": "التفاصيل",
       "save": "حفظ التغييرات",
@@ -162,22 +253,28 @@
     "billingSection": {
       "title": "سجل الفوترة",
       "empty": "لا يوجد سجل فوترة بعد.",
-      "effectiveFrom": "ساري من",
-      "notes": "ملاحظات"
+      "entry_zero": "{{plan}} · {{count}} مقعدًا",
+      "entry_one": "{{plan}} · مقعد واحد",
+      "entry_two": "{{plan}} · مقعدان",
+      "entry_few": "{{plan}} · {{count}} مقاعد",
+      "entry_many": "{{plan}} · {{count}} مقعدًا",
+      "entry_other": "{{plan}} · {{count}} مقعدًا",
+      "from": "من {{date}}",
+      "changes_zero": "{{count}} تغييرًا",
+      "changes_one": "تغيير واحد",
+      "changes_two": "تغييران",
+      "changes_few": "{{count}} تغييرات",
+      "changes_many": "{{count}} تغييرًا",
+      "changes_other": "{{count}} تغييرًا"
     },
     "usersSection": {
       "title": "المستخدمون",
       "empty": "لا يوجد مستخدمون بعد.",
       "role": "الدور",
       "status": "الحالة",
-      "roles": {
-        "company_admin": "أدمن الشركة",
-        "user": "مستخدم"
-      },
-      "userStatus": {
-        "active": "نشط",
-        "inactive": "غير نشط"
-      }
+      "add": "إضافة مستخدم",
+      "seatsUsed": "{{used}} من {{max}} مقاعد",
+      "seatLimitReached": "تم الوصول للحد الأقصى للمقاعد — زوّده من التفاصيل"
     },
     "actions": {
       "archive": "أرشفة الشركة",
@@ -198,10 +295,42 @@
       "deleteConfirmAction": "حذف نهائي",
       "deleteSuccess": "تم حذف {{name}}.",
       "error": "حصل خطأ. حاول تاني."
+    },
+    "copySchema": "نسخ اسم المخطط",
+    "schemaCopied": "تم نسخ اسم المخطط.",
+    "headerDates": "عميل منذ {{created}} · آخر تحديث {{updated}}",
+    "stats": {
+      "label": "نظرة سريعة",
+      "seats": "المقاعد",
+      "seatsValue": "{{used}} / {{max}}",
+      "projects": "المشاريع",
+      "projectsCaption": "الإجمالي",
+      "projectsArchived": "لا تُحسب أثناء الأرشفة",
+      "online": "متصل الآن",
+      "onlineCaption_zero": "من {{count}} مستخدم",
+      "onlineCaption_one": "من مستخدم واحد",
+      "onlineCaption_two": "من مستخدمين اثنين",
+      "onlineCaption_few": "من {{count}} مستخدمين",
+      "onlineCaption_many": "من {{count}} مستخدم",
+      "onlineCaption_other": "من {{count}} مستخدم",
+      "since": "عميل منذ",
+      "sinceNew": "جديد هذا الشهر",
+      "sinceMonths_zero": "{{count}} شهرًا",
+      "sinceMonths_one": "شهر واحد",
+      "sinceMonths_two": "شهران",
+      "sinceMonths_few": "{{count}} أشهر",
+      "sinceMonths_many": "{{count}} شهرًا",
+      "sinceMonths_other": "{{count}} شهرًا"
     }
   },
   "usersPage": {
     "title": "المستخدمون",
+    "subtitle_zero": "لا يوجد مستخدمون · {{online}} متصل",
+    "subtitle_one": "مستخدم واحد · {{online}} متصل",
+    "subtitle_two": "مستخدمان · {{online}} متصل",
+    "subtitle_few": "{{count}} مستخدمين · {{online}} متصل",
+    "subtitle_many": "{{count}} مستخدمًا · {{online}} متصل",
+    "subtitle_other": "{{count}} مستخدم · {{online}} متصل",
     "createButton": "إنشاء مستخدم",
     "search": {
       "placeholder": "ابحث بالبريد الإلكتروني…"
@@ -240,7 +369,8 @@
       "endSession": "إنهاء الجلسة",
       "deactivate": "إيقاف",
       "reactivate": "إعادة تنشيط",
-      "delete": "حذف نهائي"
+      "delete": "حذف",
+      "menuLabel": "إجراءات {{email}}"
     }
   },
   "createUser": {
@@ -267,7 +397,7 @@
       "company": "الشركة"
     },
     "companyMoveWarning": "نقل {{email}} لشركة تانية مش هينقل حاجة من اللي عمله — سجله هيفضل في شركته الحالية.",
-    "superAdminNoCompany": "السوبر أدمن مش تابع لأي شركة.",
+    "superAdminNoCompany": "المشرف العام تابع للمنصة وليس لأي شركة، ولا يمكن نقله إلى شركة.",
     "submit": {
       "idle": "حفظ التغييرات",
       "submitting": "جاري الحفظ…"

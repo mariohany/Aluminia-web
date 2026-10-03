@@ -4,21 +4,34 @@
     "companies": "Companies",
     "users": "Users",
     "dataWarehouse": "Data warehouse",
-    "logs": "Logs"
+    "logs": "Logs",
+    "groups": {
+      "overview": "Overview",
+      "tenants": "Tenants",
+      "catalogue": "Catalogue",
+      "system": "System"
+    }
   },
   "sidebar": {
     "openMenu": "Open menu",
-    "loggedInAs": "Logged in as {{email}}",
-    "logout": "Log out"
+    "logout": "Log out",
+    "navLabel": "Admin",
+    "console": "Admin console",
+    "capacity": "Platform capacity",
+    "capacityValue": "{{used}} / {{limit}}"
   },
   "dashboardPage": {
-    "title": "Dashboard",
+    "greeting": {
+      "morning": "Good morning",
+      "afternoon": "Good afternoon",
+      "evening": "Good evening"
+    },
+    "subtitle": "{{date}} · here’s the platform today",
     "error": "Couldn't load the dashboard. Try again.",
     "tiles": {
       "companies": {
         "title": "Companies",
-        "active": "Active",
-        "archived": "Archived"
+        "caption": "{{active}} active · {{archived}} archived"
       },
       "liveSessions": {
         "title": "Live sessions",
@@ -30,7 +43,8 @@
       },
       "revenue": {
         "title": "Subscription revenue",
-        "unavailable": "Not available yet — billing doesn't record a price."
+        "unavailable": "Not available yet — billing doesn't record a price.",
+        "soon": "Soon"
       }
     },
     "chart": {
@@ -43,6 +57,49 @@
         "to": "To",
         "clear": "Clear"
       }
+    },
+    "activity": {
+      "title": "Recent admin activity",
+      "openLogs": "Open logs",
+      "empty": "No admin activity yet.",
+      "error": "Couldn't load recent activity. Try again.",
+      "byline": "{{actor}} · {{date}}",
+      "removedActor": "A removed account",
+      "actions": {
+        "company": {
+          "created": "Created {{name}} · {{plan}}, {{maxUsers}} seats",
+          "updated": "Updated {{name}}",
+          "plan_changed": "Moved {{name}} to {{plan}}, {{maxUsers}} seats",
+          "archived": "Archived {{name}}",
+          "reactivated": "Reactivated {{name}}",
+          "deleted": "Permanently deleted {{name}}"
+        },
+        "user": {
+          "created": "Added {{email}}",
+          "updated": "Updated {{email}}",
+          "deactivated": "Deactivated {{email}}",
+          "reactivated": "Reactivated {{email}}",
+          "password_reset": "Reset the password of {{email}}",
+          "session_ended": "Ended the session of {{email}}",
+          "deleted": "Permanently deleted {{email}}"
+        },
+        "lead": {
+          "deleted": "Deleted the lead from {{name}}",
+          "deletedBulk_one": "Deleted {{count}} lead",
+          "deletedBulk_other": "Deleted {{count}} leads"
+        }
+      },
+      "lookup": {
+        "created": "Added to {{table}}",
+        "updated": "Edited in {{table}}",
+        "deleted": "Deleted from {{table}}",
+        "bulk_deleted_one": "Deleted {{count}} row from {{table}}",
+        "bulk_deleted_other": "Deleted {{count}} rows from {{table}}",
+        "bulk_duplicated_one": "Duplicated {{count}} row in {{table}}",
+        "bulk_duplicated_other": "Duplicated {{count}} rows in {{table}}",
+        "imported": "Imported {{table}} from Excel",
+        "systemsImported": "Imported systems from Excel"
+      }
     }
   },
   "logsPage": {
@@ -50,7 +107,18 @@
     "filters": {
       "from": "From",
       "to": "To",
-      "clear": "Clear"
+      "area": "Area",
+      "allAreas": "All areas",
+      "areas": {
+        "company": "Companies",
+        "user": "Users",
+        "lookup": "Catalogue",
+        "lead": "Leads"
+      },
+      "allActors": "All admins",
+      "clearAll": "Clear filters",
+      "searchAudit": "Search name or email…",
+      "searchActivity": "Search company…"
     },
     "tabs": {
       "activity": "Activity",
@@ -73,11 +141,11 @@
       "table": {
         "actor": "Actor",
         "action": "Action",
-        "target": "Target",
         "date": "Date"
       }
     },
-    "loadingMore": "Loading more…"
+    "loadingMore": "Loading more…",
+    "noMatches": "No entries match these filters."
   },
   "leadsSection": {
     "title": "Leads",
@@ -103,17 +171,20 @@
     "deleteSelectedConfirmTitle": "Delete the selected leads?",
     "deleteSelectedConfirmDescription": "This permanently removes {{count}} leads. This cannot be undone.",
     "deleteSelectedConfirmAction": "Delete",
-    "deleteSelectedSuccess": "Deleted {{count}} leads."
+    "deleteSelectedSuccess": "Deleted {{count}} leads.",
+    "newCount_one": "{{count}} new",
+    "newCount_other": "{{count}} new"
   },
   "companiesPage": {
     "title": "Companies",
+    "subtitle": "{{count}} of {{limit}} · the platform cap",
     "createButton": "Create company",
     "search": {
       "placeholder": "Search by name…"
     },
     "filters": {
-      "allStatuses": "All statuses",
-      "allPlans": "All plans"
+      "allPlans": "All plans",
+      "all": "All"
     },
     "status": {
       "active": "Active",
@@ -126,7 +197,14 @@
       "seats": "Seats",
       "createdAt": "Created",
       "empty": "No companies yet.",
-      "noResults": "No companies match your search."
+      "noResults": "No companies match your search.",
+      "projects": "Projects",
+      "actions": "Actions",
+      "seatsOf": "Seats used at {{name}}"
+    },
+    "rowMenu": {
+      "label": "Actions for {{name}}",
+      "open": "Open"
     }
   },
   "createCompany": {
@@ -149,9 +227,6 @@
   "companyDetail": {
     "back": "Back to companies",
     "notFound": "Company not found.",
-    "schemaName": "Schema",
-    "createdAt": "Created",
-    "updatedAt": "Last updated",
     "editSection": {
       "title": "Details",
       "save": "Save changes",
@@ -162,22 +237,20 @@
     "billingSection": {
       "title": "Billing history",
       "empty": "No billing history yet.",
-      "effectiveFrom": "Effective",
-      "notes": "Notes"
+      "entry_one": "{{plan}} · {{count}} seat",
+      "entry_other": "{{plan}} · {{count}} seats",
+      "from": "From {{date}}",
+      "changes_one": "{{count}} change",
+      "changes_other": "{{count}} changes"
     },
     "usersSection": {
       "title": "Users",
       "empty": "No users yet.",
       "role": "Role",
       "status": "Status",
-      "roles": {
-        "company_admin": "Company admin",
-        "user": "User"
-      },
-      "userStatus": {
-        "active": "Active",
-        "inactive": "Inactive"
-      }
+      "add": "Add user",
+      "seatsUsed": "{{used}} of {{max}} seats",
+      "seatLimitReached": "Seat limit reached — raise it in Details"
     },
     "actions": {
       "archive": "Archive company",
@@ -198,10 +271,30 @@
       "deleteConfirmAction": "Delete permanently",
       "deleteSuccess": "{{name}} deleted.",
       "error": "That didn't work. Try again."
+    },
+    "copySchema": "Copy schema name",
+    "schemaCopied": "Schema name copied.",
+    "headerDates": "Customer since {{created}} · updated {{updated}}",
+    "stats": {
+      "label": "At a glance",
+      "seats": "Seats",
+      "seatsValue": "{{used}} / {{max}}",
+      "projects": "Projects",
+      "projectsCaption": "All time",
+      "projectsArchived": "Not counted while archived",
+      "online": "Online now",
+      "onlineCaption_one": "of {{count}} user",
+      "onlineCaption_other": "of {{count}} users",
+      "since": "Customer since",
+      "sinceNew": "New this month",
+      "sinceMonths_one": "{{count}} month",
+      "sinceMonths_other": "{{count}} months"
     }
   },
   "usersPage": {
     "title": "Users",
+    "subtitle_one": "{{count}} user · {{online}} online",
+    "subtitle_other": "{{count}} users · {{online}} online",
     "createButton": "Create user",
     "search": {
       "placeholder": "Search by email…"
@@ -240,7 +333,8 @@
       "endSession": "End session",
       "deactivate": "Deactivate",
       "reactivate": "Reactivate",
-      "delete": "Delete permanently"
+      "delete": "Delete",
+      "menuLabel": "Actions for {{email}}"
     }
   },
   "createUser": {
@@ -267,7 +361,7 @@
       "company": "Company"
     },
     "companyMoveWarning": "Moving {{email}} to a different company does not move anything they created — their history stays with their current company.",
-    "superAdminNoCompany": "A super admin doesn't belong to any company.",
+    "superAdminNoCompany": "A super admin belongs to the platform, not a company, and can't be moved into one.",
     "submit": {
       "idle": "Save changes",
       "submitting": "Saving…"

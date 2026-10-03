@@ -4,6 +4,10 @@ import * as companiesApi from '@/lib/companies-api'
 
 const companiesKey = ['companies'] as const
 const companyKey = (id: string) => ['companies', id] as const
+// The dashboard tiles and the admin sidebar's Companies count / capacity
+// bar read the dashboard summary; creating, archiving, reactivating or
+// deleting a company changes those numbers.
+const dashboardKey = ['dashboard'] as const
 
 export function useCompaniesQuery() {
   return useQuery({ queryKey: companiesKey, queryFn: companiesApi.listCompanies })
@@ -19,6 +23,7 @@ export function useCreateCompanyMutation() {
     mutationFn: (input: CreateCompanyInput) => companiesApi.createCompany(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: companiesKey })
+      void queryClient.invalidateQueries({ queryKey: dashboardKey })
     },
   })
 }
@@ -40,6 +45,7 @@ export function useArchiveCompanyMutation(id: string) {
     mutationFn: () => companiesApi.archiveCompany(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: companiesKey })
+      void queryClient.invalidateQueries({ queryKey: dashboardKey })
       void queryClient.invalidateQueries({ queryKey: companyKey(id) })
     },
   })
@@ -51,6 +57,7 @@ export function useReactivateCompanyMutation(id: string) {
     mutationFn: () => companiesApi.reactivateCompany(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: companiesKey })
+      void queryClient.invalidateQueries({ queryKey: dashboardKey })
       void queryClient.invalidateQueries({ queryKey: companyKey(id) })
     },
   })
@@ -62,6 +69,7 @@ export function useDeleteCompanyMutation(id: string) {
     mutationFn: (confirmName: string) => companiesApi.deleteCompany(id, confirmName),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: companiesKey })
+      void queryClient.invalidateQueries({ queryKey: dashboardKey })
       queryClient.removeQueries({ queryKey: companyKey(id) })
     },
   })

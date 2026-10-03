@@ -1,18 +1,19 @@
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
-import { Monitor, Moon, Sun } from 'lucide-react'
+import { Moon, Sun } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const THEMES = [
   { value: 'light', Icon: Sun },
   { value: 'dark', Icon: Moon },
-  { value: 'system', Icon: Monitor },
 ] as const
 
 /**
- * Light / Dark / System, stored per browser by next-themes (key
- * `aluminia.theme`, see main.tsx) — Mario, 2026-10-02: app-wide dark
- * mode, defaulting to whatever the computer uses. Same segmented look
+ * Light / Dark, stored per browser by next-themes (key `aluminia.theme`,
+ * see main.tsx) — Mario, 2026-10-02: app-wide dark mode. Until the user
+ * picks one the theme stays "system" and follows the computer; the
+ * button matching what the computer is using shows as selected
+ * (Mario, 2026-10-03: no separate System button). Same segmented look
  * and `compact` variant as `LanguageSwitcher`, so the two sit together
  * in the workspace rail and the admin sidebar.
  */
@@ -20,7 +21,9 @@ export function ThemeSwitch({ className, compact = false }: { className?: string
   const { t } = useTranslation()
   // A client-only SPA: next-themes reads the stored choice synchronously,
   // so `theme` is already right on the first render (no mount guard).
-  const { theme, setTheme } = useTheme()
+  const { theme, resolvedTheme, setTheme } = useTheme()
+  // "system" (no choice made yet) highlights whichever theme it resolves to.
+  const current = theme === 'system' ? resolvedTheme : theme
 
   return (
     <div
@@ -33,7 +36,7 @@ export function ThemeSwitch({ className, compact = false }: { className?: string
       )}
     >
       {THEMES.map(({ value, Icon }) => {
-        const isActive = theme === value
+        const isActive = current === value
         return (
           <button
             key={value}

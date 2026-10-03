@@ -51,6 +51,7 @@ import {
   useMergedSystemProfilesQuery,
 } from '@/lib/lookup-merge'
 import { LookupTableSection } from '@/components/lookups/lookup-table-section'
+import { ProfileTypePill } from '@/components/lookups/profile-type-pill'
 import { GlassCombinationSection } from '@/components/lookups/glass-combination-editor'
 import { ColorGridSection } from '@/components/lookups/color-grid-section'
 import { PaintingPricesSection } from '@/components/lookups/painting-prices-section'
@@ -406,7 +407,7 @@ function SystemProfilesTab() {
         { header: t('fields.profileNo'), cell: (row) => row.profileNo },
         {
           header: t('fields.profileType'),
-          cell: (row) => t(`profileType.${row.profileType}`),
+          cell: (row) => <ProfileTypePill type={row.profileType} />,
         },
         { header: t('fields.maxGlassThickness'), cell: (row) => row.maxGlassThickness },
         { header: t('fields.weight'), cell: (row) => row.weight.toFixed(2) },

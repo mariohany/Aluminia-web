@@ -40,8 +40,7 @@
   "theme": {
     "switchLabel": "المظهر",
     "light": "فاتح",
-    "dark": "داكن",
-    "system": "حسب النظام"
+    "dark": "داكن"
   },
   "language": {
     "switchLabel": "اللغة",

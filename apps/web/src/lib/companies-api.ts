@@ -1,13 +1,14 @@
 import type {
   CompanyDetail,
+  CompanyListItem,
   CompanySummary,
   CreateCompanyInput,
   UpdateCompanyInput,
 } from '@repo/types/companies'
 import { apiFetch } from '@/lib/api-client'
 
-export function listCompanies(): Promise<CompanySummary[]> {
-  return apiFetch<CompanySummary[]>('/admin/companies')
+export function listCompanies(): Promise<CompanyListItem[]> {
+  return apiFetch<CompanyListItem[]>('/admin/companies')
 }
 
 export function getCompany(id: string): Promise<CompanyDetail> {

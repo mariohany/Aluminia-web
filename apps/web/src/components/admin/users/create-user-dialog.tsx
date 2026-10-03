@@ -29,7 +29,19 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 
-export function CreateUserDialog() {
+/**
+ * The super admin's create-user form. On the Users page it picks the
+ * company; on a company's page pass `company` to lock it to that one (the
+ * button then reads "Add user"), and `disabledReason` to disable the
+ * button with that explanation — the seat limit.
+ */
+export function CreateUserDialog({
+  company,
+  disabledReason,
+}: {
+  company?: { id: string; name: string }
+  disabledReason?: string
+} = {}) {
   const { t } = useTranslation('admin')
   const [open, setOpen] = useState(false)
   const mutation = useCreateUserMutation()
@@ -43,7 +55,7 @@ export function CreateUserDialog() {
     formState: { errors, isSubmitting },
   } = useForm<CreateUserInput>({
     resolver: zodResolver(createUserSchema),
-    defaultValues: { email: '', password: '', role: 'user', companyId: '' },
+    defaultValues: { email: '', password: '', role: 'user', companyId: company?.id ?? '' },
   })
 
   const onSubmit = async (data: CreateUserInput) => {
@@ -65,12 +77,35 @@ export function CreateUserDialog() {
         if (!next) reset()
       }}
     >
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="size-4" aria-hidden="true" />
-          {t('usersPage.createButton')}
-        </Button>
-      </DialogTrigger>
+      {company ? (
+        // A disabled button fires no hover events, so the reason sits on a
+        // wrapper (native tooltip) and is also read out via aria-describedby.
+        <span title={disabledReason} className="inline-flex">
+          <DialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!!disabledReason}
+              aria-describedby={disabledReason ? 'add-user-disabled-reason' : undefined}
+            >
+              <Plus className="size-4" aria-hidden="true" />
+              {t('companyDetail.usersSection.add')}
+            </Button>
+          </DialogTrigger>
+          {disabledReason && (
+            <span id="add-user-disabled-reason" className="sr-only">
+              {disabledReason}
+            </span>
+          )}
+        </span>
+      ) : (
+        <DialogTrigger asChild>
+          <Button size="sm">
+            <Plus className="size-4" aria-hidden="true" />
+            {t('usersPage.createButton')}
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent>
         <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate className="flex flex-col gap-4">
           <DialogHeader>
@@ -125,24 +160,28 @@ export function CreateUserDialog() {
 
             <div>
               <Label htmlFor="user-company">{t('createUser.fields.company')}</Label>
-              <Controller
-                control={control}
-                name="companyId"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger id="user-company" className="mt-1.5 w-full" aria-invalid={!!errors.companyId}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(companies ?? []).map((company) => (
-                        <SelectItem key={company.id} value={company.id}>
-                          {company.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
+              {company ? (
+                <Input id="user-company" className="mt-1.5" value={company.name} readOnly disabled />
+              ) : (
+                <Controller
+                  control={control}
+                  name="companyId"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id="user-company" className="mt-1.5 w-full" aria-invalid={!!errors.companyId}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(companies ?? []).map((company) => (
+                          <SelectItem key={company.id} value={company.id}>
+                            {company.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              )}
               {errors.companyId && <p className="mt-1 text-xs text-destructive">{errors.companyId.message}</p>}
             </div>
           </div>

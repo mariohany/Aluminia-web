@@ -19,16 +19,31 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 
+/**
+ * Type-the-name permanent delete, with its own button. Pass `open` /
+ * `onOpenChange` to drive it from elsewhere (the Companies page's row
+ * menu) — then no button is rendered.
+ */
 export function DeleteCompanyDialog({
   company,
   onDeleted,
+  open: openProp,
+  onOpenChange,
 }: {
   company: CompanySummary
   onDeleted: () => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
   const { t } = useTranslation('admin')
   const { t: tCommon } = useTranslation('common')
-  const [open, setOpen] = useState(false)
+  const [openState, setOpenState] = useState(false)
+  const controlled = openProp !== undefined
+  const open = controlled ? openProp : openState
+  const setOpen = (next: boolean) => {
+    if (controlled) onOpenChange?.(next)
+    else setOpenState(next)
+  }
   const [confirmName, setConfirmName] = useState('')
   const mutation = useDeleteCompanyMutation(company.id)
 
@@ -53,11 +68,13 @@ export function DeleteCompanyDialog({
         if (!next) setConfirmName('')
       }}
     >
-      <AlertDialogTrigger asChild>
-        <Button variant="destructive" size="sm">
-          {t('companyDetail.actions.delete')}
-        </Button>
-      </AlertDialogTrigger>
+      {!controlled && (
+        <AlertDialogTrigger asChild>
+          <Button variant="destructive" size="sm">
+            {t('companyDetail.actions.delete')}
+          </Button>
+        </AlertDialogTrigger>
+      )}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t('companyDetail.actions.deleteConfirmTitle', { name: company.name })}</AlertDialogTitle>

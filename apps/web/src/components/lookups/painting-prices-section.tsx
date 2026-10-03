@@ -75,6 +75,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { ScopeSummary } from '@/components/lookups/scope-summary'
 
 function usePlatformPaintBrandsQuery(): {
   data: MergedPaintBrandSummary[] | undefined
@@ -307,7 +308,13 @@ export function PaintingPricesSection({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       {/* The tab already names the table (Mario, 2026-10-03): kept for screen readers only. */}
-      <h2 className="sr-only">{t('tables.paintingPrices')}</h2>
+      {/* Company Data page only: name + "N · M ours", counted on the price
+          rows (workspace redesign §4). */}
+      {rowScope ? (
+        <ScopeSummary title={t('tables.paintingPrices')} rows={prices ?? []} rowScope={rowScope} />
+      ) : (
+        <h2 className="sr-only">{t('tables.paintingPrices')}</h2>
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <div className="flex min-h-0 flex-col gap-3 lg:w-72 lg:shrink-0">
@@ -323,7 +330,8 @@ export function PaintingPricesSection({
               }}
             >
               <DialogTrigger asChild>
-                <Button size="sm" variant="outline">
+                {/* Primary on the company Data page (Mario, 2026-10-04, matching the design); admin keeps outline. */}
+                <Button size="sm" variant={rowScope ? 'default' : 'outline'}>
                   <Plus className="size-4" aria-hidden="true" />
                   {t('createButtons.paintBrand')}
                 </Button>
@@ -469,7 +477,7 @@ export function PaintingPricesSection({
             </h3>
             <Button
               size="sm"
-              variant="outline"
+              variant={rowScope ? 'default' : 'outline'}
               disabled={!selectedBrand}
               onClick={() => {
                 if (!selectedBrand) return

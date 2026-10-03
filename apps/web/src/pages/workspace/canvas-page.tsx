@@ -1,21 +1,68 @@
+import { useMemo, useState } from 'react'
 import { useParams, useOutletContext } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { AppWindow, Copy, DoorOpen, Fan, Folder, Pencil, Trash2, TriangleAlert } from 'lucide-react'
+import {
+  AppWindow,
+  ArrowUpDown,
+  Copy,
+  DoorOpen,
+  Fan,
+  Folder,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  TriangleAlert,
+} from 'lucide-react'
 import { GlassKind } from '@repo/types/windows'
 import type { WindowSummary } from '@repo/types/windows'
 import { WindowThumbnail } from '@/components/workspace/window-thumbnail'
 import { useClientTreeQuery } from '@/lib/clients-queries'
+import { useProjectQuery } from '@/lib/projects-queries'
 import { useDuplicateWindowMutation, useWindowsQuery } from '@/lib/windows-queries'
 import { useMergedGlassCombinationsQuery, useMergedGlassQuery, useMergedSystemProfilesQuery } from '@/lib/lookup-merge'
 import { useWindowIssues } from '@/lib/window-render'
 import { displayName } from '@/lib/bilingual'
 import { apiErrorMessage } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
+import { SearchInput } from '@/components/ui/search-input'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface CanvasOutletContext {
+  openNewWindow: () => void
   openEditWindow: (id: string) => void
   openDeleteWindow: (id: string, name: string) => void
+}
+
+// Workspace redesign §2 (Mario, 2026-10-04): "created" is the API's own
+// order, i.e. no sort at all. Not remembered across reloads.
+const SORT_KEYS = ['created', 'name', 'size', 'quantity'] as const
+type SortKey = (typeof SORT_KEYS)[number]
+
+function sortWindows(windows: WindowSummary[], key: SortKey, locale: string): WindowSummary[] {
+  if (key === 'created') return windows
+  const sorted = [...windows]
+  if (key === 'name') {
+    const collator = new Intl.Collator(locale, { numeric: true, sensitivity: 'base' })
+    sorted.sort((a, b) => collator.compare(a.name, b.name))
+  } else if (key === 'size') {
+    // Largest first — the big openings are usually the ones being checked.
+    sorted.sort((a, b) => b.widthMm * b.heightMm - a.widthMm * a.heightMm)
+  } else {
+    sorted.sort((a, b) => b.quantity - a.quantity)
+  }
+  return sorted
 }
 
 /**
@@ -40,17 +87,33 @@ export function CanvasPage() {
   const { t, i18n } = useTranslation('workspace')
   const { projectId, clientId } = useParams()
   const language = i18n.resolvedLanguage ?? 'en'
-  const { openEditWindow, openDeleteWindow } = useOutletContext<CanvasOutletContext>()
+  const { openNewWindow, openEditWindow, openDeleteWindow } = useOutletContext<CanvasOutletContext>()
 
   // Same query key as the tree in WorkspaceLayout, so this reads the
   // existing cache rather than firing a second network request — just
   // enough to show the selected client's own name here.
   const treeQuery = useClientTreeQuery()
   const selectedClient = clientId ? treeQuery.data?.find((c) => c.id === clientId) : undefined
+  // Same cache the layout's properties panel already reads.
+  const projectQuery = useProjectQuery(projectId)
+  const project = projectQuery.data
+  const projectClient = project ? treeQuery.data?.find((c) => c.id === project.clientId) : undefined
 
   const windowsQuery = useWindowsQuery(projectId)
-  const windows = windowsQuery.data ?? []
+  const windows = useMemo(() => windowsQuery.data ?? [], [windowsQuery.data])
   const hasWindows = !windowsQuery.isLoading && windows.length > 0
+  const units = windows.reduce((sum, w) => sum + w.quantity, 0)
+
+  // Search + sort (workspace redesign §2): client-side, over the list
+  // the board already has.
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState<SortKey>('created')
+  const visibleWindows = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    const matching = term ? windows.filter((w) => w.name.toLowerCase().includes(term)) : windows
+    return sortWindows(matching, sortKey, language)
+  }, [windows, search, sortKey, language])
 
   const duplicateMutation = useDuplicateWindowMutation(projectId ?? '')
   const onDuplicate = (id: string) => {
@@ -101,16 +164,99 @@ export function CanvasPage() {
           : { backgroundColor: 'var(--board)' }
       }
     >
+      {projectId && project && (
+        // Top-start label: which client and project the board shows, and
+        // how much is on it. Units = every window's quantity summed.
+        <div className="absolute start-6 top-5 z-10 flex flex-col leading-snug">
+          {projectClient && (
+            <span className="text-xs text-muted-foreground">{displayName(projectClient, language)}</span>
+          )}
+          <span className="text-base font-semibold text-foreground">{displayName(project, language)}</span>
+          {hasWindows && (
+            <span className="text-xs text-muted-foreground">
+              {t('canvas.windowCount', { count: windows.length })} · {t('canvas.unitCount', { count: units })}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* The floating pill — the window editor's tool-pill treatment.
+          Replaces the old four-icon toolbar: New client / New project
+          moved to the tree header, Edit to the properties panel. */}
+      <div className="absolute start-1/2 top-3.5 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-[10px] border border-border bg-card p-1 shadow-lg rtl:translate-x-1/2">
+        <Button size="sm" className="h-8" disabled={!projectId} onClick={openNewWindow}>
+          <Plus className="size-4" aria-hidden="true" />
+          {t('actions.newWindow')}
+        </Button>
+        {hasWindows && (
+          <>
+            <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+            {searchOpen || search ? (
+              <SearchInput
+                icon
+                autoFocus
+                value={search}
+                onChange={setSearch}
+                placeholder={t('canvas.searchPlaceholder')}
+                aria-label={t('canvas.searchPlaceholder')}
+                className="w-52 [&_input]:h-8"
+                onBlur={() => setSearchOpen(false)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    setSearch('')
+                    setSearchOpen(false)
+                  }
+                }}
+              />
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t('canvas.searchPlaceholder')}
+                title={t('canvas.searchPlaceholder')}
+                onClick={() => setSearchOpen(true)}
+              >
+                <Search className="size-4" aria-hidden="true" />
+              </Button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('canvas.sort.label')}
+                  title={t('canvas.sort.label')}
+                  className={sortKey !== 'created' ? 'text-primary' : undefined}
+                >
+                  <ArrowUpDown className="size-4" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuLabel>{t('canvas.sort.label')}</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+                  {SORT_KEYS.map((key) => (
+                    <DropdownMenuRadioItem key={key} value={key}>
+                      {t(`canvas.sort.${key}`)}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
+      </div>
+
       {projectId && hasWindows ? (
-        // `pt-20` (not `p-6` on top) clears the floating toolbar
-        // (`WorkspaceToolbar`, `absolute top-0`) — otherwise the first
-        // row of cards renders directly under it.
+        visibleWindows.length === 0 ? (
+          <p className="px-6 pt-28 text-sm text-muted-foreground">{t('canvas.noMatches')}</p>
+        ) : (
+        // `pt-24` clears the label and the floating pill above the grid.
         //
         // auto-fill rather than a fixed column count: cards stay compact
         // at any canvas width instead of each stretching to a third of
         // the screen, and more of them fit on one view.
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3 px-6 pt-20 pb-6">
-          {windows.map((w) => (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-3.5 px-6 pt-24 pb-6">
+          {visibleWindows.map((w) => (
             <WindowCard
               key={w.id}
               window={w}
@@ -120,6 +266,7 @@ export function CanvasPage() {
             />
           ))}
         </div>
+        )
       ) : (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
           <div className="max-w-sm rounded-xl border border-border bg-card/90 p-6 text-center shadow-sm">
@@ -162,61 +309,82 @@ function WindowCard({
   const hasErrors = useWindowIssues(w.panels).length > 0
 
   return (
-    <div className="pointer-events-auto relative flex flex-col overflow-hidden rounded-xl border border-border bg-card/95 shadow-sm backdrop-blur">
+    // Double-click opens the editor (Mario, 2026-10-04 — a single click
+    // does nothing, so the ⋯ menu can't open it by accident). Focusable
+    // with Enter as the keyboard equivalent, so it isn't mouse-only.
+    <article
+      tabIndex={0}
+      aria-label={w.name}
+      onDoubleClick={onEdit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && event.target === event.currentTarget) {
+          event.preventDefault()
+          onEdit()
+        }
+      }}
+      className="relative flex cursor-default flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs transition-shadow outline-none select-none hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
+    >
       {hasErrors && (
         <div
-          className="absolute end-1.5 top-1.5 z-10 flex size-4 items-center justify-center rounded-full bg-destructive text-white shadow-sm"
+          className="absolute end-2 top-2 z-10 flex size-5 items-center justify-center rounded-full bg-destructive text-white"
           title={t('canvas.windowHasErrors')}
         >
-          <TriangleAlert className="size-2.5" aria-hidden="true" />
+          <TriangleAlert className="size-3" aria-hidden="true" />
         </div>
       )}
       {/* The elevation leads — it says what this window IS faster than
           the three lines under it do. Fixed height so a grid of cards
           stays on a rhythm regardless of each window's proportions; the
           SVG letterboxes itself inside. */}
-      <div className="flex h-40 items-center justify-center border-b border-border bg-muted/30 p-2">
+      <div className="flex h-38 items-center justify-center border-b border-border bg-muted/40 p-2">
         <WindowThumbnail panels={w.panels} className="h-full w-full" />
       </div>
 
-      <div className="flex flex-col gap-1 p-3">
-        {/* Name and the actions share the top line; the detail lines run
-            the card's full width underneath. At this column width there
-            isn't room for three buttons alongside four lines of text —
-            "1400 × 1600 mm · ×1" wraps the moment it has to share. */}
-        <div className="flex items-start justify-between gap-1">
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{w.name}</p>
-          <div className="-me-1 -mt-1 flex shrink-0">
-            <Button variant="ghost" size="icon" className="size-6" aria-label={t('actions.edit')} onClick={onEdit}>
-              <Pencil className="size-3" aria-hidden="true" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-6"
-              aria-label={t('actions.duplicate')}
-              title={t('actions.duplicate')}
-              onClick={onDuplicate}
-            >
-              <Copy className="size-3" aria-hidden="true" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-6 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              aria-label={t('actions.delete')}
-              onClick={onDelete}
-            >
-              <Trash2 className="size-3" aria-hidden="true" />
-            </Button>
-          </div>
+      <div className="flex flex-col gap-[3px] px-3 pt-2.5 pb-3">
+        {/* Name and the ⋯ menu share the top line; the detail lines run
+            the card's full width underneath. */}
+        <div className="flex items-center gap-1.5">
+          <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">{w.name}</p>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="-me-1.5 size-6 shrink-0"
+                aria-label={t('canvas.windowActions')}
+                title={t('canvas.windowActions')}
+                // The card's own double-click must not fire from here.
+                onDoubleClick={(event) => event.stopPropagation()}
+              >
+                <MoreHorizontal className="size-4" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onEdit}>
+                <Pencil aria-hidden="true" />
+                {t('actions.edit')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onDuplicate}>
+                <Copy aria-hidden="true" />
+                {t('actions.duplicate')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+                <Trash2 aria-hidden="true" />
+                {t('actions.delete')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        <p className="truncate text-xs text-muted-foreground" dir="ltr">
+        <p className="truncate font-mono text-[11.5px] text-muted-foreground" dir="ltr">
           {w.widthMm} × {w.heightMm} mm · ×{w.quantity}
         </p>
-        {frame && <p className="truncate text-xs text-muted-foreground">{frame.profileNo}</p>}
-        {glassName && <p className="truncate text-xs text-muted-foreground">{glassName}</p>}
+        {(frame || glassName) && (
+          <p className="truncate text-[11.5px] text-muted-foreground">
+            {[frame?.profileNo, glassName].filter(Boolean).join(' · ')}
+          </p>
+        )}
         {/* No panel-count chip: the drawing above already shows how many
             panels there are, and a number repeating the picture is
             noise. Door/fly-screen stay because they're the FIRST panel's
@@ -224,13 +392,13 @@ function WindowCard({
         {(w.isDoor || w.hasFlyScreen) && (
           <div className="mt-0.5 flex flex-wrap gap-1">
             {w.isDoor && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                 <DoorOpen className="size-3" aria-hidden="true" />
                 {t('fields.isDoor')}
               </span>
             )}
             {w.hasFlyScreen && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                 <Fan className="size-3" aria-hidden="true" />
                 {t('fields.hasFlyScreen')}
               </span>
@@ -238,6 +406,6 @@ function WindowCard({
           </div>
         )}
       </div>
-    </div>
+    </article>
   )
 }

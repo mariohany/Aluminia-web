@@ -75,6 +75,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { ScopeSummary } from '@/components/lookups/scope-summary'
 
 type DraftItem =
   | { kind: 'sheet'; glass: ScopedRef | ''; color: ScopedRef | null }
@@ -342,7 +343,7 @@ export function GlassCombinationSection({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       {/* The tab already names the table (Mario, 2026-10-03): kept for screen readers only. */}
-      <h2 className="sr-only">{t('tables.glassCombinations')}</h2>
+      {!rowScope && <h2 className="sr-only">{t('tables.glassCombinations')}</h2>}
 
       {/* One toolbar row, same as LookupTableSection: search at the start,
           Add at the end; ticking rows swaps the row for the bulk bar. */}
@@ -381,6 +382,9 @@ export function GlassCombinationSection({
           </div>
         ) : (
           <>
+            {rowScope && (
+              <ScopeSummary title={t('tables.glassCombinations')} rows={combos ?? []} rowScope={rowScope} />
+            )}
             <SearchInput
               icon
               value={searchQuery}
@@ -391,7 +395,7 @@ export function GlassCombinationSection({
             <Button
               className="ms-auto"
               size="sm"
-              variant="outline"
+              variant={rowScope ? 'default' : 'outline'}
               onClick={() => {
                 setCopySeed(null)
                 setCreateOpen(true)

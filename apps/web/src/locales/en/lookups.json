@@ -185,7 +185,9 @@
     "platform": "Platform",
     "ours": "Ours",
     "columnHeader": "Origin",
-    "copyToOurs": "Copy to our data"
+    "copyToOurs": "Copy to our data",
+    "oursCount_one": "{{count}} ours",
+    "oursCount_other": "{{count}} ours"
   },
   "rowMenu": {
     "label": "Actions for {{name}}",

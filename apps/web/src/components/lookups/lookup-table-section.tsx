@@ -53,6 +53,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { ScopeSummary, ScopeToggle, type ScopeFilterValue } from '@/components/lookups/scope-summary'
 
 export interface LookupFieldSpec<TInput extends FieldValues> {
   name: Path<TInput>
@@ -215,7 +216,7 @@ export function LookupTableSection<
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterValues, setFilterValues] = useState<Record<string, string>>({})
-  const [scopeFilter, setScopeFilter] = useState<'__all' | LookupRowScope>('__all')
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilterValue>('__all')
 
   const createMutation = useCreate()
   const updateMutation = useUpdate(editTarget?.id ?? '')
@@ -366,8 +367,10 @@ export function LookupTableSection<
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      {/* The tab already names the table (Mario, 2026-10-03): kept for screen readers only. */}
-      <h2 className="sr-only">{title}</h2>
+      {/* The admin tab already names the table (Mario, 2026-10-03): kept
+          for screen readers only. The company Data page (`rowScope`) shows
+          it visibly with its counts instead — workspace redesign §4. */}
+      {!rowScope && <h2 className="sr-only">{title}</h2>}
 
       {/* One toolbar row (Mario, 2026-10-03): search + filters at the start,
           the table's own actions at the end. Ticking rows swaps the whole
@@ -407,6 +410,7 @@ export function LookupTableSection<
           </div>
         ) : (
           <>
+            {rowScope && <ScopeSummary title={title} rows={rows} rowScope={rowScope} />}
             {search && (
               <SearchInput
                 icon
@@ -416,18 +420,7 @@ export function LookupTableSection<
                 className="w-full max-w-xs"
               />
             )}
-            {rowScope && (
-              <Select value={scopeFilter} onValueChange={(v) => setScopeFilter(v as typeof scopeFilter)}>
-                <SelectTrigger className="w-36">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all">{t('scope.all')}</SelectItem>
-                  <SelectItem value="platform">{t('scope.platform')}</SelectItem>
-                  <SelectItem value="company">{t('scope.ours')}</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
+            {rowScope && <ScopeToggle value={scopeFilter} onChange={setScopeFilter} />}
             {filters?.map((filter) => (
               <Select
                 key={filter.key}
@@ -458,7 +451,8 @@ export function LookupTableSection<
                 }}
               >
                 <DialogTrigger asChild>
-                  <Button size="sm" variant="outline">
+                  {/* Primary on the company Data page (Mario, 2026-10-04, matching the design); admin keeps outline. */}
+                  <Button size="sm" variant={rowScope ? 'default' : 'outline'}>
                     <Plus className="size-4" aria-hidden="true" />
                     {createLabel}
                   </Button>

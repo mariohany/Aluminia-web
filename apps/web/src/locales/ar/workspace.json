@@ -4,17 +4,24 @@
     "projects": "المشاريع",
     "data": "البيانات",
     "manage": "الإدارة",
-    "logout": "تسجيل الخروج"
+    "logout": "تسجيل الخروج",
+    "account": "الحساب",
+    "companyPlan": "{{company}} · {{plan}}"
+  },
+  "roles": {
+    "company_admin": "أدمن الشركة",
+    "user": "مستخدم"
   },
   "tree": {
-    "searchPlaceholder": "بحث…",
+    "searchPlaceholder": "دور على عميل أو مشروع…",
     "loading": "جارٍ التحميل…",
     "empty": "لا يوجد عملاء بعد. أضف عميلاً للبدء.",
     "noMatches": "لا توجد نتائج مطابقة.",
     "noProjects": "لا توجد مشاريع بعد",
     "expand": "توسيع",
     "collapse": "طيّ",
-    "resizeLabel": "تغيير حجم لوحة العملاء والمشاريع"
+    "resizeLabel": "تغيير حجم لوحة العملاء والمشاريع",
+    "clientsTitle": "العملاء"
   },
   "profilePicker": {
     "searchPlaceholder": "دور على ماركة أو كتالوج أو رقم بروفايل…",
@@ -37,18 +44,41 @@
     "nothingSelected": "لم يتم اختيار مشروع",
     "nothingSelectedHint": "اختر مشروعاً من الشجرة، أو أنشئ أول عميل لك.",
     "noWindowsTitle": "لا توجد شبابيك بعد",
-    "noWindowsHint": "أضف أول شباك من شريط الأدوات في الأعلى.",
+    "noWindowsHint": "أضف أول شباك من زر «شباك جديد» في الأعلى.",
     "clientSelectedHint": "أنشئ مشروعاً لهذا العميل، أو اختر مشروعاً من الشجرة.",
     "copySuffix": "نسخة",
     "duplicateError": "تعذّر تكرار الشباك. حاول مرة أخرى.",
-    "windowHasErrors": "هذا الشباك به مشكلة — افتحه لإصلاحها."
+    "windowHasErrors": "هذا الشباك به مشكلة — افتحه لإصلاحها.",
+    "windowCount_zero": "لا شبابيك",
+    "windowCount_one": "شباك واحد",
+    "windowCount_two": "شباكان",
+    "windowCount_few": "{{count}} شبابيك",
+    "windowCount_many": "{{count}} شباكًا",
+    "windowCount_other": "{{count}} شباك",
+    "unitCount_zero": "لا وحدات",
+    "unitCount_one": "وحدة واحدة",
+    "unitCount_two": "وحدتان",
+    "unitCount_few": "{{count}} وحدات",
+    "unitCount_many": "{{count}} وحدة",
+    "unitCount_other": "{{count}} وحدة",
+    "searchPlaceholder": "دور على شباك",
+    "noMatches": "مفيش شبابيك مطابقة للبحث.",
+    "windowActions": "إجراءات الشباك",
+    "sort": {
+      "label": "ترتيب حسب",
+      "created": "تاريخ الإنشاء",
+      "name": "الاسم",
+      "size": "المقاس",
+      "quantity": "الكمية"
+    }
   },
   "dataPage": {
-    "title": "البيانات"
+    "title": "البيانات",
+    "subtitle": "كتالوج المنصة ومعاه البيانات بتاعتنا. صفوف المنصة للقراءة بس — انسخ صف عشان يبقى بتاعنا.",
+    "tablesLabel": "الجداول"
   },
   "manage": {
     "title": "الإدارة",
-    "seats": "{{used}} من {{max}} مقاعد",
     "addUser": "إضافة مستخدم",
     "loadError": "تعذّر تحميل الفريق. حاول مرة أخرى.",
     "fields": {
@@ -103,14 +133,35 @@
       "delete": "حذف"
     },
     "table": {
-      "email": "البريد الإلكتروني",
       "status": "الحالة",
       "lastActivity": "آخر نشاط",
       "actions": "إجراءات",
-      "online": "متصل الآن",
       "never": "أبداً",
-      "empty": "لا يوجد أحد آخر في فريقك بعد."
-    }
+      "empty": "لا يوجد أحد آخر في فريقك بعد.",
+      "user": "المستخدم",
+      "role": "الدور",
+      "added": "اتضاف",
+      "onlineNow": "متصل دلوقتي"
+    },
+    "seatsTitle": "المقاعد",
+    "seatsLeft_zero": "مفيش مقاعد فاضية",
+    "seatsLeft_one": "مقعد واحد فاضي",
+    "seatsLeft_two": "مقعدين فاضيين",
+    "seatsLeft_few": "{{count}} مقاعد فاضية",
+    "seatsLeft_many": "{{count}} مقعد فاضي",
+    "seatsLeft_other": "{{count}} مقعد فاضي",
+    "seatsFull": "مفيش مقاعد فاضية",
+    "onlineNow_zero": "محدش متصل دلوقتي",
+    "onlineNow_one": "واحد متصل دلوقتي",
+    "onlineNow_two": "اتنين متصلين دلوقتي",
+    "onlineNow_few": "{{count}} متصلين دلوقتي",
+    "onlineNow_many": "{{count}} متصل دلوقتي",
+    "onlineNow_other": "{{count}} متصل دلوقتي",
+    "teamTitle": "الفريق",
+    "searchPlaceholder": "دور بالإيميل",
+    "noMatches": "محدش مطابق للبحث.",
+    "you": "أنت",
+    "addUserSlot": "ضيف مستخدم في المقعد الفاضي ده"
   },
   "fields": {
     "client": "العميل",
@@ -300,7 +351,8 @@
     "editClient": "تعديل العميل",
     "editPreferences": "التفضيلات",
     "deleteClient": "حذف العميل",
-    "deleteProject": "حذف المشروع"
+    "deleteProject": "حذف المشروع",
+    "editDetails": "تعديل البيانات"
   },
   "clientDialog": {
     "createTitle": "عميل جديد",
@@ -504,11 +556,21 @@
     "error": "تعذّر حذف الشباك."
   },
   "properties": {
-    "title": "الخصائص",
     "collapse": "طيّ الخصائص",
     "expand": "إظهار الخصائص",
     "notSet": "غير محدد",
     "preferencesTitle": "التفضيلات",
-    "unavailable": "غير متاح"
+    "unavailable": "غير متاح",
+    "details": "البيانات",
+    "address": "عنوان الموقع",
+    "issues": "المشاكل",
+    "projectActions": "إجراءات المشروع",
+    "openWindow": "افتح الشباك ده",
+    "moreIssues_zero": "",
+    "moreIssues_one": "(+مشكلة واحدة)",
+    "moreIssues_two": "(+مشكلتان)",
+    "moreIssues_few": "(+{{count}} مشاكل)",
+    "moreIssues_many": "(+{{count}} مشكلة)",
+    "moreIssues_other": "(+{{count}} مشكلة)"
   }
 }

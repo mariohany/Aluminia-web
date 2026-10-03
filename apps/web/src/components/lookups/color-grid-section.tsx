@@ -46,6 +46,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { ScopeSummary } from '@/components/lookups/scope-summary'
 
 const CREATE_DEFAULTS: CreateColorInput = { code: '', hex: '#' }
 
@@ -246,8 +247,14 @@ export function ColorGridSection({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex shrink-0 items-center justify-between gap-3">
-        {/* The tab already names the table (Mario, 2026-10-03): kept for screen readers only. */}
-        <h2 className="sr-only">{t('tables.colors')}</h2>
+        {/* The admin tab already names the table (Mario, 2026-10-03): kept for
+            screen readers only. The company Data page (`rowScope`) shows it
+            with its counts — workspace redesign §4. */}
+        {rowScope ? (
+          <ScopeSummary title={t('tables.colors')} rows={data ?? []} rowScope={rowScope} />
+        ) : (
+          <h2 className="sr-only">{t('tables.colors')}</h2>
+        )}
         <div className="ms-auto flex items-center gap-2">
           {editableRows.length > 0 && (
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -284,7 +291,8 @@ export function ColorGridSection({
             }}
           >
             <DialogTrigger asChild>
-              <Button size="sm" variant="outline">
+              {/* Primary on the company Data page (Mario, 2026-10-04, matching the design); admin keeps outline. */}
+              <Button size="sm" variant={rowScope ? 'default' : 'outline'}>
                 <Plus className="size-4" aria-hidden="true" />
                 {t('createButtons.color')}
               </Button>

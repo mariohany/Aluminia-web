@@ -25,7 +25,17 @@ import { movesLeft, movesRight } from '@repo/types/sliding'
 // translucency instead of needing its own baked-in alpha.
 export const DEFAULT_GLASS_FILL = 'oklch(0.75 0.06 230)'
 export const GLASS_FILL_OPACITY = 0.35
-export const MESH_STROKE = 'var(--muted-foreground)'
+/** Solid backing drawn under every glass pane so the translucent tint
+ * always sits on the same pale ground. Without it the canvas showed
+ * through, and on the dark theme glass turned dark grey-blue and the
+ * blue fixed/sliding marks lost their contrast (Mario, 2026-10-02:
+ * glass is a material — it must look the same in both themes). */
+export const GLASS_BACKING_FILL = '#ffffff'
+// Fixed, not a theme token: the mesh is drawn over the glass (a
+// material that never changes with the theme), so a dark-mode token
+// would turn it pale and lose it. Same value as the light theme's
+// muted-foreground it used to follow.
+export const MESH_STROKE = 'oklch(0.5 0.012 258)'
 /** The fly-screen mesh's own border, in mm — a drawing weight, not a
  * profile band, so it lives here rather than in `ProfileMetrics`. */
 export const MESH_STROKE_WIDTH_MM = 15

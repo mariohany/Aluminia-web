@@ -5,6 +5,7 @@ import { UserRole } from '@repo/types/auth'
 import { useAuth } from '@/lib/auth-context'
 import { Button } from '@/components/ui/button'
 import { LanguageSwitcher } from '@/components/language-switcher'
+import { ThemeSwitch } from '@/components/theme-switch'
 import { cn } from '@/lib/utils'
 
 /**
@@ -110,6 +111,7 @@ export function WorkspaceRail({
       )}
 
       <div className="mt-auto flex flex-col items-center gap-2">
+        <ThemeSwitch compact />
         <LanguageSwitcher compact />
 
         <Button

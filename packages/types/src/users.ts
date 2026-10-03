@@ -26,9 +26,9 @@ export type CreateUserInput = z.infer<typeof createUserSchema>
 // merges whatever's provided onto the existing user and validates the
 // *result* against the role/company invariant, so a plain role toggle
 // between company_admin and user (company unchanged) doesn't need to
-// resend companyId. Crossing the super-admin boundary does require both
-// together: promoting sends `role: 'super_admin', companyId: null`;
-// demoting sends the new role plus a companyId.
+// resend companyId. The super-admin line can't be crossed at all (Mario,
+// 2026-10-03): a company user is never promoted to super admin and a
+// super admin is never moved into a company — users.service refuses both.
 export const updateUserSchema = z.object({
   email: z.email().optional(),
   role: z.enum(['super_admin', 'company_admin', 'user']).optional(),

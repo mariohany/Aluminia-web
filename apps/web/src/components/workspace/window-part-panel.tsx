@@ -188,14 +188,11 @@ export interface WindowPartPanelProps {
    * `showValidation` is true (edit mode, or after a first submit
    * attempt in create mode) — see its own comment for why. */
   nameError?: string
-  quantity: number
-  onQuantityChange: (value: number) => void
-  quantityError?: string
 
   /** The SELECTED PANEL's own outer size, not the assembly's — the
    * assembly's is derived from the panels' bounding box and shown
-   * read-only on the drawing. `quantity` below really is the whole
-   * assembly's: you order three of the unit, not three of panel 2. */
+   * read-only on the drawing. (Quantity — the whole assembly's, not a
+   * panel's — lives in the structure panel since the redesign.) */
   widthMm: number
   heightMm: number
   onWidthChange: (mm: number) => void
@@ -351,7 +348,7 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
         {props.nameError && <p className="mt-1 text-xs text-destructive">{props.nameError}</p>}
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <NumberField
           id="panel-width"
           label={t('fields.widthMm')}
@@ -365,13 +362,6 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
           value={props.heightMm}
           onChange={props.onHeightChange}
           error={props.heightError}
-        />
-        <NumberField
-          id="panel-quantity"
-          label={t('fields.quantity')}
-          value={props.quantity}
-          onChange={props.onQuantityChange}
-          error={props.quantityError}
         />
       </div>
 

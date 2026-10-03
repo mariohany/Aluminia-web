@@ -10,7 +10,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { UserRole } from '@repo/types/auth';
-import type { CompanyDetail, CompanySummary } from '@repo/types/companies';
+import type { CompanyDetail, CompanyListItem, CompanySummary } from '@repo/types/companies';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/jwt-payload';
@@ -25,7 +25,7 @@ export class CompaniesController {
   constructor(private readonly companies: CompaniesService) {}
 
   @Get()
-  list(): Promise<CompanySummary[]> {
+  list(): Promise<CompanyListItem[]> {
     return this.companies.list();
   }
 

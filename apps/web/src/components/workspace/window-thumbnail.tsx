@@ -5,6 +5,7 @@ import { sectionRenderFor, useResolvedPanels } from '@/lib/window-render'
 import {
   DEFAULT_FRAME_FILL,
   DEFAULT_GLASS_FILL,
+  GLASS_BACKING_FILL,
   GLASS_FILL_OPACITY,
   MESH_STROKE,
   MESH_STROKE_WIDTH_MM,
@@ -176,6 +177,27 @@ export function WindowThumbnail({
               {dividers.map((divider) => (
                 <g key={divider.id}>{renderDivider(divider, frameFill, outline, strokeWeight)}</g>
               ))}
+
+              {/* Solid pale ground under every glass pane, drawn BEFORE the
+                  fly-screen mesh so the mesh still shows through the tinted glass
+                  above it — glass looks the same on either theme
+                  (`GLASS_BACKING_FILL`). */}
+              {glasses.map((glass) => {
+                const glassOutline = outlineOf(glass)
+                return glassOutline ? (
+                  <path key={glass.id} d={archOutlinePath(glassOutline)} fill={GLASS_BACKING_FILL} pointerEvents="none" />
+                ) : (
+                  <rect
+                    key={glass.id}
+                    x={glass.rectMm.x}
+                    y={glass.rectMm.y}
+                    width={glass.rectMm.width}
+                    height={glass.rectMm.height}
+                    fill={GLASS_BACKING_FILL}
+                    pointerEvents="none"
+                  />
+                )
+              })}
 
               {flyScreens.map((flyScreen) => {
                 const flyScreenOutline = outlineOf(flyScreen)

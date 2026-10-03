@@ -60,7 +60,7 @@ export function CompaniesPerMonthChart() {
   )
 
   return (
-    <Card size="sm" className="gap-2">
+    <Card size="sm" className="h-full gap-2">
       <CardHeader>
         <CardTitle>{t('dashboardPage.chart.title')}</CardTitle>
         <CardDescription className="text-xs">{t('dashboardPage.chart.description')}</CardDescription>
@@ -107,9 +107,9 @@ export function CompaniesPerMonthChart() {
         {isError ? (
           <p className="text-sm text-destructive">{t('dashboardPage.chart.error')}</p>
         ) : isLoading || !data ? (
-          <div className="h-52 animate-pulse rounded bg-muted" />
+          <div className="h-50 animate-pulse rounded bg-muted" />
         ) : (
-          <ResponsiveContainer width="100%" height={208}>
+          <ResponsiveContainer width="100%" height={200}>
             <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} stroke="var(--border)" />
               <XAxis

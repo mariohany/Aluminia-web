@@ -59,9 +59,11 @@ export function EditUserDialog({
     if (user) reset({ email: user.email, role: user.role, companyId: user.companyId ?? '' })
   }, [user, reset])
 
-  const selectedRole = watch('role')
   const selectedCompanyId = watch('companyId')
-  const isSuperAdmin = selectedRole === 'super_admin'
+  // The super-admin line can't be crossed (Mario, 2026-10-03; enforced
+  // in users.service too): a super admin stays one, a company user only
+  // switches between company roles.
+  const isSuperAdmin = user?.role === 'super_admin'
   const isMovingCompany = !isSuperAdmin && !!user?.companyId && selectedCompanyId !== user.companyId
 
   if (!user) return null
@@ -71,7 +73,7 @@ export function EditUserDialog({
       await mutation.mutateAsync({
         email: data.email,
         role: data.role,
-        companyId: data.role === 'super_admin' ? null : data.companyId,
+        companyId: isSuperAdmin ? null : data.companyId,
       })
       toast.success(t('editUser.success'))
       onOpenChange(false)
@@ -107,14 +109,19 @@ export function EditUserDialog({
                 control={control}
                 name="role"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select value={field.value} onValueChange={field.onChange} disabled={isSuperAdmin}>
                     <SelectTrigger id="edit-user-role" className="mt-1.5 w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="super_admin">{t('usersPage.role.super_admin')}</SelectItem>
-                      <SelectItem value="company_admin">{t('usersPage.role.company_admin')}</SelectItem>
-                      <SelectItem value="user">{t('usersPage.role.user')}</SelectItem>
+                      {isSuperAdmin ? (
+                        <SelectItem value="super_admin">{t('usersPage.role.super_admin')}</SelectItem>
+                      ) : (
+                        <>
+                          <SelectItem value="company_admin">{t('usersPage.role.company_admin')}</SelectItem>
+                          <SelectItem value="user">{t('usersPage.role.user')}</SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 )}

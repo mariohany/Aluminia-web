@@ -8,8 +8,12 @@ export function useUsersQuery() {
   return useQuery({ queryKey: usersKey, queryFn: usersApi.listUsers })
 }
 
+// A user change also moves a company's seat count and user list (the
+// Companies page's Seats column, the company page's Users card), so
+// ['companies'] — list and every detail under it — refreshes too.
 function invalidateUsers(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: usersKey })
+  void queryClient.invalidateQueries({ queryKey: ['companies'] })
 }
 
 export function useCreateUserMutation() {

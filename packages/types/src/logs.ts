@@ -5,11 +5,22 @@ import { z } from 'zod'
 // concern worth cursor complexity for an admin-only, low-traffic view.
 // `from`/`to` are calendar dates (YYYY-MM-DD, matching an <input type="date">),
 // inclusive on both ends — the service widens them to day boundaries.
+// Audit actions are namespaced `<area>.<…>` (company.created,
+// user.password_reset, lookup.glass.updated, lead.deleted) — the Logs
+// page filters by area rather than by every single action.
+export const AUDIT_AREAS = ['company', 'user', 'lookup', 'lead'] as const
+export type AuditArea = (typeof AUDIT_AREAS)[number]
+
 export const logsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
+  // Audit tab only.
+  area: z.enum(AUDIT_AREAS).optional(),
+  actorId: z.uuid().optional(),
+  // Audit: the entry's name / email / companyName. Activity: company name.
+  search: z.string().trim().max(100).optional(),
 })
 export type LogsQuery = z.infer<typeof logsQuerySchema>
 

@@ -3,7 +3,8 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const ROW_HEIGHT = 40
+// 44px fits the audit rows' icon tile (Logs redesign, 2026-10-03).
+const ROW_HEIGHT = 44
 const HEADER_HEIGHT = 40
 const OVERSCAN = 2
 // Upper bound on how many row elements can ever sit in the DOM at once.
@@ -66,12 +67,13 @@ export function VirtualizedLogTable<T>({
   }, [virtualItems, rows.length, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border">
+    // No border of its own: the Logs page puts it inside a card.
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="grid shrink-0 border-b border-border" style={{ gridTemplateColumns }}>
         {columns.map((column) => (
           <div
             key={column.key}
-            className="flex h-10 min-w-0 items-center truncate px-2 text-sm font-medium text-foreground"
+            className="flex h-10 min-w-0 items-center truncate px-3 text-xs font-medium text-muted-foreground"
           >
             {column.header}
           </div>
@@ -98,12 +100,12 @@ export function VirtualizedLogTable<T>({
               >
                 {row ? (
                   columns.map((column) => (
-                    <div key={column.key} className={cn('min-w-0 truncate px-2', column.className)}>
+                    <div key={column.key} className={cn('min-w-0 truncate px-3', column.className)}>
                       {column.cell(row)}
                     </div>
                   ))
                 ) : (
-                  <div className="col-span-full flex min-w-0 items-center gap-2 truncate px-2 text-muted-foreground">
+                  <div className="col-span-full flex min-w-0 items-center gap-2 truncate px-3 text-muted-foreground">
                     <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
                     {loadingMoreLabel}
                   </div>

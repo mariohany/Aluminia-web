@@ -31,7 +31,10 @@ import {
   useDeleteSystemBrandMutation,
   useDeleteSystemCatalogMutation,
   useDeleteSystemProfileMutation,
+  useColorsQuery,
+  useGlassCombinationsQuery,
   useGlassQuery,
+  usePaintingPricesQuery,
   useLookupVersionQuery,
   useSystemBrandsQuery,
   useSystemCatalogsQuery,
@@ -43,8 +46,9 @@ import {
 } from '@/lib/lookups-queries'
 import { SLIDING_MAX_RAILS, SLIDING_MIN_RAILS } from '@repo/types/sliding'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { LookupTableSection } from '@/components/lookups/lookup-table-section'
+import { ProfileTypePill } from '@/components/lookups/profile-type-pill'
 import { GlassCombinationSection } from '@/components/lookups/glass-combination-editor'
 import { ColorGridSection } from '@/components/lookups/color-grid-section'
 import { SystemsImportButton } from '@/components/admin/lookups/systems-import-button'
@@ -80,15 +84,46 @@ const TAB_ENTITIES: Record<Tab, LookupEntity[]> = {
   paintingPrices: [LookupEntity.PAINT_BRAND, LookupEntity.PAINTING_PRICE],
 }
 
+/** Row count per tab, from the same list queries the tabs read (cached). */
+function useTabCounts(): Record<Tab, number | undefined> {
+  const { data: systemBrands } = useSystemBrandsQuery()
+  const { data: systemCatalogs } = useSystemCatalogsQuery()
+  const { data: systemProfiles } = useSystemProfilesQuery()
+  const { data: glass } = useGlassQuery()
+  const { data: glassCombinations } = useGlassCombinationsQuery()
+  const { data: colors } = useColorsQuery()
+  const { data: paintingPrices } = usePaintingPricesQuery()
+  return {
+    systemBrands: systemBrands?.length,
+    systemCatalogs: systemCatalogs?.length,
+    systemProfiles: systemProfiles?.length,
+    glass: glass?.length,
+    glassCombinations: glassCombinations?.length,
+    colors: colors?.length,
+    paintingPrices: paintingPrices?.length,
+  }
+}
+
+/**
+ * The shared catalogue (docs/admin_redesign_planing.md §6, option A):
+ * one underline tab per table with its row count, the open table in a
+ * card. The table sections themselves are shared with the company's own
+ * Data page and stay as they are.
+ */
 export function DataWarehousePage() {
-  const { t } = useTranslation('lookups')
+  const { t, i18n } = useTranslation('lookups')
   const [tab, setTab] = useState<Tab>('systemBrands')
   const { data: versions } = useLookupVersionQuery()
+  const counts = useTabCounts()
+  const numberFormatter = new Intl.NumberFormat(i18n.language)
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <h1 className="font-heading text-xl font-semibold text-foreground">{t('title')}</h1>
+      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <h1 className="font-heading text-[22px] font-semibold tracking-tight text-foreground">{t('title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+        </div>
         <div className="flex items-center gap-2">
           {TAB_ENTITIES[tab].map((entity) => (
             <Badge key={entity} variant="outline">
@@ -98,20 +133,39 @@ export function DataWarehousePage() {
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap gap-1 border-b border-border pb-2">
-        {TABS.map((tabId) => (
-          <Button
-            key={tabId}
-            variant={tab === tabId ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setTab(tabId)}
-          >
-            {t(`tables.${tabId}`)}
-          </Button>
-        ))}
+      <div role="tablist" aria-label={t('tablesLabel')} className="flex shrink-0 gap-5 overflow-x-auto border-b border-border">
+        {TABS.map((tabId) => {
+          const on = tab === tabId
+          const count = counts[tabId]
+          return (
+            <button
+              key={tabId}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => setTab(tabId)}
+              className={cn(
+                '-mb-px flex h-10 shrink-0 items-center gap-2 border-b-2 px-0.5 text-[13px] whitespace-nowrap transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                on ? 'border-primary font-semibold text-foreground' : 'border-transparent font-medium text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t(`tables.${tabId}`)}
+              {count !== undefined && (
+                <span
+                  className={cn(
+                    'rounded-full px-1.5 font-mono text-[11px] font-normal',
+                    on ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  {numberFormatter.format(count)}
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
-      <div className="min-h-0 flex-1">
+      <div role="tabpanel" className="min-h-0 flex-1 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
         {tab === 'systemBrands' && <SystemBrandsTab />}
         {tab === 'systemCatalogs' && <SystemCatalogsTab />}
         {tab === 'systemProfiles' && <SystemProfilesTab />}
@@ -373,7 +427,7 @@ function SystemProfilesTab() {
         { header: t('fields.profileNo'), cell: (row) => row.profileNo },
         {
           header: t('fields.profileType'),
-          cell: (row) => t(`profileType.${row.profileType}`),
+          cell: (row) => <ProfileTypePill type={row.profileType} />,
         },
         { header: t('fields.maxGlassThickness'), cell: (row) => row.maxGlassThickness },
         { header: t('fields.weight'), cell: (row) => row.weight.toFixed(2) },

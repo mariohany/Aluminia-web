@@ -12,7 +12,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Copy, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Copy, MoreHorizontal, Pencil, Plus, Trash2, X } from 'lucide-react'
 import type { ZodType } from 'zod'
 import { apiErrorMessage } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Dialog,
   DialogContent,
@@ -197,7 +204,7 @@ export function LookupTableSection<
   copyToScope?: { label: string; toDefaults: (row: TSummary) => TCreate }
 }) {
   const { t: tCommon } = useTranslation('common')
-  const { t } = useTranslation('lookups')
+  const { t, i18n } = useTranslation('lookups')
   const queryClient = useQueryClient()
   const { data, isLoading, isError } = useList()
   const [createOpen, setCreateOpen] = useState(false)
@@ -359,49 +366,47 @@ export function LookupTableSection<
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex shrink-0 items-center justify-between gap-3">
-        <h2 className="font-heading text-base font-semibold text-foreground">{title}</h2>
-        <div className="flex items-center gap-2">
-          {headerExtra}
-          {!readOnly && (
-          <Dialog
-            open={createOpen}
-            onOpenChange={(next) => {
-              setCreateOpen(next)
-              if (!next) createForm.reset(createDefaults)
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button size="sm" variant="outline">
-                <Plus className="size-4" aria-hidden="true" />
-                {createLabel}
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <form
-                onSubmit={(e) => void createForm.handleSubmit(onCreate)(e)}
-                noValidate
-                className="flex flex-col gap-4"
-              >
-                <DialogHeader>
-                  <DialogTitle>{createLabel}</DialogTitle>
-                </DialogHeader>
-                <LookupFormFields fields={fields} form={createForm} idPrefix="create" />
-                <DialogFooter>
-                  <Button type="submit" disabled={createForm.formState.isSubmitting}>
-                    {tCommon('actions.save')}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-          )}
-        </div>
-      </div>
+      {/* The tab already names the table (Mario, 2026-10-03): kept for screen readers only. */}
+      <h2 className="sr-only">{title}</h2>
 
-      {(search || (filters && filters.length > 0) || rowScope || someSelected) && (
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
+      {/* One toolbar row (Mario, 2026-10-03): search + filters at the start,
+          the table's own actions at the end. Ticking rows swaps the whole
+          row for the bulk bar until the selection is cleared. */}
+      <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-2">
+        {someSelected ? (
+          <div className="flex flex-1 flex-wrap items-center gap-3 rounded-md bg-muted/60 px-3 py-0.5">
+            <span className="text-sm font-medium text-foreground">
+              {t('bulk.selectedCount', { count: selected.size })}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onBulkDuplicate()}>
+                <Copy className="size-4" aria-hidden="true" />
+                {t('bulk.duplicate')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                disabled={bulkBusy}
+                onClick={() => setBulkDeleteConfirmOpen(true)}
+              >
+                <Trash2 className="size-4" aria-hidden="true" />
+                {t('bulk.delete')}
+              </Button>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ms-auto"
+              disabled={bulkBusy}
+              onClick={() => setSelected(new Set())}
+            >
+              <X className="size-4" aria-hidden="true" />
+              {t('bulk.clear')}
+            </Button>
+          </div>
+        ) : (
+          <>
             {search && (
               <SearchInput
                 icon
@@ -442,36 +447,45 @@ export function LookupTableSection<
                 </SelectContent>
               </Select>
             ))}
-          </div>
-
-          {someSelected && (
-            <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted/60 px-3 py-0.5">
-              <span className="text-sm font-medium text-foreground">
-                {t('bulk.selectedCount', { count: selected.size })}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" disabled={bulkBusy} onClick={() => void onBulkDuplicate()}>
-                  <Copy className="size-4" aria-hidden="true" />
-                  {t('bulk.duplicate')}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-destructive hover:text-destructive"
-                  disabled={bulkBusy}
-                  onClick={() => setBulkDeleteConfirmOpen(true)}
-                >
-                  <Trash2 className="size-4" aria-hidden="true" />
-                  {t('bulk.delete')}
-                </Button>
-                <Button size="sm" variant="ghost" disabled={bulkBusy} onClick={() => setSelected(new Set())}>
-                  {t('bulk.clear')}
-                </Button>
-              </div>
+            <div className="ms-auto flex items-center gap-2">
+              {headerExtra}
+              {!readOnly && (
+              <Dialog
+                open={createOpen}
+                onOpenChange={(next) => {
+                  setCreateOpen(next)
+                  if (!next) createForm.reset(createDefaults)
+                }}
+              >
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <Plus className="size-4" aria-hidden="true" />
+                    {createLabel}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <form
+                    onSubmit={(e) => void createForm.handleSubmit(onCreate)(e)}
+                    noValidate
+                    className="flex flex-col gap-4"
+                  >
+                    <DialogHeader>
+                      <DialogTitle>{createLabel}</DialogTitle>
+                    </DialogHeader>
+                    <LookupFormFields fields={fields} form={createForm} idPrefix="create" />
+                    <DialogFooter>
+                      <Button type="submit" disabled={createForm.formState.isSubmitting}>
+                        {tCommon('actions.save')}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+              )}
             </div>
-          )}
-        </div>
-      )}
+          </>
+        )}
+      </div>
 
       {(() => {
         const colCount = columns.length + (readOnly ? 0 : 1) + (rowScope ? 1 : 0) + (readOnly ? 0 : 1)
@@ -490,7 +504,11 @@ export function LookupTableSection<
               <TableHead key={col.header}>{col.header}</TableHead>
             ))}
             {rowScope && <TableHead className="w-24">{t('scope.columnHeader')}</TableHead>}
-            {!readOnly && <TableHead className="w-28" />}
+            {!readOnly && (
+              <TableHead className="w-12">
+                <span className="sr-only">{t('rowMenu.actions')}</span>
+              </TableHead>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -545,50 +563,52 @@ export function LookupTableSection<
                   </TableCell>
                 )}
                 {!readOnly && (
-                  <TableCell className="flex justify-end gap-1">
-                    {editable ? (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          onClick={() => {
-                            setEditTarget(row)
-                            editForm.reset(toEditDefaults(row))
-                          }}
+                  <TableCell className="text-end">
+                    {(editable || copyToScope) && (
+                      // One ⋯ menu per row instead of a row of icon buttons
+                      // (Mario, 2026-10-03). Radix positions by physical
+                      // side, so the end alignment flips in Arabic.
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon-sm" aria-label={t('rowMenu.label', { name: rowLabel(row) })}>
+                            <MoreHorizontal className="size-4" aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align={i18n.dir() === 'rtl' ? 'start' : 'end'}
+                          className="w-auto min-w-44 whitespace-nowrap *:data-[slot=dropdown-menu-item]:gap-2.5 *:data-[slot=dropdown-menu-item]:px-2.5 *:data-[slot=dropdown-menu-item]:py-1.5"
                         >
-                          <Pencil className="size-3.5" aria-hidden="true" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          title={t('bulk.duplicate')}
-                          onClick={() => void onDuplicateRow(row)}
-                        >
-                          <Copy className="size-3.5" aria-hidden="true" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive hover:text-destructive"
-                          onClick={() => setDeleteTarget(row)}
-                        >
-                          <Trash2 className="size-3.5" aria-hidden="true" />
-                        </Button>
-                      </>
-                    ) : (
-                      copyToScope && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          title={copyToScope.label}
-                          onClick={() => onCopyToScope(row)}
-                        >
-                          <Copy className="size-3.5" aria-hidden="true" />
-                        </Button>
-                      )
+                          {editable ? (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setEditTarget(row)
+                                  editForm.reset(toEditDefaults(row))
+                                }}
+                              >
+                                <Pencil className="text-muted-foreground" aria-hidden="true" />
+                                {t('rowMenu.edit')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void onDuplicateRow(row)}>
+                                <Copy className="text-muted-foreground" aria-hidden="true" />
+                                {t('bulk.duplicate')}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(row)}>
+                                <Trash2 aria-hidden="true" />
+                                {t('rowMenu.delete')}
+                              </DropdownMenuItem>
+                            </>
+                          ) : (
+                            copyToScope && (
+                              <DropdownMenuItem onClick={() => onCopyToScope(row)}>
+                                <Copy className="text-muted-foreground" aria-hidden="true" />
+                                {copyToScope.label}
+                              </DropdownMenuItem>
+                            )
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                   </TableCell>
                 )}

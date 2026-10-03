@@ -125,13 +125,27 @@ export class UsersService {
       // Merge onto the existing user rather than requiring both fields
       // whenever either is sent: a plain role toggle between
       // company_admin and user (company unchanged) doesn't need to
-      // resend companyId, but crossing the super-admin boundary only
-      // validates correctly when both move together.
+      // resend companyId. The checks below validate the merged result.
       const nextRole = input.role ?? user.role;
       const nextCompanyId = input.companyId !== undefined ? input.companyId : user.companyId;
 
       if (id === actorId && nextRole !== UserRole.SUPER_ADMIN) {
         throw new ForbiddenException('You cannot remove your own super admin access.');
+      }
+      // Platform staff and company staff are separate accounts (Mario,
+      // 2026-10-03): a company user can't be promoted to super admin, and
+      // a super admin can't be moved into a company. Switching sides
+      // means creating a new account.
+      const wasSuperAdmin = user.role === UserRole.SUPER_ADMIN;
+      if (!wasSuperAdmin && nextRole === UserRole.SUPER_ADMIN) {
+        throw new BadRequestException(
+          'A company user cannot become a super admin — create a separate platform account instead.',
+        );
+      }
+      if (wasSuperAdmin && nextRole !== UserRole.SUPER_ADMIN) {
+        throw new BadRequestException(
+          'A super admin cannot be moved into a company — create a separate company account instead.',
+        );
       }
       if (nextRole === UserRole.SUPER_ADMIN && nextCompanyId !== null) {
         throw new BadRequestException(

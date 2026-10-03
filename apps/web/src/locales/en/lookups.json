@@ -1,5 +1,7 @@
 {
   "title": "Data warehouse",
+  "subtitle": "The shared catalogue every company reads from",
+  "tablesLabel": "Tables",
   "version": "v{{version}}",
   "clusters": {
     "glass": "Glass",
@@ -184,5 +186,11 @@
     "ours": "Ours",
     "columnHeader": "Origin",
     "copyToOurs": "Copy to our data"
+  },
+  "rowMenu": {
+    "label": "Actions for {{name}}",
+    "actions": "Actions",
+    "edit": "Edit",
+    "delete": "Delete"
   }
 }

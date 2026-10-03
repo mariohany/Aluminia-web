@@ -306,9 +306,8 @@ export function PaintingPricesSection({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <h2 className="shrink-0 font-heading text-base font-semibold text-foreground">
-        {t('tables.paintingPrices')}
-      </h2>
+      {/* The tab already names the table (Mario, 2026-10-03): kept for screen readers only. */}
+      <h2 className="sr-only">{t('tables.paintingPrices')}</h2>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         <div className="flex min-h-0 flex-col gap-3 lg:w-72 lg:shrink-0">

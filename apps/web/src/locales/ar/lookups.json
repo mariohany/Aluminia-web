@@ -1,5 +1,7 @@
 {
   "title": "مستودع البيانات",
+  "subtitle": "الكتالوج المشترك الذي تقرأ منه كل الشركات",
+  "tablesLabel": "الجداول",
   "version": "الإصدار {{version}}",
   "clusters": {
     "glass": "الزجاج",
@@ -184,5 +186,11 @@
     "ours": "بتاعتنا",
     "columnHeader": "المصدر",
     "copyToOurs": "انسخ لبياناتنا"
+  },
+  "rowMenu": {
+    "label": "إجراءات {{name}}",
+    "actions": "الإجراءات",
+    "edit": "تعديل",
+    "delete": "حذف"
   }
 }

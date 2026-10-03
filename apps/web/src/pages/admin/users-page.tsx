@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import {
   createColumnHelper,
@@ -7,14 +8,11 @@ import {
   tableFeatures,
   useTable,
 } from '@tanstack/react-table'
-import { ArrowUpDown, MoreHorizontal } from 'lucide-react'
+import { ArrowUpDown } from 'lucide-react'
 import type { UserSummary } from '@repo/types/users'
-import { useAuth } from '@/lib/auth-context'
 import { useCompaniesQuery } from '@/lib/companies-queries'
 import { useUsersQuery } from '@/lib/users-queries'
-import { Badge } from '@/components/ui/badge'
 import { SearchInput } from '@/components/ui/search-input'
-import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -23,25 +21,16 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { CreateUserDialog } from '@/components/admin/users/create-user-dialog'
-import { EditUserDialog } from '@/components/admin/users/edit-user-dialog'
-import { ResetPasswordDialog } from '@/components/admin/users/reset-password-dialog'
-import { DeleteUserDialog } from '@/components/admin/users/delete-user-dialog'
-import { UserActionDialog, type UserActionKind } from '@/components/admin/users/user-action-dialog'
+import { useUserRowActions } from '@/components/admin/users/user-row-actions'
+import { LastActivity, UserAvatar, UserRolePill } from '@/components/admin/users/user-badges'
+import { StatusPill } from '@/components/admin/companies/company-badges'
 
 const features = tableFeatures({ rowSortingFeature, sortedRowModel: createSortedRowModel() })
 const columnHelper = createColumnHelper<typeof features, UserSummary>()
 
 export function UsersPage() {
   const { t, i18n } = useTranslation('admin')
-  const { user: currentUser } = useAuth()
   const { data, isLoading, isError } = useUsersQuery()
   const { data: companies } = useCompaniesQuery()
 
@@ -50,10 +39,7 @@ export function UsersPage() {
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
 
-  const [editingUser, setEditingUser] = useState<UserSummary | null>(null)
-  const [resettingUser, setResettingUser] = useState<UserSummary | null>(null)
-  const [deletingUser, setDeletingUser] = useState<UserSummary | null>(null)
-  const [actionTarget, setActionTarget] = useState<{ user: UserSummary; kind: UserActionKind } | null>(null)
+  const { renderMenu, dialogs } = useUserRowActions()
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -66,6 +52,7 @@ export function UsersPage() {
     })
   }, [data, search, companyFilter, roleFilter, statusFilter])
 
+  const numberFormatter = useMemo(() => new Intl.NumberFormat(i18n.language), [i18n.language])
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }),
     [i18n.language],
@@ -76,90 +63,50 @@ export function UsersPage() {
       columnHelper.columns([
         columnHelper.accessor('email', {
           header: t('usersPage.table.email'),
-          cell: (info) => <span className="font-medium text-foreground">{info.getValue()}</span>,
+          cell: (info) => (
+            <span className="flex items-center gap-2.5">
+              <UserAvatar email={info.getValue()} />
+              <span className="font-medium text-foreground">{info.getValue()}</span>
+            </span>
+          ),
         }),
         columnHelper.accessor('role', {
           header: t('usersPage.table.role'),
-          cell: (info) => t(`usersPage.role.${info.getValue()}`),
+          cell: (info) => <UserRolePill role={info.getValue()} />,
         }),
         columnHelper.accessor('companyName', {
           header: t('usersPage.table.company'),
-          cell: (info) => info.getValue() ?? t('usersPage.table.noCompany'),
+          cell: (info) => {
+            const user = info.row.original
+            if (!user.companyId) return <span className="text-muted-foreground">{t('usersPage.table.noCompany')}</span>
+            return (
+              <Link
+                to={`/app/companies/${user.companyId}`}
+                className="rounded-sm text-foreground outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                {info.getValue()}
+              </Link>
+            )
+          },
         }),
         columnHelper.accessor('status', {
           header: t('usersPage.table.status'),
           cell: (info) => (
-            <Badge variant={info.getValue() === 'active' ? 'default' : 'outline'}>
-              {t(`usersPage.status.${info.getValue()}`)}
-            </Badge>
+            <StatusPill active={info.getValue() === 'active'}>{t(`usersPage.status.${info.getValue()}`)}</StatusPill>
           ),
         }),
         columnHelper.display({
           id: 'lastActivity',
           header: t('usersPage.table.lastActivity'),
-          cell: (info) => {
-            const user = info.row.original
-            if (user.online) {
-              return <Badge variant="secondary">{t('usersPage.table.online')}</Badge>
-            }
-            return (
-              <span className="text-muted-foreground">
-                {user.lastActiveAt ? dateFormatter.format(new Date(user.lastActiveAt)) : t('usersPage.table.never')}
-              </span>
-            )
-          },
+          cell: (info) => <LastActivity user={info.row.original} formatter={dateFormatter} />,
         }),
         columnHelper.display({
           id: 'actions',
-          header: t('usersPage.table.actions'),
-          cell: (info) => {
-            const user = info.row.original
-            const isSelf = user.id === currentUser?.id
-            return (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm">
-                    <MoreHorizontal className="size-4" aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setEditingUser(user)}>
-                    {t('usersPage.actions.edit')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setResettingUser(user)}>
-                    {t('usersPage.actions.resetPassword')}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setActionTarget({ user, kind: 'end-session' })}>
-                    {t('usersPage.actions.endSession')}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {user.status === 'active' ? (
-                    <DropdownMenuItem
-                      disabled={isSelf}
-                      onClick={() => setActionTarget({ user, kind: 'deactivate' })}
-                    >
-                      {t('usersPage.actions.deactivate')}
-                    </DropdownMenuItem>
-                  ) : (
-                    <DropdownMenuItem onClick={() => setActionTarget({ user, kind: 'reactivate' })}>
-                      {t('usersPage.actions.reactivate')}
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    disabled={isSelf}
-                    onClick={() => setDeletingUser(user)}
-                  >
-                    {t('usersPage.actions.delete')}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )
-          },
+          header: () => <span className="sr-only">{t('usersPage.table.actions')}</span>,
+          cell: (info) => renderMenu(info.row.original),
         }),
       ]),
-    [t, dateFormatter, currentUser?.id],
+    [t, dateFormatter, renderMenu],
   )
 
   const table = useTable({
@@ -170,9 +117,19 @@ export function UsersPage() {
   })
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-heading text-xl font-semibold text-foreground">{t('usersPage.title')}</h1>
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <h1 className="font-heading text-[22px] font-semibold tracking-tight text-foreground">{t('usersPage.title')}</h1>
+          {data && (
+            <p className="text-sm text-muted-foreground">
+              {t('usersPage.subtitle', {
+                count: data.length,
+                online: numberFormatter.format(data.filter((user) => user.online).length),
+              })}
+            </p>
+          )}
+        </div>
         <CreateUserDialog />
       </div>
 
@@ -219,17 +176,17 @@ export function UsersPage() {
         </Select>
       </div>
 
-      <div className="rounded-lg border border-border">
+      <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
+                  <TableHead key={header.id} className="h-10 px-3 text-xs text-muted-foreground">
                     {header.isPlaceholder ? null : header.column.getCanSort() ? (
                       <button
                         type="button"
-                        className="flex items-center gap-1 font-medium"
+                        className="flex items-center gap-1 rounded-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                         onClick={header.column.getToggleSortingHandler()}
                       >
                         <table.FlexRender header={header} />
@@ -246,8 +203,8 @@ export function UsersPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={columns.length} className="text-center text-muted-foreground">
-                  {t('usersPage.table.empty')}
+                <TableCell colSpan={columns.length} className="h-24">
+                  <div className="h-6 animate-pulse rounded bg-muted" />
                 </TableCell>
               </TableRow>
             )}
@@ -260,7 +217,7 @@ export function UsersPage() {
             )}
             {!isLoading && !isError && table.getRowModel().rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={columns.length} className="text-center text-muted-foreground">
+                <TableCell colSpan={columns.length} className="h-20 text-center text-muted-foreground">
                   {(data ?? []).length === 0 ? t('usersPage.table.empty') : t('usersPage.table.noResults')}
                 </TableCell>
               </TableRow>
@@ -270,7 +227,7 @@ export function UsersPage() {
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id}>
                   {row.getAllCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell key={cell.id} className="h-12 px-3">
                       <table.FlexRender cell={cell} />
                     </TableCell>
                   ))}
@@ -280,23 +237,7 @@ export function UsersPage() {
         </Table>
       </div>
 
-      <EditUserDialog user={editingUser} open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)} />
-      <ResetPasswordDialog
-        user={resettingUser}
-        open={!!resettingUser}
-        onOpenChange={(open) => !open && setResettingUser(null)}
-      />
-      <DeleteUserDialog
-        user={deletingUser}
-        open={!!deletingUser}
-        onOpenChange={(open) => !open && setDeletingUser(null)}
-      />
-      <UserActionDialog
-        user={actionTarget?.user ?? null}
-        kind={actionTarget?.kind ?? null}
-        open={!!actionTarget}
-        onOpenChange={(open) => !open && setActionTarget(null)}
-      />
+      {dialogs}
     </div>
   )
 }

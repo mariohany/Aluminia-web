@@ -19,15 +19,25 @@ export class LogsController {
 
   @Get('activity')
   activity(
-    @Query() { page, pageSize, from, to }: LogsQueryDto,
+    @Query() { page, pageSize, from, to, search }: LogsQueryDto,
   ): Promise<PaginatedResult<ActivityLogEntry>> {
-    return this.logs.activityLog(page, pageSize, { from, to });
+    return this.logs.activityLog(
+      page,
+      pageSize,
+      { from, to },
+      search || undefined,
+    );
   }
 
   @Get('audit')
   audit(
-    @Query() { page, pageSize, from, to }: LogsQueryDto,
+    @Query() { page, pageSize, from, to, area, actorId, search }: LogsQueryDto,
   ): Promise<PaginatedResult<AuditLogEntry>> {
-    return this.logs.auditLog(page, pageSize, { from, to });
+    return this.logs.auditLog(
+      page,
+      pageSize,
+      { from, to },
+      { area, actorId, search: search || undefined },
+    );
   }
 }

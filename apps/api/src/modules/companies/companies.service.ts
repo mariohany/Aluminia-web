@@ -8,6 +8,7 @@ import { DataSource, Repository } from 'typeorm';
 import type {
   BillingRecordSummary,
   CompanyDetail,
+  CompanyListItem,
   CompanySummary,
   CompanyUserSummary,
   CreateCompanyInput,
@@ -19,6 +20,7 @@ import { BillingRecord } from '../../database/control-plane/entities/billing-rec
 import { assertValidSchemaName } from '../../database/tenant/schema-name';
 import { TenantProvisioningService } from '../tenancy/tenant-provisioning.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { ProjectCountsService } from '../project-counts/project-counts.service';
 
 @Injectable()
 export class CompaniesService {
@@ -29,35 +31,50 @@ export class CompaniesService {
     @InjectRepository(BillingRecord) private readonly billing: Repository<BillingRecord>,
     private readonly provisioning: TenantProvisioningService,
     private readonly auditLog: AuditLogService,
+    private readonly projectCounts: ProjectCountsService,
   ) {}
 
-  async list(): Promise<CompanySummary[]> {
+  async list(): Promise<CompanyListItem[]> {
     const companies = await this.companies.find({ order: { createdAt: 'DESC' } });
     if (companies.length === 0) return [];
 
-    const counts = await this.dataSource
-      .createQueryBuilder(User, 'user')
-      .select('user.companyId', 'companyId')
-      .addSelect('COUNT(*)', 'count')
-      .where('user.companyId IS NOT NULL')
-      .groupBy('user.companyId')
-      .getRawMany<{ companyId: string; count: string }>();
+    const [counts, projectCounts] = await Promise.all([
+      this.dataSource
+        .createQueryBuilder(User, 'user')
+        .select('user.companyId', 'companyId')
+        .addSelect('COUNT(*)', 'count')
+        .where('user.companyId IS NOT NULL')
+        .groupBy('user.companyId')
+        .getRawMany<{ companyId: string; count: string }>(),
+      this.projectCounts.byCompany(),
+    ]);
     const countByCompany = new Map(counts.map((row) => [row.companyId, Number(row.count)]));
 
-    return companies.map((company) => toCompanySummary(company, countByCompany.get(company.id) ?? 0));
+    return companies.map((company) => ({
+      ...toCompanySummary(company, countByCompany.get(company.id) ?? 0),
+      // Archived companies aren't counted (null → "—"). An active one
+      // missing from a still-cached map was created or reactivated within
+      // the cache's 90 s, so 0 is the honest answer for a new one.
+      projectCount:
+        company.status === CompanyStatus.ACTIVE ? (projectCounts.get(company.id) ?? 0) : null,
+    }));
   }
 
   async detail(id: string): Promise<CompanyDetail> {
     const company = await this.companies.findOne({ where: { id } });
     if (!company) throw new NotFoundException('Company not found.');
 
-    const [users, billing] = await Promise.all([
+    const [users, billing, projectCounts] = await Promise.all([
       this.users.find({ where: { companyId: id }, order: { createdAt: 'ASC' } }),
       this.billing.find({ where: { companyId: id }, order: { effectiveFrom: 'DESC' } }),
+      this.projectCounts.byCompany(),
     ]);
 
     return {
       ...toCompanySummary(company, users.length),
+      // Same rule as list(): archived → null ("—").
+      projectCount:
+        company.status === CompanyStatus.ACTIVE ? (projectCounts.get(company.id) ?? 0) : null,
       schemaName: company.schemaName,
       updatedAt: company.updatedAt.toISOString(),
       users: users.map(toCompanyUserSummary),

@@ -9,6 +9,11 @@ export const CompanyStatus = {
 } as const
 export type CompanyStatus = (typeof CompanyStatus)[keyof typeof CompanyStatus]
 
+// The platform's ceiling on companies, by design (one schema and one
+// connection pool each — see tenant-pool.data-source.ts). Display only
+// for now: the admin sidebar's capacity bar. Nothing enforces it yet.
+export const PLATFORM_COMPANY_LIMIT = 250
+
 // `maxUsers` is a plain number, not `z.coerce.number()`: coercion gives
 // the schema a different input type than output type, which conflicts
 // with typing `useForm` by the schema's output (`CreateCompanyInput`).
@@ -55,6 +60,14 @@ export interface CompanySummary {
   createdAt: string
 }
 
+// The Companies page's rows: a summary plus how many projects the
+// company has. `null` for an archived company, which isn't counted (see
+// ProjectCountsService). Only the list endpoint returns this; the
+// mutation endpoints keep returning a plain CompanySummary.
+export interface CompanyListItem extends CompanySummary {
+  projectCount: number | null
+}
+
 export interface BillingRecordSummary {
   id: string
   plan: string
@@ -72,7 +85,7 @@ export interface CompanyUserSummary {
   createdAt: string
 }
 
-export interface CompanyDetail extends CompanySummary {
+export interface CompanyDetail extends CompanyListItem {
   schemaName: string
   updatedAt: string
   billing: BillingRecordSummary[]

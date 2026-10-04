@@ -150,8 +150,8 @@ export function CanvasPage() {
       style={
         showGrid
           ? {
-              // `--board*` theme tokens (index.css): today's white graph
-              // paper in light, Graphite in dark.
+              // `--board*` theme tokens (index.css): graph paper on the shell
+              // grey in light, Graphite in dark.
               backgroundColor: 'var(--board)',
               backgroundImage: [
                 'linear-gradient(to right, var(--board-grid-major) 1px, transparent 1px)',

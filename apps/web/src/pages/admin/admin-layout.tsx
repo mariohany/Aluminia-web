@@ -13,7 +13,7 @@ export function AdminLayout() {
   const mobileSheetSide = isRtlLanguage(i18n.resolvedLanguage ?? 'en') ? 'left' : 'right'
 
   return (
-    <div className="flex h-svh">
+    <div className="flex h-svh bg-shell">
       <aside className="hidden w-61 shrink-0 border-e border-border bg-card px-3 py-4 md:flex">
         <AdminSidebarContent />
       </aside>

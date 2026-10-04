@@ -100,14 +100,15 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
-    /* Drawing canvases (window editor, project canvas). Light = the
-       "Drafting paper" look: pale paper with a blue-ink grid. */
-    --canvas: #f4f7fa;
-    --canvas-grid-major: rgba(31, 92, 153, 0.16);
-    --canvas-grid-minor: rgba(31, 92, 153, 0.06);
-    /* The project canvas (workspace page) is graph paper on the same
-       mid grey as --shell, like dark where the board is the page colour —
-       only the window editor gets the drafting look. */
+    /* Window editor canvas. Light = the --shell mid grey with a neutral
+       grid, same as the project board below — Mario, 2026-10-04 (canvas
+       option A): the old blue "Drafting paper" didn't follow the shell,
+       and white frames vanished on near-white paper. */
+    --canvas: #e8eaed;
+    --canvas-grid-major: rgba(0, 0, 0, 0.12);
+    --canvas-grid-minor: rgba(0, 0, 0, 0.05);
+    /* The project canvas (workspace page): graph paper on the same mid
+       grey as --shell, like dark where the board is the page colour. */
     --board: #e8eaed;
     --board-grid-major: rgba(0, 0, 0, 0.12);
     --board-grid-minor: rgba(0, 0, 0, 0.05);

@@ -345,7 +345,7 @@ export function WorkspaceLayout() {
   )
 
   return (
-    <div className="flex h-svh overflow-hidden">
+    <div className="flex h-svh overflow-hidden bg-shell">
       {/* No top bar — the rail is the whole persistent chrome, at every
           breakpoint. Below `lg` it also carries the tree's only access
           point, via `onOpenTree`'s Sheet below. */}

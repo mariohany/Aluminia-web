@@ -45,6 +45,7 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+    --color-shell: var(--shell);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -86,6 +87,11 @@
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
     --radius: 0.4rem;
+    /* Page behind the admin console and workspace (/app, /workspace):
+       mid grey in light so white cards and sidebars lift off it the way
+       they do in dark — Mario, 2026-10-04 (canvas option B). Landing,
+       login and the window editor keep --background. */
+    --shell: #e8eaed;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -99,10 +105,10 @@
     --canvas: #f4f7fa;
     --canvas-grid-major: rgba(31, 92, 153, 0.16);
     --canvas-grid-minor: rgba(31, 92, 153, 0.06);
-    /* The project canvas (workspace page) keeps today's plain white
-       graph paper in light — only the window editor gets the drafting
-       look. */
-    --board: #ffffff;
+    /* The project canvas (workspace page) is graph paper on the same
+       mid grey as --shell, like dark where the board is the page colour —
+       only the window editor gets the drafting look. */
+    --board: #e8eaed;
     --board-grid-major: rgba(0, 0, 0, 0.12);
     --board-grid-minor: rgba(0, 0, 0, 0.05);
 }
@@ -138,6 +144,7 @@
     --chart-3: oklch(0.769 0.188 70.08);
     --chart-4: oklch(0.627 0.265 303.9);
     --chart-5: oklch(0.645 0.246 16.439);
+    --shell: #141618;
     --sidebar: #1b1e22;
     --sidebar-foreground: #eceef0;
     --sidebar-primary: oklch(0.58 0.19 42);

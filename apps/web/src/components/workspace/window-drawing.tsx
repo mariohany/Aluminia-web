@@ -207,6 +207,17 @@ export interface WindowDrawingProps {
    * options panel's own Bars button), and how to switch draw mode. */
   barsAvailable: boolean
   onBarDrawModeChange: (on: boolean) => void
+  /** The pill's Undo/Redo (docs/editor_undo_redo_planing.md §6). The
+   * labels arrive already translated and naming the step ("Undo Move
+   * divider (⌘Z)") — the page owns the history and its step names. */
+  undoRedo: {
+    canUndo: boolean
+    canRedo: boolean
+    undoLabel: string
+    redoLabel: string
+    onUndo: () => void
+    onRedo: () => void
+  }
   /** Fires once a bar's second endpoint lands — always a fresh straight
    * (`sagMm: 0`) bar; bowing it is Step 11. */
   onAddBar: (bar: WindowBarInput) => void
@@ -297,6 +308,7 @@ export function WindowDrawing({
   onExitBarDrawMode,
   barsAvailable,
   onBarDrawModeChange,
+  undoRedo,
   onAddBar,
   selectedBarId,
   onSelectBar,
@@ -1388,10 +1400,10 @@ export function WindowDrawing({
         <ToolButton label={`${t('windowDialog.design.tools.measure')} — ${t('windowDialog.design.tools.comingSoon')}`} unavailable>
           <Ruler className="size-4" />
         </ToolButton>
-        <ToolButton label={`${t('windowDialog.design.tools.undo')} — ${t('windowDialog.design.tools.comingSoon')}`} unavailable>
+        <ToolButton label={undoRedo.undoLabel} unavailable={!undoRedo.canUndo} onClick={undoRedo.onUndo}>
           <Undo2 className="size-4" />
         </ToolButton>
-        <ToolButton label={`${t('windowDialog.design.tools.redo')} — ${t('windowDialog.design.tools.comingSoon')}`} unavailable>
+        <ToolButton label={undoRedo.redoLabel} unavailable={!undoRedo.canRedo} onClick={undoRedo.onRedo}>
           <Redo2 className="size-4" />
         </ToolButton>
       </div>
@@ -2439,10 +2451,12 @@ function useSvgToClientTransform(
 }
 
 /** One button of the floating tool pill. `unavailable` greys it out with
- * `aria-disabled` (not `disabled`) so its tooltip still shows on hover. */
+ * `aria-disabled` (not `disabled`) so its tooltip still shows on hover.
+ * `active` makes it a toggle (`aria-pressed`) — left out for plain
+ * actions like Undo/Redo. */
 function ToolButton({
   label,
-  active = false,
+  active,
   unavailable = false,
   onClick,
   children,
@@ -2458,7 +2472,7 @@ function ToolButton({
       type="button"
       aria-label={label}
       title={label}
-      aria-pressed={unavailable ? undefined : active}
+      aria-pressed={unavailable || active === undefined ? undefined : active}
       aria-disabled={unavailable || undefined}
       onClick={unavailable ? undefined : onClick}
       className={cn(

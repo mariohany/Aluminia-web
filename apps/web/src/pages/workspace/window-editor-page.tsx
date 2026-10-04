@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate, useParams } from 'react-router'
@@ -46,6 +46,7 @@ import { displayName } from '@/lib/bilingual'
 import { WindowStructurePanel } from '@/components/workspace/window-structure-panel'
 import { ProfileSearchPicker } from '@/components/workspace/profile-search-picker'
 import { slidingSectionArgs, useResolvedPanels, type PanelRender, type SectionRender } from '@/lib/window-render'
+import { useEditHistory } from '@/lib/use-edit-history'
 import { WindowPartPanel } from '@/components/workspace/window-part-panel'
 import { AddPanelCard, type AddPanelRequest } from '@/components/workspace/add-panel-card'
 import { AddPanelTypeStep, type AddChoice } from '@/components/workspace/add-panel-type-step'
@@ -164,11 +165,12 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // would attach to. They coincide except while multi-selecting.
   const [activePanelIndex, setActivePanelIndex] = useState(0)
   // Which of the active panel's own sections the Section block shows —
-  // docs/sections_planing.md §5. Reset to the panel's first section
-  // whenever the active panel itself changes, same posture as
-  // barDrawMode below.
+  // docs/sections_planing.md §5. Reset to the panel's first section by
+  // each handler that moves the active panel (not an effect on
+  // `activePanelIndex`: that fired after the render and wiped any
+  // section set in the same batch — an undo restoring panel + section
+  // together, or a click on another panel's second section).
   const [activeSectionIndex, setActiveSectionIndex] = useState(0)
-  useEffect(() => setActiveSectionIndex(0), [activePanelIndex])
   const [selectedPanelIndices, setSelectedPanelIndices] = useState<number[]>([0])
   // Sticky: set when the pointer enters a panel, cleared only when it
   // leaves the whole drawing. Deriving it from `hoveredPartId` instead
@@ -223,6 +225,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const {
     handleSubmit,
     reset,
+    getValues,
     setValue,
     watch,
     formState: { errors, isSubmitting, isSubmitted, isDirty },
@@ -239,20 +242,53 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // bottom-anchored height, the edge NOT being dragged, the panels a new
   // one was added above). See `originShiftMm` in window-geometry.ts.
   const [originOffsetMm, setOriginOffsetMm] = useState({ x: 0, y: 0 })
+
+  // Undo/redo — docs/editor_undo_redo_planing.md. Snapshots of the five
+  // edited fields (+ the camera offset `commitPanels` moves with them),
+  // recorded at the doors below and applied by `applyStep` further down.
+  const history = useEditHistory<EditorSnapshot, EditorView, EditLabel>()
+  // Cloned so a stored step can never alias the live form's objects.
+  const takeSnapshot = (): EditorSnapshot =>
+    structuredClone({
+      name: getValues('name'),
+      quantity: getValues('quantity'),
+      panels: getValues('panels') as WindowPanelInput[],
+      location: getValues('location'),
+      notes: getValues('notes'),
+      originOffsetMm,
+    })
+  const takeView = (): EditorView => ({ selectedPartId, activePanelIndex, activeSectionIndex, selectedPanelIndices })
   // The offset is set from THIS render's value, not accumulated through
   // a functional update: `next` was derived from this render's `panels`,
   // so its shift is relative to this render's offset too. Two drag
   // frames landing before React re-renders both build on the same base
   // and the later one simply wins — accumulating would count the same
   // shift twice and drift the view off over a drag (bug-067).
-  const commitPanels = useCallback(
-    (next: WindowPanelInput[]) => {
-      const shift = originShiftMm(next)
-      if (shift.x !== 0 || shift.y !== 0) setOriginOffsetMm({ x: originOffsetMm.x - shift.x, y: originOffsetMm.y - shift.y })
-      setValue('panels', normalizeOrigin(next), { shouldValidate: true, shouldDirty: true })
-    },
-    [setValue, originOffsetMm],
-  )
+  //
+  // EVERY edit to `panels` goes through here, or it bypasses undo
+  // history (docs/editor_undo_redo_planing.md §2) — `label` names the
+  // step in the tool pill's tooltip.
+  const commitPanels = (next: WindowPanelInput[], label: EditLabel) => {
+    const before = takeSnapshot()
+    const shift = originShiftMm(next)
+    const offset = shift.x !== 0 || shift.y !== 0 ? { x: originOffsetMm.x - shift.x, y: originOffsetMm.y - shift.y } : originOffsetMm
+    if (offset !== originOffsetMm) setOriginOffsetMm(offset)
+    const normalized = normalizeOrigin(next)
+    setValue('panels', normalized, { shouldValidate: true, shouldDirty: true })
+    history.record(label, before, { ...before, panels: structuredClone(normalized), originOffsetMm: offset }, takeView())
+  }
+  // For keyboard effects: `commitPanels` closes over this render's
+  // selection/offset and so changes every render — an Effect Event
+  // always sees the latest one without re-subscribing the listener.
+  const commitPanelsFromEffect = useEffectEvent(commitPanels)
+
+  // The other four doors — same rule as `commitPanels`: every edit to
+  // these fields goes through here, or it bypasses undo history.
+  const commitField = <K extends 'name' | 'quantity' | 'location' | 'notes'>(field: K, value: CreateWindowInput[K]) => {
+    const before = takeSnapshot()
+    setValue(field, value as never, { shouldValidate: true, shouldDirty: true })
+    history.record(FIELD_LABELS[field], before, { ...before, [field]: structuredClone(value) }, takeView())
+  }
 
   // `WindowEditor` is remounted (via the `key` on `windowId` above)
   // every time the route switches to a different window, so this only
@@ -592,9 +628,10 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // ring selected, so the options column is already showing what to
   // change — shared by both confirm handlers below.
   const landOnNewPanel = (next: WindowPanelInput[]) => {
-    commitPanels(next)
+    commitPanels(next, 'addPanel')
     const newIndex = next.length - 1
     setActivePanelIndex(newIndex)
+    setActiveSectionIndex(0)
     setSelectedPanelIndices([newIndex])
     setSelectedPartId(`p${newIndex}:frame`)
     // The card sits inside the drawing box, so dismissing it doesn't
@@ -704,7 +741,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       return withProfile
     })
 
-    commitPanels(next)
+    commitPanels(next, 'addDivider')
     setSelectedPartId(`p${index}:frame`)
     setActiveSectionIndex(0)
     setHoveredPanelIndex(null)
@@ -713,19 +750,21 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
 
   // ---- Panel / section mutation ------------------------------------------
 
-  const updateActivePanel = (changes: Partial<WindowPanelInput>) => {
+  const updateActivePanel = (changes: Partial<WindowPanelInput>, label: EditLabel) => {
     commitPanels(
       panels.map((panel, i) => (i === activePanelIndex ? { ...panel, ...changes } : panel)),
+      label,
     )
   }
 
-  const updateActiveSection = (changes: Partial<WindowSectionInput>) => {
+  const updateActiveSection = (changes: Partial<WindowSectionInput>, label: EditLabel) => {
     commitPanels(
       panels.map((panel, i) =>
         i === activePanelIndex
           ? { ...panel, sections: panel.sections.map((s, j) => (j === activeSectionIndex ? { ...s, ...changes } : s)) }
           : panel,
       ),
+      label,
     )
   }
 
@@ -755,7 +794,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
 
   const confirmDeleteBar = () => {
     if (!pendingDeleteBarId) return
-    updateActivePanel({ bars: removeBarCascade(activeBars, pendingDeleteBarId) })
+    updateActivePanel({ bars: removeBarCascade(activeBars, pendingDeleteBarId) }, 'deleteBar')
     setSelectedBarId(null)
     setPendingDeleteBarId(null)
   }
@@ -769,7 +808,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const onBarRadiusChange = (radiusMm: number | null) => {
     if (!selectedBar || selectedBarChordMm === null) return
     const sagMm = radiusMm === null ? 0 : (selectedBar.sagMm >= 0 ? 1 : -1) * sagFromRadius(selectedBarChordMm, radiusMm)
-    updateActivePanel({ bars: activeBars.map((b) => (b.id === selectedBar.id ? { ...b, sagMm } : b)) })
+    updateActivePanel({ bars: activeBars.map((b) => (b.id === selectedBar.id ? { ...b, sagMm } : b)) }, 'changeBarRadius')
   }
 
   // Panel-level dimension inputs. A plain (1×1) panel resizes exactly as
@@ -789,13 +828,14 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       const resized = resizePanel(panels, activePanelIndex, widthMm, heightMm)
       commitPanels(
         resized.map((p, i) => (i === activePanelIndex ? { ...p, columnWidths: [p.widthMm], rowHeights: [p.heightMm] } : p)),
+        'resizePanel',
       )
       return
     }
     const lastCol = panel.columnWidths.length - 1
     const nextColWidth = panel.columnWidths[lastCol] + (Math.round(widthMm) - panel.widthMm)
     const nextRowHeight = panel.rowHeights[0] + (Math.round(heightMm) - panel.heightMm)
-    commitPanels(resizeSection(panels, activePanelIndex, 0, lastCol, nextColWidth, nextRowHeight))
+    commitPanels(resizeSection(panels, activePanelIndex, 0, lastCol, nextColWidth, nextRowHeight), 'resizePanel')
   }
 
   // The active SECTION's own width/height inputs — docs/sections_planing.md's
@@ -805,11 +845,13 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const onSectionWidthChange = (mm: number) => {
     commitPanels(
       resizeSection(panels, activePanelIndex, activeSection.row, activeSection.col, mm, activePanel.rowHeights[activeSection.row]),
+      'resizeSection',
     )
   }
   const onSectionHeightChange = (mm: number) => {
     commitPanels(
       resizeSection(panels, activePanelIndex, activeSection.row, activeSection.col, activePanel.columnWidths[activeSection.col], mm),
+      'resizeSection',
     )
   }
 
@@ -817,9 +859,10 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const onDeletePanel = () => {
     const next = removePanel(panels, activePanelIndex)
     if (!next) return
-    commitPanels(next)
+    commitPanels(next, 'deletePanel')
     const fallback = Math.max(0, activePanelIndex - 1)
     setActivePanelIndex(fallback)
+    setActiveSectionIndex(0)
     setSelectedPanelIndices([fallback])
     setSelectedPartId(null)
   }
@@ -832,7 +875,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     // A 1×1 panel has no divider to profile (the schema forbids one) —
     // null it out the moment the last one is merged away.
     const final = stillGridded ? next : next.map((p, i) => (i === activePanelIndex ? { ...p, dividerProfile: null } : p))
-    commitPanels(final)
+    commitPanels(final, 'removeDivider')
     setSelectedPartId(`p${activePanelIndex}:frame`)
     setActiveSectionIndex(0)
   }
@@ -852,7 +895,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     const match = parsed ? /^div-(v|h)(\d+)$/.exec(parsed.localId) : null
     if (!parsed || !match) return
     const orientation: 'vertical' | 'horizontal' = match[1] === 'v' ? 'vertical' : 'horizontal'
-    commitPanels(moveDivider(panels, parsed.panelIndex, orientation, Number(match[2]), boundaryMm))
+    commitPanels(moveDivider(panels, parsed.panelIndex, orientation, Number(match[2]), boundaryMm), 'moveDivider')
   }
 
   // Dragging a panel's own FREE outer edge in/out (Mario: "resize the
@@ -868,6 +911,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     const gridded = panel.columnWidths.length > 1 || panel.rowHeights.length > 1
     commitPanels(
       gridded ? resizeSectionEdge(panels, panelIndex, side, positionMm) : resizePanelEdge(panels, panelIndex, side, positionMm),
+      'resizePanel',
     )
   }
 
@@ -889,9 +933,12 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     setPendingDeleteBarId(null)
     // A sash/glass/fly-screen part carries its own section — a divider
     // or the frame carries none (`sectionIndex: null`), so the active
-    // section simply stays whatever it already was.
+    // section stays whatever it already was, or the first one when this
+    // click moved to another panel.
     if (parsed?.sectionIndex !== null && parsed?.sectionIndex !== undefined) {
       setActiveSectionIndex(parsed.sectionIndex)
+    } else if (panelIndex !== activePanelIndex) {
+      setActiveSectionIndex(0)
     }
   }
 
@@ -997,10 +1044,10 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       sliding: slidingFor(s, sectionIndex),
     }))
     if (moved.length > 0) onSlidingRailsShrunk(moved)
-    updateActivePanel({ frameProfile: ref, sections })
+    updateActivePanel({ frameProfile: ref, sections }, 'changeFrame')
   }
 
-  const onDividerProfileChange = (ref: ScopedRef) => updateActivePanel({ dividerProfile: ref })
+  const onDividerProfileChange = (ref: ScopedRef) => updateActivePanel({ dividerProfile: ref }, 'changeDividerProfile')
 
   // Switching a section's own kind — decision 6: fixed by default,
   // switching to opening resets sash/glass to "not yet chosen" (the
@@ -1015,7 +1062,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       // back instead of a blank default (handoff: "change back to
       // sliding restores it").
       if (activeSection.sliding) rememberedSlidingLayouts.current.set(rememberKey(activePanelIndex, activeSectionIndex), activeSection.sliding)
-      updateActiveSection({ kind, sashProfile: null, beadProfile: '' as ScopedRef, openingType: null, hasFlyScreen: false, sliding: null })
+      updateActiveSection({ kind, sashProfile: null, beadProfile: '' as ScopedRef, openingType: null, hasFlyScreen: false, sliding: null }, 'changeSectionType')
       return
     }
     // A sliding section is "opening" with no hinge type at all (the
@@ -1028,7 +1075,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       sliding: activeIsSliding
         ? (rememberedSlidingLayouts.current.get(rememberKey(activePanelIndex, activeSectionIndex)) ?? defaultSlidingLayout())
         : null,
-    })
+    }, 'changeSectionType')
   }
 
   // The sliding layout editor's one write path (planing §7): every
@@ -1039,7 +1086,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // the fixed/opening choice, 2026-09-20) flips that section to
   // opening in the same write — the `onSectionKindChange(OPENING)`
   // reset, minus the layout it would restore, since this IS the layout.
-  const setSlidingLayoutOf = (panelIndex: number, sectionIndex: number, layout: SlidingLayoutInput) => {
+  const setSlidingLayoutOf = (panelIndex: number, sectionIndex: number, layout: SlidingLayoutInput, label: EditLabel) => {
     const next = resolveSlidingLayout(layout)
     rememberedSlidingLayouts.current.set(rememberKey(panelIndex, sectionIndex), next)
     const write = (section: WindowSectionInput): WindowSectionInput =>
@@ -1050,9 +1097,10 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       panels.map((panel, i) =>
         i === panelIndex ? { ...panel, sections: panel.sections.map((s, j) => (j === sectionIndex ? write(s) : s)) } : panel,
       ),
+      label,
     )
   }
-  const setSlidingLayout = (layout: SlidingLayoutInput) => setSlidingLayoutOf(activePanelIndex, activeSectionIndex, layout)
+  const setSlidingLayout = (layout: SlidingLayoutInput) => setSlidingLayoutOf(activePanelIndex, activeSectionIndex, layout, 'editSlidingLayout')
   // One sash of one section — the quick menu's and the keyboard's entry
   // point (planing §7/§10), so both land on exactly the same write as
   // the part panel's rows.
@@ -1061,13 +1109,16 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     sectionIndex: number,
     sashIndex: number,
     changes: Partial<SlidingLayoutInput['sashes'][number]>,
+    label: EditLabel,
   ) => {
     const layout = panels[panelIndex]?.sections[sectionIndex]?.sliding
     if (!layout) return
-    setSlidingLayoutOf(panelIndex, sectionIndex, {
-      ...layout,
-      sashes: layout.sashes.map((sash, i) => (i === sashIndex ? { ...sash, ...changes } : sash)),
-    })
+    setSlidingLayoutOf(
+      panelIndex,
+      sectionIndex,
+      { ...layout, sashes: layout.sashes.map((sash, i) => (i === sashIndex ? { ...sash, ...changes } : sash)) },
+      label,
+    )
   }
   /** The sliding sash a part id names — `null` for anything else
    * (frame, glass, a legacy sash with no layout, a hinged sash). */
@@ -1121,7 +1172,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
         beadProfile: activeSection.kind === SectionKind.FIXED ? activeSection.beadProfile : ('' as ScopedRef),
         openingType: null,
         hasFlyScreen: false,
-      })
+      }, 'changeOpening')
       return
     }
     updateActiveSection({
@@ -1129,7 +1180,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       sashProfile: activeSection.kind === SectionKind.OPENING ? activeSection.sashProfile : ('' as ScopedRef),
       beadProfile: null,
       openingType: value,
-    })
+    }, 'changeOpening')
   }
 
   // ---- Per-panel render descriptors --------------------------------------
@@ -1383,6 +1434,163 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     )
   }
 
+  // ---- Undo / redo (docs/editor_undo_redo_planing.md §4) ---------------
+
+  // Set by `applyStep` — the restored `selectedPartId` can only be checked
+  // against the drawn parts once the restored panels have rendered.
+  const verifySelectionAfterRestore = useRef(false)
+
+  // `setValue`, never `reset()`: reset would move the dirty baseline.
+  // react-hook-form deep-compares the whole form with `defaultValues` on
+  // every `shouldDirty` write, so undoing back to the loaded window makes
+  // the form clean again and the leave dialog stops asking.
+  const applyStep = (snapshot: EditorSnapshot, view: EditorView) => {
+    const options = { shouldValidate: true, shouldDirty: true }
+    setValue('name', snapshot.name, options)
+    setValue('quantity', snapshot.quantity, options)
+    setValue('panels', snapshot.panels, options)
+    setValue('location', snapshot.location, options)
+    setValue('notes', snapshot.notes, options)
+    setOriginOffsetMm(snapshot.originOffsetMm)
+
+    // The view is from when the step was made — clamp it to what the
+    // restored panels actually have.
+    const panelCount = snapshot.panels.length
+    const panelIndex = Math.min(Math.max(view.activePanelIndex, 0), panelCount - 1)
+    const sectionCount = snapshot.panels[panelIndex]?.sections.length ?? 1
+    const selectedPanels = view.selectedPanelIndices.filter((i) => i < panelCount)
+    const parsed = view.selectedPartId ? parsePartId(view.selectedPartId) : null
+    const partFits =
+      parsed !== null &&
+      parsed.panelIndex < panelCount &&
+      (parsed.sectionIndex === null || parsed.sectionIndex < (snapshot.panels[parsed.panelIndex]?.sections.length ?? 0))
+    setActivePanelIndex(panelIndex)
+    setActiveSectionIndex(view.activeSectionIndex < sectionCount ? view.activeSectionIndex : 0)
+    setSelectedPanelIndices(selectedPanels.length > 0 ? selectedPanels : [panelIndex])
+    setSelectedPartId(view.selectedPartId === null ? null : partFits ? view.selectedPartId : `p${panelIndex}:frame`)
+    verifySelectionAfterRestore.current = view.selectedPartId !== null
+
+    // Transient modes are closed, not restored (§4.5).
+    setBarDrawMode(false)
+    setSelectedBarId(null)
+    setPendingDeleteBarId(null)
+    setMenuSashPartId(null)
+  }
+
+  // A part id can parse fine and still not be drawn any more (a divider
+  // `k` or sash index past what the restored grid/layout has) — fall back
+  // to the active panel's frame.
+  useEffect(() => {
+    if (!verifySelectionAfterRestore.current) return
+    verifySelectionAfterRestore.current = false
+    if (selectedPartId && !drawingLayout.parts.some((part) => part.id === selectedPartId)) {
+      setSelectedPartId(`p${activePanelIndex}:frame`)
+    }
+  }, [selectedPartId, activePanelIndex, drawingLayout])
+
+  // ---- Gestures (§3): one drag / one field / one nudge burst = one step --
+
+  // Canvas: anything pressed on the drawing (a divider, an edge, a bar
+  // point or bow) is one step until the button comes back up. Closed a
+  // tick after the release so every handler of that release — and the
+  // click it can fire — still lands inside it.
+  const onCanvasPointerDown = () => {
+    history.beginGesture('canvas')
+    const onRelease = () => {
+      window.removeEventListener('pointerup', onRelease)
+      window.removeEventListener('mouseup', onRelease)
+      window.removeEventListener('pointercancel', onRelease)
+      window.setTimeout(() => history.endGesture('canvas'), 0)
+    }
+    window.addEventListener('pointerup', onRelease)
+    window.addEventListener('mouseup', onRelease)
+    window.addEventListener('pointercancel', onRelease)
+  }
+
+  // Fields: typing in one text/number field is one step from focus to
+  // blur. A combobox's search box (`aria-controls`, the profile picker)
+  // is skipped: Enter there PICKS something, and each pick is its own
+  // step. `isActive` closes the gesture when the field unmounts while
+  // focused, which fires no blur.
+  const fieldGestureCount = useRef(0)
+  const isTypingField = (target: EventTarget): target is HTMLInputElement | HTMLTextAreaElement =>
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLInputElement && (target.type === 'text' || target.type === 'number') && !target.hasAttribute('aria-controls'))
+  const onFieldFocus = (event: React.FocusEvent) => {
+    const field = event.target
+    if (!isTypingField(field)) return
+    fieldGestureCount.current += 1
+    history.beginGesture(`field:${fieldGestureCount.current}`, () => document.activeElement === field)
+  }
+  const onFieldBlur = (event: React.FocusEvent) => {
+    if (isTypingField(event.target)) history.endGesture(`field:${fieldGestureCount.current}`)
+  }
+
+  // Divider arrow-key nudges: a burst on the same divider is one step,
+  // closed after 1 s without another nudge.
+  const nudgeTimer = useRef<number | undefined>(undefined)
+  const nudgeGesture = useEffectEvent((partId: string) => {
+    const key = `nudge:${partId}`
+    history.beginGesture(key)
+    window.clearTimeout(nudgeTimer.current)
+    nudgeTimer.current = window.setTimeout(() => history.endGesture(key), 1000)
+  })
+
+  // Off while anything modal is open (§5): undoing under an open add
+  // card would leave it anchored to a panel that may no longer exist.
+  // The add-divider card is the same `addRequest` flow.
+  const historyBlocked = addRequest !== null || pendingDeleteBarId !== null || confirmLeave !== null || menuSashPartId !== null
+  const canUndo = history.canUndo && !historyBlocked
+  const canRedo = history.canRedo && !historyBlocked
+
+  const onUndo = () => {
+    if (!canUndo) return
+    const step = history.undo()
+    if (step) applyStep(step.before, step.view)
+  }
+  const onRedo = () => {
+    if (!canRedo) return
+    const step = history.redo()
+    if (step) applyStep(step.after, step.view)
+  }
+
+  // "Undo Move divider (⌘Z)" — plain "Undo (⌘Z)" when there's nothing.
+  const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent)
+  const undoLabel = `${
+    history.undoLabelKey
+      ? t('windowDialog.design.tools.undoAction', { action: t(`windowDialog.design.history.${history.undoLabelKey}`) })
+      : t('windowDialog.design.tools.undo')
+  } (${isMac ? '⌘Z' : 'Ctrl+Z'})`
+  const redoLabel = `${
+    history.redoLabelKey
+      ? t('windowDialog.design.tools.redoAction', { action: t(`windowDialog.design.history.${history.redoLabelKey}`) })
+      : t('windowDialog.design.tools.redo')
+  } (${isMac ? '⇧⌘Z' : 'Ctrl+Y'})`
+
+  // ⌘/Ctrl+Z undo, ⌘/Ctrl+Shift+Z or Ctrl+Y redo (decision 4). Matched
+  // on `event.code`, the physical key: on an Arabic layout `event.key`
+  // is "ئ"/"غ" and would never match. Inside a field the browser keeps
+  // its own text undo. `preventDefault` only when it actually acts.
+  const onHistoryShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey) return
+    const target = event.target as HTMLElement | null
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+    const isRedo = event.code === 'KeyY' || (event.code === 'KeyZ' && event.shiftKey)
+    const isUndo = event.code === 'KeyZ' && !event.shiftKey
+    if (isUndo && canUndo) {
+      event.preventDefault()
+      onUndo()
+    } else if (isRedo && canRedo) {
+      event.preventDefault()
+      onRedo()
+    }
+  })
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => onHistoryShortcut(event)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   // ---- Selected divider ---------------------------------------------------
   //
   // A divider's own id is panel-level (`div-v{k}`/`div-h{j}`, `sectionIndex:
@@ -1439,7 +1647,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
         if (!updated) return
         const stillGridded = updated.columnWidths.length > 1 || updated.rowHeights.length > 1
         const final = stillGridded ? next : next.map((p, i) => (i === panelIndex ? { ...p, dividerProfile: null } : p))
-        commitPanels(final)
+        commitPanelsFromEffect(final, 'removeDivider')
         setSelectedPartId(`p${panelIndex}:frame`)
         setActiveSectionIndex(0)
         return
@@ -1466,12 +1674,13 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       if (currentBoundary === undefined) return
 
       event.preventDefault()
-      commitPanels(moveDivider(panels, panelIndex, selectedDividerOrientation, selectedDividerK, currentBoundary + deltaMm))
+      nudgeGesture(selectedPartId)
+      commitPanelsFromEffect(moveDivider(panels, panelIndex, selectedDividerOrientation, selectedDividerK, currentBoundary + deltaMm), 'moveDivider')
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedPartId, selectedDividerOrientation, selectedDividerK, panels, commitPanels, setSelectedPartId, setActiveSectionIndex])
+  }, [selectedPartId, selectedDividerOrientation, selectedDividerK, panels, setSelectedPartId, setActiveSectionIndex])
 
   // Keyboard control of a selected SLIDING sash (planing §10, the
   // handoff's shortcuts): `[` moves it one rail back (toward the
@@ -1490,7 +1699,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
         const rail = sash.rail + (event.key === '[' ? -1 : 1)
         if (rail < 0 || rail >= rails) return
         event.preventDefault()
-        updateSlidingSash(panelIndex, sectionIndex, index, { rail })
+        updateSlidingSash(panelIndex, sectionIndex, index, { rail }, 'moveSash')
         return
       }
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
@@ -1543,12 +1752,14 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               reflows when a different part is selected, per
               docs/window_design_planing.md's decisions table. */}
           <div className="grid min-h-0 flex-1 grid-cols-[16.25rem_1fr_21.25rem] overflow-hidden">
+            {/* `contents`: a focus listener only, no box of its own in the grid. */}
+            <div className="contents" onFocusCapture={onFieldFocus} onBlurCapture={onFieldBlur}>
             <WindowStructurePanel
               projectName={project ? displayName(project, i18n.resolvedLanguage ?? 'en') : undefined}
               title={watch('name')?.trim() || pageTitle}
               onBack={() => requestLeave(onDone)}
               quantity={quantity}
-              onQuantityChange={(value) => setValue('quantity', value, { shouldValidate: true, shouldDirty: true })}
+              onQuantityChange={(value) => commitField('quantity', value)}
               quantityError={showValidation && errors.quantity ? t('fields.quantityRequired') : undefined}
               panels={panels}
               parts={drawingLayout.parts}
@@ -1558,6 +1769,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               activeSectionIndex={activeSectionIndex}
               onSelectPart={(partId) => onSelectPart(partId, false)}
             />
+            </div>
 
             <div className="flex min-h-0 min-w-0 flex-col">
               {/* No Interior/Exterior toggle: the elevation is always the
@@ -1577,7 +1789,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                 }}
               >
               <ContextMenuTrigger asChild disabled={!hoveredSlidingSash}>
-              <div className="min-h-0 flex-1">
+              <div className="min-h-0 flex-1" onPointerDownCapture={onCanvasPointerDown}>
                 <WindowDrawing
                   layout={drawingLayout}
                   panels={panelRenders}
@@ -1617,16 +1829,17 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   onExitBarDrawMode={() => setBarDrawMode(false)}
                   barsAvailable={activePanel.headShape !== HeadShape.FLAT}
                   onBarDrawModeChange={setBarDrawMode}
-                  onAddBar={(bar) => updateActivePanel({ bars: [...activeBars, bar] })}
+                  undoRedo={{ canUndo, canRedo, undoLabel, redoLabel, onUndo, onRedo }}
+                  onAddBar={(bar) => updateActivePanel({ bars: [...activeBars, bar] }, 'drawBar')}
                   selectedBarId={selectedBarId}
                   onSelectBar={onSelectBar}
                   pendingDeleteBarId={pendingDeleteBarId}
                   onRequestDeleteBar={onRequestDeleteBar}
                   onUpdateBarAnchor={(barId, end, anchor) =>
-                    updateActivePanel({ bars: activeBars.map((b) => (b.id === barId ? { ...b, [end]: anchor } : b)) })
+                    updateActivePanel({ bars: activeBars.map((b) => (b.id === barId ? { ...b, [end]: anchor } : b)) }, 'moveBar')
                   }
                   onUpdateBarSag={(barId, sagMm) =>
-                    updateActivePanel({ bars: activeBars.map((b) => (b.id === barId ? { ...b, sagMm } : b)) })
+                    updateActivePanel({ bars: activeBars.map((b) => (b.id === barId ? { ...b, sagMm } : b)) }, 'bendBar')
                   }
                   onDividerDrag={onDividerDrag}
                   onPanelEdgeDrag={onPanelEdgeDrag}
@@ -1638,13 +1851,13 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                 <ContextMenuContent>
                   <ContextMenuItem
                     disabled={menuSash.sash.rail === 0}
-                    onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { rail: menuSash.sash.rail - 1 })}
+                    onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { rail: menuSash.sash.rail - 1 }, 'moveSash')}
                   >
                     {t('fields.sliding.moveBack')}
                   </ContextMenuItem>
                   <ContextMenuItem
                     disabled={menuSash.sash.rail >= menuSash.rails - 1}
-                    onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { rail: menuSash.sash.rail + 1 })}
+                    onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { rail: menuSash.sash.rail + 1 }, 'moveSash')}
                   >
                     {t('fields.sliding.moveForward')}
                   </ContextMenuItem>
@@ -1661,7 +1874,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                       <ContextMenuItem
                         key={type}
                         onSelect={() =>
-                          updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { openingType: type, directionSource: SlidingDirectionSource.MANUAL })
+                          updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { openingType: type, directionSource: SlidingDirectionSource.MANUAL }, 'changeSlidingDirection')
                         }
                       >
                         <span className="w-4 text-center">{current ? '✓' : ''}</span>
@@ -1672,7 +1885,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   })}
                   {menuSash.sash.directionSource === SlidingDirectionSource.MANUAL && (
                     <ContextMenuItem
-                      onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { directionSource: SlidingDirectionSource.AUTO })}
+                      onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { directionSource: SlidingDirectionSource.AUTO }, 'changeSlidingDirection')}
                     >
                       <span className="w-4" />
                       {t('fields.sliding.resetAuto')}
@@ -1709,7 +1922,12 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               />
             </div>
 
-            <aside aria-label={t('windowDialog.design.inspector')} className="flex min-h-0 min-w-0 flex-col border-s border-border bg-card">
+            <aside
+              aria-label={t('windowDialog.design.inspector')}
+              className="flex min-h-0 min-w-0 flex-col border-s border-border bg-card"
+              onFocusCapture={onFieldFocus}
+              onBlurCapture={onFieldBlur}
+            >
             <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pt-3 pb-4">
               {/* Frame profile — search + favourite + Browse
                   (docs/window_editor_redesign_planing.md §4), replacing
@@ -1748,7 +1966,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   onDeletePanel={canDeletePanel ? onDeletePanel : undefined}
                   deleteDisabledReason={canDeletePanel ? undefined : t('windowDialog.design.deletePanelBlocked')}
                   name={watch('name')}
-                  onNameChange={(value) => setValue('name', value, { shouldValidate: true, shouldDirty: true })}
+                  onNameChange={(value) => commitField('name', value)}
                   nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
                   widthMm={activeRaw?.widthMm ?? NaN}
                   heightMm={activeRaw?.heightMm ?? NaN}
@@ -1760,7 +1978,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   headRiseMm={activePanel.headRiseMm ?? null}
                   onHeadShapeChange={(shape) => {
                     if (shape === HeadShape.FLAT) {
-                      updateActivePanel({ headShape: shape, headRiseMm: null, bars: [] })
+                      updateActivePanel({ headShape: shape, headRiseMm: null, bars: [] }, 'changeHeadShape')
                       setBarDrawMode(false)
                       return
                     }
@@ -1778,7 +1996,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                     const widthForRise = drawableMm(activeRaw?.widthMm ?? NaN, PLACEHOLDER_WIDTH_MM)
                     const heightForRise = drawableMm(activeRaw?.heightMm ?? NaN, PLACEHOLDER_HEIGHT_MM)
                     if (activePanel.rowHeights.length > 1) {
-                      updateActivePanel({ headShape: shape, headRiseMm: activePanel.rowHeights[0] })
+                      updateActivePanel({ headShape: shape, headRiseMm: activePanel.rowHeights[0] }, 'changeHeadShape')
                       return
                     }
                     const defaultRise =
@@ -1790,7 +2008,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                     updateActivePanel({
                       headShape: shape,
                       headRiseMm: normalizeHeadRise(shape, widthForRise, defaultRise, heightForRise),
-                    })
+                    }, 'changeHeadShape')
                   }}
                   onHeadRiseChange={(mm) =>
                     updateActivePanel({
@@ -1800,7 +2018,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                         mm,
                         drawableMm(activeRaw?.heightMm ?? NaN, PLACEHOLDER_HEIGHT_MM),
                       ),
-                    })
+                    }, 'changeHeadRise')
                   }
                   headShapeAllowed={canHaveArchedHead({
                     isDoor: activePanel.isDoor,
@@ -1827,12 +2045,12 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   onBarRadiusChange={onBarRadiusChange}
                   interiorColor={activePanel.interiorColor ?? null}
                   exteriorColor={activePanel.exteriorColor ?? null}
-                  onInteriorColorChange={(value) => updateActivePanel({ interiorColor: value as ScopedRef | null })}
-                  onExteriorColorChange={(value) => updateActivePanel({ exteriorColor: value as ScopedRef | null })}
+                  onInteriorColorChange={(value) => updateActivePanel({ interiorColor: value as ScopedRef | null }, 'changeColor')}
+                  onExteriorColorChange={(value) => updateActivePanel({ exteriorColor: value as ScopedRef | null }, 'changeColor')}
                   colorOptions={colorOptions}
                   showDoor={activeInfo.showDoor}
                   isDoor={activePanel.isDoor}
-                  onDoorChange={(value) => updateActivePanel({ isDoor: value })}
+                  onDoorChange={(value) => updateActivePanel({ isDoor: value }, 'changeDoor')}
                   isGridded={activeIsGridded}
                   dividerProfile={activePanel.dividerProfile}
                   onDividerProfileChange={onDividerProfileChange}
@@ -1853,31 +2071,31 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                     onOpeningTypeChange: onSectionOpeningTypeChange,
                     sashProfile: activeSection.sashProfile ?? '',
                     sashOptions,
-                    onSashChange: (ref) => updateActiveSection({ sashProfile: ref, glass: '' as ScopedRef }),
+                    onSashChange: (ref) => updateActiveSection({ sashProfile: ref, glass: '' as ScopedRef }, 'changeSash'),
                     sashWeightKg: activeSashWeightKg,
                     maxSashWeight: activeInfo.maxSashWeight,
                     beadProfile: activeSection.beadProfile ?? '',
                     beadOptions,
-                    onBeadChange: (ref) => updateActiveSection({ beadProfile: ref, glass: '' as ScopedRef }),
+                    onBeadChange: (ref) => updateActiveSection({ beadProfile: ref, glass: '' as ScopedRef }, 'changeBead'),
                     hasFlyScreen: activeSection.hasFlyScreen,
                     flyScreenAllowed: activeInfo.flyScreenAllowed,
-                    onFlyScreenChange: (value) => updateActiveSection({ hasFlyScreen: value }),
+                    onFlyScreenChange: (value) => updateActiveSection({ hasFlyScreen: value }, 'changeFlyScreen'),
                     isSliding: activeIsSliding,
                     slidingLayout: activeSection.sliding ?? null,
                     slidingRails: activeSlidingRails,
                     onSlidingLayoutChange: setSlidingLayout,
                     glassValue,
                     glassOptions,
-                    onGlassChange: (kind, ref) => updateActiveSection({ glassKind: kind, glass: ref }),
+                    onGlassChange: (kind, ref) => updateActiveSection({ glassKind: kind, glass: ref }, 'changeGlass'),
                     maxGlassAllowed: activeSectionInfo?.maxGlassAllowed ?? null,
                     sashMaxGlassThickness: activeSectionInfo?.sashMaxGlassThickness ?? null,
                     beadMaxGlassThickness: activeSectionInfo?.beadMaxGlassThickness ?? null,
                   }}
                   selectedDivider={selectedDivider}
                   location={watch('location') ?? null}
-                  onLocationChange={(value) => setValue('location', value, { shouldValidate: true, shouldDirty: true })}
+                  onLocationChange={(value) => commitField('location', value)}
                   notes={watch('notes') ?? null}
-                  onNotesChange={(value) => setValue('notes', value, { shouldValidate: true, shouldDirty: true })}
+                  onNotesChange={(value) => commitField('notes', value)}
                 />
               )}
             </div>
@@ -1978,6 +2196,70 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
 /** A panel with no size yet still has to draw as something. */
 function drawableMm(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+/** What one undo step restores — the five fields every edit goes
+ * through, plus the camera offset `commitPanels` moves alongside
+ * `panels` (without it, undoing "add panel on the left" slides the
+ * drawing sideways — bug-067's family). */
+interface EditorSnapshot {
+  name: CreateWindowInput['name']
+  quantity: CreateWindowInput['quantity']
+  panels: WindowPanelInput[]
+  location: CreateWindowInput['location']
+  notes: CreateWindowInput['notes']
+  originOffsetMm: { x: number; y: number }
+}
+
+/** The name of an undo step — `windowDialog.design.history.<label>` —
+ * required by every door so the compiler finds a call that forgot one. */
+type EditLabel =
+  | 'addPanel'
+  | 'deletePanel'
+  | 'resizePanel'
+  | 'resizeSection'
+  | 'addDivider'
+  | 'moveDivider'
+  | 'removeDivider'
+  | 'changeFrame'
+  | 'changeDividerProfile'
+  | 'changeSectionType'
+  | 'changeOpening'
+  | 'changeSash'
+  | 'changeBead'
+  | 'changeFlyScreen'
+  | 'changeGlass'
+  | 'changeColor'
+  | 'changeDoor'
+  | 'changeHeadShape'
+  | 'changeHeadRise'
+  | 'editSlidingLayout'
+  | 'moveSash'
+  | 'changeSlidingDirection'
+  | 'drawBar'
+  | 'moveBar'
+  | 'bendBar'
+  | 'deleteBar'
+  | 'changeBarRadius'
+  | 'rename'
+  | 'changeQuantity'
+  | 'editLocation'
+  | 'editNotes'
+
+const FIELD_LABELS = {
+  name: 'rename',
+  quantity: 'changeQuantity',
+  location: 'editLocation',
+  notes: 'editNotes',
+} as const satisfies Record<string, EditLabel>
+
+/** Where the user was when a step was made — restored on undo AND redo
+ * (planing decision 2), clamped by `applyStep`. */
+interface EditorView {
+  selectedPartId: string | null
+  activePanelIndex: number
+  activeSectionIndex: number
+  selectedPanelIndices: number[]
 }
 
 function emptyWindow(projectId: string, favoriteFrameProfile?: string | null): CreateWindowInput {

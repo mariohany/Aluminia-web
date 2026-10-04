@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { Minus, MousePointer2, Plus, Redo2, Ruler, Spline, Undo2 } from 'lucide-react'
+import { Hand, Minus, MousePointer2, Plus, Redo2, Ruler, Spline, Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SystemType } from '@repo/types/lookups'
 import type { WindowBarInput } from '@repo/types/windows'
@@ -91,6 +91,24 @@ const ZOOM_MAX = 4
 const ZOOM_STEP = 1.2
 function clampZoom(zoom: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom))
+}
+// How much room "100%" leaves around the window beyond the dimension/
+// marker margin — 1 would fit it edge to edge. Mario, 2026-10-04: "the
+// 100% zoom to be actually zoomed out a little bit".
+const FIT_ROOM = 1.15
+
+/** The 100% view: the content plus `margin`, widened by `FIT_ROOM`
+ * around its own centre. `offset` is `originOffsetMm` — subtracted back
+ * out because `viewOrigin` adds it. */
+function fitViewBox(outerMm: { width: number; height: number }, margin: number, offset = { x: 0, y: 0 }) {
+  const width = (outerMm.width + margin * 2) * FIT_ROOM
+  const height = (outerMm.height + margin * 2) * FIT_ROOM
+  return {
+    minX: outerMm.width / 2 - width / 2 - offset.x,
+    minY: outerMm.height / 2 - height / 2 - offset.y,
+    width,
+    height,
+  }
 }
 
 /** Client (screen) coordinates → this SVG's own user-space (mm), via
@@ -394,12 +412,7 @@ export function WindowDrawing({
   // Edits never recompute it; only "Reset zoom" (the % button) does, via
   // `resetView` below — Mario: re-fit to the window's CURRENT size after
   // dragging edges, so 100% centres it again exactly as on open.
-  const [baseViewBox, setBaseViewBox] = useState(() => ({
-    minX: -margin,
-    minY: -margin,
-    width: outerMm.width + margin * 2,
-    height: outerMm.height + margin * 2,
-  }))
+  const [baseViewBox, setBaseViewBox] = useState(() => fitViewBox(outerMm, margin))
   const [camera, setCamera] = useState({ zoom: 1, panX: 0, panY: 0 })
   // The fixed reference shifted by `originOffsetMm` — what `camera`'s
   // pan/zoom are relative to.
@@ -409,15 +422,9 @@ export function WindowDrawing({
     viewOriginRef.current = viewOrigin
   })
   // Same fit-to-content as the lazy initializer above, from TODAY's
-  // size. `originOffsetMm` is subtracted back out because `viewOrigin`
-  // adds it, so the resulting view starts exactly at (-margin, -margin).
+  // size (`fitViewBox` takes the origin offset back out).
   const resetView = () => {
-    setBaseViewBox({
-      minX: -margin - originOffsetMm.x,
-      minY: -margin - originOffsetMm.y,
-      width: outerMm.width + margin * 2,
-      height: outerMm.height + margin * 2,
-    })
+    setBaseViewBox(fitViewBox(outerMm, margin, originOffsetMm))
     setCamera({ zoom: 1, panX: 0, panY: 0 })
   }
   const viewBox = {
@@ -499,6 +506,24 @@ export function WindowDrawing({
   const [panDrag, setPanDrag] = useState<{ startClientX: number; startClientY: number; startPanX: number; startPanY: number; pxPerMm: number } | null>(
     null,
   )
+  const startPan = (e: MouseEvent) => {
+    if (!svgRef.current) return
+    const ctm = svgRef.current.getScreenCTM()
+    if (!ctm) return
+    e.preventDefault()
+    onHover(null)
+    setPanDrag({ startClientX: e.clientX, startClientY: e.clientY, startPanX: camera.panX, startPanY: camera.panY, pxPerMm: ctm.a })
+  }
+  // The pill's Hand tool (Mario, 2026-10-04: "move the view even on top
+  // of the window itself"): view only — no hover, no "+" markers, no
+  // selecting or dragging parts, until Select or Bars is picked. Bars
+  // switched on from outside (the part panel's own button) wins, so it's
+  // derived rather than reset in an effect. While Hand is on, or while
+  // any pan drag runs (incl. a held mouse wheel from any tool), a
+  // transparent layer over the whole drawing takes every press.
+  const [handMode, setHandMode] = useState(false)
+  const handActive = handMode && !barDrawMode
+  const viewOnly = handActive || panDrag !== null
   useEffect(() => {
     if (!panDrag) return
     let rafId: number | null = null
@@ -897,7 +922,7 @@ export function WindowDrawing({
       // (`canvas-page.tsx`) — Mario, 2026-09-16: "add grid behind the
       // window workspace." Pure CSS gradients (no image asset), so it
       // costs nothing to load. Colours are the `--canvas*` theme tokens
-      // (index.css): "Drafting paper" in light, Graphite in dark.
+      // (index.css): shell grey in light, Graphite in dark.
       style={{
         backgroundColor: 'var(--canvas)',
         backgroundImage: [
@@ -921,6 +946,15 @@ export function WindowDrawing({
         // the HTML overlay (dimension inputs, "+" markers, the add-panel
         // card) so they stay aligned to the shapes.
         preserveAspectRatio="xMidYMid meet"
+        // Held mouse wheel pans from anywhere, whatever the tool, and
+        // hands back to it on release (Mario, 2026-10-04). Capture phase +
+        // stopPropagation so no part under the cursor starts its own drag;
+        // preventDefault stops the browser's autoscroll.
+        onMouseDownCapture={(e) => {
+          if (e.button !== 1) return
+          e.stopPropagation()
+          startPan(e)
+        }}
         // Starts below the floating tool pill (redesign §3) so the pill
         // never sits on the elevation; `useSvgToClientTransform` adds
         // this offset back for the HTML overlay.
@@ -948,13 +982,7 @@ export function WindowDrawing({
           height={viewBox.height}
           fill="transparent"
           className={panDrag ? 'cursor-grabbing' : 'cursor-grab'}
-          onMouseDown={(e) => {
-            if (!svgRef.current) return
-            const ctm = svgRef.current.getScreenCTM()
-            if (!ctm) return
-            e.preventDefault()
-            setPanDrag({ startClientX: e.clientX, startClientY: e.clientY, startPanX: camera.panX, startPanY: camera.panY, pxPerMm: ctm.a })
-          }}
+          onMouseDown={startPan}
         />
 
         {/* Overall assembly dimensions — READ-ONLY. They're derived from
@@ -1313,6 +1341,7 @@ export function WindowDrawing({
         })}
 
         {attachRect &&
+          !viewOnly &&
           attachSides.map((side) => {
             const centre = markerCentre(side, attachRect, plusRadius)
             return (
@@ -1332,6 +1361,20 @@ export function WindowDrawing({
               />
             )
           })}
+
+        {/* Hand / held-wheel pan layer — last child, so it sits over the
+            window itself and takes every press (see `viewOnly`). */}
+        {viewOnly && (
+          <rect
+            x={viewBox.minX}
+            y={viewBox.minY}
+            width={viewBox.width}
+            height={viewBox.height}
+            fill="transparent"
+            className={panDrag ? 'cursor-grabbing' : 'cursor-grab'}
+            onMouseDown={(e) => e.button === 0 && startPan(e)}
+          />
+        )}
       </svg>
 
       {/* The hover readout chip — arch_windows_planing.md §6.1's
@@ -1381,16 +1424,34 @@ export function WindowDrawing({
       >
         <ToolButton
           label={t('windowDialog.design.tools.select')}
-          active={!barDrawMode}
-          onClick={() => onBarDrawModeChange(false)}
+          active={!barDrawMode && !handActive}
+          onClick={() => {
+            setHandMode(false)
+            onBarDrawModeChange(false)
+          }}
         >
           <MousePointer2 className="size-4" />
+        </ToolButton>
+        <ToolButton
+          label={t('windowDialog.design.tools.hand')}
+          active={handActive}
+          onClick={() => {
+            setHandMode(true)
+            onBarDrawModeChange(false)
+            onHover(null)
+            onPanelHover(null)
+          }}
+        >
+          <Hand className="size-4" />
         </ToolButton>
         <ToolButton
           label={barsAvailable ? t('windowDialog.design.tools.bars') : t('windowDialog.design.tools.barsNeedArch')}
           active={barDrawMode}
           unavailable={!barsAvailable}
-          onClick={() => onBarDrawModeChange(!barDrawMode)}
+          onClick={() => {
+            setHandMode(false)
+            onBarDrawModeChange(!barDrawMode)
+          }}
         >
           <Spline className="size-4" />
         </ToolButton>

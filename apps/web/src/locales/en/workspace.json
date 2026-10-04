@@ -390,6 +390,7 @@
       "tools": {
         "label": "Drawing tools",
         "select": "Select",
+        "hand": "Hand — drag to move the view (or hold the mouse wheel)",
         "bars": "Draw bars",
         "barsNeedArch": "Bars need an arched head",
         "measure": "Measure",

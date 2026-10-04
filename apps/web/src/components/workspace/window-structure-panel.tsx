@@ -15,7 +15,9 @@ import { cn } from '@/lib/utils'
  * panels and their sections as a tree, the total glass area underneath.
  * The tree is a second way to select what the drawing already selects —
  * a panel row picks that panel's frame, a section row picks that
- * section's glass, both through the editor's own `onSelectPart`, so the
+ * section's glass, a mullion/transom row (after the sections, with its
+ * length — Mario, 2026-10-04) picks that divider, all through the
+ * editor's own `onSelectPart`, so the
  * options column and the drawing's highlight follow exactly as if the
  * part had been clicked on the drawing.
  */
@@ -32,6 +34,7 @@ export function WindowStructurePanel({
   issuesByPart,
   activePanelIndex,
   activeSectionIndex,
+  selectedPartId,
   onSelectPart,
 }: {
   projectName?: string
@@ -46,6 +49,7 @@ export function WindowStructurePanel({
   issuesByPart: Map<string, TranslatedIssue[]>
   activePanelIndex: number
   activeSectionIndex: number
+  selectedPartId: string | null
   onSelectPart: (partId: string) => void
 }) {
   const { t } = useTranslation('workspace')
@@ -72,6 +76,22 @@ export function WindowStructurePanel({
     parts.find((p) => p.panelIndex === panelIndex && p.sectionIndex === sectionIndex && p.kind === 'glass')?.id ??
     parts.find((p) => p.panelIndex === panelIndex && p.sectionIndex === sectionIndex)?.id ??
     null
+
+  // A panel's mullions (`div-v{k}`), then its transoms (`div-h{k}`), each
+  // in boundary order — the layout already pushes them that way. The
+  // length is the drawn part's own, same figure the inspector shows.
+  const dividersOf = (panelIndex: number) =>
+    parts
+      .filter((p) => p.panelIndex === panelIndex && p.kind === 'divider')
+      .map((p) => {
+        const vertical = p.id.includes(':div-v')
+        return {
+          id: p.id,
+          vertical,
+          number: p.index + 1,
+          lengthMm: Math.round(vertical ? p.rectMm.height : p.rectMm.width),
+        }
+      })
 
   const sectionCaption = (section: WindowPanelInput['sections'][number]): string => {
     if (section.kind === SectionKind.FIXED) return t('windowDialog.design.section.kind.fixed')
@@ -136,6 +156,10 @@ export function WindowStructurePanel({
           const gridded = panel.columnWidths.length > 1 || panel.rowHeights.length > 1
           const severity = panelSeverity(panelIndex)
           const panelActive = activePanelIndex === panelIndex
+          const dividers = dividersOf(panelIndex)
+          // A selected divider owns the highlight — the active section
+          // row only lights up while no divider of this panel is picked.
+          const dividerSelected = dividers.some((d) => d.id === selectedPartId)
           return (
             <div key={panelIndex} className="flex flex-col gap-0.5">
               <button
@@ -166,7 +190,7 @@ export function WindowStructurePanel({
                 panel.sections.map((section) => {
                   const sectionIndex = section.row * panel.columnWidths.length + section.col
                   const partId = sectionPartId(panelIndex, sectionIndex)
-                  const active = panelActive && activeSectionIndex === sectionIndex
+                  const active = panelActive && !dividerSelected && activeSectionIndex === sectionIndex
                   return (
                     <button
                       key={sectionIndex}
@@ -184,6 +208,31 @@ export function WindowStructurePanel({
                     </button>
                   )
                 })}
+              {dividers.map((divider) => {
+                const active = divider.id === selectedPartId
+                return (
+                  <button
+                    key={divider.id}
+                    type="button"
+                    aria-current={active ? 'true' : undefined}
+                    data-structure-row
+                    onClick={() => onSelectPart(divider.id)}
+                    className={rowClass(active, 2)}
+                  >
+                    {/* A bar in the divider's own direction — a mullion
+                        stands, a transom lies down. */}
+                    <span className="flex size-3 shrink-0 items-center justify-center" aria-hidden="true">
+                      <span className={cn('rounded-[1px] bg-current opacity-60', divider.vertical ? 'h-3 w-[3px]' : 'h-[3px] w-3')} />
+                    </span>
+                    <span className="truncate">
+                      {t(divider.vertical ? 'windowDialog.design.parts.mullion' : 'windowDialog.design.parts.transom')} {divider.number}
+                    </span>
+                    <span className="ms-auto shrink-0 font-mono text-[11px] text-muted-foreground" dir="ltr">
+                      {formatDimensionMm(divider.lengthMm)}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           )
         })}

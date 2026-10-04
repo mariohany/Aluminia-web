@@ -1767,6 +1767,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               issuesByPart={issuesByPart}
               activePanelIndex={activePanelIndex}
               activeSectionIndex={activeSectionIndex}
+              selectedPartId={selectedPartId}
               onSelectPart={(partId) => onSelectPart(partId, false)}
             />
             </div>

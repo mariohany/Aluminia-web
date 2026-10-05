@@ -433,12 +433,10 @@
         "hand": "اليد — اسحب لتحريك العرض (أو اسحب مع الضغط على عجلة الماوس)",
         "bars": "رسم القضبان",
         "barsNeedArch": "القضبان تحتاج رأسًا مقوسًا",
-        "measure": "قياس",
         "undo": "تراجع",
         "redo": "إعادة",
         "undoAction": "تراجع عن {{action}}",
-        "redoAction": "إعادة {{action}}",
-        "comingSoon": "قريبًا"
+        "redoAction": "إعادة {{action}}"
       },
       "history": {
         "addPanel": "إضافة لوح",

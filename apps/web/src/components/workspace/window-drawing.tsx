@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { Hand, Minus, MousePointer2, Plus, Redo2, Ruler, Spline, Undo2 } from 'lucide-react'
+import { Hand, Minus, MousePointer2, Plus, Redo2, Spline, Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SystemType } from '@repo/types/lookups'
 import type { WindowBarInput } from '@repo/types/windows'
@@ -1456,11 +1456,6 @@ export function WindowDrawing({
           <Spline className="size-4" />
         </ToolButton>
         <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
-        {/* Shown, not built yet (decision 4) — `aria-disabled` rather than
-            `disabled` so the "Coming soon" tooltip still appears on hover. */}
-        <ToolButton label={`${t('windowDialog.design.tools.measure')} — ${t('windowDialog.design.tools.comingSoon')}`} unavailable>
-          <Ruler className="size-4" />
-        </ToolButton>
         <ToolButton label={undoRedo.undoLabel} unavailable={!undoRedo.canUndo} onClick={undoRedo.onUndo}>
           <Undo2 className="size-4" />
         </ToolButton>

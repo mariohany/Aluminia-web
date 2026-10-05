@@ -393,12 +393,10 @@
         "hand": "Hand — drag to move the view (or hold the mouse wheel)",
         "bars": "Draw bars",
         "barsNeedArch": "Bars need an arched head",
-        "measure": "Measure",
         "undo": "Undo",
         "redo": "Redo",
         "undoAction": "Undo {{action}}",
-        "redoAction": "Redo {{action}}",
-        "comingSoon": "Coming soon"
+        "redoAction": "Redo {{action}}"
       },
       "history": {
         "addPanel": "Add panel",

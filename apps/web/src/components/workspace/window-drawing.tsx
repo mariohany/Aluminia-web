@@ -57,10 +57,10 @@ import {
 import { insetHeadOutline, type PointMm } from '@/lib/arch-geometry'
 import type { TranslatedIssue } from '@/lib/window-weight'
 import type { WindowDividerInput } from '@repo/types/windows'
-import { pathPointAt, sagFromPoint } from '@/lib/curves'
+import { interiorPoint, pathPointAt, sagFromPoint, samplePath } from '@/lib/curves'
 import { findCrossings, resolveDividers, zoneOf, type Crossing } from '@/lib/dividers'
 import { panelLights } from '@/lib/panel-lights'
-import { visibleAngles } from '@/lib/light-graph'
+import { loopToSvgPath, visibleAngles } from '@/lib/light-graph'
 import { DividerDrawLayer } from '@/components/workspace/divider-draw-layer'
 
 /** Real magnet radius (unlike the exact-mm-only edge-position guide,
@@ -1981,11 +1981,15 @@ function PanelDimensionCallouts({
           )
           if (sectionParts.length === 0) return null
           const rect = boundingRect(sectionParts.map((p) => p.rectMm))
+          // A shaped arch light gets its letter at its deepest point —
+          // the bounding box's bottom centre can fall outside it.
+          const shaped = sectionParts.find((p) => p.outline)?.outline
+          const inner = shaped ? interiorPoint(samplePath(shaped)) : null
           return (
             <text
               key={sectionIndex}
-              x={rect.x + rect.width / 2}
-              y={rect.y + rect.height * 0.92}
+              x={inner ? inner.point.x : rect.x + rect.width / 2}
+              y={inner ? inner.point.y + inner.radius * 0.6 : rect.y + rect.height * 0.92}
               textAnchor="middle"
               fontSize={letterFontSize}
               fontWeight={600}
@@ -2226,6 +2230,11 @@ function InteractivePart({
   cursorClassName?: string
 }) {
   const rect = ringRect ?? part.rectMm
+  // A divider band or a shaped light is highlighted and hit by its own
+  // outline — its bounding box would cover the lights beside a slanted
+  // spoke and steal their clicks.
+  const shape = ringRect ? undefined : (part.band ?? part.outline)
+  const shapePath = shape ? loopToSvgPath(shape) : null
   const severity = worstSeverity(issues)
   const onKeyDown = (e: KeyboardEvent<SVGGElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -2255,21 +2264,36 @@ function InteractivePart({
       className={cn('outline-none', cursorClassName)}
     >
       {children}
-      {showOverlay && (selected || hovered) && (
-        <rect
-          x={rect.x}
-          y={rect.y}
-          width={rect.width}
-          height={rect.height}
-          fill="var(--primary)"
-          fillOpacity={selected ? 0.16 : 0.08}
-          stroke={selected ? 'var(--primary)' : 'transparent'}
-          strokeWidth={Math.max(rect.width, rect.height) * 0.006}
-          pointerEvents="none"
-        />
+      {showOverlay &&
+        (selected || hovered) &&
+        (shapePath ? (
+          <path
+            d={shapePath}
+            fill="var(--primary)"
+            fillOpacity={selected ? 0.16 : 0.08}
+            stroke={selected ? 'var(--primary)' : 'transparent'}
+            strokeWidth={Math.max(rect.width, rect.height) * 0.006}
+            pointerEvents="none"
+          />
+        ) : (
+          <rect
+            x={rect.x}
+            y={rect.y}
+            width={rect.width}
+            height={rect.height}
+            fill="var(--primary)"
+            fillOpacity={selected ? 0.16 : 0.08}
+            stroke={selected ? 'var(--primary)' : 'transparent'}
+            strokeWidth={Math.max(rect.width, rect.height) * 0.006}
+            pointerEvents="none"
+          />
+        ))}
+      {/* Transparent (not "none") so the whole shape keeps catching pointer events even where nothing is painted. */}
+      {shapePath ? (
+        <path d={shapePath} fill="transparent" />
+      ) : (
+        <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} fill="transparent" />
       )}
-      {/* Transparent (not "none") so the whole rect keeps catching pointer events even where nothing is painted. */}
-      <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} fill="transparent" />
       {severity && issues && glyphRadius && (
         <g pointerEvents="none">
           <circle

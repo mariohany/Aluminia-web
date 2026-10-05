@@ -340,3 +340,54 @@ export function pointInPolygon(p: PointMm, poly: PointMm[]): boolean {
   }
   return inside
 }
+
+/** The point deepest inside a polygon and its distance to the nearest
+ * edge — where a light's mark or letter goes when the light isn't a
+ * rectangle (its bounding-box centre can sit on a divider or outside
+ * the light). A coarse grid, then a finer one around the best cell. */
+export function interiorPoint(poly: PointMm[]): { point: PointMm; radius: number } {
+  const xs = poly.map((p) => p.x)
+  const ys = poly.map((p) => p.y)
+  const x0 = Math.min(...xs)
+  const y0 = Math.min(...ys)
+  const w = Math.max(...xs) - x0
+  const h = Math.max(...ys) - y0
+  const edgeDist = (p: PointMm) => {
+    let best = Infinity
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[j]
+      const b = poly[i]
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const len2 = dx * dx + dy * dy || 1
+      const t = clamp01(((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)
+      best = Math.min(best, Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t)))
+    }
+    return best
+  }
+  let point = { x: x0 + w / 2, y: y0 + h / 2 }
+  let radius = pointInPolygon(point, poly) ? edgeDist(point) : -1
+  let cx = point.x
+  let cy = point.y
+  let spanX = w
+  let spanY = h
+  for (let pass = 0; pass < 3; pass++) {
+    const n = 16
+    for (let i = 0; i <= n; i++) {
+      for (let j = 0; j <= n; j++) {
+        const p = { x: cx - spanX / 2 + (spanX * i) / n, y: cy - spanY / 2 + (spanY * j) / n }
+        if (!pointInPolygon(p, poly)) continue
+        const d = edgeDist(p)
+        if (d > radius) {
+          radius = d
+          point = p
+        }
+      }
+    }
+    cx = point.x
+    cy = point.y
+    spanX /= 6
+    spanY /= 6
+  }
+  return { point, radius: Math.max(radius, 0) }
+}

@@ -3,6 +3,7 @@ import { HingedOpeningType, HeadShape } from '@repo/types/windows'
 import { DOUBLE_DOOR_OPENING_TYPES, type WindowPart } from '@/lib/window-geometry'
 import { headPointAt, insetHeadOutline, type HeadOutline } from '@/lib/arch-geometry'
 import { loopToSvgPath } from '@/lib/light-graph'
+import { interiorPoint, samplePath } from '@/lib/curves'
 import type { ProfileMetrics } from '@/lib/profile-metrics'
 import { movesLeft, movesRight } from '@repo/types/sliding'
 
@@ -1174,16 +1175,19 @@ export function renderFixedSymbols(glasses: WindowPart[]): React.ReactNode {
       {glasses.map((glass) => {
         const { x, y, width, height } = glass.rectMm
         const scale = Math.min(width, height)
+        // A shaped arch light is marked at its deepest point and sized to
+        // fit inside it — its bounding-box centre can sit on a spoke.
+        const inner = glass.outline ? interiorPoint(samplePath(glass.outline)) : null
         // Kept inside the pane's middle 40% vertically so it clears the
         // section letter sitting in the bottom band of a shallow transom,
         // and capped in mm so a big picture window gets a mark, not a
         // crosshair the size of a door.
-        const arm = Math.min(width * 0.28, height * 0.2, 150)
+        const arm = inner ? Math.min(inner.radius * 0.7, 150) : Math.min(width * 0.28, height * 0.2, 150)
         // Clamped so a shallow transom's mark keeps the same line weight
         // as the big lights next to it, and a big light doesn't fatten.
         const strokeWidth = Math.min(Math.max(scale * 0.024, 12), 14)
-        const cx = x + width / 2
-        const cy = y + height / 2
+        const cx = inner ? inner.point.x : x + width / 2
+        const cy = inner ? inner.point.y : y + height / 2
         return (
           <g key={glass.id} strokeWidth={strokeWidth} strokeDasharray={`${strokeWidth * 2.5} ${strokeWidth * 1.7}`}>
             <line x1={cx - arm} y1={cy} x2={cx + arm} y2={cy} />

@@ -106,7 +106,7 @@ export function frameGeometry(spec: FrameSpec): FrameGeometry {
   const width = Math.max(spec.widthMm, 1)
   const height = Math.max(spec.heightMm, 1)
   const arched = spec.headShape !== HeadShape.FLAT
-  const rise = arched ? normalizeHeadRise(spec.headShape, width, spec.headRiseMm ?? 0, height) : 0
+  const rise = arched ? normalizeHeadRise(spec.headShape, width, spec.headRiseMm ?? 0, height, spec.doorSill ? undefined : spec.frameFace) : 0
   const outer: HeadOutline = { rect: { x: 0, y: 0, width, height }, shape: spec.headShape, riseMm: rise }
   const inset = insetHeadOutline(outer, spec.frameFace)
   const inner: HeadOutline = spec.doorSill ? { ...inset, rect: { ...inset.rect, height: height - inset.rect.y } } : inset

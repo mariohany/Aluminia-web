@@ -251,7 +251,7 @@ export function buildWindowLayout(input: WindowLayoutInput): WindowLayout {
   const headShape = input.headShape ?? HeadShape.FLAT
   const archable = headShape !== HeadShape.FLAT && canHaveArchedHead({ isDoor: input.isDoor, systemType: input.systemType })
   const shape = archable ? headShape : HeadShape.FLAT
-  const riseMm = archable ? normalizeHeadRise(headShape, width, input.headRiseMm ?? 0, height) : 0
+  const riseMm = archable ? normalizeHeadRise(headShape, width, input.headRiseMm ?? 0, height, isDoorHinged ? undefined : metrics.frameFace) : 0
 
   const geo = frameGeometry({ widthMm: width, heightMm: height, headShape: shape, headRiseMm: riseMm, frameFace: metrics.frameFace, doorSill: isDoorHinged, springOffsetMm: metrics.dividerFace / 2 })
   const faceOf = input.dividerFace ?? (() => metrics.dividerFace)

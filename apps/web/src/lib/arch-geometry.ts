@@ -374,11 +374,34 @@ export function barCutLengthMm(chordMm: number, sagMm: number): number {
  * before it builds the outline actually rendered) — this is the one
  * place that guarantees a storable, renderable rise regardless of how
  * an otherwise-valid rise ends up paired with a since-shrunk height or
- * since-grown width. */
-export function normalizeHeadRise(shape: HeadShape, widthMm: number, riseMm: number, heightMm: number): number {
+ * since-grown width.
+ *
+ * `frameFaceMm` (client only — the server has no profile metrics and
+ * keeps the 1 mm floor; the geometry clamps again on every build): the
+ * frame's inner curve must spring on the sill's top face, never inside
+ * it. A flattened arch's inset curve springs lower than its outer one,
+ * so the largest such rise is found by bisection rather than `height −
+ * face`. With the 1 mm floor alone a round 2000×1000 panel sprang 51 mm
+ * down inside its sill and the arch's feet drew broken (bug-088). */
+export function normalizeHeadRise(shape: HeadShape, widthMm: number, riseMm: number, heightMm: number, frameFaceMm?: number): number {
   if (shape === HeadShape.FLAT) return 0
   const raw = shape === HeadShape.ROUND ? widthMm / 2 : riseMm
-  return Math.min(raw, heightMm - 1)
+  const capped = Math.min(raw, heightMm - 1)
+  if (!frameFaceMm || !(capped > 1)) return capped
+  const sillTop = heightMm - frameFaceMm
+  const fits = (rise: number) => {
+    const inner = insetHeadOutline({ rect: { x: 0, y: 0, width: widthMm, height: heightMm }, shape, riseMm: rise }, frameFaceMm)
+    return inner.rect.y + inner.riseMm <= sillTop
+  }
+  if (fits(capped)) return capped
+  let lo = 1
+  let hi = capped
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2
+    if (fits(mid)) lo = mid
+    else hi = mid
+  }
+  return lo
 }
 
 /** The minimum rise a gothic head needs to stay a simple, buildable

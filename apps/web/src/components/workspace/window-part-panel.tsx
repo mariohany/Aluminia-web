@@ -219,6 +219,9 @@ export interface WindowPartPanelProps {
   // or a hinged door).
   headShape: HeadShape
   headRiseMm: number | null
+  /** The frame face — the arch springs on the sill, never inside it
+   * (normalizeHeadRise). */
+  frameFaceMm: number
   onHeadShapeChange: (shape: HeadShape) => void
   onHeadRiseChange: (mm: number) => void
   headShapeAllowed: boolean
@@ -400,7 +403,7 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
               label={t('fields.headRiseMm')}
               value={
                 props.headShape === HeadShape.ROUND
-                  ? normalizeHeadRise(HeadShape.ROUND, props.widthMm, 0, props.heightMm)
+                  ? normalizeHeadRise(HeadShape.ROUND, props.widthMm, 0, props.heightMm, props.frameFaceMm)
                   : (props.headRiseMm ?? 0)
               }
               onChange={props.onHeadRiseChange}
@@ -410,11 +413,10 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
               // real bend a fabricator could set out to. See
               // arch-geometry.ts's minGothicRiseMm.
               min={props.headShape === HeadShape.GOTHIC ? Math.ceil(minGothicRiseMm(props.widthMm)) + 1 : 1}
-              // At or above this, the springing line falls at or below
-              // the panel's own bottom edge — no jamb, and the curve
-              // starts extending outside the panel's own rect entirely.
-              // See arch-geometry.ts's normalizeHeadRise.
-              max={Math.max(Math.floor(props.heightMm) - 1, 1)}
+              // Above this, the springing line falls inside the sill —
+              // the curve runs on into the bottom frame member. See
+              // arch-geometry.ts's normalizeHeadRise.
+              max={Math.max(Math.floor(normalizeHeadRise(props.headShape, props.widthMm, props.heightMm, props.heightMm, props.frameFaceMm)), 1)}
             />
           </div>
         )}

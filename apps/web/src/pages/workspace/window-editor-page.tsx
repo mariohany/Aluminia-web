@@ -2128,6 +2128,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   heightError={showValidation && errors.panels ? t('fields.heightMmRequired') : undefined}
                   headShape={activePanel.headShape}
                   headRiseMm={activePanel.headRiseMm ?? null}
+                  frameFaceMm={lightCtx(activePanelIndex).metrics.frameFace}
                   onHeadShapeChange={(shape) => {
                     // A fresh, shape-appropriate default every time the
                     // shape button changes — NOT a carried-over rise
@@ -2145,7 +2146,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                         : shape === HeadShape.GOTHIC
                           ? Math.round(minGothicRiseMm(widthForRise) * 1.15) // clear margin past the floor, not sitting right on it
                           : Math.round(widthForRise / 2) // round — normalizeHeadRise pins this exactly regardless
-                    const rise = shape === HeadShape.FLAT ? null : normalizeHeadRise(shape, widthForRise, defaultRise, heightForRise)
+                    const rise = shape === HeadShape.FLAT ? null : normalizeHeadRise(shape, widthForRise, defaultRise, heightForRise, lightCtx(activePanelIndex).metrics.frameFace)
                     // Dividers on the head re-land on the flat top (or
                     // the other way round) — changeHeadShape (§8). Any
                     // that can't are listed and confirmed first.
@@ -2165,6 +2166,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                       drawableMm(activeRaw?.widthMm ?? NaN, PLACEHOLDER_WIDTH_MM),
                       mm,
                       drawableMm(activeRaw?.heightMm ?? NaN, PLACEHOLDER_HEIGHT_MM),
+                      lightCtx(activePanelIndex).metrics.frameFace,
                     )
                     commitPanels(
                       panels.map((p, i) => (i === activePanelIndex ? withAlignedSections(p, { ...p, headRiseMm: rise }, lightCtx(i)) : p)),

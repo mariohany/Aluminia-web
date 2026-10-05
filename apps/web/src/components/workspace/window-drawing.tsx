@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { Hand, Minus, MousePointer2, Plus, Redo2, Spline, Undo2 } from 'lucide-react'
+import { Hand, Minus, MousePointer2, Plus, Redo2, Undo2 } from 'lucide-react'
+import { DividerToolIcon } from '@/components/icons/divider-tool-icon'
 import { useTranslation } from 'react-i18next'
 import { SystemType } from '@repo/types/lookups'
-import type { WindowBarInput } from '@repo/types/windows'
 import { Button } from '@/components/ui/button'
 import {
   alignedEdgeMm,
@@ -37,14 +37,13 @@ import {
   type DetailStyle,
   archOutlinePath,
   archRingPath,
-  barPath,
-  barPathsFor,
   boundingRect,
   georgianBars,
   isDoorHinged,
   mullionGridFor,
   openBottomFramePath,
   outlineOf,
+  partOutlinePath,
   renderHardware,
   renderFixedSymbols,
   renderOpeningTypeSymbols,
@@ -55,33 +54,20 @@ import {
   slidingPaintOrder,
   slidingStrokeScale,
 } from '@/components/workspace/window-shapes'
-import {
-  CROSSING_READOUT,
-  dependentsOf,
-  isNearBarCrossing,
-  pointAlongBar,
-  readoutFor,
-  resolveAnchor,
-  resolveBar,
-  sagFromDragPoint,
-  snapTarget,
-  type BarAnchor,
-  type Readout,
-} from '@/lib/arch-bars'
-import type { HeadOutline, PointMm } from '@/lib/arch-geometry'
+import { insetHeadOutline, type PointMm } from '@/lib/arch-geometry'
 import type { TranslatedIssue } from '@/lib/window-weight'
-
-/** Fixed screen-pixel snap distance, converted to mm via the SVG's own
- * screen CTM scale at read time — zoom/DPI-invariant, per arch-bars.ts's
- * own doc comment on `snapTarget`'s `toleranceMm` calling for exactly
- * that rather than a baked-in mm figure that would snap tighter at a
- * higher zoom and looser at a lower one. */
-const BAR_SNAP_TOLERANCE_PX = 14
+import type { WindowDividerInput } from '@repo/types/windows'
+import { pathPointAt, sagFromPoint } from '@/lib/curves'
+import { findCrossings, resolveDividers, zoneOf, type Crossing } from '@/lib/dividers'
+import { panelLights } from '@/lib/panel-lights'
+import { visibleAngles } from '@/lib/light-graph'
+import { DividerDrawLayer } from '@/components/workspace/divider-draw-layer'
 
 /** Real magnet radius (unlike the exact-mm-only edge-position guide,
  * per Mario's own back-and-forth on that one) for the SIZE-match snap —
- * "try snaping to match hight or width again." Same zoom-invariant
- * pixel-radius pattern as `BAR_SNAP_TOLERANCE_PX`. */
+ * "try snaping to match hight or width again." A fixed screen-pixel
+ * distance, converted to mm via the SVG's own screen CTM at read time,
+ * so it pulls the same at every zoom. */
 const SIZE_MATCH_SNAP_TOLERANCE_PX = 14
 
 // The drawing's own camera — see the `camera`/`baseViewBox` state in
@@ -125,39 +111,6 @@ function svgPointFromClient(el: SVGGraphicsElement, clientX: number, clientY: nu
   return { point: { x: p.x, y: p.y }, pxPerMm: ctm.a }
 }
 
-interface BarHover {
-  point: PointMm
-  snapped: BarAnchor | null
-  readout: Readout
-}
-
-/** What's under the pointer while drawing a bar — the readout chip's
- * content (§6.1's four-row table) and whatever the click/shadow-line
- * would snap to. A bar × bar crossing refuses to snap (arch-bars.ts's
- * own `isNearBarCrossing`), checked first since `snapTarget` would
- * otherwise just pick one of the two ambiguously. */
-function computeBarHover(e: MouseEvent<SVGGraphicsElement>, outline: HeadOutline, bars: WindowBarInput[]): BarHover | null {
-  const resolved = svgPointFromClient(e.currentTarget, e.clientX, e.clientY)
-  if (!resolved) return null
-  const { point, pxPerMm } = resolved
-  const toleranceMm = BAR_SNAP_TOLERANCE_PX / pxPerMm
-  // snapTarget FIRST, `isNearBarCrossing` only to explain a `null`
-  // result — never the other way around. `isNearBarCrossing` alone
-  // can't tell "two bars actually cross here" apart from "two bars
-  // just happen to already SHARE this exact endpoint" (tier 1 of
-  // `snapTarget` doesn't care how many bars reference a point, only
-  // that one exists within tolerance) — checking it first would refuse
-  // a perfectly legitimate shared anchor the moment a second bar had
-  // already been drawn from it. See arch-bars.ts's own doc comment on
-  // `isNearBarCrossing`: it exists purely to explain a `null` from
-  // `snapTarget`, not to gate the call to it (bug found live: a third
-  // bar couldn't start from a point two existing bars already shared).
-  const snapped = snapTarget(point, bars, outline, toleranceMm)
-  if (snapped) return { point, snapped, readout: readoutFor(snapped, point, bars, outline) }
-  if (isNearBarCrossing(point, bars, outline, toleranceMm)) return { point, snapped: null, readout: CROSSING_READOUT }
-  return { point, snapped: null, readout: readoutFor(null, point, bars, outline) }
-}
-
 const ERROR_COLOR = 'var(--destructive)'
 const WARNING_COLOR = 'oklch(0.72 0.15 75)'
 
@@ -165,9 +118,13 @@ export interface WindowDrawingProps {
   layout: AssemblyLayout
   panels: PanelRender[]
   selectedPartId: string | null
+  /** Every selected part, `selectedPartId` first — more than one after a
+   * modifier-click on dividers/lights (§7). */
+  selectedPartIds: string[]
   hoveredPartId: string | null
-  /** `additive` is a ctrl/cmd-click — it toggles the part's panel into
-   * the panel selection without changing which part is selected. */
+  /** `additive` is a ctrl/cmd/shift-click — on the frame it toggles the
+   * panel into the panel selection; on a divider or light it adds that
+   * part (Mario, 2026-10-05: "based on what I clicked"). */
   onSelect: (partId: string, additive: boolean) => void
   onHover: (partId: string | null) => void
   /** Panels currently in the selection set, for the "+" affordance. */
@@ -207,24 +164,6 @@ export interface WindowDrawingProps {
   /** Already-translated messages, keyed by part id — window-editor-page.tsx builds this from `collectWindowIssues()` (apps/web/src/lib/window-weight.ts). */
   issuesByPart: Map<string, TranslatedIssue[]>
 
-  // Bar drawing — arch_windows_planing.md §6.1/§6.2. Scoped to the
-  // ACTIVE panel only: the toggle that turns this on lives beside that
-  // panel's own Head section in window-part-panel.tsx, one level up.
-  /** While true, the active panel's arched head/glass area is covered
-   * by a capture layer that intercepts clicks for bar placement instead
-   * of part selection — persistent across bars, per the user's own
-   * chosen interaction (a toggle, not a one-shot tool). */
-  barDrawMode: boolean
-  /** `Escape` with no anchor pending exits draw mode — decided here,
-   * since a pending anchor is this component's own local state and only
-   * it knows whether one exists; a pending anchor gets cleared locally
-   * instead. */
-  onExitBarDrawMode: () => void
-  /** The floating tool pill's Bars tool (redesign §3): whether the active
-   * panel can take bars at all (an arched head — same rule as the
-   * options panel's own Bars button), and how to switch draw mode. */
-  barsAvailable: boolean
-  onBarDrawModeChange: (on: boolean) => void
   /** The pill's Undo/Redo (docs/editor_undo_redo_planing.md §6). The
    * labels arrive already translated and naming the step ("Undo Move
    * divider (⌘Z)") — the page owns the history and its step names. */
@@ -236,46 +175,28 @@ export interface WindowDrawingProps {
     onUndo: () => void
     onRedo: () => void
   }
-  /** Fires once a bar's second endpoint lands — always a fresh straight
-   * (`sagMm: 0`) bar; bowing it is Step 11. */
-  onAddBar: (bar: WindowBarInput) => void
-
-  // Select / delete / drag — arch_windows_planing.md §6.3/§6.4. Also
-  // scoped to the ACTIVE panel only, same posture as drawing above: a
-  // bar belongs to one panel's own `bars` array, and only that panel's
-  // options column shows its Bar section.
-  selectedBarId: string | null
-  onSelectBar: (barId: string) => void
-  /** Set once a delete has been asked for (button or `Delete`/
-   * `Backspace`) but not yet confirmed — drives the danger-colour
-   * highlight on this bar and everything `dependentsOf` it, shown
-   * BEFORE the confirm per §6.3, not just named in its text. */
-  pendingDeleteBarId: string | null
-  /** Delete/Backspace with a bar selected and draw mode off — starts
-   * the confirm (sets `pendingDeleteBarId`), same as the Bar section's
-   * own Delete button; the actual removal only happens once the user
-   * confirms, owned by `WindowEditor`. */
-  onRequestDeleteBar: () => void
-  /** Fires on every mouse-move of an endpoint drag that resolves to a
-   * valid anchor — re-written live, per §6.4, not just on release. */
-  onUpdateBarAnchor: (barId: string, end: 'from' | 'to', anchor: BarAnchor) => void
-
-  /** Bow — arch_windows_planing.md §6.5. Fires on every mouse-move of a
-   * midpoint-handle drag, live like `onUpdateBarAnchor` above (not just
-   * on release), so the radius readout in the Bar section updates
-   * every frame per the plan's own "done when". */
-  onUpdateBarSag: (barId: string, sagMm: number) => void
-
   /** Dragging a mullion/transom — Mario, 2026-09-15: "move the transom/
    * mullion in the panel by dragging it." Fires on every mouse-move of a
    * divider drag with the divider's own full assembly part id (e.g.
-   * `"p0:div-v1"`) and the pointer's desired boundary position, in
+   * `"p0:div-m1"`) and the pointer's desired boundary position, in
    * PANEL-LOCAL mm along the divider's axis (same coordinate space
    * `cumulativeBoundaries` uses) — `WindowEditor` parses the id and
    * calls `moveDivider()`, same division of labour as `onSelect`/
    * `onUpdateBarAnchor` above (this component only ever resolves screen
    * pixels to SVG mm; it never touches the panel model itself). */
   onDividerDrag: (dividerPartId: string, boundaryMm: number) => void
+  /** The Divider tool's second click (docs/free_dividers_planing.md §6):
+   * the panel's dividers with the new one added, already split and
+   * sorted; `added` are its ids, for selecting it. */
+  onDrawDivider: (panelIndex: number, dividers: WindowDividerInput[], added: string[]) => void
+  /** Dragging a selected arch divider's midpoint handle (§6.5): its new
+   * signed bow, `chordSagSeg`'s convention. */
+  onBendDivider: (dividerPartId: string, sagMm: number) => void
+  /** Dragging a selected arch divider's end along its host (§7) —
+   * panel-local mm; the editor slides it onto the host. */
+  onMoveDividerEnd: (dividerPartId: string, end: 'from' | 'to', point: PointMm) => void
+  /** The ⇄ button on a cross (Q3). */
+  onSwapCrossing: (panelIndex: number, crossing: Crossing) => void
 
   /** Dragging a panel's own FREE outer edge in/out — Mario: "resize the
    * window by dragging any side in or out." Fires on every mouse-move
@@ -311,30 +232,23 @@ export function WindowDrawing({
   layout,
   panels,
   selectedPartId,
+  selectedPartIds,
   hoveredPartId,
   onSelect,
   onHover,
   selectedPanelIndices,
-  activePanelIndex,
   attachRect,
   attachSides,
   onPanelHover,
   onAddPanel,
   overlay,
   issuesByPart,
-  barDrawMode,
-  onExitBarDrawMode,
-  barsAvailable,
-  onBarDrawModeChange,
   undoRedo,
-  onAddBar,
-  selectedBarId,
-  onSelectBar,
-  pendingDeleteBarId,
-  onRequestDeleteBar,
-  onUpdateBarAnchor,
-  onUpdateBarSag,
   onDividerDrag,
+  onDrawDivider,
+  onBendDivider,
+  onMoveDividerEnd,
+  onSwapCrossing,
   onPanelEdgeDrag,
   originOffsetMm,
 }: WindowDrawingProps) {
@@ -347,7 +261,8 @@ export function WindowDrawing({
   // only when at least one panel actually needs it, so an ungridded
   // window's margin (and every position derived from it below) stays
   // byte-identical to before this feature.
-  const anyPanelGridded = panels.some((p) => p.columnWidths.length > 1 || p.rowHeights.length > 1)
+  const chains = panelRects.map((rect, panelIndex) => dividerChains(parts.filter((p) => p.panelIndex === panelIndex), rect))
+  const anyPanelGridded = chains.some((c) => c.cols.length > 1 || c.rows.length > 1)
   // A coupled (multi-panel) assembly gets its OWN per-window width/height
   // tier too (2026-09-15, "an outer line size for each side not
   // covered") — every panel's free side (per `freeSidesOf`, computed
@@ -516,13 +431,28 @@ export function WindowDrawing({
   }
   // The pill's Hand tool (Mario, 2026-10-04: "move the view even on top
   // of the window itself"): view only — no hover, no "+" markers, no
-  // selecting or dragging parts, until Select or Bars is picked. Bars
-  // switched on from outside (the part panel's own button) wins, so it's
-  // derived rather than reset in an effect. While Hand is on, or while
+  // selecting or dragging parts, until Select is picked. While Hand is on, or while
   // any pan drag runs (incl. a held mouse wheel from any tool), a
   // transparent layer over the whole drawing takes every press.
-  const [handMode, setHandMode] = useState(false)
-  const handActive = handMode && !barDrawMode
+  // The pill's tools: Select, Hand, and Divider (§6 — drawing
+  // mullions/transoms; its own capture layer takes every press).
+  const [tool, setTool] = useState<'select' | 'hand' | 'divider'>('select')
+  const handActive = tool === 'hand'
+  // D picks the Divider tool — not while typing in a field, nor with a
+  // modifier held (⌘D and friends stay the browser's).
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'd' && e.key !== 'D') return
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
+      e.preventDefault()
+      setTool('divider')
+      onHover(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onHover])
   const viewOnly = handActive || panDrag !== null
   useEffect(() => {
     if (!panDrag) return
@@ -586,124 +516,8 @@ export function WindowDrawing({
   const innerChainOffset = scale * 0.13
   const perWindowChainOffset = innerChainOffset
 
-  // The active panel's own glass outline, iff it has an arched head —
-  // bars only ever anchor onto ONE glass pane's outline: the archable
-  // TOP ROW's own glass (docs/sections_planing.md §3 — arch is scoped to
-  // `cols === 1`, and only section 0 ever gets a `head`), never just
-  // whichever glass part happens to come first once a panel can have
-  // more than one section's worth of glass.
-  const activeGlassPart = parts.find((p) => p.panelIndex === activePanelIndex && p.kind === 'glass' && p.head)
-  const activeGlassOutline = activeGlassPart ? outlineOf(activeGlassPart) : null
-  const activePanelBars = panels[activePanelIndex]?.bars ?? []
-  const activeFrameFill = panels[activePanelIndex]?.frameHex ?? DEFAULT_FRAME_FILL
-
-  const [barPending, setBarPending] = useState<BarAnchor | null>(null)
-  const [barHover, setBarHover] = useState<BarHover | null>(null)
-
-  // Turning draw mode off (toggle re-click, switching the active panel,
-  // flattening the head) abandons whatever was mid-placement — there is
-  // no "resume" concept, so stale local state would only be confusing.
-  useEffect(() => {
-    if (!barDrawMode) {
-      setBarPending(null)
-      setBarHover(null)
-    }
-  }, [barDrawMode])
-  useEffect(() => {
-    setBarPending(null)
-    setBarHover(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePanelIndex])
-
-  useEffect(() => {
-    if (!barDrawMode) return
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      if (barPending) setBarPending(null)
-      else onExitBarDrawMode()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [barDrawMode, barPending, onExitBarDrawMode])
-
-  // Which bar's endpoint is being dragged, if any — §6.4. Local state,
-  // same posture as barPending/barHover above: only the FINAL resolved
-  // anchor gets bubbled up (on every valid move, not just on release —
-  // §6.4 wants it re-written live so dependents visibly follow).
-  const [barDrag, setBarDrag] = useState<{ barId: string; end: 'from' | 'to' } | null>(null)
-
-  useEffect(() => {
-    if (!barDrag || !activeGlassOutline) return
-    const outline = activeGlassOutline
-    const draggedIndex = activePanelBars.findIndex((b) => b.id === barDrag.barId)
-    // Only bars at a STRICTLY LOWER index than the dragged one are
-    // legal re-anchor targets — the same acyclicity rule
-    // `barsAreOrdered`/§3 already enforce for a bar's OWN anchors.
-    // Passing the full `activePanelBars` here (as the two-click draw in
-    // Step 9 correctly does for a brand-new bar, always appended last)
-    // would let this drag snap onto a LATER bar — including one that
-    // already depends on the bar being dragged, which would be a real
-    // cycle, not just a rule violation.
-    const candidateBars = draggedIndex >= 0 ? activePanelBars.slice(0, draggedIndex) : []
-    const onMove = (e: globalThis.MouseEvent) => {
-      if (!svgRef.current) return
-      const resolved = svgPointFromClient(svgRef.current, e.clientX, e.clientY)
-      if (!resolved) return
-      const { point, pxPerMm } = resolved
-      const toleranceMm = BAR_SNAP_TOLERANCE_PX / pxPerMm
-      // snapTarget alone — no `isNearBarCrossing` pre-check here either
-      // (see `computeBarHover`'s own comment on the bug that ordering
-      // caused): tier 1 already refuses nothing a shared endpoint
-      // legitimately offers, and a genuine crossing simply falls out as
-      // `snapTarget` itself returning `null` at tier 5.
-      const snapped = snapTarget(point, candidateBars, outline, toleranceMm)
-      // No anchor is ever "free space" (every endpoint is a reference,
-      // never a bare coordinate) — over free space this just leaves the
-      // endpoint at wherever it last validly resolved to, rather than
-      // inventing a coordinate nothing in the model can represent.
-      if (snapped) onUpdateBarAnchor(barDrag.barId, barDrag.end, snapped)
-    }
-    const onUp = () => setBarDrag(null)
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [barDrag, activeGlassOutline, activePanelBars, onUpdateBarAnchor])
-
-  // Which bar's midpoint (bow) handle is being dragged, if any — §6.5.
-  // Unlike `barDrag` above, this never re-anchors anything (a bow only
-  // ever changes `sagMm`, never `from`/`to`), so there's no ordering
-  // restriction to apply — every mouse-move just re-derives the sag
-  // from the pointer's own perpendicular offset from the bar's chord.
-  const [barSagDragId, setBarSagDragId] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!barSagDragId || !activeGlassOutline) return
-    const bar = activePanelBars.find((b) => b.id === barSagDragId)
-    const resolved = bar && resolveBar(bar, activePanelBars, activeGlassOutline)
-    if (!bar || !resolved) return
-    const onMove = (e: globalThis.MouseEvent) => {
-      if (!svgRef.current) return
-      const p = svgPointFromClient(svgRef.current, e.clientX, e.clientY)
-      if (!p) return
-      onUpdateBarSag(barSagDragId, sagFromDragPoint(resolved.from, resolved.to, p.point))
-    }
-    const onUp = () => setBarSagDragId(null)
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [barSagDragId, activeGlassOutline, activePanelBars, onUpdateBarSag])
-
   // Which divider (mullion/transom) is being dragged, if any — its full
-  // assembly part id (e.g. `"p0:div-v1"`), same posture as `barDrag`
-  // above: only local "which thing is mid-drag" state lives here, the
+  // assembly part id (e.g. `"p0:div-m1"`): only local "which thing is mid-drag" state lives here, the
   // actual panel-model edit happens one level up via `onDividerDrag`.
   const [dividerDragId, setDividerDragId] = useState<string | null>(null)
   // Where the dragged divider just snapped onto another panel's, in
@@ -714,10 +528,12 @@ export function WindowDrawing({
   useEffect(() => {
     if (!dividerDragId) return
     const parsed = parsePartId(dividerDragId)
-    const match = parsed ? /^div-(v|h)(\d+)$/.exec(parsed.localId) : null
+    // Only a straight mullion/transom slides along an axis; an arch
+    // divider is moved by its ends instead.
+    const axis = parts.find((p) => p.id === dividerDragId)?.dividerAxis
     const rect = parsed && panelRects[parsed.panelIndex]
-    if (!parsed || !match || !rect) return
-    const vertical = match[1] === 'v'
+    if (!parsed || !rect || (axis !== 'v' && axis !== 'h')) return
+    const vertical = axis === 'v'
     const onMove = (e: globalThis.MouseEvent) => {
       if (!svgRef.current) return
       const resolved = svgPointFromClient(svgRef.current, e.clientX, e.clientY)
@@ -735,8 +551,8 @@ export function WindowDrawing({
       )
       setDividerSnap(snapped === null ? null : { axis: vertical ? 'x' : 'y', position: snapped })
       // Panel-local mm along the divider's own axis — a mullion (`v`)
-      // moves along x, a transom (`h`) along y — matching the space
-      // `moveDivider`'s `boundaryMm` expects (see its own doc comment).
+      // moves along x from the left, a transom (`h`) along y from the
+      // top; the editor turns that into the divider's own anchor.
       const boundaryMm = (snapped ?? raw) - (vertical ? rect.x : rect.y)
       onDividerDrag(dividerDragId, boundaryMm)
     }
@@ -752,6 +568,115 @@ export function WindowDrawing({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dividerDragId, panelRects, parts, onDividerDrag])
+
+  // Each panel's divider geometry and lights, once per render — the
+  // bow/end handles, the ⇄ crosses and the angle labels all read it.
+  const panelGeos = panels.map((panel) => {
+    const ctx = { metrics: panel.metrics, doorSill: panel.isDoor && panel.systemType === SystemType.HINGED }
+    const shape = { widthMm: panel.placement.widthMm, heightMm: panel.placement.heightMm, headShape: panel.headShape, headRiseMm: panel.headRiseMm, dividers: panel.dividers }
+    const { geo, graph } = panelLights(shape, ctx)
+    return { geo, angles: visibleAngles(graph.angles), crossings: findCrossings(geo, panel.dividers), resolved: resolveDividers(geo, panel.dividers) }
+  })
+
+  // The selected divider's handles (§6.5, §7): only an arch-zone divider
+  // bends or has its ends dragged — below the springing line every
+  // divider is straight and slides as a whole (Q2). Panel-local ends, so
+  // a drag turns the pointer into `sagMm` with the same construction the
+  // divider is drawn with.
+  const bowTarget = (() => {
+    const match = selectedPartId ? /^p(\d+):div-(.+)$/.exec(selectedPartId) : null
+    if (!match || tool !== 'select') return null
+    const panelIndex = Number(match[1])
+    const rect = panelRects[panelIndex]
+    const pg = panelGeos[panelIndex]
+    if (!pg || !rect) return null
+    const resolved = pg.resolved.get(match[2])
+    if (!resolved || zoneOf(pg.geo, resolved) !== 'arch') return null
+    const mid = pathPointAt(resolved.path, 0.5)
+    return {
+      partId: selectedPartId as string,
+      rect,
+      from: resolved.from,
+      to: resolved.to,
+      handle: { x: mid.x + rect.x, y: mid.y + rect.y },
+      ends: { from: { x: resolved.from.x + rect.x, y: resolved.from.y + rect.y }, to: { x: resolved.to.x + rect.x, y: resolved.to.y + rect.y } },
+    }
+  })()
+  const [bowDrag, setBowDrag] = useState<NonNullable<typeof bowTarget> | null>(null)
+  const bowHandle = (bowTarget ?? bowDrag)?.handle ?? null
+  // An end being dragged along its host.
+  const [endDrag, setEndDrag] = useState<{ partId: string; end: 'from' | 'to'; rect: RectMm } | null>(null)
+  const onMoveDividerEndRef = useRef(onMoveDividerEnd)
+  useLayoutEffect(() => {
+    onMoveDividerEndRef.current = onMoveDividerEnd
+  })
+  useEffect(() => {
+    if (!endDrag) return
+    const onMove = (e: globalThis.MouseEvent) => {
+      if (!svgRef.current) return
+      const resolved = svgPointFromClient(svgRef.current, e.clientX, e.clientY)
+      if (!resolved) return
+      onMoveDividerEndRef.current(endDrag.partId, endDrag.end, { x: resolved.point.x - endDrag.rect.x, y: resolved.point.y - endDrag.rect.y })
+    }
+    const onUp = () => setEndDrag(null)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [endDrag])
+
+  // The ⇄ swap buttons (Q3): on the cross under the pointer, and on every
+  // cross of a selected divider (Mario, 2026-10-05). Tracked from the
+  // pointer, not a hit area — one over the cross would swallow clicks
+  // meant for the dividers there.
+  const [hoveredCross, setHoveredCross] = useState<string | null>(null)
+  const crossKey = (panelIndex: number, c: Crossing) => `${panelIndex}:${c.throughId}:${c.pieceAId}:${c.pieceBId}`
+  const onCrossHover = (e: MouseEvent<SVGSVGElement>) => {
+    if (!panelGeos.some((pg) => pg.crossings.length > 0)) return
+    const resolved = svgPointFromClient(e.currentTarget, e.clientX, e.clientY)
+    if (!resolved) return
+    const tol = (SIZE_MATCH_SNAP_TOLERANCE_PX * 1.5) / resolved.pxPerMm
+    let found: string | null = null
+    panelGeos.forEach((pg, i) => {
+      const rect = panelRects[i]
+      for (const c of pg.crossings) {
+        if (rect && Math.hypot(c.point.x + rect.x - resolved.point.x, c.point.y + rect.y - resolved.point.y) <= tol) found = crossKey(i, c)
+      }
+    })
+    if (found !== hoveredCross) setHoveredCross(found)
+  }
+  const selectedDividerIds = new Set(selectedPartIds.flatMap((id) => {
+    const m = /^p(\d+):div-(.+)$/.exec(id)
+    return m ? [`${m[1]}:${m[2]}`] : []
+  }))
+  const onBendDividerRef = useRef(onBendDivider)
+  useLayoutEffect(() => {
+    onBendDividerRef.current = onBendDivider
+  })
+  useEffect(() => {
+    if (!bowDrag) return
+    const { partId, rect, from, to } = bowDrag
+    const chord = Math.hypot(to.x - from.x, to.y - from.y)
+    const onMove = (e: globalThis.MouseEvent) => {
+      if (!svgRef.current) return
+      const resolved = svgPointFromClient(svgRef.current, e.clientX, e.clientY)
+      if (!resolved) return
+      const p = { x: resolved.point.x - rect.x, y: resolved.point.y - rect.y }
+      const raw = sagFromPoint(from, to, p)
+      // Back to straight within the snap pull; never past a half circle.
+      const sag = Math.abs(raw) < SIZE_MATCH_SNAP_TOLERANCE_PX / resolved.pxPerMm ? 0 : Math.max(-chord / 2, Math.min(chord / 2, raw))
+      onBendDividerRef.current(partId, sag)
+    }
+    const onUp = () => setBowDrag(null)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [bowDrag])
 
   // Which panel's own free outer edge is being dragged, if any — same
   // posture as `dividerDragId` above: local "which thing is mid-drag"
@@ -868,47 +793,6 @@ export function WindowDrawing({
     }
   }, [edgeDrag])
 
-  // Delete/Backspace with a bar selected — only when not mid-drawing
-  // (a selected bar and draw mode are already mutually exclusive, see
-  // window-editor-page.tsx) and only when focus isn't in a text field
-  // elsewhere in the dialog (Notes, panel name, …), where Backspace
-  // must keep editing text, not delete a bar the user isn't looking at.
-  useEffect(() => {
-    if (!selectedBarId || barDrawMode) return
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return
-      const active = document.activeElement
-      const tag = active?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || (active as HTMLElement | null)?.isContentEditable) return
-      onRequestDeleteBar()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [selectedBarId, barDrawMode, onRequestDeleteBar])
-
-  // Everything that would go with a delete of `pendingDeleteBarId` —
-  // itself plus its full transitive closure — highlighted in the
-  // danger colour BEFORE the confirm even renders, per §6.3.
-  const highlightedBarIds = pendingDeleteBarId ? dependentsOf(pendingDeleteBarId, activePanelBars) : new Set<string>()
-  if (pendingDeleteBarId) highlightedBarIds.add(pendingDeleteBarId)
-
-  // Resolved once here (not inside the SVG markup below) since both the
-  // SVG-space shadow line/markers AND the HTML-space midpoint length
-  // label need the same two points.
-  const barPendingPoint =
-    barPending && activeGlassOutline ? resolveAnchor(barPending, activePanelBars, activeGlassOutline) : null
-  const barSnappedPoint =
-    barHover?.snapped && activeGlassOutline ? resolveAnchor(barHover.snapped, activePanelBars, activeGlassOutline) : null
-  // The shadow line's free end follows the raw pointer once a first
-  // anchor is down, even over free space — snapped when there's
-  // something to snap to (so "what you see is what you get" per §6.2),
-  // otherwise the bare pointer position; never drawn at all over a
-  // crossing, which has no real point worth a line pointing at it.
-  const barShadowTo = barPending ? (barSnappedPoint ?? (barHover && !barHover.readout.warn ? barHover.point : null)) : null
-  const barShadowMidpoint = barPendingPoint && barShadowTo ? pointAlongBar(barPendingPoint, barShadowTo, 0, 0.5) : null
-  const barShadowLengthMm =
-    barPendingPoint && barShadowTo ? Math.round(Math.hypot(barShadowTo.x - barPendingPoint.x, barShadowTo.y - barPendingPoint.y)) : null
-
   return (
     // A technical elevation has real left/right meaning (hinge side,
     // which sash overlaps which) — it must not mirror in RTL, unlike
@@ -950,6 +834,8 @@ export function WindowDrawing({
         // hands back to it on release (Mario, 2026-10-04). Capture phase +
         // stopPropagation so no part under the cursor starts its own drag;
         // preventDefault stops the browser's autoscroll.
+        onMouseMove={onCrossHover}
+        onMouseLeave={() => setHoveredCross(null)}
         onMouseDownCapture={(e) => {
           if (e.button !== 1) return
           e.stopPropagation()
@@ -1003,10 +889,9 @@ export function WindowDrawing({
         <DimensionLabel x={leftLineX} y={outerMm.height / 2} text={formatDimensionMm(outerMm.height)} fontSize={scale * 0.024} vertical />
 
         {anyPanelGridded &&
-          panels.map((panel, panelIndex) => (
+          panels.map((_, panelIndex) => (
             <PanelDimensionCallouts
               key={`dim-${panelIndex}`}
-              panel={panel}
               panelRect={panelRects[panelIndex]}
               outerMm={outerMm}
               parts={parts.filter((p) => p.panelIndex === panelIndex)}
@@ -1014,10 +899,11 @@ export function WindowDrawing({
               tickLen={tickLen}
               fontSize={scale * 0.02}
               letterFontSize={scale * 0.026}
-              columnSide={panel.columnWidths.length > 1 ? widthSideFor(panelIndex) : null}
-              rowSide={panel.rowHeights.length > 1 ? heightSideFor(panelIndex) : null}
-              columnGap={panel.columnWidths.length > 1 ? widthGapFor(panelIndex) : undefined}
-              rowGap={panel.rowHeights.length > 1 ? leftGapFor(panelIndex) : undefined}
+              chain={chains[panelIndex]}
+              columnSide={chains[panelIndex].cols.length > 1 ? widthSideFor(panelIndex) : null}
+              rowSide={chains[panelIndex].rows.length > 1 ? heightSideFor(panelIndex) : null}
+              columnGap={chains[panelIndex].cols.length > 1 ? widthGapFor(panelIndex) : undefined}
+              rowGap={chains[panelIndex].rows.length > 1 ? leftGapFor(panelIndex) : undefined}
             />
           ))}
 
@@ -1030,10 +916,10 @@ export function WindowDrawing({
               chainOffset={perWindowChainOffset}
               tickLen={tickLen}
               fontSize={scale * 0.02}
-              widthSide={panels[panelIndex].columnWidths.length > 1 ? null : widthSideFor(panelIndex)}
-              heightSide={panels[panelIndex].rowHeights.length > 1 ? null : heightSideFor(panelIndex)}
-              widthGap={panels[panelIndex].columnWidths.length > 1 ? undefined : widthGapFor(panelIndex)}
-              heightGap={panels[panelIndex].rowHeights.length > 1 ? undefined : leftGapFor(panelIndex)}
+              widthSide={chains[panelIndex].cols.length > 1 ? null : widthSideFor(panelIndex)}
+              heightSide={chains[panelIndex].rows.length > 1 ? null : heightSideFor(panelIndex)}
+              widthGap={chains[panelIndex].cols.length > 1 ? undefined : widthGapFor(panelIndex)}
+              heightGap={chains[panelIndex].rows.length > 1 ? undefined : leftGapFor(panelIndex)}
             />
           ))}
 
@@ -1043,7 +929,7 @@ export function WindowDrawing({
             panelIndex={panelIndex}
             panel={panel}
             parts={parts.filter((p) => p.panelIndex === panelIndex)}
-            selectedPartId={selectedPartId}
+            selectedPartIds={selectedPartIds}
             hoveredPartId={hoveredPartId}
             onSelect={onSelect}
             onHover={onHover}
@@ -1054,12 +940,53 @@ export function WindowDrawing({
             glyphRadius={glyphRadius}
             strokeWeight={strokeWeight}
             georgianBarWidth={georgianBarWidth}
-            onDividerDragStart={(dividerId) => {
+            onDividerDragStart={(dividerId, e) => {
+              // A modifier-click adds it to the selection (the click
+              // handler) — no drag, no reselect.
+              if (e.shiftKey || e.metaKey || e.ctrlKey) return
               onSelect(dividerId, false)
               setDividerDragId(dividerId)
             }}
           />
         ))}
+
+        {/* Angles between members, every one but 90° (Q9) — always
+            shown, not only while selected. */}
+        <g pointerEvents="none">
+          {panelGeos.flatMap((pg, panelIndex) => {
+            const rect = panelRects[panelIndex]
+            if (!rect) return []
+            const r = scale * 0.035
+            return pg.angles.map((a, k) => {
+              const cx = a.at.x + rect.x
+              const cy = a.at.y + rect.y
+              const p0 = { x: cx + Math.cos(a.start) * r, y: cy + Math.sin(a.start) * r }
+              const p1 = { x: cx + Math.cos(a.start + a.sweep) * r, y: cy + Math.sin(a.start + a.sweep) * r }
+              const mid = a.start + a.sweep / 2
+              const lx = cx + Math.cos(mid) * r * 1.75
+              const ly = cy + Math.sin(mid) * r * 1.75
+              return (
+                <g key={`angle-${panelIndex}-${k}`}>
+                  <path d={`M ${p0.x} ${p0.y} A ${r} ${r} 0 0 1 ${p1.x} ${p1.y}`} fill="none" stroke="var(--primary)" strokeWidth={strokeWeight} />
+                  <text
+                    x={lx}
+                    y={ly + scale * 0.006}
+                    textAnchor="middle"
+                    fontSize={scale * 0.017}
+                    fontWeight={600}
+                    fill="var(--foreground)"
+                    stroke="var(--card)"
+                    strokeWidth={scale * 0.004}
+                    paintOrder="stroke"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {Math.round(a.deg)}°
+                  </text>
+                </g>
+              )
+            })
+          })}
+        </g>
 
         {/* Outer-edge resize handles — one invisible hit-strip per FREE
             side of every panel (never a side another panel already
@@ -1158,164 +1085,6 @@ export function WindowDrawing({
             )
           })}
 
-        {/* The bar-drawing capture layer — an exact arch-shaped hit
-            area (not a bounding rect) covering only the active panel's
-            own glass, painted last among the panel shapes so it
-            intercepts clicks/hover meant for it before they reach the
-            selection handlers underneath. Persistent per the user's own
-            chosen interaction: it stays mounted across multiple bars,
-            only unmounting when `barDrawMode` goes false. */}
-        {barDrawMode && activeGlassOutline && (
-          <g>
-            <path
-              d={archOutlinePath(activeGlassOutline)}
-              fill="transparent"
-              className="cursor-crosshair"
-              onMouseMove={(e) => setBarHover(computeBarHover(e, activeGlassOutline, activePanelBars))}
-              onMouseLeave={() => setBarHover(null)}
-              onClick={(e) => {
-                const r = computeBarHover(e, activeGlassOutline, activePanelBars)
-                if (!r || !r.snapped) return
-                if (!barPending) {
-                  setBarPending(r.snapped)
-                  return
-                }
-                // A second click resolving to the exact same point as
-                // the first (e.g. a double-click) would otherwise
-                // append a zero-length bar — ignore it and keep waiting
-                // for a genuinely different second anchor.
-                const toPoint = resolveAnchor(r.snapped, activePanelBars, activeGlassOutline)
-                if (barPendingPoint && toPoint && Math.hypot(toPoint.x - barPendingPoint.x, toPoint.y - barPendingPoint.y) < 0.01) {
-                  return
-                }
-                onAddBar({ id: crypto.randomUUID(), from: barPending, to: r.snapped, sagMm: 0 })
-                setBarPending(null)
-              }}
-            />
-            {/* The dashed shadow line, §6.2 — from the stored first
-                anchor to wherever the live pointer would resolve to,
-                using the exact same barPath sampling the committed bar
-                layer draws with, so nothing about the curve's own shape
-                changes the instant it's actually placed. */}
-            {barPendingPoint && barShadowTo && (
-              <path
-                d={barPath(barPendingPoint, barShadowTo, 0)}
-                fill="none"
-                stroke={activeFrameFill}
-                strokeWidth={georgianBarWidth}
-                strokeDasharray={`${georgianBarWidth * 1.5} ${georgianBarWidth * 1.2}`}
-                opacity={0.75}
-                pointerEvents="none"
-              />
-            )}
-            {barPendingPoint && (
-              <circle cx={barPendingPoint.x} cy={barPendingPoint.y} r={strokeWeight * 2.2} fill="var(--primary)" pointerEvents="none" />
-            )}
-            {barSnappedPoint && (
-              <circle
-                cx={barSnappedPoint.x}
-                cy={barSnappedPoint.y}
-                r={strokeWeight * 1.8}
-                fill="none"
-                stroke="var(--primary)"
-                strokeWidth={strokeWeight}
-                pointerEvents="none"
-              />
-            )}
-          </g>
-        )}
-
-        {/* Bar select/delete-highlight/drag — §6.3/§6.4. Off while
-            drawing (barDrawMode's own capture layer already owns every
-            click over this area then). Painted as an ADD-ON over the
-            plain bar layer PanelShapes already drew (Step 9) rather
-            than threading selection state through that read-only paint
-            component — a wide invisible hit-stroke for click-to-select
-            (the visible bar itself is too thin to click precisely),
-            plus a coloured restroke for whichever bars are selected or
-            about to be cascade-deleted. */}
-        {!barDrawMode && activeGlassOutline && activePanelBars.length > 0 && (
-          <g>
-            {barPathsFor(activePanelBars, activeGlassOutline).map((bar) => {
-              const isSelected = bar.id === selectedBarId
-              const isHighlighted = highlightedBarIds.has(bar.id)
-              return (
-                <g key={bar.id}>
-                  <path
-                    d={bar.d}
-                    fill="none"
-                    stroke="transparent"
-                    strokeWidth={georgianBarWidth * 2.5}
-                    className="cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onSelectBar(bar.id)
-                    }}
-                  />
-                  {(isSelected || isHighlighted) && (
-                    <path
-                      d={bar.d}
-                      fill="none"
-                      stroke={isHighlighted ? ERROR_COLOR : 'var(--primary)'}
-                      strokeWidth={georgianBarWidth * 1.4}
-                      pointerEvents="none"
-                    />
-                  )}
-                </g>
-              )
-            })}
-            {/* Endpoint drag handles — only for the selected bar, same
-                "select first, then its handles appear" posture most
-                vector editors use, rather than cluttering every bar
-                with handles all the time. Plus the bow (midpoint)
-                handle, §6.5 — a distinct FILLED marker so it doesn't
-                read as a third, identical endpoint. */}
-            {selectedBarId &&
-              (() => {
-                const bar = activePanelBars.find((b) => b.id === selectedBarId)
-                const resolved = bar && resolveBar(bar, activePanelBars, activeGlassOutline)
-                if (!bar || !resolved) return null
-                const peak = pointAlongBar(resolved.from, resolved.to, bar.sagMm, 0.5)
-                return (
-                  <>
-                      {(['from', 'to'] as const).map((end) => {
-                        const p = resolved[end]
-                        return (
-                          <circle
-                            key={end}
-                            cx={p.x}
-                            cy={p.y}
-                            r={strokeWeight * 2.4}
-                            fill="var(--background)"
-                            stroke="var(--primary)"
-                            strokeWidth={strokeWeight}
-                            className="cursor-move"
-                            onMouseDown={(e) => {
-                              e.stopPropagation()
-                              setBarDrag({ barId: bar.id, end })
-                            }}
-                          />
-                        )
-                      })}
-                      <circle
-                        cx={peak.x}
-                        cy={peak.y}
-                        r={strokeWeight * 2}
-                        fill="var(--primary)"
-                        stroke="var(--background)"
-                        strokeWidth={strokeWeight * 0.6}
-                        className="cursor-move"
-                        onMouseDown={(e) => {
-                          e.stopPropagation()
-                          setBarSagDragId(bar.id)
-                        }}
-                      />
-                  </>
-                )
-              })()}
-          </g>
-        )}
-
         {/* Panel selection outline — drawn over everything so a selected
             panel reads as a unit even when the part inside it that's
             actually selected is a single glass light. Purely an
@@ -1340,8 +1109,104 @@ export function WindowDrawing({
           )
         })}
 
+        {bowHandle && !viewOnly && (
+          <circle
+            cx={bowHandle.x}
+            cy={bowHandle.y}
+            r={plusRadius * 0.32}
+            fill="var(--card)"
+            stroke="var(--primary)"
+            strokeWidth={strokeWeight * 1.2}
+            className="cursor-move"
+            onMouseDown={(e) => {
+              if (e.button !== 0 || !bowTarget) return
+              e.preventDefault()
+              e.stopPropagation()
+              setBowDrag(bowTarget)
+            }}
+          />
+        )}
+
+        {bowTarget &&
+          !viewOnly &&
+          (['from', 'to'] as const).map((end) => (
+            <rect
+              key={end}
+              x={bowTarget.ends[end].x - plusRadius * 0.25}
+              y={bowTarget.ends[end].y - plusRadius * 0.25}
+              width={plusRadius * 0.5}
+              height={plusRadius * 0.5}
+              fill="var(--card)"
+              stroke="var(--primary)"
+              strokeWidth={strokeWeight * 1.2}
+              className="cursor-move"
+              onMouseDown={(e) => {
+                if (e.button !== 0) return
+                e.preventDefault()
+                e.stopPropagation()
+                setEndDrag({ partId: bowTarget.partId, end, rect: bowTarget.rect })
+              }}
+            />
+          ))}
+
+        {tool === 'select' &&
+          !viewOnly &&
+          panelGeos.flatMap((pg, panelIndex) =>
+            pg.crossings
+              .filter((c) => {
+                const key = crossKey(panelIndex, c)
+                return hoveredCross === key || [c.throughId, c.pieceAId, c.pieceBId].some((id) => selectedDividerIds.has(`${panelIndex}:${id}`))
+              })
+              .map((c) => {
+                const rect = panelRects[panelIndex]
+                if (!rect) return null
+                const r = plusRadius * 0.45
+                return (
+                  <g
+                    key={crossKey(panelIndex, c)}
+                    role="button"
+                    aria-label={t('windowDialog.design.swapCrossing')}
+                    className="cursor-pointer"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onSwapCrossing(panelIndex, c)
+                    }}
+                  >
+                    <title>{t('windowDialog.design.swapCrossing')}</title>
+                    <circle cx={c.point.x + rect.x} cy={c.point.y + rect.y} r={r} fill="var(--card)" stroke="var(--primary)" strokeWidth={strokeWeight * 1.2} />
+                    <text
+                      x={c.point.x + rect.x}
+                      y={c.point.y + rect.y + r * 0.36}
+                      textAnchor="middle"
+                      fontSize={r * 1.1}
+                      fontWeight={700}
+                      fill="var(--primary)"
+                      pointerEvents="none"
+                    >
+                      ⇄
+                    </text>
+                  </g>
+                )
+              }),
+          )}
+
+        {tool === 'divider' && !panDrag && (
+          <DividerDrawLayer
+            panels={panels}
+            panelRects={panelRects}
+            parts={parts}
+            viewBox={viewBox}
+            scale={scale}
+            strokeWeight={strokeWeight}
+            onDraw={onDrawDivider}
+            onExit={() => setTool('select')}
+          />
+        )}
+
         {attachRect &&
           !viewOnly &&
+          tool !== 'divider' &&
           attachSides.map((side) => {
             const centre = markerCentre(side, attachRect, plusRadius)
             return (
@@ -1377,38 +1242,6 @@ export function WindowDrawing({
         )}
       </svg>
 
-      {/* The hover readout chip — arch_windows_planing.md §6.1's
-          four-row table. HTML, not SVG text, so its size stays legible
-          regardless of the drawing's own zoom (same reasoning the
-          removed dimension-input overlay used to rely on). Flips to the
-          cursor's other side near the drawing's right edge so it can
-          never run out past the viewBox — "near the edge" reuses the
-          same margin the viewBox itself pads by. */}
-      {transform && barDrawMode && barHover && (
-        <div
-          className={cn(
-            'pointer-events-none absolute -translate-y-[130%] rounded-md border border-border bg-background/95 px-2 py-1 text-[11px] leading-tight whitespace-nowrap shadow-sm tabular-nums',
-            barHover.point.x > outerMm.width - margin * 1.5 ? '-translate-x-full' : '',
-          )}
-          style={{ left: transform.x(barHover.point.x), top: transform.y(barHover.point.y) }}
-        >
-          <div className={barHover.readout.warn ? 'font-medium text-amber-600 dark:text-amber-500' : 'text-foreground'}>
-            {barHover.readout.line1}
-          </div>
-          <div className="text-muted-foreground">{barHover.readout.line2}</div>
-        </div>
-      )}
-
-      {/* The shadow line's own length, at its midpoint — §6.2. */}
-      {transform && barShadowMidpoint && barShadowLengthMm !== null && (
-        <div
-          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded bg-background/95 px-1 py-0.5 text-[10px] font-medium tabular-nums shadow-sm"
-          style={{ left: transform.x(barShadowMidpoint.x), top: transform.y(barShadowMidpoint.y) }}
-        >
-          {barShadowLengthMm} mm
-        </div>
-      )}
-
       {/* Canvas chrome (docs/window_editor_redesign_planing.md §3): view
           label top-left, tool pill top-centre, zoom card top-right,
           pointer readout bottom-left. Physical sides on purpose — the
@@ -1424,11 +1257,8 @@ export function WindowDrawing({
       >
         <ToolButton
           label={t('windowDialog.design.tools.select')}
-          active={!barDrawMode && !handActive}
-          onClick={() => {
-            setHandMode(false)
-            onBarDrawModeChange(false)
-          }}
+          active={tool === 'select'}
+          onClick={() => setTool('select')}
         >
           <MousePointer2 className="size-4" />
         </ToolButton>
@@ -1436,8 +1266,7 @@ export function WindowDrawing({
           label={t('windowDialog.design.tools.hand')}
           active={handActive}
           onClick={() => {
-            setHandMode(true)
-            onBarDrawModeChange(false)
+            setTool('hand')
             onHover(null)
             onPanelHover(null)
           }}
@@ -1445,15 +1274,16 @@ export function WindowDrawing({
           <Hand className="size-4" />
         </ToolButton>
         <ToolButton
-          label={barsAvailable ? t('windowDialog.design.tools.bars') : t('windowDialog.design.tools.barsNeedArch')}
-          active={barDrawMode}
-          unavailable={!barsAvailable}
+          label={t('windowDialog.design.tools.divider')}
+          shortcut="D"
+          description={t('windowDialog.design.tools.dividerHint')}
+          active={tool === 'divider'}
           onClick={() => {
-            setHandMode(false)
-            onBarDrawModeChange(!barDrawMode)
+            setTool('divider')
+            onHover(null)
           }}
         >
-          <Spline className="size-4" />
+          <DividerToolIcon className="size-4" />
         </ToolButton>
         <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
         <ToolButton label={undoRedo.undoLabel} unavailable={!undoRedo.canUndo} onClick={undoRedo.onUndo}>
@@ -1503,7 +1333,7 @@ function PanelShapes({
   panelIndex,
   panel,
   parts,
-  selectedPartId,
+  selectedPartIds,
   hoveredPartId,
   onSelect,
   onHover,
@@ -1519,7 +1349,7 @@ function PanelShapes({
   panelIndex: number
   panel: PanelRender
   parts: WindowPart[]
-  selectedPartId: string | null
+  selectedPartIds: string[]
   hoveredPartId: string | null
   onSelect: (partId: string, additive: boolean) => void
   onHover: (partId: string | null) => void
@@ -1533,7 +1363,7 @@ function PanelShapes({
   /** Mousedown on a divider's own bar — starts a drag (see
    * `WindowDrawing`'s `dividerDragId` state/effect) as well as selecting
    * it, same "select first" posture the bar handles use. */
-  onDividerDragStart: (dividerId: string) => void
+  onDividerDragStart: (dividerId: string, e: MouseEvent<SVGGElement>) => void
 }) {
   const frame = parts.find((p) => p.kind === 'frame')
   const dividers = parts.filter((p) => p.kind === 'divider')
@@ -1558,6 +1388,7 @@ function PanelShapes({
     height: frame.rectMm.height - panel.metrics.frameFace - (doorHinged ? 0 : panel.metrics.frameFace),
   }
 
+  const isSelected = (partId: string) => selectedPartIds.includes(partId)
   const frameFill = panel.frameHex ?? DEFAULT_FRAME_FILL
   // Every hairline on the panel — part outlines, miters, seams, bead
   // cuts — in one colour derived from the finish (spec §9), so it
@@ -1574,13 +1405,17 @@ function PanelShapes({
   // multi-section grid no longer guarantees) is what keeps this from
   // picking up some other row's flat sash by accident.
   const frameOutline = frame && outlineOf(frame)
+  // The arched frame's ring always stops at its clear opening (the frame
+  // inset by its own face); dividers and every light's own sash or bead
+  // sit inside it (docs/free_dividers_planing.md §5.2).
+  const clearOutline = frameOutline ? insetHeadOutline(frameOutline, panel.metrics.frameFace) : null
   const archSash = sashes.find((s) => s.head)
-  const archGlass = glasses.find((g) => g.head)
+  const archGlass = glasses.find((g) => g.head && !sashes.some((s) => s.sectionIndex === g.sectionIndex))
   const innerOutline = archSash ? outlineOf(archSash) : archGlass ? outlineOf(archGlass) : null
   const framePathD =
     frame &&
-    (frameOutline && innerOutline
-      ? archRingPath(frameOutline, innerOutline)
+    (frameOutline && clearOutline
+      ? archRingPath(frameOutline, clearOutline)
       : frameOpening &&
         (doorHinged ? openBottomFramePath(frame.rectMm, frameOpening) : ringPath(frame.rectMm, frameOpening)))
 
@@ -1601,7 +1436,7 @@ function PanelShapes({
       {frame && framePathD && (
         <InteractivePart
           part={frame}
-          selected={selectedPartId === frame.id}
+          selected={isSelected(frame.id)}
           hovered={hoveredPartId === frame.id}
           onSelect={onSelect}
           onHover={onHover}
@@ -1617,7 +1452,7 @@ function PanelShapes({
             d={framePathD}
             fillRule="evenodd"
             fill={frameFill}
-            stroke={partStroke(selectedPartId === frame.id, issuesByPart.get(frame.id), seamStroke)}
+            stroke={partStroke(isSelected(frame.id), issuesByPart.get(frame.id), seamStroke)}
             strokeWidth={strokeWeight}
           />
           {renderFrameDetail({
@@ -1625,6 +1460,7 @@ function PanelShapes({
             frameOpening: frameOpening ?? null,
             frameOutline: frameOutline ?? null,
             innerOutline,
+            clearOutline,
             hasSashes: frameDetailHasSash,
             fixedGlasses,
             doorHinged,
@@ -1642,22 +1478,22 @@ function PanelShapes({
         <InteractivePart
           key={divider.id}
           part={divider}
-          selected={selectedPartId === divider.id}
+          selected={isSelected(divider.id)}
           hovered={hoveredPartId === divider.id}
           onSelect={onSelect}
           onHover={onHover}
           issues={issuesByPart.get(divider.id)}
           glyphRadius={glyphRadius}
-          onMouseDown={() => onDividerDragStart(divider.id)}
-          // A mullion (`div-v{k}`) moves left/right, a transom
-          // (`div-h{j}`) moves up/down — the resize cursor reads as a
-          // hint that it's draggable, not just clickable.
-          cursorClassName={/div-v\d+$/.test(divider.id) ? 'cursor-ew-resize' : 'cursor-ns-resize'}
+          onMouseDown={(e) => onDividerDragStart(divider.id, e)}
+          // A mullion moves left/right, a straight transom up/down — the
+          // resize cursor reads as a hint that it's draggable, not just
+          // clickable. An arch divider has no single axis to slide on.
+          cursorClassName={divider.dividerAxis === 'v' ? 'cursor-ew-resize' : divider.dividerAxis === 'h' ? 'cursor-ns-resize' : undefined}
         >
           {renderDivider(
             divider,
             frameFill,
-            partStroke(selectedPartId === divider.id, issuesByPart.get(divider.id), seamStroke),
+            partStroke(isSelected(divider.id), issuesByPart.get(divider.id), seamStroke),
             strokeWeight,
           )}
         </InteractivePart>
@@ -1668,9 +1504,8 @@ function PanelShapes({
           above it — glass looks the same on either theme
           (`GLASS_BACKING_FILL`). */}
       {glasses.map((glass) => {
-        const glassOutline = outlineOf(glass)
-        return glassOutline ? (
-          <path key={glass.id} d={archOutlinePath(glassOutline)} fill={GLASS_BACKING_FILL} pointerEvents="none" />
+        return glass.outline || glass.head ? (
+          <path key={glass.id} d={partOutlinePath(glass)} fill={GLASS_BACKING_FILL} pointerEvents="none" />
         ) : (
           <rect
             key={glass.id}
@@ -1749,7 +1584,7 @@ function PanelShapes({
           <InteractivePart
             key={sash.id}
             part={sash}
-            selected={selectedPartId === sash.id}
+            selected={isSelected(sash.id)}
             hovered={hoveredPartId === sash.id}
             onSelect={onSelect}
             onHover={onHover}
@@ -1761,7 +1596,7 @@ function PanelShapes({
               d={sashOutline && glassOutline ? archRingPath(sashOutline, glassOutline) : ringPath(sash.rectMm, opening)}
               fillRule="evenodd"
               fill={frameFill}
-              stroke={partStroke(selectedPartId === sash.id, issuesByPart.get(sash.id), seamStroke)}
+              stroke={partStroke(isSelected(sash.id), issuesByPart.get(sash.id), seamStroke)}
               strokeWidth={strokeWeight * slidingStrokeScale(sash, panel.face, panel.slidingRails ?? undefined, sashes)}
             />
             {renderSashDetail({
@@ -1789,7 +1624,7 @@ function PanelShapes({
           <InteractivePart
             key={glass.id}
             part={glass}
-            selected={selectedPartId === glass.id}
+            selected={isSelected(glass.id)}
             hovered={hoveredPartId === glass.id}
             onSelect={onSelect}
             onHover={onHover}
@@ -1797,12 +1632,12 @@ function PanelShapes({
             glyphRadius={glyphRadius}
             showOverlay={false}
           >
-            {glassOutline ? (
+            {glass.outline || glassOutline ? (
               <path
-                d={archOutlinePath(glassOutline)}
+                d={partOutlinePath(glass)}
                 fill={glassSection?.glassHex ?? DEFAULT_GLASS_FILL}
                 fillOpacity={GLASS_FILL_OPACITY}
-                stroke={partStroke(selectedPartId === glass.id, issuesByPart.get(glass.id), seamStroke)}
+                stroke={partStroke(isSelected(glass.id), issuesByPart.get(glass.id), seamStroke)}
                 strokeWidth={strokeWeight}
               />
             ) : (
@@ -1813,33 +1648,13 @@ function PanelShapes({
                 height={glass.rectMm.height}
                 fill={glassSection?.glassHex ?? DEFAULT_GLASS_FILL}
                 fillOpacity={GLASS_FILL_OPACITY}
-                stroke={partStroke(selectedPartId === glass.id, issuesByPart.get(glass.id), seamStroke)}
+                stroke={partStroke(isSelected(glass.id), issuesByPart.get(glass.id), seamStroke)}
                 strokeWidth={strokeWeight}
               />
             )}
             {renderGasket(glass, glassOutline, strokeWeight)}
             {glassSection?.georgianGrid && (
               <g pointerEvents="none">{georgianBars(glass.rectMm, glassSection.georgianGrid, georgianBarWidth, frameFill)}</g>
-            )}
-            {/* The bar layer itself — pure visual here; the
-                interactive select/highlight/drag overlay for the
-                ACTIVE panel's own bars is a separate layer painted
-                later in `WindowDrawing` (see its own comment), on top
-                of every panel's plain paint below. Bars stay panel-
-                level and only ever anchor onto section 0's own arched
-                glass outline (docs/sections_planing.md's own
-                assumptions), so this still needs no section lookup of
-                its own — `glassOutline` alone already picks out that
-                one glass. Same width as a Georgian bar
-                (`georgianBarWidth`), not the hairline `strokeWeight`
-                every outline uses — a glazing bar is a real decorative
-                bar, not a thin selection outline. */}
-            {glassOutline && panel.bars.length > 0 && (
-              <g pointerEvents="none">
-                {barPathsFor(panel.bars, glassOutline).map((bar) => (
-                  <path key={bar.id} d={bar.d} fill="none" stroke={frameFill} strokeWidth={georgianBarWidth} />
-                ))}
-              </g>
             )}
           </InteractivePart>
         )
@@ -1917,7 +1732,7 @@ function PanelShapes({
           <InteractivePart
             key={`${flyScreen.id}-handle`}
             part={flyScreen}
-            selected={selectedPartId === flyScreen.id}
+            selected={isSelected(flyScreen.id)}
             hovered={hoveredPartId === flyScreen.id}
             onSelect={onSelect}
             onHover={onHover}
@@ -2077,9 +1892,9 @@ function DimensionChain({
 }
 
 /**
- * One panel's own column-width / row-height chain, plus a letter in
- * each of its sections — mock-up approved by Mario 2026-09-15. Only
- * for a gridded panel (a plain 1×1 panel gets neither: nothing to
+ * One panel's own chain of mullion/transom positions, plus a letter in
+ * each of its lights — mock-up approved by Mario 2026-09-15. Only for a
+ * panel with straight dividers (a plain panel gets neither: nothing to
  * chain, nothing to distinguish). `columnSide`/`rowSide` (computed by
  * the caller via `freeSidesOf`, 2026-09-15 — previously hardcoded to
  * "only if flush with the assembly's global top/left corner", which is
@@ -2093,7 +1908,7 @@ function DimensionChain({
  * hatch) — left out of this pass on Mario's own call.
  */
 function PanelDimensionCallouts({
-  panel,
+  chain,
   panelRect,
   outerMm,
   parts,
@@ -2106,7 +1921,7 @@ function PanelDimensionCallouts({
   columnGap,
   rowGap,
 }: {
-  panel: PanelRender
+  chain: { cols: number[]; rows: number[] }
   panelRect: RectMm
   outerMm: { width: number; height: number }
   parts: WindowPart[]
@@ -2119,9 +1934,9 @@ function PanelDimensionCallouts({
   columnGap?: number
   rowGap?: number
 }) {
-  const cols = panel.columnWidths
-  const rows = panel.rowHeights
+  const { cols, rows } = chain
   if (cols.length <= 1 && rows.length <= 1) return null
+  const sectionIndices = [...new Set(parts.map((p) => p.sectionIndex).filter((i): i is number => i !== null))]
 
   return (
     <>
@@ -2156,36 +1971,52 @@ function PanelDimensionCallouts({
           />
         )}
 
-        {rows.map((_, r) =>
-          cols.map((_, c) => {
-            // `parts`' own `rectMm` is already in ASSEMBLY space (see
-            // `buildAssemblyLayout`'s own offsetting) — no further
-            // `panelRect.x/y` offset belongs here, unlike the chain
-            // ticks above, which start from `cumulativeBoundaries`'
-            // PANEL-local values and so do need it.
-            const sectionIndex = r * cols.length + c
-            const sectionParts = parts.filter(
-              (p) => p.sectionIndex === sectionIndex && (p.kind === 'sash' || p.kind === 'glass' || p.kind === 'flyScreen'),
-            )
-            if (sectionParts.length === 0) return null
-            const rect = boundingRect(sectionParts.map((p) => p.rectMm))
-            return (
-              <text
-                key={sectionIndex}
-                x={rect.x + rect.width / 2}
-                y={rect.y + rect.height * 0.92}
-                textAnchor="middle"
-                fontSize={letterFontSize}
-                fontWeight={600}
-                fill="var(--foreground)"
-              >
-                {sectionLetter(sectionIndex)}
-              </text>
-            )
-          }),
-        )}
+        {sectionIndices.map((sectionIndex) => {
+          // `parts`' own `rectMm` is already in ASSEMBLY space (see
+          // `buildAssemblyLayout`'s own offsetting) — no further
+          // `panelRect.x/y` offset belongs here, unlike the chain ticks
+          // above, which are PANEL-local and so do need it.
+          const sectionParts = parts.filter(
+            (p) => p.sectionIndex === sectionIndex && (p.kind === 'sash' || p.kind === 'glass' || p.kind === 'flyScreen'),
+          )
+          if (sectionParts.length === 0) return null
+          const rect = boundingRect(sectionParts.map((p) => p.rectMm))
+          return (
+            <text
+              key={sectionIndex}
+              x={rect.x + rect.width / 2}
+              y={rect.y + rect.height * 0.92}
+              textAnchor="middle"
+              fontSize={letterFontSize}
+              fontWeight={600}
+              fill="var(--foreground)"
+            >
+              {sectionLetter(sectionIndex)}
+            </text>
+          )
+        })}
     </>
   )
+}
+
+/** The pitches a panel's dimension chains show: between the panel's own
+ * edges and every straight mullion (columns) / transom (rows) in it,
+ * read off the laid-out divider parts (a band's rect centre is its
+ * centreline). Panel-local, like the old grid pitches were. */
+function dividerChains(parts: WindowPart[], panelRect: RectMm): { cols: number[]; rows: number[] } {
+  const positions = (axis: 'v' | 'h') =>
+    [
+      ...new Set(
+        parts
+          .filter((p) => p.kind === 'divider' && p.dividerAxis === axis)
+          .map((p) => Math.round((axis === 'v' ? p.rectMm.x + p.rectMm.width / 2 - panelRect.x : p.rectMm.y + p.rectMm.height / 2 - panelRect.y) * 10) / 10),
+      ),
+    ].sort((a, b) => a - b)
+  const pitches = (cuts: number[], total: number) => {
+    const edges = [0, ...cuts, total]
+    return edges.slice(1).map((e, i) => e - edges[i])
+  }
+  return { cols: pitches(positions('v'), panelRect.width), rows: pitches(positions('h'), panelRect.height) }
 }
 
 /**
@@ -2389,7 +2220,7 @@ function InteractivePart({
   /** Divider-only, so far — starts a drag alongside the normal click
    * selection (a click still fires on mouseup if the pointer barely
    * moved, so the two never conflict). */
-  onMouseDown?: () => void
+  onMouseDown?: (e: MouseEvent<SVGGElement>) => void
   /** Divider-only — `cursor-ew-resize`/`cursor-ns-resize` hints that the
    * part is draggable, not just clickable. */
   cursorClassName?: string
@@ -2410,7 +2241,7 @@ function InteractivePart({
       role="button"
       tabIndex={0}
       aria-pressed={selected}
-      onClick={(e: MouseEvent<SVGGElement>) => onSelect(part.id, e.ctrlKey || e.metaKey)}
+      onClick={(e: MouseEvent<SVGGElement>) => onSelect(part.id, e.ctrlKey || e.metaKey || e.shiftKey)}
       onKeyDown={onKeyDown}
       onMouseEnter={() => onHover(part.id)}
       onMouseLeave={() => onHover(null)}
@@ -2418,7 +2249,7 @@ function InteractivePart({
         onMouseDown &&
         ((e: MouseEvent<SVGGElement>) => {
           e.stopPropagation()
-          onMouseDown()
+          onMouseDown(e)
         })
       }
       className={cn('outline-none', cursorClassName)}
@@ -2512,12 +2343,18 @@ function useSvgToClientTransform(
  * actions like Undo/Redo. */
 function ToolButton({
   label,
+  shortcut,
+  description,
   active,
   unavailable = false,
   onClick,
   children,
 }: {
   label: string
+  /** Shown after the name in the tooltip, e.g. "Divider (D)". */
+  shortcut?: string
+  /** A second tooltip line saying how the tool is used. */
+  description?: string
   active?: boolean
   unavailable?: boolean
   onClick?: () => void
@@ -2527,7 +2364,8 @@ function ToolButton({
     <button
       type="button"
       aria-label={label}
-      title={label}
+      aria-keyshortcuts={shortcut}
+      title={[shortcut ? `${label} (${shortcut})` : label, description].filter(Boolean).join('\n')}
       aria-pressed={unavailable || active === undefined ? undefined : active}
       aria-disabled={unavailable || undefined}
       onClick={unavailable ? undefined : onClick}

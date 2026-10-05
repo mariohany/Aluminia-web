@@ -24,6 +24,12 @@ import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provi
  * through the real `/company/lookups/*` endpoints. See
  * .wolf/cerebrum.md's e2e pattern note, 2026-08-15.
  */
+// Face keys (docs/free_dividers_planing.md §4.2): the sorted ids of the
+// members around a light, as apps/web's light graph builds them.
+const SINGLE_LIGHT = 'left|right|sill|top';
+const LEFT_LIGHT = 'left|m1|sill|top';
+const RIGHT_LIGHT = 'm1|right|sill|top';
+
 describe('Windows (e2e)', () => {
   let app: INestApplication<App>;
   let controlPlane: DataSource;
@@ -174,8 +180,7 @@ describe('Windows (e2e)', () => {
    * mentions sections at all still gets a fully-drawn window. */
   function section(overrides: Record<string, unknown> = {}) {
     return {
-      row: 0,
-      col: 0,
+      faceKey: SINGLE_LIGHT,
       kind: 'opening',
       sashProfile: `platform:${platformSashId}`,
       beadProfile: null,
@@ -193,12 +198,9 @@ describe('Windows (e2e)', () => {
     };
   }
 
-  /** One panel's worth of a valid request body — a 1×1 grid (a single
-   * section covering the whole frame) unless `overrides` supplies its
-   * own `columnWidths`/`rowHeights`/`sections`/`dividerProfile`. Reads
-   * `widthMm`/`heightMm` from `overrides` (if given) before building the
-   * default 1×1 grid, so `panel({ widthMm: 0 })`-style single-field
-   * overrides still produce an internally-consistent grid. */
+  /** One panel's worth of a valid request body — no dividers, one light
+   * covering the whole frame, unless `overrides` supplies its own
+   * `dividers`/`sections`/`dividerProfile`. */
   function panel(overrides: Record<string, unknown> = {}) {
     const widthMm =
       'widthMm' in overrides ? (overrides.widthMm as number) : 1200;
@@ -211,17 +213,13 @@ describe('Windows (e2e)', () => {
       heightMm,
       frameProfile: `platform:${platformFrameId}`,
       dividerProfile: null,
-      columnWidths: [widthMm],
-      rowHeights: [heightMm],
+      dividers: [],
       sections: [section()],
       isDoor: false,
-      // Flat/empty — the default every panel had before arch heads
-      // existed. headShape/headRiseMm/bars are required (no `.default`
-      // on the schema — see docs/arch_windows_planing.md's Step 4
-      // finding), so every panel literal needs them explicitly now.
+      // Flat — headShape/headRiseMm are required (no `.default` on the
+      // schema), so every panel literal carries them explicitly.
       headShape: 'flat',
       headRiseMm: null,
-      bars: [],
       ...overrides,
     };
   }
@@ -255,21 +253,45 @@ describe('Windows (e2e)', () => {
     return panel({ sections: [section({ sliding: layout })] });
   }
 
-  /** A panel split into two columns by one divider — the "+ → Mullion"
-   * shape from docs/sections_planing.md: a real opening section (0,0)
-   * and a real fixed section (0,1), sums matching the panel's own size.
-   * Every negative grid test starts from this valid shape and breaks
-   * exactly one rule, so a 400 can only mean the rule under test. */
+  /** One divider in request shape — straight, no own profile, a zero
+   * cut cache (the editor fills it on save; the API stores what it gets). */
+  function divider(
+    id: string,
+    from: { on: string; at: number },
+    to: { on: string; at: number },
+    overrides: Record<string, unknown> = {},
+  ) {
+    return {
+      id,
+      from,
+      to,
+      sagMm: 0,
+      profile: null,
+      cut: {
+        lengthMm: 0,
+        fromLeftDeg: 0,
+        fromRightDeg: 0,
+        toLeftDeg: 0,
+        toRightDeg: 0,
+      },
+      ...overrides,
+    };
+  }
+
+  /** A panel split by one mullion `m1` (sill → top at 600) into an
+   * opening light and a fixed one — docs/free_dividers_planing.md. Every
+   * negative divider test starts from this valid shape and breaks exactly
+   * one rule, so a 400 can only mean the rule under test. */
   function gridPanel(overrides: Record<string, unknown> = {}) {
     return panel({
       dividerProfile: `platform:${platformDividerId}`,
-      columnWidths: [600, 600],
-      rowHeights: [1500],
+      dividers: [
+        divider('m1', { on: 'sill', at: 600 }, { on: 'top', at: 600 }),
+      ],
       sections: [
-        section({ row: 0, col: 0 }),
+        section({ faceKey: LEFT_LIGHT }),
         section({
-          row: 0,
-          col: 1,
+          faceKey: RIGHT_LIGHT,
           kind: 'fixed',
           sashProfile: null,
           beadProfile: `platform:${platformBeadId}`,
@@ -387,161 +409,183 @@ describe('Windows (e2e)', () => {
     }).expect(400);
   });
 
-  // Arch heads and glazing bars — docs/arch_windows_planing.md §4.
-  // headShape/headRiseMm/bars round-trip like every other panel field;
-  // the interesting cases are the four structural rules on `bars`
-  // (flat ⇔ null rise, bars only on a non-flat head, unique ids, every
-  // anchor referencing something earlier in the array) and where they
-  // actually get enforced — see the forward-reference test below.
+  // Dividers — docs/free_dividers_planing.md §1. Anchors, ordering,
+  // per-divider profiles and the cut cache round-trip; the structural
+  // rules (ordering, hosts valid for the head shape, unique ids, a
+  // default profile, light keys naming real members) are the schema's.
 
-  it('round-trips a segmental head with anchored and bowed bars', async () => {
+  it('round-trips a fan: springing transom, a curved transom, a spoke with its own profile', async () => {
+    const cut = {
+      lengthMm: 548.5,
+      fromLeftDeg: 62,
+      fromRightDeg: 28,
+      toLeftDeg: 2,
+      toRightDeg: 2,
+    };
     const res = await createWindow({
-      name: 'W-arch-round-trip',
+      name: 'W-fan-round-trip',
       panels: [
         panel({
-          headShape: 'segmental',
-          headRiseMm: 400,
-          bars: [
-            {
-              id: 'b1',
-              from: { on: 'sill', at: 0.5 },
-              to: { on: 'arch', at: 0.5 },
-              sagMm: 0,
-            },
-            {
-              id: 'b2',
-              from: { on: 'sill', at: 0.2 },
-              to: { on: 'arch', at: 0.15 },
-              sagMm: 0,
-            },
-            {
-              id: 'b3',
-              from: { on: 'b1', at: 0.5 },
-              to: { on: 'b2', at: 0.5 },
-              sagMm: 45,
-            },
+          headShape: 'round',
+          headRiseMm: 600,
+          dividerProfile: `platform:${platformDividerId}`,
+          dividers: [
+            divider('s', { on: 'left', at: 859 }, { on: 'right', at: 859 }),
+            divider(
+              'a',
+              { on: 's', at: 300 },
+              { on: 's', at: 900 },
+              { sagMm: -250 },
+            ),
+            divider(
+              'k',
+              { on: 'a', at: 0.5 },
+              { on: 'head', at: 0.5 },
+              { profile: `platform:${platformSashId}`, cut },
+            ),
+          ],
+          // The keys apps/web's light graph computes for this drawing.
+          sections: [
+            section({ faceKey: 'a|head|k|left|s' }),
+            section({ faceKey: 'a|head|k|right|s' }),
+            section({ faceKey: 'a|s' }),
+            section({ faceKey: 'left|right|s|sill' }),
           ],
         }),
       ],
     }).expect(201);
     const body = res.body as WindowDetail;
-
-    expect(body.panels[0].headShape).toBe('segmental');
-    expect(body.panels[0].headRiseMm).toBe(400);
-    expect(body.panels[0].bars).toHaveLength(3);
-    expect(body.panels[0].bars[2]).toEqual({
-      id: 'b3',
-      from: { on: 'b1', at: 0.5 },
-      to: { on: 'b2', at: 0.5 },
-      sagMm: 45,
+    const p0 = body.panels[0];
+    expect(p0.dividers.map((d) => d.id)).toEqual(['s', 'a', 'k']);
+    expect(p0.dividers[1]).toMatchObject({ sagMm: -250, profile: null });
+    expect(p0.dividers[2]).toEqual({
+      id: 'k',
+      from: { on: 'a', at: 0.5 },
+      to: { on: 'head', at: 0.5 },
+      sagMm: 0,
+      profile: `platform:${platformSashId}`,
+      cut,
     });
+    expect(p0.sections.map((x) => x.faceKey)).toEqual([
+      'a|head|k|left|s',
+      'a|head|k|right|s',
+      'a|s',
+      'left|right|s|sill',
+    ]);
 
     const fetched = await request(app.getHttpServer())
       .get(`/windows/${body.id}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    expect((fetched.body as WindowDetail).panels[0].bars).toEqual(
-      body.panels[0].bars,
+    expect((fetched.body as WindowDetail).panels[0].dividers).toEqual(
+      p0.dividers,
     );
   });
 
   it("normalises a round head's rise to widthMm / 2, ignoring whatever the client sent", async () => {
     const res = await createWindow({
       name: 'W-arch-round-normalize',
-      panels: [panel({ widthMm: 1400, headShape: 'round', headRiseMm: 1 })],
+      panels: [
+        panel({
+          widthMm: 1400,
+          headShape: 'round',
+          headRiseMm: 1,
+          sections: [section({ faceKey: 'head|left|right|sill' })],
+        }),
+      ],
     }).expect(201);
     expect((res.body as WindowDetail).panels[0].headRiseMm).toBe(700);
   });
 
-  it('rejects a bar that references a LATER bar — proves the schema catches it, not the service', async () => {
-    // A single panel structurally cannot fail assertNoOverlap or
-    // assertConnected (nothing to overlap or disconnect from), so any
-    // 400 here can only have come from windowPanelSchema's superRefine
-    // via the global ZodValidationPipe — proof the request never
-    // reaches WindowsService.create's body unvalidated.
+  it('rejects a divider that lands on a LATER divider — proves the schema catches it, not the service', async () => {
+    // A single panel can't fail assertNoOverlap/assertConnected, so a
+    // 400 here can only come from windowPanelSchema's superRefine.
     await createWindow({
-      name: 'W-arch-forward-ref',
+      name: 'W-div-forward-ref',
       panels: [
-        panel({
-          headShape: 'segmental',
-          headRiseMm: 400,
-          bars: [
-            {
-              id: 'b1',
-              from: { on: 'b2', at: 0.5 },
-              to: { on: 'arch', at: 0.5 },
-              sagMm: 0,
-            },
-            {
-              id: 'b2',
-              from: { on: 'sill', at: 0.5 },
-              to: { on: 'arch', at: 0.2 },
-              sagMm: 0,
-            },
+        gridPanel({
+          dividers: [
+            divider('t1', { on: 'left', at: 900 }, { on: 'm1', at: 900 }),
+            divider('m1', { on: 'sill', at: 600 }, { on: 'top', at: 600 }),
           ],
         }),
       ],
     }).expect(400);
   });
 
-  it('rejects a bar anchored to a nonexistent id', async () => {
+  it('rejects a divider landing on a member that does not exist', async () => {
     await createWindow({
-      name: 'W-arch-bad-ref',
+      name: 'W-div-bad-ref',
       panels: [
-        panel({
-          headShape: 'round',
-          headRiseMm: 700,
-          bars: [
-            {
-              id: 'b1',
-              from: { on: 'nope', at: 0.5 },
-              to: { on: 'arch', at: 0.5 },
-              sagMm: 0,
-            },
+        gridPanel({
+          dividers: [
+            divider('m1', { on: 'nope', at: 600 }, { on: 'top', at: 600 }),
           ],
         }),
       ],
     }).expect(400);
   });
 
-  it('rejects bars on a flat head', async () => {
+  it("rejects 'head' on a flat panel and 'top' on an arched one", async () => {
     await createWindow({
-      name: 'W-arch-bars-on-flat',
+      name: 'W-div-head-on-flat',
       panels: [
-        panel({
-          bars: [
-            {
-              id: 'b1',
-              from: { on: 'arch', at: 0.2 },
-              to: { on: 'sill', at: 0.5 },
-              sagMm: 0,
-            },
+        gridPanel({
+          dividers: [
+            divider('m1', { on: 'sill', at: 600 }, { on: 'head', at: 0.5 }),
+          ],
+        }),
+      ],
+    }).expect(400);
+    await createWindow({
+      name: 'W-div-top-on-arch',
+      panels: [gridPanel({ headShape: 'segmental', headRiseMm: 400 })],
+    }).expect(400);
+  });
+
+  it('rejects duplicate divider ids, and a divider named like a frame side', async () => {
+    await createWindow({
+      name: 'W-div-dup-ids',
+      panels: [
+        gridPanel({
+          dividers: [
+            divider('m1', { on: 'sill', at: 400 }, { on: 'top', at: 400 }),
+            divider('m1', { on: 'sill', at: 800 }, { on: 'top', at: 800 }),
+          ],
+        }),
+      ],
+    }).expect(400);
+    await createWindow({
+      name: 'W-div-named-left',
+      panels: [
+        gridPanel({
+          dividers: [
+            divider('left', { on: 'sill', at: 400 }, { on: 'top', at: 400 }),
           ],
         }),
       ],
     }).expect(400);
   });
 
-  it('rejects duplicate bar ids within a panel', async () => {
+  it('rejects duplicate light keys, and a light naming a divider the panel lacks', async () => {
     await createWindow({
-      name: 'W-arch-dup-ids',
+      name: 'W-light-dup',
       panels: [
-        panel({
-          headShape: 'round',
-          headRiseMm: 700,
-          bars: [
-            {
-              id: 'b1',
-              from: { on: 'arch', at: 0.2 },
-              to: { on: 'sill', at: 0.5 },
-              sagMm: 0,
-            },
-            {
-              id: 'b1',
-              from: { on: 'arch', at: 0.8 },
-              to: { on: 'sill', at: 0.5 },
-              sagMm: 0,
-            },
+        gridPanel({
+          sections: [
+            section({ faceKey: LEFT_LIGHT }),
+            section({ faceKey: LEFT_LIGHT }),
+          ],
+        }),
+      ],
+    }).expect(400);
+    await createWindow({
+      name: 'W-light-ghost',
+      panels: [
+        gridPanel({
+          sections: [
+            section({ faceKey: LEFT_LIGHT }),
+            section({ faceKey: 'm9|right|sill|top' }),
           ],
         }),
       ],
@@ -849,7 +893,7 @@ describe('Windows (e2e)', () => {
   // opening into a fixed + opening pair, rather than coupling a second
   // frame beside it.
 
-  it('saves and reads back a 1×2 panel with a fixed and an opening section', async () => {
+  it('saves and reads back a panel split by a mullion into an opening and a fixed light', async () => {
     const created = await createWindow({
       name: 'W-sections-grid',
       panels: [gridPanel()],
@@ -864,8 +908,13 @@ describe('Windows (e2e)', () => {
 
     const panel0 = body.panels[0];
     expect(panel0.dividerProfile).toBe(`platform:${platformDividerId}`);
-    expect(panel0.columnWidths).toEqual([600, 600]);
-    expect(panel0.rowHeights).toEqual([1500]);
+    expect(panel0.dividers.map((d) => [d.id, d.from, d.to])).toEqual([
+      ['m1', { on: 'sill', at: 600 }, { on: 'top', at: 600 }],
+    ]);
+    expect(panel0.sections.map((x) => x.faceKey)).toEqual([
+      LEFT_LIGHT,
+      RIGHT_LIGHT,
+    ]);
     expect(panel0.sections).toHaveLength(2);
     expect(panel0.sections[0].kind).toBe('opening');
     expect(panel0.sections[0].sashProfile).toBe(`platform:${platformSashId}`);
@@ -881,14 +930,7 @@ describe('Windows (e2e)', () => {
     expect((fetched.body as WindowDetail).panels[0].sections).toHaveLength(2);
   });
 
-  it('rejects columnWidths/rowHeights that do not sum to the panel size', async () => {
-    await createWindow({
-      name: 'W-grid-sum-mismatch',
-      panels: [gridPanel({ columnWidths: [600, 700] })],
-    }).expect(400);
-  });
-
-  it('rejects a gridded panel missing a divider profile', async () => {
+  it('rejects dividers without a default transom profile', async () => {
     await createWindow({
       name: 'W-grid-no-divider',
       panels: [gridPanel({ dividerProfile: null })],
@@ -935,11 +977,28 @@ describe('Windows (e2e)', () => {
     }).expect(400);
   });
 
-  it('rejects an arched head on a panel with more than one column', async () => {
+  it('accepts a mullion rising into an arch (three lights under one arch is legal now)', async () => {
     await createWindow({
-      name: 'W-grid-arch-two-cols',
-      panels: [gridPanel({ headShape: 'segmental', headRiseMm: 400 })],
-    }).expect(400);
+      name: 'W-arch-mullion',
+      panels: [
+        gridPanel({
+          headShape: 'segmental',
+          headRiseMm: 400,
+          dividers: [
+            divider('m1', { on: 'sill', at: 600 }, { on: 'head', at: 0.5 }),
+          ],
+          sections: [
+            section({ faceKey: 'head|left|m1|sill' }),
+            section({
+              faceKey: 'head|m1|right|sill',
+              kind: 'fixed',
+              sashProfile: null,
+              beadProfile: `platform:${platformBeadId}`,
+            }),
+          ],
+        }),
+      ],
+    }).expect(201);
   });
 
   // ---- Sliding layouts (docs/sliding_windows_planing.md §3) -------------
@@ -1072,17 +1131,16 @@ describe('Windows (e2e)', () => {
   });
 
   it('accepts a divided sliding panel — a sliding section next to a fixed one (§12) — and reads each section back', async () => {
-    // gridPanel's own shape: opening (0,0) + fixed (0,1); the opening
+    // gridPanel's own shape: opening left light + fixed right one; the opening
     // one carries the layout, the fixed one none.
     const created = await createWindow({
       name: 'W-sliding-on-grid',
       panels: [
         gridPanel({
           sections: [
-            section({ row: 0, col: 0, sliding: slidingLayout([0, 1]) }),
+            section({ faceKey: LEFT_LIGHT, sliding: slidingLayout([0, 1]) }),
             section({
-              row: 0,
-              col: 1,
+              faceKey: RIGHT_LIGHT,
               kind: 'fixed',
               sashProfile: null,
               beadProfile: `platform:${platformBeadId}`,
@@ -1104,8 +1162,11 @@ describe('Windows (e2e)', () => {
       panels: [
         gridPanel({
           sections: [
-            section({ row: 0, col: 0, sliding: slidingLayout([0, 1]) }),
-            section({ row: 0, col: 1, sliding: slidingLayout([1, 0, 1]) }),
+            section({ faceKey: LEFT_LIGHT, sliding: slidingLayout([0, 1]) }),
+            section({
+              faceKey: RIGHT_LIGHT,
+              sliding: slidingLayout([1, 0, 1]),
+            }),
           ],
         }),
       ],

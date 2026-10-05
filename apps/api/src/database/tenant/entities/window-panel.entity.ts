@@ -7,8 +7,8 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import type { WindowBarInput } from '@repo/types/windows';
 import { Window } from './window.entity';
+import { WindowDivider } from './window-divider.entity';
 import { WindowSection } from './window-section.entity';
 
 /**
@@ -17,11 +17,12 @@ import { WindowSection } from './window-section.entity';
  * docs/window_assembly_planing.md and, for the grid inside a panel,
  * docs/sections_planing.md.
  *
- * This holds everything shared by the WHOLE frame — profile, divider,
- * grid, head, is-door, colours; `Window` keeps only the header (name,
+ * This holds everything shared by the WHOLE frame — profile, default
+ * divider profile, head, is-door, colours (its dividers are
+ * `window_dividers` rows); `Window` keeps only the header (name,
  * quantity, location, notes, and the derived overall size). What
  * varies per-light (sash, opening type, glass, fly screen) lives on
- * `sections`, one row per grid cell — see `WindowSection`. Every
+ * `sections`, one row per light — see `WindowSection`. Every
  * lookup reference is the same nullable platform/company uuid pair
  * `Window` used to carry, with the same strict posture — CHECK that at
  * most/exactly one half is set, real FK on the company half — because a
@@ -31,11 +32,9 @@ import { WindowSection } from './window-section.entity';
  * the bounding box's top-left. The remaining assembly invariants (no
  * overlap, every panel edge-connected) live in `WindowsService`, not in
  * a CHECK: they are relationships between rows, which a row-scoped
- * constraint cannot see. Likewise the grid's own cross-row rules
- * (`columnWidths`/`rowHeights` summing to `widthMm`/`heightMm`, every
- * cell covered by exactly one section) live in Zod's
- * `windowPanelSchema.superRefine`, re-checked server-side by
- * `validateGrid`.
+ * constraint cannot see. The single-panel structural rules (divider
+ * anchors and ordering, light keys) live in Zod's
+ * `windowPanelSchema.superRefine`.
  */
 @Entity('window_panels')
 export class WindowPanel {
@@ -73,11 +72,11 @@ export class WindowPanel {
   @Column({ name: 'frame_company_profile_id', type: 'uuid', nullable: true })
   frameCompanyProfileId: string | null;
 
-  // One `ProfileType.TRANSOM` profile used by every mullion/transom in
-  // this panel (docs/sections_planing.md decision 4). At most one half
-  // set (`CK_window_panels_divider_profile`); required iff the grid is
-  // bigger than 1×1 is a service rule (`validateGrid`) — a CHECK can't
-  // see `columnWidths`/`rowHeights`' jsonb lengths.
+  // The panel's default `ProfileType.TRANSOM` profile, used by every
+  // divider that doesn't carry its own (docs/free_dividers_planing.md
+  // Q12). At most one half set (`CK_window_panels_divider_profile`);
+  // required iff the panel has dividers is the schema's rule — a CHECK
+  // can't see another table's rows.
   @Column({ name: 'divider_platform_profile_id', type: 'uuid', nullable: true })
   dividerPlatformProfileId: string | null;
 
@@ -90,15 +89,10 @@ export class WindowPanel {
   // below: an ordered list whose own shape (summing correctly, one
   // section per cell) isn't expressible as a CHECK and lives in
   // `WindowsService.validateGrid` / Zod's `superRefine` instead.
-  @Column({
-    name: 'column_widths',
-    type: 'jsonb',
-    default: () => "'[]'::jsonb",
+  @OneToMany(() => WindowDivider, (divider) => divider.panel, {
+    cascade: true,
   })
-  columnWidths: number[];
-
-  @Column({ name: 'row_heights', type: 'jsonb', default: () => "'[]'::jsonb" })
-  rowHeights: number[];
+  dividers?: WindowDivider[];
 
   @OneToMany(() => WindowSection, (section) => section.panel, { cascade: true })
   sections?: WindowSection[];
@@ -137,8 +131,6 @@ export class WindowPanel {
   // only referencing something earlier in the array) can't be expressed
   // as a CHECK, so that validation lives entirely in
   // WindowsService.validatePanelHead.
-  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
-  bars: WindowBarInput[];
 
   // The sliding layout (`sliding` jsonb) lived here from
   // AddPanelSlidingLayout until MoveSlidingLayoutToSections — it's on

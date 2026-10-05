@@ -1,11 +1,10 @@
 import { CombinationItemKind, GlassGapType, SystemType } from '@repo/types/lookups'
-import { GlassKind, HeadShape, SectionKind, type WindowBarInput } from '@repo/types/windows'
+import { GlassKind, HeadShape, SectionKind } from '@repo/types/windows'
 import { formatScopedRef } from '@repo/types/company-lookups'
 import { checkSlidingBuildable, type SlidingLayoutInput } from '@repo/types/sliding'
 import type { MergedGlassSummary, MergedGlassCombinationSummary, MergedSystemProfileSummary } from '@/lib/lookup-merge'
 import { MIN_GLAZED_PITCH_MM, type RectMm } from '@/lib/window-geometry'
 import { outlinePerimeterMm, type HeadOutline } from '@/lib/arch-geometry'
-import { barLengthMm } from '@/lib/arch-bars'
 
 // A sheet whose glassId no longer resolves against the merged catalogue
 // (a deleted lookup) falls back to this per-mm-per-sqm estimate rather
@@ -43,10 +42,9 @@ export function resolveGlassWeightPerSqm(
  * once a head is arched — the curve is longer than the two rect edges
  * it replaces. `outlinePerimeterMm` folds that in (and reduces to
  * exactly the old formula for a `flat` head, verified explicitly
- * rather than assumed — see arch_windows_tasks.md's Step 12 entry),
- * plus the sum of every bar's own `barCutLengthMm` — a glazing bar is
- * cut from the same kind of extrusion as the sash, so it goes into the
- * same per-metre weight rather than needing a rate of its own.
+ * rather than assumed — see arch_windows_tasks.md's Step 12 entry).
+ * Dividers are frame members, never part of a sash, so they add nothing
+ * here (glazing bars used to).
  */
 export function computeSashWeightKg(args: {
   rectMm: RectMm
@@ -56,15 +54,12 @@ export function computeSashWeightKg(args: {
    * one this feature never touches) draws exactly the pre-existing
    * rectangular perimeter. */
   head?: { shape: HeadShape; riseMm: number } | null
-  bars?: WindowBarInput[]
 }): number {
   const areaM2 = (args.rectMm.width / 1000) * (args.rectMm.height / 1000)
   const outline: HeadOutline = args.head
     ? { rect: args.rectMm, shape: args.head.shape, riseMm: args.head.riseMm }
     : { rect: args.rectMm, shape: HeadShape.FLAT, riseMm: 0 }
-  const bars = args.bars ?? []
-  const barsMm = bars.reduce((total, bar) => total + (barLengthMm(bar, bars, outline) ?? 0), 0)
-  const perimeterM = (outlinePerimeterMm(outline) + barsMm) / 1000
+  const perimeterM = outlinePerimeterMm(outline) / 1000
   const profileWeightKgPerM = args.sashProfile?.weight ?? 0
   return areaM2 * args.glassWeightPerSqm + perimeterM * profileWeightKgPerM
 }
@@ -145,15 +140,12 @@ export function collectWindowIssues(args: {
   headBendRadiusMm: number | null
   minBendRadiusMm: number
   metricsSource: 'PLACEHOLDER' | 'PROFILE'
-  /** V2 `sectionTooSmall` (spec §6): this section's own column pitch and
-   * row pitch — a boundary-to-boundary width, not the drawn clear glass
-   * size, matching `columnWidths`/`rowHeights`' own units. */
-  columnWidthMm: number
-  rowHeightMm: number
-  /** V10 `archOnOpening` (spec §6): true iff this section is both the
-   * arched top row (`hasArchedHead && section.row === 0`) AND opening —
-   * the caller resolves both since neither is visible from in here. */
-  isArchedOpeningSection: boolean
+  /** This section's light (window-render.ts `panelIssueLights`): its
+   * pitch for V2 `sectionTooSmall`, whether it can be glazed at all
+   * (`lightTooSmall`), whether it may only be fixed (`archLightOpening`,
+   * Q7) and whether it is the whole-arch light (V10 `archOnOpening`).
+   * `null` when the panel has no real size yet. */
+  light: IssueLight | null
   /** True iff this section is opening, the panel's frame resolves to a
    * HINGED system, and no `openingType` has been picked — sliding/
    * curtain-wall sections are genuinely opening with `openingType`
@@ -267,20 +259,34 @@ export function collectWindowIssues(args: {
   // every live drag that can shrink a pitch (window-geometry.ts's
   // `moveDivider`/`resizePanelEdge`/`resizeSectionEdge`), so a drag can
   // no longer produce a state that immediately fails this check.
-  if (args.columnWidthMm < MIN_GLAZED_PITCH_MM || args.rowHeightMm < MIN_GLAZED_PITCH_MM) {
+  const pitchW = args.light?.pitchWidthMm ?? null
+  const pitchH = args.light?.pitchHeightMm ?? null
+  if (pitchW !== null && pitchH !== null && (pitchW < MIN_GLAZED_PITCH_MM || pitchH < MIN_GLAZED_PITCH_MM)) {
     for (const partId of args.glassPartIds) {
       issues.push({
         partId,
         severity: 'error',
         messageKey: 'sectionTooSmall',
-        values: { pitch: Math.round(Math.min(args.columnWidthMm, args.rowHeightMm)) },
+        values: { pitch: Math.round(Math.min(pitchW, pitchH)) },
       })
+    }
+  }
+  // An arch light squeezed so tight its glass outline collapses — it
+  // draws no glass part at all, so the issue lands on the frame. No
+  // angle rule (Q16): only "can't be glazed" is an error.
+  if (args.light && !args.light.glazable) {
+    issues.push({ partId: args.framePartId, severity: 'error', messageKey: 'lightTooSmall' })
+  }
+  // Q7: arch lights other than the whole-arch one are fixed only.
+  if (args.light?.fixedOnly && args.sectionKind === SectionKind.OPENING) {
+    for (const partId of args.glassPartIds.length > 0 ? args.glassPartIds : [args.framePartId]) {
+      issues.push({ partId, severity: 'error', messageKey: 'archLightOpening' })
     }
   }
   // V10: an opening sash under the springing line has to clear the
   // curve above it — flagged as a warning on the sash itself, not
   // blocking Save (the fabricator's call, same posture as archObstructed).
-  if (args.isArchedOpeningSection) {
+  if (args.light?.wholeArch && args.sectionKind === SectionKind.OPENING) {
     for (const partId of args.sashPartIds.length > 0 ? args.sashPartIds : [args.framePartId]) {
       issues.push({ partId, severity: 'warning', messageKey: 'archOnOpening' })
     }
@@ -291,7 +297,7 @@ export function collectWindowIssues(args: {
 
 /**
  * Panel-level rules that don't vary per section (spec §6 V1, V8,
- * `archWithMullion`, `slidingRailsRequired`) plus every section's own
+ * divider and light rules, `slidingRailsRequired`) plus every section's own
  * sliding-layout rules (docs/sliding_windows_planing.md §8, per section
  * since §12) — computed once per panel by the caller, unlike
  * `collectWindowIssues` above which runs once per SECTION (calling the
@@ -300,11 +306,22 @@ export function collectWindowIssues(args: {
  */
 export function collectPanelIssues(args: {
   dividerProfile: string | null
-  columnWidths: number[]
-  rowHeights: number[]
-  widthMm: number
-  heightMm: number
-  headShape: HeadShape
+  dividerCount: number
+  /** Dividers that don't resolve or slant below the springing line
+   * (Q2), as assembly part ids. */
+  dividerProblemPartIds: string[]
+  /** Every curved divider's radius, by assembly part id, against the
+   * profile's minimum bend — same posture as `archBendRadius`. */
+  dividerBends: { partId: string; radiusMm: number }[]
+  minBendRadiusMm: number
+  metricsSource: 'PLACEHOLDER' | 'PROFILE'
+  /** The stored sections don't match the lights one to one — normally
+   * impossible, the editor re-aligns on every edit (§5.3). */
+  lightsMismatch: boolean
+  /** The panel still carries a `migrated:` light — saved glazing bars
+   * converted to transoms whose new lights the user hasn't checked
+   * (docs/free_dividers_planing.md §2 step 4). */
+  lightsChanged: boolean
   systemType: SystemType | null
   framePartId: string
   /** Whether a frame profile is actually picked — until it is,
@@ -327,34 +344,28 @@ export function collectPanelIssues(args: {
   slidingRails: number | null
 }): WindowIssue[] {
   const issues: WindowIssue[] = []
-  const isGridded = args.columnWidths.length > 1 || args.rowHeights.length > 1
-
-  // V1: a divider profile is required exactly when there's a divider to
-  // make — also enforced at the schema level (an RHF field error), but
-  // repeated here so it highlights on the drawing like every other
-  // issue, rather than only showing up as generic form text.
-  if (isGridded && args.dividerProfile == null) {
+  // V1: a panel with dividers needs its default transom profile — also
+  // a schema rule, repeated here so it highlights on the drawing.
+  if (args.dividerCount > 0 && args.dividerProfile == null) {
     issues.push({ partId: args.framePartId, severity: 'error', messageKey: 'dividerProfileRequired' })
   }
-
-  // V8: can only happen from bad data (a bug in insertRow/insertColumn/
-  // resizeSection, say) — the schema already rejects this at Save, but
-  // an unsized brand-new panel has `NaN` sums that must never trip this
-  // (`NaN !== x` is always true), hence the finite guard.
-  if (Number.isFinite(args.widthMm) && Number.isFinite(args.heightMm)) {
-    const widthSum = args.columnWidths.reduce((sum, w) => sum + w, 0)
-    const heightSum = args.rowHeights.reduce((sum, h) => sum + h, 0)
-    if (widthSum !== args.widthMm || heightSum !== args.heightMm) {
-      issues.push({ partId: args.framePartId, severity: 'error', messageKey: 'gridMismatch' })
-    }
+  if (args.lightsMismatch) {
+    issues.push({ partId: args.framePartId, severity: 'error', messageKey: 'lightsMismatch' })
   }
-
-  // archWithMullion: dividers only run under an arch as transoms, never
-  // as mullions (decision 5) — the editor already flattens the head
-  // defensively when a column is inserted (`onConfirmDivider`), so this
-  // mainly guards a duplicated/hand-built window reaching this state.
-  if (args.headShape !== HeadShape.FLAT && args.columnWidths.length > 1) {
-    issues.push({ partId: args.framePartId, severity: 'error', messageKey: 'archWithMullion' })
+  if (args.lightsChanged) {
+    issues.push({ partId: args.framePartId, severity: 'warning', messageKey: 'lightsChanged' })
+  }
+  for (const partId of args.dividerProblemPartIds) {
+    issues.push({ partId, severity: 'error', messageKey: 'dividerNotSquare' })
+  }
+  for (const bend of args.dividerBends) {
+    if (bend.radiusMm >= args.minBendRadiusMm) continue
+    issues.push({
+      partId: bend.partId,
+      severity: args.metricsSource === 'PLACEHOLDER' ? 'warning' : 'error',
+      messageKey: 'dividerBendRadius',
+      values: { radius: Math.round(bend.radiusMm), min: args.minBendRadiusMm },
+    })
   }
 
   // Sliding layouts (docs/sliding_windows_planing.md §8), one per
@@ -419,4 +430,15 @@ export function collectPanelIssues(args: {
   }
 
   return issues
+}
+
+/** What `collectWindowIssues` needs to know about a section's light —
+ * built by window-render.ts's `panelIssueLights`. */
+export interface IssueLight {
+  /** Boundary-to-boundary size; `null` for a shaped arch light. */
+  pitchWidthMm: number | null
+  pitchHeightMm: number | null
+  glazable: boolean
+  fixedOnly: boolean
+  wholeArch: boolean
 }

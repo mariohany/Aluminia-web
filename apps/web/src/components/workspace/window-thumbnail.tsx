@@ -2,6 +2,7 @@ import { SystemType } from '@repo/types/lookups'
 import { type WindowPanelDetail } from '@repo/types/windows'
 import { buildAssemblyLayout, type AssemblyPanelInput, type WindowPart } from '@/lib/window-geometry'
 import { sectionRenderFor, useResolvedPanels } from '@/lib/window-render'
+import { insetHeadOutline } from '@/lib/arch-geometry'
 import {
   DEFAULT_FRAME_FILL,
   DEFAULT_GLASS_FILL,
@@ -11,7 +12,7 @@ import {
   MESH_STROKE_WIDTH_MM,
   archOutlinePath,
   archRingPath,
-  barPathsFor,
+  partOutlinePath,
   boundingRect,
   georgianBars,
   isDoorHinged,
@@ -76,8 +77,7 @@ export function WindowThumbnail({
     headShape: render.headShape,
     headRiseMm: render.headRiseMm,
     metrics: render.metrics,
-    columnWidths: render.columnWidths,
-    rowHeights: render.rowHeights,
+    dividers: render.dividers,
     sections: render.sections,
   }))
   const { outerMm, parts } = buildAssemblyLayout(layoutInput)
@@ -142,16 +142,17 @@ export function WindowThumbnail({
           const outline = seamColorFor(frameFill)
           const detailStyle: DetailStyle = { frameFill, seamStroke: outline, strokeWeight }
 
-          // Arch-aware frame ring — only ever set on section 0 (the top
-          // row of a `cols === 1` panel), same lookup as
-          // window-drawing.tsx's own `innerOutline`.
+          // Arch-aware frame ring, same as window-drawing.tsx: the ring
+          // stops at the clear opening; the whole-arch light (if there
+          // is one) brings its own sash or bead.
           const frameOutline = outlineOf(frame)
+          const clearOutline = frameOutline ? insetHeadOutline(frameOutline, render.metrics.frameFace) : null
           const archSash = sashes.find((s) => s.head)
-          const archGlass = glasses.find((g) => g.head)
+          const archGlass = glasses.find((g) => g.head && !sashes.some((s) => s.sectionIndex === g.sectionIndex))
           const innerOutline = archSash ? outlineOf(archSash) : archGlass ? outlineOf(archGlass) : null
           const framePathD =
-            frameOutline && innerOutline
-              ? archRingPath(frameOutline, innerOutline)
+            frameOutline && clearOutline
+              ? archRingPath(frameOutline, clearOutline)
               : doorHinged
                 ? openBottomFramePath(frame.rectMm, frameOpening)
                 : ringPath(frame.rectMm, frameOpening)
@@ -167,6 +168,7 @@ export function WindowThumbnail({
                 frameOpening,
                 frameOutline,
                 innerOutline,
+                clearOutline,
                 hasSashes,
                 fixedGlasses,
                 doorHinged,
@@ -183,9 +185,8 @@ export function WindowThumbnail({
                   above it — glass looks the same on either theme
                   (`GLASS_BACKING_FILL`). */}
               {glasses.map((glass) => {
-                const glassOutline = outlineOf(glass)
-                return glassOutline ? (
-                  <path key={glass.id} d={archOutlinePath(glassOutline)} fill={GLASS_BACKING_FILL} pointerEvents="none" />
+                return glass.outline || glass.head ? (
+                  <path key={glass.id} d={partOutlinePath(glass)} fill={GLASS_BACKING_FILL} pointerEvents="none" />
                 ) : (
                   <rect
                     key={glass.id}
@@ -263,9 +264,9 @@ export function WindowThumbnail({
                 const glassSection = sectionRenderFor(render, glass)
                 return (
                   <g key={glass.id}>
-                    {glassOutline ? (
+                    {glass.outline || glassOutline ? (
                       <path
-                        d={archOutlinePath(glassOutline)}
+                        d={partOutlinePath(glass)}
                         fill={glassSection?.glassHex ?? DEFAULT_GLASS_FILL}
                         fillOpacity={GLASS_FILL_OPACITY}
                         stroke={outline}
@@ -286,16 +287,6 @@ export function WindowThumbnail({
                     {renderGasket(glass, glassOutline, strokeWeight)}
                     {glassSection?.georgianGrid &&
                       georgianBars(glass.rectMm, glassSection.georgianGrid, georgianBarWidth, frameFill)}
-                    {glassOutline && render.bars.length > 0 &&
-                      barPathsFor(render.bars, glassOutline).map((bar) => (
-                        <path
-                          key={bar.id}
-                          d={bar.d}
-                          fill="none"
-                          stroke={frameFill}
-                          strokeWidth={georgianBarWidth}
-                        />
-                      ))}
                   </g>
                 )
               })}

@@ -2,6 +2,9 @@ import { SystemType } from '@repo/types/lookups'
 import { HingedOpeningType, HeadShape, SectionKind } from '@repo/types/windows'
 import type { SlidingLayoutInput, SlidingOpeningType } from '@repo/types/sliding'
 import { insetHeadOutline, normalizeHeadRise, type HeadOutline } from '@/lib/arch-geometry'
+import { samplePath, type Seg } from '@/lib/curves'
+import { frameGeometry, resolveDividers, type DividerLike, type MemberAxis } from '@/lib/dividers'
+import { buildLightGraph, insetLoop } from '@/lib/light-graph'
 import type { ProfileMetrics } from '@/lib/profile-metrics'
 
 // Every band width (frame face, sash face, bead, bars, dividers) comes
@@ -30,9 +33,10 @@ export interface WindowPart {
    * a `p<n>:` prefix; this is the parsed form, so a caller filtering
    * parts by panel doesn't have to do string work. */
   panelIndex: number
-  /** Which grid cell this part belongs to (`row * cols + col`) — `null`
-   * for a panel-level part (`frame`, `divider`), which belongs to no
-   * one section. See docs/sections_planing.md §3. */
+  /** Which section (light) this part belongs to — an index into the
+   * panel's `sections`, which are kept one per light in display order
+   * (docs/free_dividers_planing.md §4.2). `null` for a panel-level part
+   * (`frame`, `divider`). */
   sectionIndex: number | null
   rectMm: RectMm
   /** Set exactly when this part's outline is arched — absent (not
@@ -50,12 +54,32 @@ export interface WindowPart {
    * legacy sliding section (`sliding: null`), which still draws its old
    * two anonymous leaves. */
   sliding?: { rail: number; openingType: SlidingOpeningType }
+  /** A divider's own outline: its face width along its centreline, each
+   * end cut against what it lands on (light-graph.ts bands). Set on
+   * every `divider` part; `rectMm` is its bounding box. */
+  band?: Seg[]
+  /** A shaped arch light's glass (docs/free_dividers_planing.md §4.3) —
+   * neither a rectangle nor the whole-arch outline. `rectMm` is its
+   * bounding box. */
+  outline?: Seg[]
+  /** With `outline`: the light's clear opening, which the bead fills
+   * down to the glass. */
+  clearOutline?: Seg[]
+  /** On a `divider` part: its id in the panel's `dividers`, and whether
+   * it is a straight vertical (`v`, a mullion), a straight horizontal
+   * (`h`) or anything else (`null`, slanted or curved). */
+  dividerId?: string
+  dividerAxis?: MemberAxis
+  /** On a `divider` part: its cut length (light-graph.ts band). */
+  cutLengthMm?: number
 }
 
 /** One grid cell's worth of layout input — everything `buildWindowLayout`
  * needs to decide how a section draws, independent of what it's actually
  * glazed with (that's `useResolvedPanels`' job, not this file's). */
 export interface WindowSectionLayoutInput {
+  /** Which light this is (docs/free_dividers_planing.md §4.2). */
+  faceKey: string
   kind: typeof SectionKind.FIXED | typeof SectionKind.OPENING
   /** Whether a sash profile has been picked for this section. Until it
    * has — or when the opening type is `FIXED_CLOSED` — the section
@@ -108,14 +132,14 @@ export interface WindowLayoutInput {
    * profile-metrics.ts. Resolved by the caller (`useResolvedPanels`),
    * one object per panel. */
   metrics: ProfileMetrics
-  /** Boundary-to-boundary pitches, summing to `widthMm`/`heightMm` —
-   * NOT clear glass sizes (docs/sections_planing.md decision 8). A
-   * panel that was never touched by this feature is simply `[widthMm]`/
-   * `[heightMm]`, a 1×1 grid. */
-  columnWidths: number[]
-  rowHeights: number[]
-  /** Row-major (`row * cols + col`), length `columnWidths.length *
-   * rowHeights.length` — every cell, exactly once. */
+  /** The panel's dividers, ends anchored on the frame or each other
+   * (docs/free_dividers_planing.md §1). */
+  dividers: readonly DividerLike[]
+  /** A divider's face width — its own profile's, else the panel
+   * default's (Q12). Defaults to `metrics.dividerFace` for all. */
+  dividerFace?: (dividerId: string) => number
+  /** One per light, keyed by `faceKey`; a light with no section isn't
+   * glazed (callers align them first — panel-lights.ts). */
   sections: WindowSectionLayoutInput[]
 }
 
@@ -143,42 +167,16 @@ export interface WindowLayout {
  */
 
 /**
- * Whether a panel's own frame/grid/top-row-opening-type combination can
- * support an arched head at all — independent of whether one is
- * currently set on it. Sliding and double-door both produce more than
- * one sash rect, a fixed-mullion opening type produces more than one
- * glass rect, a hinged door's asymmetric (no-bottom) inset has no
- * arch-aware equivalent yet (see docs/arch_windows_planing.md §5's
- * scope note: every arched-door reference photo turns out to be two
- * coupled PANELS in this assembly model, not one panel needing both at
- * once), and a vertical divider has nowhere to meet a curve (decision 5
- * — arches never span more than one column; a horizontal divider
- * UNDER an arch is fine, that's the whole point of this feature).
- *
- * `buildWindowLayout` uses this to decide whether to actually draw a
- * curve; `window-part-panel.tsx` uses the same predicate to decide
- * whether to let the user pick a shape in the first place, rather than
- * silently drawing flat after they do. One function, not a rule
- * duplicated in both places that could drift apart.
+ * Whether a panel can take an arched head at all. Sliding never can (its
+ * leaves run on straight tracks) and neither can a hinged door (its
+ * no-sill inset has no arch-aware form — the arched-door reference photos
+ * are two coupled panels). Dividers no longer matter: a mullion may rise
+ * into the arch (docs/free_dividers_planing.md's assumptions), and only
+ * the whole-arch light itself can carry an arched sash.
  */
-export function canHaveArchedHead(
-  input: Pick<WindowLayoutInput, 'isDoor' | 'systemType'> & {
-    cols: number
-    /** The `(row 0, col 0)` section's `openingType` — the only section
-     * an arch ever touches, since `cols === 1` is required for any of
-     * this. */
-    topRowOpeningType: HingedOpeningType | null
-  },
-): boolean {
-  const isHinged = input.systemType === SystemType.HINGED
-  const isDoorHinged = input.isDoor && isHinged
-  const isDoubleDoorHinged =
-    isHinged && !!input.topRowOpeningType && DOUBLE_DOOR_OPENING_TYPES.includes(input.topRowOpeningType)
-  const isMullion =
-    isHinged &&
-    (input.topRowOpeningType === HingedOpeningType.FIXED_VERTICAL_MULLION ||
-      input.topRowOpeningType === HingedOpeningType.FIXED_HORIZONTAL_MULLION)
-  return input.cols === 1 && !isDoorHinged && input.systemType !== SystemType.SLIDING && !isDoubleDoorHinged && !isMullion
+export function canHaveArchedHead(input: Pick<WindowLayoutInput, 'isDoor' | 'systemType'>): boolean {
+  const isDoorHinged = input.isDoor && input.systemType === SystemType.HINGED
+  return !isDoorHinged && input.systemType !== SystemType.SLIDING
 }
 /** `boundaries[0] === 0`, `boundaries[i] === sum(pitches[0..i))`,
  * `boundaries[pitches.length] === sum(pitches)` — one more entry than
@@ -228,58 +226,37 @@ export function formatDimensionMm(mm: number): string {
     : rounded.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 }
 
-/** The clear rect between frame/divider faces for grid cell `(row,
- * col)` — docs/sections_planing.md §3's pseudocode, verbatim. The
- * bottom ROW's own bottom edge is the one place `isDoorHinged` matters:
- * every other boundary is a real jamb or divider face. */
-function sectionClearRect(
-  row: number,
-  col: number,
-  xBoundaries: number[],
-  yBoundaries: number[],
-  frameFace: number,
-  dividerFace: number,
-  width: number,
-  height: number,
-  isDoorHinged: boolean,
-): RectMm {
-  const cols = xBoundaries.length - 1
-  const rows = yBoundaries.length - 1
-  const x0 = col === 0 ? frameFace : xBoundaries[col] + dividerFace / 2
-  const x1 = col === cols - 1 ? width - frameFace : xBoundaries[col + 1] - dividerFace / 2
-  const y0 = row === 0 ? frameFace : yBoundaries[row] + dividerFace / 2
-  const y1 = row === rows - 1 ? height - (isDoorHinged ? 0 : frameFace) : yBoundaries[row + 1] - dividerFace / 2
-  return { x: x0, y: y0, width: Math.max(x1 - x0, 1), height: Math.max(y1 - y0, 1) }
+function boundsOf(segs: Seg[]): RectMm {
+  const points = samplePath(segs)
+  const xs = points.map((p) => p.x)
+  const ys = points.map((p) => p.y)
+  const x = Math.min(...xs)
+  const y = Math.min(...ys)
+  return { x, y, width: Math.max(Math.max(...xs) - x, 1), height: Math.max(Math.max(...ys) - y, 1) }
 }
 
+/**
+ * One panel's parts: the frame, one `divider` part per divider (its band,
+ * cut at both ends), and each light's sash/glass/fly screen — a
+ * rectangular light exactly as a section always drew, the whole-arch
+ * light with today's arched sash/glass, any other arch light as fixed
+ * shaped glass (docs/free_dividers_planing.md §5.1).
+ */
 export function buildWindowLayout(input: WindowLayoutInput): WindowLayout {
   const width = Math.max(input.widthMm, 1)
   const height = Math.max(input.heightMm, 1)
   const { metrics } = input
 
   const isDoorHinged = input.isDoor && input.systemType === SystemType.HINGED
-  const cols = input.columnWidths.length
-  const rows = input.rowHeights.length
-  const xBoundaries = cumulativeBoundaries(input.columnWidths)
-  const yBoundaries = cumulativeBoundaries(input.rowHeights)
-
   const headShape = input.headShape ?? HeadShape.FLAT
-  const topRowOpeningType = input.sections[0]?.openingType ?? null
-  const archable =
-    headShape !== HeadShape.FLAT && canHaveArchedHead({ isDoor: input.isDoor, systemType: input.systemType, cols, topRowOpeningType })
+  const archable = headShape !== HeadShape.FLAT && canHaveArchedHead({ isDoor: input.isDoor, systemType: input.systemType })
+  const shape = archable ? headShape : HeadShape.FLAT
+  const riseMm = archable ? normalizeHeadRise(headShape, width, input.headRiseMm ?? 0, height) : 0
 
-  // With more than one row, the springing line is the top divider's own
-  // top edge (docs/sections_planing.md §1/§3, decided 2026-09-12): the
-  // STORED rise is the top row's pitch (Zod pins it there exactly), and
-  // the DRAWN rise is that minus half the divider face. With one row,
-  // this is exactly `normalizeHeadRise`'s pre-existing behaviour —
-  // unaffected by this feature.
-  const riseMm =
-    rows > 1
-      ? Math.max((input.rowHeights[0] ?? 0) - metrics.dividerFace / 2, 1)
-      : normalizeHeadRise(headShape, width, input.headRiseMm ?? 0, height)
-
-  const frameOutline: HeadOutline = { rect: { x: 0, y: 0, width, height }, shape: headShape, riseMm }
+  const geo = frameGeometry({ widthMm: width, heightMm: height, headShape: shape, headRiseMm: riseMm, frameFace: metrics.frameFace, doorSill: isDoorHinged, springOffsetMm: metrics.dividerFace / 2 })
+  const faceOf = input.dividerFace ?? (() => metrics.dividerFace)
+  const graph = buildLightGraph(geo, input.dividers, (id) => faceOf(id) / 2)
+  const resolved = resolveDividers(geo, input.dividers)
 
   const parts: WindowPart[] = [
     {
@@ -289,62 +266,52 @@ export function buildWindowLayout(input: WindowLayoutInput): WindowLayout {
       panelIndex: 0,
       sectionIndex: null,
       rectMm: { x: 0, y: 0, width, height },
-      head: archable ? { shape: frameOutline.shape, riseMm: frameOutline.riseMm } : undefined,
+      head: archable ? { shape, riseMm } : undefined,
     },
   ]
 
-  // Dividers — every mullion runs the full opening height, every
-  // transom the full opening width (decision 1); mullions pushed first,
-  // transoms after, so the crossing reads as one piece either way
-  // (decision 10 — no joint marks).
-  const openingWidth = Math.max(width - 2 * metrics.frameFace, 1)
-  const openingHeight = Math.max(height - metrics.frameFace - (isDoorHinged ? 0 : metrics.frameFace), 1)
-  for (let k = 1; k < cols; k++) {
+  graph.bands.forEach((band, i) => {
     parts.push({
-      id: `div-v${k}`,
+      id: `div-${band.dividerId}`,
       kind: 'divider',
-      index: k - 1,
+      index: i,
       panelIndex: 0,
       sectionIndex: null,
-      rectMm: { x: xBoundaries[k] - metrics.dividerFace / 2, y: metrics.frameFace, width: metrics.dividerFace, height: openingHeight },
+      rectMm: boundsOf(band.outline),
+      band: band.outline,
+      dividerId: band.dividerId,
+      dividerAxis: resolved.get(band.dividerId)?.axis ?? null,
+      cutLengthMm: band.lengthMm,
     })
-  }
-  for (let j = 1; j < rows; j++) {
-    parts.push({
-      id: `div-h${j}`,
-      kind: 'divider',
-      index: j - 1,
-      panelIndex: 0,
-      sectionIndex: null,
-      rectMm: { x: metrics.frameFace, y: yBoundaries[j] - metrics.dividerFace / 2, width: openingWidth, height: metrics.dividerFace },
-    })
-  }
+  })
 
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const sectionIndex = row * cols + col
-      const section = input.sections[sectionIndex]
-      if (!section) continue // Zod guarantees exact coverage; nothing to draw if it somehow didn't.
-
-      const clearRect = sectionClearRect(row, col, xBoundaries, yBoundaries, metrics.frameFace, metrics.dividerFace, width, height, isDoorHinged)
-
-      // Only the TOP row of a `cols === 1` panel can be arched — see
-      // `canHaveArchedHead`. Its own outline is sized to just its own
-      // rise: below the springing line is the next row (or the frame's
-      // real bottom, if `rows === 1`), never a flat continuation of
-      // THIS section — so `riseMm === rect.height` here, by
-      // construction, not by further arithmetic.
-      const sectionOutline: HeadOutline | null = archable && row === 0 ? { rect: clearRect, shape: headShape, riseMm: clearRect.height } : null
-
-      const skipBottomInset = isDoorHinged && row === rows - 1
-      buildSectionParts(parts, section, sectionIndex, clearRect, sectionOutline, metrics, input.flyScreenAllowed, input.systemType, skipBottomInset, section.sliding ?? null)
+  for (const light of graph.lights) {
+    const sectionIndex = input.sections.findIndex((s) => s.faceKey === light.key)
+    const section = input.sections[sectionIndex]
+    if (!section) continue
+    const skipBottomInset = isDoorHinged && light.members.includes('sill')
+    if (light.rect) {
+      buildSectionParts(parts, section, sectionIndex, light.rect, null, metrics, input.flyScreenAllowed, input.systemType, skipBottomInset, section.sliding ?? null)
+    } else if (light.head) {
+      // The whole-arch light keeps today's arched sash — unless its
+      // opening type needs two leaves or a mullion bar, which have no
+      // arched form: those draw on the light's bounding rectangle.
+      const multiLeaf =
+        !!section.openingType &&
+        (DOUBLE_DOOR_OPENING_TYPES.includes(section.openingType) ||
+          section.openingType === HingedOpeningType.FIXED_VERTICAL_MULLION ||
+          section.openingType === HingedOpeningType.FIXED_HORIZONTAL_MULLION)
+      buildSectionParts(parts, section, sectionIndex, light.head.rect, multiLeaf ? null : light.head, metrics, input.flyScreenAllowed, input.systemType, skipBottomInset, section.sliding ?? null)
+    } else if (light.clear) {
+      const glass = insetLoop(light.clear, () => metrics.beadFace)
+      if (glass) parts.push({ id: `s${sectionIndex}:glass-0-0`, kind: 'glass', index: 0, panelIndex: 0, sectionIndex, rectMm: boundsOf(glass), outline: glass, clearOutline: light.clear })
     }
   }
 
   return { outerMm: { width, height }, parts }
 }
 
-/** One grid cell's sash/glass/flyScreen parts — the per-panel branching
+/** One light's sash/glass/flyScreen parts — the per-panel branching
  * `buildWindowLayout` used to do (fixed light vs. sliding vs. double
  * door vs. fixed-mullion vs. plain single sash) now happens once per
  * SECTION instead of once per panel, operating on that section's own
@@ -618,6 +585,9 @@ export function buildAssemblyLayout(panels: AssemblyPanelInput[]): AssemblyLayou
         id: `p${panelIndex}:${part.id}`,
         panelIndex,
         rectMm: offsetRect(part.rectMm, panel.xMm, panel.yMm),
+        band: part.band && offsetSegs(part.band, panel.xMm, panel.yMm),
+        outline: part.outline && offsetSegs(part.outline, panel.xMm, panel.yMm),
+        clearOutline: part.clearOutline && offsetSegs(part.clearOutline, panel.xMm, panel.yMm),
       })
     }
   })
@@ -628,8 +598,26 @@ export function buildAssemblyLayout(panels: AssemblyPanelInput[]): AssemblyLayou
   return { outerMm: { width: outer.width, height: outer.height }, parts, panelRects }
 }
 
+/**
+ * What the UI calls each divider of one panel's parts — "Mullion N" for a
+ * straight vertical, "Transom N" for everything else (every arch member
+ * is a transom — docs/free_dividers_planing.md vocabulary). Numbered
+ * left to right for mullions, top to bottom then left to right for
+ * transoms, so the numbers read the way the drawing does.
+ */
+export function dividerNames(parts: WindowPart[]): Map<string, { kind: 'mullion' | 'transom'; number: number }> {
+  const dividers = parts.filter((p) => p.kind === 'divider')
+  const centre = (p: WindowPart) => ({ x: p.rectMm.x + p.rectMm.width / 2, y: p.rectMm.y + p.rectMm.height / 2 })
+  const mullions = dividers.filter((p) => p.dividerAxis === 'v').sort((a, b) => centre(a).x - centre(b).x || centre(a).y - centre(b).y)
+  const transoms = dividers.filter((p) => p.dividerAxis !== 'v').sort((a, b) => centre(a).y - centre(b).y || centre(a).x - centre(b).x)
+  const out = new Map<string, { kind: 'mullion' | 'transom'; number: number }>()
+  mullions.forEach((p, i) => out.set(p.id, { kind: 'mullion', number: i + 1 }))
+  transoms.forEach((p, i) => out.set(p.id, { kind: 'transom', number: i + 1 }))
+  return out
+}
+
 /** `"p1:s0:sash-0"` → `{ panelIndex: 1, localId: "s0:sash-0", sectionIndex:
- * 0 }`; `"p1:div-v1"` → `sectionIndex: null` (a panel-level part belongs
+ * 0 }`; `"p1:div-m1"` → `sectionIndex: null` (a panel-level part belongs
  * to no one section); `null` for an unprefixed id (a single-panel
  * `buildWindowLayout()` result, or the assembly-level `'assembly'` issue
  * id). Every part already carries its own `sectionIndex` field — this is
@@ -1101,11 +1089,11 @@ export function nearestDividerMm(
   positionMm: number,
   toleranceMm: number,
 ): number | null {
-  const prefix = orientation === 'vertical' ? 'div-v' : 'div-h'
+  const axis = orientation === 'vertical' ? 'v' : 'h'
   let best: number | null = null
   for (const part of parts) {
     if (part.kind !== 'divider' || part.panelIndex === excludePanelIndex) continue
-    if (!part.id.slice(part.id.indexOf(':') + 1).startsWith(prefix)) continue
+    if (part.dividerAxis !== axis) continue
     const centre = orientation === 'vertical' ? part.rectMm.x + part.rectMm.width / 2 : part.rectMm.y + part.rectMm.height / 2
     const distance = Math.abs(centre - positionMm)
     if (distance <= toleranceMm && (best === null || distance < Math.abs(best - positionMm))) best = centre
@@ -1309,244 +1297,10 @@ export function removePanel<T extends PanelPlacement>(panels: T[], index: number
   return collapsed
 }
 
-// ---- Grid editing (docs/sections_planing.md §3) -----------------------
-//
-// Pure, next to resizePanel: nothing here knows about profiles, glass,
-// or the API. `S` is whatever richer section shape a caller actually
-// has (sash/glass/opening-type refs and all) — these functions only
-// ever touch `row`/`col`, so this file stays free of `@repo/types/
-// windows`-shaped concerns, matching `resizePanel`'s own posture of not
-// knowing what a panel is FOR.
-
-export interface GridSection {
-  row: number
-  col: number
-}
-
-export interface GridPanelLike<S extends GridSection> extends PanelPlacement {
-  columnWidths: number[]
-  rowHeights: number[]
-  /** Row-major, one entry per cell — same convention `buildWindowLayout`
-   * expects, though these helpers only ever read `row`/`col` off it. */
-  sections: S[]
-}
-
-/**
- * Adds a row of `heightMm` to `panel`'s grid — "+ → Transom" on the
- * word 'top'/'bottom' (decision 2): grows the SAME panel and inserts a
- * full-width divider, rather than coupling a second frame beside it.
- * `makeSection(row, col)` builds each new cell; a caller normally clones
- * an existing section's glass into a FIXED one ("Cloning the source
- * panel's glass for the new sections" — decision 2's own wording), but
- * this file has no opinion on what a section actually contains.
- *
- * `at: 'top'` inserts at local row 0 and shifts every existing section's
- * `row` up by one; `'bottom'` appends past the last existing row, so
- * nothing shifts. Either way, `resizePanel` is what actually moves the
- * panel and its coupled neighbours — its BOTTOM-anchored height rule
- * (see that function's own comment) is what makes 'top' visually grow
- * upward and 'bottom' grow downward; this function only ever changes
- * WHICH end of the local row array the new row occupies, since a row's
- * OWN render position is always relative to the panel's current top
- * edge, never to the assembly.
- */
-export function insertRow<T extends GridPanelLike<S>, S extends GridSection>(
-  panels: T[],
-  index: number,
-  at: 'top' | 'bottom',
-  heightMm: number,
-  makeSection: (row: number, col: number) => S,
-): T[] {
-  const panel = panels[index]
-  if (!panel) return panels
-  const cols = panel.columnWidths.length
-  const insertedRow = at === 'top' ? 0 : panel.rowHeights.length
-  const pitch = Math.max(Math.round(heightMm), 1)
-
-  const rowHeights = [...panel.rowHeights]
-  rowHeights.splice(insertedRow, 0, pitch)
-
-  const shifted = panel.sections.map((s) => (s.row >= insertedRow ? { ...s, row: s.row + 1 } : s))
-  const added: S[] = []
-  for (let col = 0; col < cols; col++) added.push(makeSection(insertedRow, col))
-
-  // `buildWindowLayout` reads a section by ARRAY POSITION
-  // (`sections[row * cols + col]`), not by searching its `row`/`col`
-  // fields — so the array itself has to stay row-major-ordered after
-  // every edit, not just internally consistent. Appending `added` after
-  // `shifted` is correct for `at: 'bottom'` (the new row IS the last
-  // one), but wrong for `at: 'top'`: the new row's sections belong at
-  // the FRONT of the array, not the back. Sorting by (row, col) after
-  // combining is simpler and more robust than computing the splice
-  // position by hand, and is correct for both sides.
-  const sections = [...shifted, ...added].sort((a, b) => a.row - b.row || a.col - b.col)
-
-  const updated: T = { ...panel, rowHeights, sections }
-  const withUpdated = panels.map((p, i) => (i === index ? updated : p))
-  return resizePanel(withUpdated, index, updated.widthMm, panel.heightMm + pitch)
-}
-
-/** Mirror of `insertRow` for a column — `at: 'left'` inserts at local
- * col 0 (shifting every existing section's `col` right by one), `at:
- * 'right'` appends past the last existing column. */
-export function insertColumn<T extends GridPanelLike<S>, S extends GridSection>(
-  panels: T[],
-  index: number,
-  at: 'left' | 'right',
-  widthMm: number,
-  makeSection: (row: number, col: number) => S,
-): T[] {
-  const panel = panels[index]
-  if (!panel) return panels
-  const rows = panel.rowHeights.length
-  const insertedCol = at === 'left' ? 0 : panel.columnWidths.length
-  const pitch = Math.max(Math.round(widthMm), 1)
-
-  const columnWidths = [...panel.columnWidths]
-  columnWidths.splice(insertedCol, 0, pitch)
-
-  const shifted = panel.sections.map((s) => (s.col >= insertedCol ? { ...s, col: s.col + 1 } : s))
-  const added: S[] = []
-  for (let row = 0; row < rows; row++) added.push(makeSection(row, insertedCol))
-
-  // Same row-major re-sort as `insertRow` above, for the same reason —
-  // a new LEFT column's sections need to be interleaved into every
-  // row's own slice of the array, not appended after all of them.
-  const sections = [...shifted, ...added].sort((a, b) => a.row - b.row || a.col - b.col)
-
-  const updated: T = { ...panel, columnWidths, sections }
-  const withUpdated = panels.map((p, i) => (i === index ? updated : p))
-  return resizePanel(withUpdated, index, panel.widthMm + pitch, updated.heightMm)
-}
-
-/**
- * Removes the divider at boundary `k` (1-based, matching the `div-h{k}`/
- * `div-v{k}` part id), merging the two rows/columns it separated. The
- * merged pitch is the SUM of the two — "shrink nothing" — so the
- * panel's own `widthMm`/`heightMm` are unaffected and no coupled
- * neighbour needs to move. The surviving cell keeps the FIRST (lower
- * row/col index) section's fields; the second's section is dropped.
- */
-export function removeDivider<T extends GridPanelLike<S>, S extends GridSection>(
-  panels: T[],
-  index: number,
-  orientation: 'horizontal' | 'vertical',
-  k: number,
-): T[] {
-  const panel = panels[index]
-  if (!panel) return panels
-
-  if (orientation === 'horizontal') {
-    const rowHeights = [...panel.rowHeights]
-    if (k < 1 || k >= rowHeights.length) return panels
-    rowHeights[k - 1] += rowHeights[k]
-    rowHeights.splice(k, 1)
-    const sections = panel.sections.filter((s) => s.row !== k).map((s) => (s.row > k ? { ...s, row: s.row - 1 } : s))
-    const updated: T = { ...panel, rowHeights, sections }
-    return panels.map((p, i) => (i === index ? updated : p))
-  }
-
-  const columnWidths = [...panel.columnWidths]
-  if (k < 1 || k >= columnWidths.length) return panels
-  columnWidths[k - 1] += columnWidths[k]
-  columnWidths.splice(k, 1)
-  const sections = panel.sections.filter((s) => s.col !== k).map((s) => (s.col > k ? { ...s, col: s.col - 1 } : s))
-  const updated: T = { ...panel, columnWidths, sections }
-  return panels.map((p, i) => (i === index ? updated : p))
-}
-
-/**
- * Changes one grid cell's own width/height — the section itself never
- * steals from a neighbour section (docs/sections_planing.md's own
- * assumption): the PANEL grows or shrinks by the same delta instead,
- * exactly `resizePanel`'s rule (width left-anchored, height
- * bottom-anchored), pushing coupled panels along with it.
- */
-export function resizeSection<T extends GridPanelLike<S>, S extends GridSection>(
-  panels: T[],
-  index: number,
-  row: number,
-  col: number,
-  widthMm: number,
-  heightMm: number,
-): T[] {
-  const panel = panels[index]
-  if (!panel) return panels
-  const columnWidths = [...panel.columnWidths]
-  const rowHeights = [...panel.rowHeights]
-  const nextColWidth = Math.max(Math.round(widthMm), 1)
-  const nextRowHeight = Math.max(Math.round(heightMm), 1)
-  const dW = nextColWidth - columnWidths[col]
-  const dH = nextRowHeight - rowHeights[row]
-  columnWidths[col] = nextColWidth
-  rowHeights[row] = nextRowHeight
-
-  const updated: T = { ...panel, columnWidths, rowHeights }
-  const withUpdated = panels.map((p, i) => (i === index ? updated : p))
-  return resizePanel(withUpdated, index, panel.widthMm + dW, panel.heightMm + dH)
-}
-
-/**
- * `resizeSection()`'s own logic generalized the same way `resizePanel()`
- * became `resizePanelEdge()` above — an outer-edge DRAG on a GRIDDED
- * panel routes the delta to whichever column/row sits nearest the
- * dragged edge (right → last column, left → first column, top → first
- * row, bottom → last row; the STATUS/planing doc's own "gives the
- * delta to the column/row nearest the moving edge" default, which the
- * numeric-field path above already matched for its two supported
- * directions by construction). Same "update the one cell, then let the
- * panel-level function do the anchor-correct total resize + neighbour
- * push" shape as `resizeSection()`, just calling `resizePanelEdge()`
- * instead of `resizePanel()` so all four sides get the right anchor.
- */
-export function resizeSectionEdge<T extends GridPanelLike<S>, S extends GridSection>(
-  panels: T[],
-  index: number,
-  side: PanelSide,
-  positionMm: number,
-): T[] {
-  const panel = panels[index]
-  if (!panel) return panels
-  const columnWidths = [...panel.columnWidths]
-  const rowHeights = [...panel.rowHeights]
-  let resolvedPositionMm: number
-
-  if (side === 'left' || side === 'right') {
-    const cell = side === 'right' ? columnWidths.length - 1 : 0
-    const fixedX = side === 'right' ? panel.xMm : panel.xMm + panel.widthMm
-    const rawWidth = side === 'right' ? positionMm - fixedX : fixedX - positionMm
-    // Floored at whichever is more restrictive: `resizePanelEdge`'s own
-    // panel-total floor, or the width that would leave THIS column at
-    // exactly 1mm with every other column untouched. Reusing that same
-    // resolved width to derive the position handed to `resizePanelEdge`
-    // below (rather than the raw, unfloored `positionMm`) is what keeps
-    // `columnWidths` summing to the panel's own `widthMm` — the model's
-    // grid-sum invariant — even at the extreme end of a drag, instead of
-    // the two floors silently disagreeing.
-    const minWidth = Math.max(MIN_GLAZED_PITCH_MM, panel.widthMm - columnWidths[cell] + 1)
-    const nextWidth = Math.max(Math.round(rawWidth), minWidth)
-    columnWidths[cell] += nextWidth - panel.widthMm
-    resolvedPositionMm = side === 'right' ? fixedX + nextWidth : fixedX - nextWidth
-  } else {
-    const cell = side === 'top' ? 0 : rowHeights.length - 1
-    const fixedY = side === 'bottom' ? panel.yMm : panel.yMm + panel.heightMm
-    const rawHeight = side === 'bottom' ? positionMm - fixedY : fixedY - positionMm
-    const minHeight = Math.max(MIN_GLAZED_PITCH_MM, panel.heightMm - rowHeights[cell] + 1)
-    const nextHeight = Math.max(Math.round(rawHeight), minHeight)
-    rowHeights[cell] += nextHeight - panel.heightMm
-    resolvedPositionMm = side === 'bottom' ? fixedY + nextHeight : fixedY - nextHeight
-  }
-
-  const updated: T = { ...panel, columnWidths, rowHeights }
-  const withUpdated = panels.map((p, i) => (i === index ? updated : p))
-  return resizePanelEdge(withUpdated, index, side, resolvedPositionMm)
-}
-
 /** The real "too narrow to glaze" limit — `window-weight.ts`'s own V2
- * rule (`sectionTooSmall`) rejects any column/row pitch under this as a
+ * rule (`sectionTooSmall`) rejects any light pitch under this as a
  * hard error. Shared here so every LIVE drag that can shrink a pitch
- * (`moveDivider`, and `resizePanelEdge`/`resizeSectionEdge`'s own floor
- * for a plain single-section panel, which IS its one column/row) clamps
+ * (a divider drag, and `resizePanelEdge`'s own floor) clamps
  * at the same value instead of letting the drag go past it and only
  * then surfacing a validation error (Mario, 2026-09-16: "please block
  * the user from draging more dont just show an error" — raised from an
@@ -1555,63 +1309,6 @@ export function resizeSectionEdge<T extends GridPanelLike<S>, S extends GridSect
  * to show a validation error in anyway, so it clamps instead of
  * rejecting, same reasoning as before. */
 export const MIN_GLAZED_PITCH_MM = 200
-
-/**
- * Moves divider `k` (the boundary between column/row `k-1` and `k`,
- * same 1-based convention `removeDivider` uses) to an ABSOLUTE
- * panel-local position along that axis — `boundaryMm` is measured from
- * the panel's own top/left edge, i.e. the same coordinate space
- * `cumulativeBoundaries(columnWidths/rowHeights)` already uses.
- *
- * Unlike `resizeSection` (which grows the PANEL and leaves every other
- * section's own pitch untouched — decision for the side panel's numeric
- * fields), dragging the divider itself REDISTRIBUTES between exactly
- * the two sections it separates: one grows by what the other shrinks,
- * so `columnWidths[k-1] + columnWidths[k]` (or the row equivalent) is
- * invariant across the whole drag and the panel's own width/height,
- * every other pitch, and every coupled neighbour are all left alone —
- * a mullion/transom drag never ripples outside the two cells it
- * touches (Mario, 2026-09-15, chosen over the grow-the-panel rule when
- * asked which one dragging should follow).
- *
- * Because the pair's sum never changes, this is safe to call fresh on
- * every pointer-move with the CURRENT `panels` (not a drag-start
- * snapshot) — `boundaries[k-1]`/`boundaries[k+1]` (the two OUTER edges
- * of the pair) are the same on every call, so there's nothing for a
- * naive re-application to double-count.
- */
-export function moveDivider<T extends GridPanelLike<S>, S extends GridSection>(
-  panels: T[],
-  index: number,
-  orientation: 'horizontal' | 'vertical',
-  k: number,
-  boundaryMm: number,
-  minMm: number = MIN_GLAZED_PITCH_MM,
-): T[] {
-  const panel = panels[index]
-  if (!panel) return panels
-  const pitches = orientation === 'vertical' ? panel.columnWidths : panel.rowHeights
-  if (k < 1 || k >= pitches.length) return panels
-
-  const boundaries = cumulativeBoundaries(pitches)
-  const outerLo = boundaries[k - 1]
-  const outerHi = boundaries[k + 1]
-  // A degenerate pair (already thinner than 2×minMm combined, e.g. old
-  // data from before this floor existed) has no room to satisfy the
-  // floor on both sides — split it evenly rather than producing an
-  // inverted [lo, hi] clamp range.
-  const mid = (outerLo + outerHi) / 2
-  const lo = Math.min(outerLo + minMm, mid)
-  const hi = Math.max(outerHi - minMm, mid)
-  const nextBoundary = Math.round(Math.min(Math.max(boundaryMm, lo), hi))
-
-  const nextPitches = [...pitches]
-  nextPitches[k - 1] = nextBoundary - outerLo
-  nextPitches[k] = outerHi - nextBoundary
-
-  const updated: T = orientation === 'vertical' ? { ...panel, columnWidths: nextPitches } : { ...panel, rowHeights: nextPitches }
-  return panels.map((p, i) => (i === index ? updated : p))
-}
 
 /** How far `normalizeOrigin` is about to shift `panels` — the bounding
  * box's own top-left corner.
@@ -1641,16 +1338,17 @@ export function normalizeOrigin<T extends PanelPlacement>(panels: T[]): T[] {
   return panels.map((p) => ({ ...p, xMm: p.xMm - minX, yMm: p.yMm - minY }))
 }
 
-/** Every divider boundary of `panel` along `axis`, in assembly mm. */
-function dividerPositions(panel: GridPanelLike<GridSection>, axis: 'x' | 'y'): number[] {
-  const pitches = axis === 'x' ? panel.columnWidths : panel.rowHeights
-  const positions: number[] = []
-  let cumulative = axis === 'x' ? panel.xMm : panel.yMm
-  for (let i = 0; i < pitches.length - 1; i++) {
-    cumulative += pitches[i]
-    positions.push(cumulative)
-  }
-  return positions
+/** Every straight mullion (x) or transom (y) of panel `panelIndex`, as
+ * an assembly-space position with its local part id, from the laid-out
+ * parts (a divider part's rect centre is its centreline). */
+function dividerPositions(parts: WindowPart[], panelIndex: number, axis: 'x' | 'y'): { p: number; localId: string }[] {
+  return parts
+    .filter((part) => part.panelIndex === panelIndex && part.kind === 'divider' && part.dividerAxis === (axis === 'x' ? 'v' : 'h'))
+    .map((part) => ({
+      p: axis === 'x' ? part.rectMm.x + part.rectMm.width / 2 : part.rectMm.y + part.rectMm.height / 2,
+      localId: part.id.slice(part.id.indexOf(':') + 1),
+    }))
+    .sort((a, b) => a.p - b.p)
 }
 
 /**
@@ -1701,36 +1399,30 @@ function unpairedMismatches(mine: number[], theirs: number[]): Set<number> {
  * axis has nothing to pair with, so a brand-new coupled panel never
  * warns until its own divider exists and lands somewhere else.
  */
-export function findMisalignedDividers<T extends GridPanelLike<GridSection>>(
-  panels: T[],
-): { panelIndex: number; localId: string }[] {
+export function findMisalignedDividers<T extends PanelPlacement>(panels: T[], parts: WindowPart[]): { panelIndex: number; localId: string }[] {
   const mismatches: { panelIndex: number; localId: string }[] = []
 
   panels.forEach((panel, panelIndex) => {
     // Mullions (x) against panels stacked above/below; transoms (y)
     // against panels beside it.
     for (const axis of ['x', 'y'] as const) {
-      const mine = dividerPositions(panel, axis)
+      const mine = dividerPositions(parts, panelIndex, axis)
       if (mine.length === 0) continue
-      const neighbours = panels.filter((other, j) => {
-        if (j === panelIndex) return false
-        const stacked = touchesTopEdge(panel, other) || touchesTopEdge(other, panel)
-        return axis === 'x' ? stacked : panelsTouch(panel, other) && !stacked
-      })
       const bad = new Set<number>()
-      for (const n of neighbours) {
-        const lo = axis === 'x' ? n.xMm : n.yMm
-        const hi = lo + (axis === 'x' ? n.widthMm : n.heightMm)
+      panels.forEach((other, j) => {
+        if (j === panelIndex) return
+        const stacked = touchesTopEdge(panel, other) || touchesTopEdge(other, panel)
+        if (axis === 'x' ? !stacked : !panelsTouch(panel, other) || stacked) return
+        const lo = axis === 'x' ? other.xMm : other.yMm
+        const hi = lo + (axis === 'x' ? other.widthMm : other.heightMm)
         const myLo = axis === 'x' ? panel.xMm : panel.yMm
         const myHi = myLo + (axis === 'x' ? panel.widthMm : panel.heightMm)
         // Only dividers inside the span the two panels share can couple.
-        const mineInSpan = mine.map((p, k) => ({ p, k })).filter(({ p }) => p > lo && p < hi)
-        const theirs = dividerPositions(n, axis).filter((p) => p > myLo && p < myHi)
+        const mineInSpan = mine.map((m, k) => ({ ...m, k })).filter(({ p }) => p > lo && p < hi)
+        const theirs = dividerPositions(parts, j, axis).map((t) => t.p).filter((p) => p > myLo && p < myHi)
         for (const i of unpairedMismatches(mineInSpan.map(({ p }) => p), theirs)) bad.add(mineInSpan[i].k)
-      }
-      for (const k of [...bad].sort((a, b) => a - b)) {
-        mismatches.push({ panelIndex, localId: `div-${axis === 'x' ? 'v' : 'h'}${k + 1}` })
-      }
+      })
+      for (const k of [...bad].sort((a, b) => a - b)) mismatches.push({ panelIndex, localId: mine[k].localId })
     }
   })
 
@@ -1739,4 +1431,12 @@ export function findMisalignedDividers<T extends GridPanelLike<GridSection>>(
 
 function offsetRect(rect: RectMm, dx: number, dy: number): RectMm {
   return { ...rect, x: rect.x + dx, y: rect.y + dy }
+}
+
+function offsetSegs(segs: Seg[], dx: number, dy: number): Seg[] {
+  return segs.map((seg) =>
+    seg.kind === 'line'
+      ? { kind: 'line', a: { x: seg.a.x + dx, y: seg.a.y + dy }, b: { x: seg.b.x + dx, y: seg.b.y + dy } }
+      : { ...seg, c: { x: seg.c.x + dx, y: seg.c.y + dy } },
+  )
 }

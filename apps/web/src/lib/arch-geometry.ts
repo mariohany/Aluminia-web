@@ -264,6 +264,19 @@ export function headBendRadiusMm(o: HeadOutline): number | null {
   return segmentalArc(o).r
 }
 
+/** The circle(s) the head curve is drawn on — one for round/segmental,
+ * `[left, right]` for gothic, none for flat. For light-graph.ts, which
+ * needs the exact arcs (not samples) to intersect dividers with the
+ * head. */
+export function headCircles(o: HeadOutline): { cx: number; cy: number; r: number }[] {
+  if (o.shape === HeadShape.FLAT || o.riseMm <= 0) return []
+  if (o.shape === HeadShape.GOTHIC) {
+    const arcs = gothicArcs(o)
+    return [arcs.left, arcs.right]
+  }
+  return [segmentalArc(o)]
+}
+
 export function insetHeadOutline(o: HeadOutline, d: number): HeadOutline {
   const maxD = Math.min(o.rect.width / 2 - 0.5, o.rect.height / 2 - 0.5, o.shape === HeadShape.FLAT ? Infinity : o.riseMm - 0.5)
   const clampedD = Math.min(Math.max(d, 0), Math.max(maxD, 0))

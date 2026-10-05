@@ -12,6 +12,7 @@ import {
   SectionKind,
   createWindowSchema,
   type CreateWindowInput,
+  type WindowDividerInput,
   type WindowPanelInput,
   type WindowSectionInput,
 } from '@repo/types/windows'
@@ -45,7 +46,7 @@ import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/bilingual'
 import { WindowStructurePanel } from '@/components/workspace/window-structure-panel'
 import { ProfileSearchPicker } from '@/components/workspace/profile-search-picker'
-import { slidingSectionArgs, useResolvedPanels, type PanelRender, type SectionRender } from '@/lib/window-render'
+import { panelIssueLights, slidingSectionArgs, useResolvedPanels, type PanelRender, type SectionRender } from '@/lib/window-render'
 import { useEditHistory } from '@/lib/use-edit-history'
 import { WindowPartPanel } from '@/components/workspace/window-part-panel'
 import { AddPanelCard, type AddPanelRequest } from '@/components/workspace/add-panel-card'
@@ -54,25 +55,20 @@ import { AddDividerCard } from '@/components/workspace/add-divider-card'
 import {
   buildAssemblyLayout,
   canHaveArchedHead,
-  cumulativeBoundaries,
+  dividerNames,
   findMisalignedDividers,
   freeSidesOf,
-  insertColumn,
   insertPanel,
-  insertRow,
-  moveDivider,
+  MIN_GLAZED_PITCH_MM,
   normalizeOrigin,
   originShiftMm,
   panelRect,
   panelsConnected,
   parsePartId,
   prefillForSide,
-  removeDivider,
   removePanel,
   resizePanel,
   resizePanelEdge,
-  resizeSection,
-  resizeSectionEdge,
   tilesExactly,
   touchesTopEdge,
   unionRect,
@@ -80,9 +76,28 @@ import {
   type PanelPlacement,
   type PanelSide,
 } from '@/lib/window-geometry'
-import { headBendRadiusMm, minGothicRiseMm, normalizeHeadRise, radiusFromSag, sagFromRadius } from '@/lib/arch-geometry'
-import { barLengthMm, dependentsOf, removeBarCascade, resolveBar } from '@/lib/arch-bars'
-import { outlineOf } from '@/components/workspace/window-shapes'
+import { headBendRadiusMm, minGothicRiseMm, normalizeHeadRise, type PointMm } from '@/lib/arch-geometry'
+import { allMembers, anchorOn, bendDivider, dividerProblems, isFrameMember, moveEnd, planDelete, moveStraight, resolveDividers, swapCrossing, zoneOf, type Crossing } from '@/lib/dividers'
+import { pathProject } from '@/lib/curves'
+import { DeleteDividerDialog, type DeleteDividerRequest } from '@/components/workspace/delete-divider-dialog'
+import { defaultBowSign, radiusFromSag, sagFromRadius } from '@/lib/divider-draw'
+import {
+  addEdgeDivider,
+  changeHeadShape,
+  deleteDividers,
+  isFixedOnlyLight,
+  lightPitch,
+  panelGeometry,
+  panelLights,
+  dividerSides,
+  headShapeDoomed,
+  resizeLight,
+  stretchForEdge,
+  withAlignedSections,
+  withCuts,
+  type PanelLightsContext,
+} from '@/lib/panel-lights'
+import { resolveProfileMetrics } from '@/lib/profile-metrics'
 import { collectPanelIssues, collectWindowIssues, computeSashWeightKg, resolveGlassWeightPerSqm, type TranslatedIssue } from '@/lib/window-weight'
 import {
   AlertDialog,
@@ -110,7 +125,7 @@ const ASSEMBLY_PART_ID = 'assembly'
  * switching between "new" and any two windows always gets a fresh
  * component instance (React Router reuses the same instance across a
  * param-only change by default; every bit of local editor state below
- * — selection, bar-draw mode, the add-panel flow — is only ever valid
+ * — selection, the add-panel flow — is only ever valid
  * for the window it was created for).
  */
 export function WindowEditorPage() {
@@ -151,7 +166,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const navigate = useNavigate()
   const { t, i18n } = useTranslation('workspace')
   const { t: tLookups } = useTranslation('lookups')
-  const { t: tCommon } = useTranslation('common')
   const isEdit = !!windowId
 
   const onDone = () => void navigate(`/workspace/projects/${projectId}`)
@@ -160,6 +174,11 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // itself) per docs/window_design_planing.md §3, so it can also drive
   // the options panel's scroll-to-and-highlight behaviour.
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null)
+  // Parts ⌘/Ctrl/Shift-clicked into the selection beside `selectedPartId`
+  // (docs/free_dividers_planing.md §7) — dividers and lights of the same
+  // panel, for "divider + light → Delete" (Q18). A modifier-click on the
+  // frame still toggles the whole panel instead (Mario, 2026-10-05).
+  const [extraPartIds, setExtraPartIds] = useState<string[]>([])
   const [hoveredPartId, setHoveredPartId] = useState<string | null>(null)
   // Which panel the options column edits, and which panels a new one
   // would attach to. They coincide except while multi-selecting.
@@ -183,34 +202,17 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // `addRequest` on cancel/confirm.
   const [addChoice, setAddChoice] = useState<AddChoice | null>(null)
   const [addError, setAddError] = useState<string | undefined>(undefined)
-  // Bar-drawing toggle — arch_windows_planing.md §6.1/§6.2. Owned here
-  // (not inside WindowDrawing) so switching the active panel can turn
-  // it off from the outside, same posture as selectedPartId above.
-  const [barDrawMode, setBarDrawMode] = useState(false)
-  // Select/delete/drag — arch_windows_planing.md §6.3/§6.4. Also owned
-  // here, same posture as barDrawMode above.
-  const [selectedBarId, setSelectedBarId] = useState<string | null>(null)
-  const [pendingDeleteBarId, setPendingDeleteBarId] = useState<string | null>(null)
-  useEffect(() => {
-    setBarDrawMode(false)
-    setSelectedBarId(null)
-    setPendingDeleteBarId(null)
-  }, [activePanelIndex])
-  // Drawing and selecting a bar are mutually exclusive modes — entering
-  // draw mode drops whatever bar was selected (and any pending delete
-  // confirm for it), so the two never fight over the same clicks.
-  useEffect(() => {
-    if (barDrawMode) {
-      setSelectedBarId(null)
-      setPendingDeleteBarId(null)
-    }
-  }, [barDrawMode])
-
   const projectQuery = useProjectQuery(projectId)
   const project = projectQuery.data
 
   const editingWindowQuery = useWindowQuery(windowId)
   const editingWindow = editingWindowQuery.data
+  // Which saved panels still carry a `migrated:` light — glazing bars
+  // the FreeDividers migration turned into transoms, whose new lights the
+  // user hasn't checked yet (`lightsChanged`, docs/free_dividers_planing.md
+  // §2). The form itself is re-keyed on load, so this reads the saved
+  // copy; it clears once the window is saved and reloaded.
+  const loadedMigrated = (editingWindow?.panels ?? []).map((p) => p.sections.some((s) => s.faceKey.startsWith('migrated:')))
 
   const createMutation = useCreateWindowMutation(projectId)
   const updateMutation = useUpdateWindowMutation(windowId ?? '', projectId)
@@ -326,18 +328,28 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
             // `WindowPanelDetail`'s own refs are already exactly
             // `ScopedRef`-shaped strings — this just recovers the
             // narrower type react-hook-form's generic loses.
-            panels: editingWindow.panels.map((p) => ({
-              ...p,
-              frameProfile: p.frameProfile as ScopedRef,
-              dividerProfile: p.dividerProfile as ScopedRef | null,
-              interiorColor: p.interiorColor as ScopedRef | null,
-              exteriorColor: p.exteriorColor as ScopedRef | null,
-              sections: p.sections.map((s) => ({
-                ...s,
-                sashProfile: s.sashProfile as ScopedRef | null,
-                glass: s.glass as ScopedRef,
-              })),
-            })),
+            // Sections are re-aligned one per light on load, which also
+            // re-keys a `migrated:` light left by the FreeDividers
+            // migration (docs/free_dividers_planing.md §2 step 4).
+            panels: editingWindow.panels.map((p) =>
+              withAlignedSections(
+                null,
+                {
+                  ...p,
+                  frameProfile: p.frameProfile as ScopedRef,
+                  dividerProfile: p.dividerProfile as ScopedRef | null,
+                  interiorColor: p.interiorColor as ScopedRef | null,
+                  exteriorColor: p.exteriorColor as ScopedRef | null,
+                  dividers: p.dividers.map((d) => ({ ...d, profile: d.profile as ScopedRef | null })),
+                  sections: p.sections.map((s) => ({
+                    ...s,
+                    sashProfile: s.sashProfile as ScopedRef | null,
+                    glass: s.glass as ScopedRef,
+                  })),
+                },
+                { metrics: resolveProfileMetrics(p.frameProfile as ScopedRef), doorSill: false },
+              ),
+            ),
             location: editingWindow.location,
             notes: editingWindow.notes,
           }
@@ -474,12 +486,10 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // the drawing and the panel's per-part sizes need it, so it's lifted
   // here instead of built twice.
   //
-  // A brand-new panel's `columnWidths`/`rowHeights` are `[NaN]` (mirroring
-  // its own `widthMm`/`heightMm`, both NaN until the user picks a real
-  // size) — substituted with the same drawable placeholder here so
-  // `buildWindowLayout`'s arithmetic never has to see a NaN pitch. Every
-  // OTHER panel (any panel that has ever had a real size) keeps its own
-  // real `columnWidths`/`rowHeights` untouched, grid or not.
+  // A brand-new panel's `widthMm`/`heightMm` are NaN until the user
+  // picks a real size — substituted with a drawable placeholder here so
+  // `buildWindowLayout`'s arithmetic never sees a NaN (such a panel has
+  // no dividers yet).
   const sectionRendersFor = (i: number): SectionRender[] =>
     resolved[i].render.sections.map((sr, j) => ({
       ...sr,
@@ -488,8 +498,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     }))
 
   const layoutInput: AssemblyPanelInput[] = sanitizedPanels.map((panel, i) => {
-    const columnWidths = Number.isFinite(panel.widthMm) ? panel.columnWidths : [drawableMm(panel.widthMm, PLACEHOLDER_WIDTH_MM)]
-    const rowHeights = Number.isFinite(panel.heightMm) ? panel.rowHeights : [drawableMm(panel.heightMm, PLACEHOLDER_HEIGHT_MM)]
     return {
       xMm: panel.xMm,
       yMm: panel.yMm,
@@ -501,9 +509,15 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       headShape: panel.headShape,
       headRiseMm: panel.headRiseMm,
       metrics: resolved[i].render.metrics,
-      columnWidths,
-      rowHeights,
-      sections: sectionRendersFor(i).map((sr) => ({ kind: sr.kind, hasSash: sr.hasSash, openingType: sr.openingType, hasFlyScreen: sr.hasFlyScreen, sliding: sr.sliding })),
+      dividers: panel.dividers,
+      sections: sectionRendersFor(i).map((sr) => ({
+        faceKey: sr.faceKey,
+        kind: sr.kind,
+        hasSash: sr.hasSash,
+        openingType: sr.openingType,
+        hasFlyScreen: sr.hasFlyScreen,
+        sliding: sr.sliding,
+      })),
     }
   })
   const drawingLayout = buildAssemblyLayout(layoutInput)
@@ -513,41 +527,32 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const activeRaw = panels[activePanelIndex] ?? panels[0]
   const activeSection = activePanel.sections[activeSectionIndex] ?? activePanel.sections[0]
   const activeSectionInfo = activeInfo.sections[activeSectionIndex] ?? activeInfo.sections[0]
-  const activeIsGridded = activePanel.columnWidths.length > 1 || activePanel.rowHeights.length > 1
-  const activeBars = activePanel.bars
+  const activeIsGridded = activePanel.dividers.length > 0
 
-  // ---- Bars — select/delete/drag/bow (§6.3/§6.4/§6.5) ------------------
-
-  // Bars only ever anchor onto the archable TOP ROW's own glass outline
-  // (docs/sections_planing.md — arch is scoped to `cols === 1`, and only
-  // section 0 ever carries a `head`) — filtering by `.head` is what
-  // keeps this from picking up some OTHER section's flat glass now that
-  // a panel can have more than one.
-  const activeGlassPart = drawingLayout.parts.find((p) => p.panelIndex === activePanelIndex && p.kind === 'glass' && p.head)
-  const activeGlassOutline = activeGlassPart ? outlineOf(activeGlassPart) : null
-  const selectedBar = selectedBarId ? (activeBars.find((b) => b.id === selectedBarId) ?? null) : null
-  const selectedBarLengthMm =
-    selectedBar && activeGlassOutline ? barLengthMm(selectedBar, activeBars, activeGlassOutline) : null
-  // The bow/radius binding needs the CHORD (straight from→to distance),
-  // not the developed length above — radiusFromSag/sagFromRadius are
-  // both defined in terms of the chord a circle is drawn through, not
-  // the arc length it produces.
-  const selectedBarResolved =
-    selectedBar && activeGlassOutline ? resolveBar(selectedBar, activeBars, activeGlassOutline) : null
-  const selectedBarChordMm = selectedBarResolved
-    ? Math.hypot(selectedBarResolved.to.x - selectedBarResolved.from.x, selectedBarResolved.to.y - selectedBarResolved.from.y)
-    : null
-  const selectedBarRadiusMm =
-    selectedBar && selectedBarChordMm !== null ? radiusFromSag(selectedBarChordMm, selectedBar.sagMm) : null
-  const selectedBarMinRadiusMm = selectedBarChordMm !== null ? selectedBarChordMm / 2 : null
-  const pendingDeleteDependentsCount = pendingDeleteBarId ? dependentsOf(pendingDeleteBarId, activeBars).size : 0
-
-  const onSelectBar = (barId: string) => {
-    setSelectedBarId(barId)
-    setPendingDeleteBarId(null)
-  }
-  const onRequestDeleteBar = () => {
-    if (selectedBarId) setPendingDeleteBarId(selectedBarId)
+  // ---- Lights ---------------------------------------------------------
+  //
+  // What the light maths needs for panel `i` (panel-lights.ts): its
+  // metrics and whether it is a hinged door (its opening runs to the
+  // real bottom edge).
+  const lightCtx = (i: number): PanelLightsContext => ({
+    metrics: resolved[i]?.render.metrics ?? resolveProfileMetrics(panels[i]?.frameProfile),
+    doorSill: !!panels[i]?.isDoor && panelInfos[i]?.systemType === SystemType.HINGED,
+  })
+  const sized = (p: WindowPanelInput) => Number.isFinite(p.widthMm) && Number.isFinite(p.heightMm)
+  // The active panel's lights — `sections[i]` is light `i` (kept aligned
+  // on every edit), so the active section's own light is at the same index.
+  const activeLights = activeRaw && sized(activeRaw) ? panelLights(activeRaw, lightCtx(activePanelIndex)).graph.lights : []
+  const activeLight = activeLights[activeSectionIndex] ?? null
+  const activeLightPitch = activeLight && activeRaw ? lightPitch(activeLight, activeRaw, lightCtx(activePanelIndex)) : null
+  // A divider move is valid while every light can still be glazed and
+  // every rectangular light keeps the glazing minimum (V2).
+  const lightsValid = (panel: WindowPanelInput, i: number) => {
+    const ctx = lightCtx(i)
+    return panelLights(panel, ctx).graph.lights.every((l) => {
+      if (!l.clear) return false
+      const pitch = lightPitch(l, panel, ctx)
+      return !pitch || (pitch.x1 - pitch.x0 >= MIN_GLAZED_PITCH_MM && pitch.y1 - pitch.y0 >= MIN_GLAZED_PITCH_MM)
+    })
   }
 
   // ---- Attach affordance -----------------------------------------------
@@ -647,22 +652,20 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     const source = attachPanels[0]
     // Clones the panel attached to — same frame, colours, is-door, and
     // its first section's kind/sash/glass/opening type/fly screen. A
-    // NEW coupled panel always starts as a plain 1×1 grid at the given
-    // size, even when the source is itself gridded — "+ → Window" adds
-    // a normal frame, never a copy of a whole multi-section layout.
+    // NEW coupled panel always starts as one light at the given size,
+    // even when the source is divided — "+ → Window" adds a normal
+    // frame, never a copy of a whole multi-light layout.
     const sourceSection = source.sections[0]
     const next = insertPanel(panels, addRequest.side, attachPanels, {
       frameProfile: source.frameProfile,
       dividerProfile: null,
-      columnWidths: [Math.round(widthMm)],
-      rowHeights: [Math.round(heightMm)],
-      sections: [{ ...sourceSection, row: 0, col: 0 }],
+      dividers: [],
+      sections: [{ ...sourceSection, faceKey: SINGLE_LIGHT_KEY }],
       isDoor: source.isDoor,
       interiorColor: source.interiorColor,
       exteriorColor: source.exteriorColor,
       headShape: HeadShape.FLAT,
       headRiseMm: null,
-      bars: [],
       // Same frame ⇒ same system: a coupled panel added next to a
       // sliding one is sliding too, and (via `sourceSection`'s own
       // `sliding`) starts with that section's sashes rather than a
@@ -679,68 +682,38 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     landOnNewPanel(next)
   }
 
-  // "+" → Mullion/Transom (docs/sections_planing.md decision 2): grows
-  // the SAME panel via `insertRow`/`insertColumn` and inserts a
-  // full-length divider — never a new coupled frame. The new section
-  // always starts FIXED, cloning the panel's own first section's glass.
+  // "+" → Mullion/Transom (docs/free_dividers_planing.md §8, Q20): the
+  // SAME panel grows on the clicked side by the typed size and one
+  // divider runs frame to frame across the new strip, which is one fixed
+  // light across (whatever stood on that frame side now stands on the
+  // new divider). The placement grows through `resizePanelEdge`, so
+  // coupled neighbours are pushed the way an edge drag pushes them.
   const onConfirmDivider = (sizeMm: number, dividerProfile: ScopedRef) => {
     if (!addRequest || attachPanels.length !== 1) return
     const panel = attachPanels[0]
     const index = panels.indexOf(panel)
     if (index < 0) return
-    const pitch = Math.round(sizeMm)
-    const makeSection = (row: number, col: number): WindowSectionInput => {
-      const source = panel.sections[0]
-      return {
-        row,
-        col,
-        kind: SectionKind.FIXED,
-        sashProfile: null,
-        // Not-yet-picked, same posture as a fresh OPENING section's
-        // `sashProfile: '' as ScopedRef` below — a real ref is required
-        // to save, `''` just means nothing's chosen yet. Not cloned
-        // from `source` even when it's also fixed: a bead profile is
-        // this section's own choice, not a copy of a sibling's.
-        beadProfile: '' as ScopedRef,
-        openingType: null,
-        glassKind: source.glassKind,
-        glass: source.glass,
-        hasFlyScreen: false,
-        sliding: null,
-      }
-    }
-
-    const isColumn = addRequest.side === 'left' || addRequest.side === 'right'
-    let next = isColumn
-      ? insertColumn(panels, index, addRequest.side as 'left' | 'right', pitch, makeSection)
-      : insertRow(panels, index, addRequest.side as 'top' | 'bottom', pitch, makeSection)
-
-    // A mullion (a new COLUMN) is never compatible with an arched head
-    // (decision 5) — flatten defensively rather than let the UI reach
-    // an invalid state the schema would only reject at Save. A new ROW
-    // keeps the arch (decision 5's whole point of allowing transoms
-    // under one), but ROUND specifically can't survive more than one
-    // row (its rise is pinned to width / 2), and a surviving Segmental/
-    // Gothic head's STORED rise has to track whichever row ends up on
-    // top — unchanged if the new row was appended at the bottom, reset
-    // to the new row's own height if it was inserted above.
-    // The picked divider profile is set on the SAME panel object here —
-    // one profile per panel (decision 4), so picking it in this popup
-    // is exactly the same field the side panel's own picker edits, just
-    // asked for up front instead of as a separate follow-up step.
-    next = next.map((p, i) => {
-      if (i !== index) return p
-      const withProfile = { ...p, dividerProfile }
-      if (withProfile.headShape === HeadShape.FLAT) return withProfile
-      if (isColumn || withProfile.headShape === HeadShape.ROUND) {
-        return { ...withProfile, headShape: HeadShape.FLAT, headRiseMm: null, bars: [] }
-      }
-      if (addRequest.side === 'top') {
-        return { ...withProfile, headRiseMm: withProfile.rowHeights[0] }
-      }
-      return withProfile
-    })
-
+    const size = Math.round(sizeMm)
+    const grown = addEdgeDivider(panel, addRequest.side, size, lightCtx(index))
+    if (!grown) return
+    const side = addRequest.side
+    const edge =
+      side === 'top' ? panel.yMm - size : side === 'bottom' ? panel.yMm + panel.heightMm + size : side === 'left' ? panel.xMm - size : panel.xMm + panel.widthMm + size
+    const placed = resizePanelEdge(panels, index, side, edge)
+    const next = placed.map((p, i) =>
+      i === index
+        ? {
+            ...grown,
+            xMm: p.xMm,
+            yMm: p.yMm,
+            widthMm: p.widthMm,
+            heightMm: p.heightMm,
+            // The popup's profile is the panel default when there isn't
+            // one yet (Q12); an existing default is left alone.
+            dividerProfile: grown.dividerProfile ?? dividerProfile,
+          }
+        : p,
+    )
     commitPanels(next, 'addDivider')
     setSelectedPartId(`p${index}:frame`)
     setActiveSectionIndex(0)
@@ -792,65 +765,30 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === ref)?.slidingRails ?? null
   const activeSlidingRails = slidingRailsOfFrame(activePanel.frameProfile)
 
-  const confirmDeleteBar = () => {
-    if (!pendingDeleteBarId) return
-    updateActivePanel({ bars: removeBarCascade(activeBars, pendingDeleteBarId) }, 'deleteBar')
-    setSelectedBarId(null)
-    setPendingDeleteBarId(null)
-  }
-
-  // `radiusMm: null` means "clear the field" — flatten back to a
-  // straight line (sagMm: 0), the other half of §6.5's "line and arc
-  // are never two tools, only two values of one field". A typed radius
-  // preserves whichever side the bar is CURRENTLY bowed to (or defaults
-  // positive, going from straight — there's no existing direction to
-  // preserve yet); `sagFromRadius` itself clamps below chord/2.
-  const onBarRadiusChange = (radiusMm: number | null) => {
-    if (!selectedBar || selectedBarChordMm === null) return
-    const sagMm = radiusMm === null ? 0 : (selectedBar.sagMm >= 0 ? 1 : -1) * sagFromRadius(selectedBarChordMm, radiusMm)
-    updateActivePanel({ bars: activeBars.map((b) => (b.id === selectedBar.id ? { ...b, sagMm } : b)) }, 'changeBarRadius')
-  }
-
-  // Panel-level dimension inputs. A plain (1×1) panel resizes exactly as
-  // before. A GRIDDED panel routes the delta to the column/row nearest
-  // the edge that moves — the right column for width, the top row for
-  // height (docs/sections_planing.md §5 — matching `resizePanel`'s own
-  // left-/bottom-anchor rule) — via `resizeSection`, so every OTHER
-  // section keeps its own pitch untouched.
+  // Panel-level dimension inputs (Q13): the placement grows left- and
+  // bottom-anchored (`resizePanel`), and since every divider anchor is mm
+  // from the left/bottom edge, the lights on the right/top absorb it.
   const onPanelSizeChange = (widthMm: number, heightMm: number) => {
     const panel = panels[activePanelIndex]
     if (!panel) return
-    if (panel.columnWidths.length === 1 && panel.rowHeights.length === 1) {
-      // `resizePanel` is grid-agnostic (it only moves placements), so
-      // the single cell has to follow the panel here — otherwise a
-      // brand-new panel's `[NaN]` grid never becomes real, the Section
-      // size fields stay blank and `gridMismatch` fires on save (bug-058).
-      const resized = resizePanel(panels, activePanelIndex, widthMm, heightMm)
-      commitPanels(
-        resized.map((p, i) => (i === activePanelIndex ? { ...p, columnWidths: [p.widthMm], rowHeights: [p.heightMm] } : p)),
-        'resizePanel',
-      )
-      return
-    }
-    const lastCol = panel.columnWidths.length - 1
-    const nextColWidth = panel.columnWidths[lastCol] + (Math.round(widthMm) - panel.widthMm)
-    const nextRowHeight = panel.rowHeights[0] + (Math.round(heightMm) - panel.heightMm)
-    commitPanels(resizeSection(panels, activePanelIndex, 0, lastCol, nextColWidth, nextRowHeight), 'resizePanel')
-  }
-
-  // The active SECTION's own width/height inputs — docs/sections_planing.md's
-  // assumption that resizing a section grows the PANEL by the same
-  // delta (never steals from a neighbour section), reusing
-  // `resizeSection` directly at this one cell's own row/col.
-  const onSectionWidthChange = (mm: number) => {
+    const resized = resizePanel(panels, activePanelIndex, widthMm, heightMm)
     commitPanels(
-      resizeSection(panels, activePanelIndex, activeSection.row, activeSection.col, mm, activePanel.rowHeights[activeSection.row]),
-      'resizeSection',
+      resized.map((p, i) => (i === activePanelIndex ? withAlignedSections(sized(panel) ? panel : null, p, lightCtx(i)) : p)),
+      'resizePanel',
     )
   }
-  const onSectionHeightChange = (mm: number) => {
+
+  // The active light's own width/height inputs (Q14): the panel grows by
+  // the difference at that light's own right/top edge; every other light
+  // keeps its size.
+  const onLightSizeChange = (axis: 'x' | 'y', mm: number) => {
+    const panel = panels[activePanelIndex]
+    if (!panel || !activeLight) return
+    const grown = resizeLight(panel, activeLight, axis, mm, lightCtx(activePanelIndex))
+    if (!grown) return
+    const placed = resizePanel(panels, activePanelIndex, grown.widthMm, grown.heightMm)
     commitPanels(
-      resizeSection(panels, activePanelIndex, activeSection.row, activeSection.col, activePanel.columnWidths[activeSection.col], mm),
+      placed.map((p, i) => (i === activePanelIndex ? { ...grown, xMm: p.xMm, yMm: p.yMm } : p)),
       'resizeSection',
     )
   }
@@ -867,50 +805,182 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     setSelectedPartId(null)
   }
 
-  const onRemoveDivider = (orientation: 'horizontal' | 'vertical', k: number) => {
-    const next = removeDivider(panels, activePanelIndex, orientation, k)
-    const updated = next[activePanelIndex]
-    if (!updated) return
-    const stillGridded = updated.columnWidths.length > 1 || updated.rowHeights.length > 1
-    // A 1×1 panel has no divider to profile (the schema forbids one) —
-    // null it out the moment the last one is merged away.
-    const final = stillGridded ? next : next.map((p, i) => (i === activePanelIndex ? { ...p, dividerProfile: null } : p))
-    commitPanels(final, 'removeDivider')
-    setSelectedPartId(`p${activePanelIndex}:frame`)
+  // ---- Deleting dividers (Q11 + Q18) ------------------------------------
+  //
+  // A divider never goes alone: one side's light(s) go with it and the
+  // other side takes the space, keeping its own settings. With a light of
+  // its own selected the side is already chosen — no dialog, unless other
+  // dividers stand on it (Delete all / Extend the rest).
+  const [deleteRequest, setDeleteRequest] = useState<DeleteDividerRequest | null>(null)
+  // Going flat removes the arch's own dividers — listed first (§8).
+  const [headConfirm, setHeadConfirm] = useState<{ names: string[]; apply: () => void } | null>(null)
+  const dividerLabel = (panelIndex: number, dividerId: string): string => {
+    const name = dividerNames(drawingLayout.parts.filter((p) => p.panelIndex === panelIndex)).get(`p${panelIndex}:div-${dividerId}`)
+    if (!name) return t('windowDialog.design.parts.divider')
+    return `${t(name.kind === 'mullion' ? 'windowDialog.design.parts.mullion' : 'windowDialog.design.parts.transom')} ${name.number}`
+  }
+  const applyDividerDelete = (panelIndex: number, ids: string[], keep: string[], mode: 'delete' | 'extend') => {
+    const panel = panels[panelIndex]
+    if (!panel) return
+    const next = deleteDividers(panel, ids, lightCtx(panelIndex), mode, new Set(keep))
+    if (!lightsValid(next, panelIndex)) {
+      toast.error(t('windowDialog.design.deleteDivider.refused'))
+      return
+    }
+    commitPanels(
+      panels.map((p, i) => (i === panelIndex ? next : p)),
+      'removeDivider',
+    )
+    setSelectedPartId(`p${panelIndex}:frame`)
+    setExtraPartIds([])
     setActiveSectionIndex(0)
   }
+  const requestDividerDelete = (panelIndex: number, dividerIds: string[], lightIndices: number[]) => {
+    const panel = panels[panelIndex]
+    if (!panel || !sized(panel) || dividerIds.length === 0) return
+    const ctx = lightCtx(panelIndex)
+    const { graph } = panelLights(panel, ctx)
+    const selectedKeys = lightIndices.map((i) => graph.lights[i]?.key).filter((k): k is string => !!k)
+    const dependents = planDelete(panel.dividers, dividerIds).dependents
+    // Each divider loses the side holding a selected light; undecided
+    // when a divider has none (or both) of its sides selected.
+    let keep: string[] | null = null
+    if (selectedKeys.length > 0) {
+      keep = []
+      for (const id of dividerIds) {
+        const sides = dividerSides(panel, id, ctx)
+        const goesLeft = sides.left.some((k) => selectedKeys.includes(k))
+        const goesRight = sides.right.some((k) => selectedKeys.includes(k))
+        if (goesLeft === goesRight) {
+          keep = null
+          break
+        }
+        keep.push(...(goesLeft ? sides.right : sides.left))
+      }
+    }
+    if (keep && dependents.length === 0) {
+      applyDividerDelete(panelIndex, dividerIds, keep, 'extend')
+      return
+    }
+    setDeleteRequest({
+      panelIndex,
+      ids: dividerIds,
+      names: dividerIds.map((id) => dividerLabel(panelIndex, id)),
+      sides: !keep && dividerIds.length === 1 ? dividerSides(panel, dividerIds[0], ctx) : null,
+      keep: keep ?? [],
+      dependents: dependents.map((id) => dividerLabel(panelIndex, id)),
+      lights: graph.lights.map((l) => ({ key: l.key, polygon: l.polygon })),
+      size: { width: panel.widthMm, height: panel.heightMm },
+    })
+  }
 
-  // Dragging a mullion/transom on the drawing itself (Mario, 2026-09-15:
-  // "move the transom/mullion in the panel by dragging it"). `dividerId`
-  // is the divider's own full assembly part id — parsed the same way
-  // `selectedDividerMatch` below reads a selected divider's id, since
-  // this can be ANY panel's divider, not just the active one. Unlike
-  // `onRemoveDivider`/`resizeSection` above, `moveDivider` REDISTRIBUTES
-  // between the two sections the divider separates (steals from one,
-  // gives to the other) rather than growing the panel — the behaviour
-  // Mario chose specifically for dragging, distinct from the side
-  // panel's numeric fields.
-  const onDividerDrag = (dividerId: string, boundaryMm: number) => {
-    const parsed = parsePartId(dividerId)
-    const match = parsed ? /^div-(v|h)(\d+)$/.exec(parsed.localId) : null
-    if (!parsed || !match) return
-    const orientation: 'vertical' | 'horizontal' = match[1] === 'v' ? 'vertical' : 'horizontal'
-    commitPanels(moveDivider(panels, parsed.panelIndex, orientation, Number(match[2]), boundaryMm), 'moveDivider')
+  // Moves a straight mullion/transom of `panelIndex` to `positionMm` —
+  // from the left for a mullion, up from the bottom for a transom — held
+  // back where a light would get too small to glaze.
+  const moveDividerTo = (source: WindowPanelInput[], panelIndex: number, dividerId: string, positionMm: number): WindowPanelInput[] | null => {
+    const panel = source[panelIndex]
+    if (!panel || !sized(panel)) return null
+    const ctx = lightCtx(panelIndex)
+    const dividers = moveStraight(panelGeometry(panel, ctx), panel.dividers, dividerId, Math.round(positionMm), (next) =>
+      lightsValid({ ...panel, dividers: next }, panelIndex),
+    )
+    if (dividers === panel.dividers) return null
+    return source.map((p, i) => (i === panelIndex ? withAlignedSections(panel, { ...panel, dividers }, ctx) : p))
+  }
+
+  // Dragging a mullion/transom on the drawing (Mario, 2026-09-15: "move
+  // the transom/mullion in the panel by dragging it"). `boundaryMm` is
+  // panel-local along the divider's own axis — x from the left for a
+  // mullion, y from the TOP for a transom, which becomes mm up from the
+  // bottom here (the divider's own anchors, Q13).
+  const onDividerDrag = (dividerPartId: string, boundaryMm: number) => {
+    const part = drawingLayout.parts.find((p) => p.id === dividerPartId)
+    const panel = part ? panels[part.panelIndex] : undefined
+    if (!part?.dividerId || !panel || (part.dividerAxis !== 'v' && part.dividerAxis !== 'h')) return
+    const positionMm = part.dividerAxis === 'v' ? boundaryMm : panel.heightMm - boundaryMm
+    const next = moveDividerTo(panels, part.panelIndex, part.dividerId, positionMm)
+    if (next) commitPanels(next, 'moveDivider')
+  }
+
+  // The Divider tool's second click (docs/free_dividers_planing.md §6.4):
+  // the drawing has already added the divider, split at its crossings
+  // (Q3) and sorted; the lights re-align here and the new divider is
+  // selected. An unsized panel has no mm to anchor to, so nothing lands.
+  const onDrawDivider = (panelIndex: number, dividers: WindowDividerInput[], added: string[]) => {
+    const panel = panels[panelIndex]
+    if (!panel || !sized(panel)) return
+    commitPanels(
+      panels.map((p, i) => (i === panelIndex ? withAlignedSections(panel, { ...panel, dividers }, lightCtx(i)) : p)),
+      'drawDivider',
+    )
+    if (added[0]) onSelectPart(`p${panelIndex}:div-${added[0]}`, false)
+  }
+
+  // Bending an arch divider (§6.5) — by its midpoint handle or a typed
+  // radius. Held back where a light would stop being glazable.
+  const bendTo = (panelIndex: number, dividerId: string, sagMm: number, label: 'bendDivider' | 'changeDividerRadius' = 'bendDivider') => {
+    const panel = panels[panelIndex]
+    if (!panel || !sized(panel)) return
+    const dividers = bendDivider(panel.dividers, dividerId, sagMm)
+    if (dividers.every((d, k) => d.sagMm === panel.dividers[k].sagMm) || !lightsValid({ ...panel, dividers }, panelIndex)) return
+    commitPanels(
+      panels.map((p, i) => (i === panelIndex ? withAlignedSections(panel, { ...panel, dividers }, lightCtx(i)) : p)),
+      label,
+    )
+  }
+  // ⇄ on a cross (Q3): the cut piece runs through, the through member is
+  // cut there instead.
+  const onSwapCrossing = (panelIndex: number, crossing: Crossing) => {
+    const panel = panels[panelIndex]
+    if (!panel || !sized(panel)) return
+    const ctx = lightCtx(panelIndex)
+    const dividers = swapCrossing(panelGeometry(panel, ctx), panel.dividers, crossing.throughId, crossing.pieceAId, crossing.pieceBId)
+    if (!dividers) return
+    commitPanels(
+      panels.map((p, i) => (i === panelIndex ? withAlignedSections(panel, { ...panel, dividers }, ctx) : p)),
+      'swapCrossing',
+    )
+  }
+
+  // Dragging an arch divider's end along the member it stands on (§7).
+  // `point` is panel-local; it slides to the nearest point of that member.
+  // Held back where the divider would leave the arch zone with a slant
+  // or a light would stop being glazable.
+  const onMoveDividerEnd = (dividerPartId: string, end: 'from' | 'to', point: PointMm) => {
+    const part = drawingLayout.parts.find((p) => p.id === dividerPartId)
+    const panel = part ? panels[part.panelIndex] : undefined
+    if (!part?.dividerId || !panel || !sized(panel)) return
+    const ctx = lightCtx(part.panelIndex)
+    const geo = panelGeometry(panel, ctx)
+    const divider = panel.dividers.find((d) => d.id === part.dividerId)
+    const host = divider && allMembers(geo, resolveDividers(geo, panel.dividers)).get(divider[end].on)
+    if (!divider || !host) return
+    const anchor = anchorOn(geo, host, pathProject(host.path, point).point)
+    const rounded = host.axis ? { ...anchor, at: Math.round(anchor.at) } : anchor
+    const dividers = moveEnd(panel.dividers, divider.id, end, rounded)
+    if (dividerProblems(geo, dividers).some((x) => x.id === divider.id) || !lightsValid({ ...panel, dividers }, part.panelIndex)) return
+    commitPanels(
+      panels.map((p, i) => (i === part.panelIndex ? withAlignedSections(panel, { ...panel, dividers }, ctx) : p)),
+      'moveDividerEnd',
+    )
+  }
+
+  const onBendDivider = (dividerPartId: string, sagMm: number) => {
+    const part = drawingLayout.parts.find((p) => p.id === dividerPartId)
+    if (part?.dividerId) bendTo(part.panelIndex, part.dividerId, sagMm)
   }
 
   // Dragging a panel's own FREE outer edge in/out (Mario: "resize the
   // window by dragging any side in or out"). `positionMm` is already
   // resolved by the drawing — snapped onto another coupled panel's edge
-  // when one was within tolerance, raw pointer position otherwise — so
-  // this only has to route to the right geometry function, same
-  // 1×1-vs-gridded split `onPanelSizeChange` already makes for the
-  // numeric fields.
+  // when one was within tolerance. Dividers keep their place in the
+  // window: the lights on the dragged side absorb the change (Q13).
   const onPanelEdgeDrag = (panelIndex: number, side: PanelSide, positionMm: number) => {
     const panel = panels[panelIndex]
     if (!panel) return
-    const gridded = panel.columnWidths.length > 1 || panel.rowHeights.length > 1
+    const resized = resizePanelEdge(panels, panelIndex, side, positionMm)
     commitPanels(
-      gridded ? resizeSectionEdge(panels, panelIndex, side, positionMm) : resizePanelEdge(panels, panelIndex, side, positionMm),
+      resized.map((p, i) => (i === panelIndex ? stretchForEdge(panel, p, side, lightCtx(i)) : p)),
       'resizePanel',
     )
   }
@@ -918,6 +988,22 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const onSelectPart = (partId: string, additive: boolean) => {
     const parsed = parsePartId(partId)
     const panelIndex = parsed?.panelIndex ?? 0
+    const kind = drawingLayout.parts.find((p) => p.id === partId)?.kind
+    if (additive && kind && kind !== 'frame') {
+      // A divider or a light joins the part selection — same panel only;
+      // another panel's part starts over from it.
+      if (!selectedPartId || parsePartId(selectedPartId)?.panelIndex !== panelIndex) {
+        setExtraPartIds([])
+        setSelectedPartId(partId)
+        setActivePanelIndex(panelIndex)
+        setSelectedPanelIndices([panelIndex])
+        return
+      }
+      if (partId === selectedPartId) return
+      setExtraPartIds((prev) => (prev.includes(partId) ? prev.filter((id) => id !== partId) : [...prev, partId]))
+      return
+    }
+    setExtraPartIds([])
     if (additive) {
       // Toggles this panel into the selection WITHOUT moving which part
       // is selected — the options column stays where it was.
@@ -929,8 +1015,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     setSelectedPartId(partId)
     setActivePanelIndex(panelIndex)
     setSelectedPanelIndices([panelIndex])
-    setSelectedBarId(null)
-    setPendingDeleteBarId(null)
     // A sash/glass/fly-screen part carries its own section — a divider
     // or the frame carries none (`sectionIndex: null`), so the active
     // section stays whatever it already was, or the first one when this
@@ -1001,7 +1085,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
           ),
           sashProfile: activeSectionInfo.sash,
           head: activeSashPart.head,
-          bars: activePanel.bars,
         })
       : null
 
@@ -1219,18 +1302,21 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       // once per panel, not once per section.
       const hasArchedHeadHere = !!framePart?.head
       const hasPanelOnTop = panels.some((other, j) => j !== i && touchesTopEdge(panels[i], other))
+      const lights = panelIssueLights(panel, resolved[i].render)
 
-      // Panel-level rules (V1, V8, archWithMullion) plus each section's
+      // Panel-level rules (dividers, lights) plus each section's
       // sliding-layout rules — computed once per panel, not once per
       // section (docs/sections_tasks.md Step 7 / §6's own note on why
       // these can't live inside the loop below).
       for (const issue of collectPanelIssues({
         dividerProfile: panel.dividerProfile,
-        columnWidths: panel.columnWidths,
-        rowHeights: panel.rowHeights,
-        widthMm: panel.widthMm,
-        heightMm: panel.heightMm,
-        headShape: panel.headShape,
+        dividerCount: panel.dividers.length,
+        dividerProblemPartIds: lights.dividerProblems.map((id) => `p${i}:div-${id}`),
+        dividerBends: lights.bends.map((b) => ({ partId: `p${i}:div-${b.id}`, radiusMm: b.radiusMm })),
+        minBendRadiusMm: resolved[i].render.metrics.minBendRadius,
+        metricsSource: resolved[i].render.metrics.source,
+        lightsMismatch: lights.mismatch,
+        lightsChanged: !!loadedMigrated[i],
         systemType: info.systemType,
         framePartId: framePart?.id ?? `p${i}:frame`,
         slidingRails: info.frame?.slidingRails ?? null,
@@ -1265,7 +1351,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                 glassWeightPerSqm,
                 sashProfile: sectionInfo.sash,
                 head: sashPart.head,
-                bars: panel.bars,
               })
             : null
 
@@ -1292,9 +1377,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
             : null,
           minBendRadiusMm: resolved[i].render.metrics.minBendRadius,
           metricsSource: resolved[i].render.metrics.source,
-          columnWidthMm: panel.columnWidths[section.col] ?? panel.widthMm,
-          rowHeightMm: panel.rowHeights[section.row] ?? panel.heightMm,
-          isArchedOpeningSection: hasArchedHeadHere && section.row === 0 && section.kind === SectionKind.OPENING,
+          light: lights.byKey.get(section.faceKey) ?? null,
           // `info.showOpeningTypes` is exactly `systemType === HINGED`
           // (window-render.ts) — the same flag `sanitizedPanels` already
           // uses to decide whether `openingType` survives at all, so a
@@ -1315,7 +1398,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     // V9 `dividerMisaligned` — cross-panel, so it runs once over the
     // whole assembly rather than inside the per-panel loop above (same
     // posture as `irregularOutline`/`disconnectedPanels` below).
-    for (const { panelIndex, localId } of findMisalignedDividers(sanitizedPanels)) {
+    for (const { panelIndex, localId } of findMisalignedDividers(sanitizedPanels, drawingLayout.parts)) {
       const translated: TranslatedIssue = {
         severity: 'warning',
         messageKey: 'dividerMisaligned',
@@ -1385,7 +1468,9 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       // openingType on a section whose frame is no longer hinged must
       // not reach the API just because the control that set it is
       // hidden.
-      const body: CreateWindowInput = { ...data, panels: sanitizedPanels }
+      // Every divider's saw cuts go along too — the cutting-order
+      // report's cache, refreshed on every save (Q10/Q19).
+      const body: CreateWindowInput = { ...data, panels: sanitizedPanels.map((p, i) => withCuts(p, lightCtx(i))) }
       if (isEdit) {
         const { projectId: _ignored, ...editable } = body
         await updateMutation.mutateAsync(editable)
@@ -1471,9 +1556,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     verifySelectionAfterRestore.current = view.selectedPartId !== null
 
     // Transient modes are closed, not restored (§4.5).
-    setBarDrawMode(false)
-    setSelectedBarId(null)
-    setPendingDeleteBarId(null)
     setMenuSashPartId(null)
   }
 
@@ -1539,7 +1621,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // Off while anything modal is open (§5): undoing under an open add
   // card would leave it anchored to a panel that may no longer exist.
   // The add-divider card is the same `addRequest` flow.
-  const historyBlocked = addRequest !== null || pendingDeleteBarId !== null || confirmLeave !== null || menuSashPartId !== null
+  const historyBlocked = addRequest !== null || confirmLeave !== null || menuSashPartId !== null || deleteRequest !== null || headConfirm !== null
   const canUndo = history.canUndo && !historyBlocked
   const canRedo = history.canRedo && !historyBlocked
 
@@ -1593,94 +1675,173 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
 
   // ---- Selected divider ---------------------------------------------------
   //
-  // A divider's own id is panel-level (`div-v{k}`/`div-h{j}`, `sectionIndex:
-  // null`) — matched here from `selectedPartId` rather than threaded
-  // through as separate state, since the drawing's own selection is
-  // already the single source of truth for "what's selected".
-  const selectedDividerMatch = selectedPartId ? /^div-(v|h)(\d+)$/.exec(parsePartId(selectedPartId)?.localId ?? '') : null
-  const selectedDividerOrientation: 'vertical' | 'horizontal' | null = selectedDividerMatch
-    ? selectedDividerMatch[1] === 'v'
-      ? 'vertical'
-      : 'horizontal'
-    : null
-  const selectedDividerK = selectedDividerMatch ? Number(selectedDividerMatch[2]) : null
-  const selectedDividerPart = selectedDividerMatch ? drawingLayout.parts.find((p) => p.id === selectedPartId) : null
+  // Read from `selectedPartId` rather than threaded through as separate
+  // state, since the drawing's own selection is already the single
+  // source of truth for "what's selected".
+  const selectedDividerPart = drawingLayout.parts.find((p) => p.id === selectedPartId && p.kind === 'divider') ?? null
+  // The whole part selection, primary first — extras from another panel
+  // or gone after an edit are dropped.
+  const selectionPanel = selectedPartId ? (parsePartId(selectedPartId)?.panelIndex ?? null) : null
+  const selectedPartIds = selectedPartId
+    ? [
+        selectedPartId,
+        ...extraPartIds.filter(
+          (id) => id !== selectedPartId && parsePartId(id)?.panelIndex === selectionPanel && drawingLayout.parts.some((p) => p.id === id),
+        ),
+      ]
+    : []
+  const selectedParts = selectedPartIds.flatMap((id) => drawingLayout.parts.filter((p) => p.id === id))
+  const selectionDividerIds = selectedParts.flatMap((p) => (p.kind === 'divider' && p.dividerId ? [p.dividerId] : []))
+  const selectionLightIndices = [...new Set(selectedParts.flatMap((p) => (p.kind !== 'divider' && p.sectionIndex !== null ? [p.sectionIndex] : [])))]
+  // Delete/Backspace with any divider in the selection (§7).
+  const onDeleteKey = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key !== 'Delete' && event.key !== 'Backspace') return
+    const target = event.target as HTMLElement | null
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+    if (selectionPanel === null || selectionDividerIds.length === 0) return
+    event.preventDefault()
+    requestDividerDelete(selectionPanel, selectionDividerIds, selectionLightIndices)
+  })
+  const selectionHasDivider = selectionDividerIds.length > 0
+  useEffect(() => {
+    if (!selectionHasDivider) return
+    const handleKeyDown = (event: KeyboardEvent) => onDeleteKey(event)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectionHasDivider])
+  const selectedDividerName = selectedDividerPart
+    ? dividerNames(drawingLayout.parts.filter((p) => p.panelIndex === selectedDividerPart.panelIndex)).get(selectedDividerPart.id)
+    : undefined
+  // An arch-zone divider bends (§6.5): its radius over its own chord,
+  // empty while straight.
+  const selectedDividerBend = (() => {
+    const part = selectedDividerPart
+    const panel = part ? panels[part.panelIndex] : undefined
+    if (!part?.dividerId || !panel || !sized(panel)) return null
+    const geo = panelGeometry(panel, lightCtx(part.panelIndex))
+    const resolved = resolveDividers(geo, panel.dividers).get(part.dividerId)
+    if (!resolved || zoneOf(geo, resolved) !== 'arch') return null
+    const chord = Math.hypot(resolved.to.x - resolved.from.x, resolved.to.y - resolved.from.y)
+    const sag = resolved.divider.sagMm
+    const radius = radiusFromSag(chord, sag)
+    return {
+      radiusMm: radius === null ? null : Math.round(radius),
+      minMm: Math.ceil(chord / 2),
+      onChange: (mm: number | null) =>
+        bendTo(part.panelIndex, part.dividerId as string, mm === null || mm <= 0 ? 0 : sagFromRadius(chord, mm, Math.sign(sag) || defaultBowSign(resolved.from, resolved.to)), 'changeDividerRadius'),
+    }
+  })()
+  // Its own profile override (Q12), typed position (Q15) and what each
+  // end stands on with its saw cut (Q10/Q19).
+  const selectedDividerDetail = (() => {
+    const part = selectedDividerPart
+    const panel = part ? panels[part.panelIndex] : undefined
+    const divider = part?.dividerId ? panel?.dividers.find((d) => d.id === part.dividerId) : undefined
+    if (!part || !panel || !divider) return null
+    const panelIndex = part.panelIndex
+    const ref = divider.profile ?? panel.dividerProfile
+    const profileNumber = ref ? profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === ref)?.profileNo : undefined
+    const profile = {
+      override: divider.profile,
+      panelDefault: panel.dividerProfile,
+      onChange: (next: ScopedRef | null) => {
+        // With no panel default yet, the first pick becomes it.
+        const nextPanel = !panel.dividerProfile && next
+          ? { ...panel, dividerProfile: next }
+          : { ...panel, dividers: panel.dividers.map((d) => (d.id === divider.id ? { ...d, profile: next === panel.dividerProfile ? null : next } : d)) }
+        commitPanels(
+          panels.map((p, i) => (i === panelIndex ? nextPanel : p)),
+          'changeDividerProfile',
+        )
+      },
+    }
+    let ends: string[] = []
+    let position: { axis: 'v' | 'h'; valueMm: number; onChange: (mm: number) => void } | null = null
+    const rect = drawingLayout.panelRects[panelIndex]
+    if (sized(panel) && rect) {
+      const band = panelLights(panel, lightCtx(panelIndex)).graph.bands.find((b) => b.dividerId === divider.id)
+      ends = (['from', 'to'] as const).map((end, k) => {
+        const host = divider[end].on
+        const hostName = isFrameMember(host) ? t(`windowDialog.design.dividerTool.members.${host}`) : dividerLabel(panelIndex, host)
+        const cut = band?.ends[k]
+        const left = Math.round(cut?.leftDeg ?? 0)
+        const right = Math.round(cut?.rightDeg ?? 0)
+        return t('windowDialog.design.dividerInspector.end', { host: hostName, cut: left === right ? `${left}°` : `${left}° / ${right}°` })
+      })
+      const axis = part.dividerAxis
+      if ((axis === 'v' || axis === 'h') && !selectedDividerBend) {
+        const current = axis === 'v' ? part.rectMm.x + part.rectMm.width / 2 - rect.x : panel.heightMm - (part.rectMm.y + part.rectMm.height / 2 - rect.y)
+        position = {
+          axis,
+          valueMm: Math.round(current),
+          onChange: (mm) => {
+            const next = moveDividerTo(panels, panelIndex, divider.id, mm)
+            if (next) commitPanels(next, 'moveDivider')
+          },
+        }
+      }
+    }
+    return { profileNumber, profile, ends, position }
+  })()
   const selectedDivider =
-    selectedDividerPart && selectedDividerOrientation && selectedDividerK !== null
+    selectedDividerPart?.dividerId && selectedDividerName && selectedDividerDetail
       ? {
-          label:
-            selectedDividerOrientation === 'vertical'
-              ? t('windowDialog.design.parts.mullion')
-              : t('windowDialog.design.parts.transom'),
-          profileNumber: activeInfo?.dividerProfile?.profileNo,
-          lengthMm: selectedDividerOrientation === 'vertical' ? selectedDividerPart.rectMm.height : selectedDividerPart.rectMm.width,
-          onRemove: () => onRemoveDivider(selectedDividerOrientation, selectedDividerK),
+          bend: selectedDividerBend,
+          profile: selectedDividerDetail.profile,
+          position: selectedDividerDetail.position,
+          ends: selectedDividerDetail.ends,
+          label: `${t(selectedDividerName.kind === 'mullion' ? 'windowDialog.design.parts.mullion' : 'windowDialog.design.parts.transom')} ${selectedDividerName.number}`,
+          profileNumber: selectedDividerDetail.profileNumber,
+          lengthMm: selectedDividerPart.cutLengthMm ?? 0,
+          onRemove: () =>
+            requestDividerDelete(
+              selectedDividerPart.panelIndex,
+              [...new Set([selectedDividerPart.dividerId as string, ...selectionDividerIds])],
+              selectionLightIndices,
+            ),
         }
       : null
 
-  // Keyboard control of the selected divider: arrow keys nudge it 1mm
-  // (a press moves it once, holding the key repeats via the browser's
-  // own native key-repeat — same redistribute-between-neighbours
-  // behaviour and 100mm floor as `onDividerDrag`'s drag), Delete/
-  // Backspace removes it (same merge-into-neighbour behaviour as
-  // `onRemoveDivider`'s own button). Both are inlined here rather than
-  // called through those two functions so this effect doesn't need to
-  // depend on functions recreated every render. The drawing is fixed
-  // `dir="ltr"` regardless of app locale (see its own note elsewhere in
-  // this file), so Left/Right always means the same physical direction
-  // here too.
+  // Keyboard control of the selected divider: arrow keys nudge a
+  // straight one 1 mm along its axis (holding repeats via the browser's
+  // own key-repeat; same floor as the drag), Delete/Backspace removes it.
+  // The drawing is fixed `dir="ltr"`, so Left/Right always means the same
+  // physical direction.
+  const onDividerKey = useEffectEvent((event: KeyboardEvent) => {
+    const target = event.target as HTMLElement | null
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+    const part = selectedDividerPart
+    if (!part?.dividerId) return
+    const panel = panels[part.panelIndex]
+    if (!panel) return
+
+    // A mullion moves right with →, a transom UP with ↑ — its position is
+    // measured up from the bottom (Q15).
+    const delta =
+      part.dividerAxis === 'v'
+        ? event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : null
+        : part.dividerAxis === 'h'
+          ? event.key === 'ArrowUp' ? 1 : event.key === 'ArrowDown' ? -1 : null
+          : null
+    if (delta === null) return
+    const rect = drawingLayout.panelRects[part.panelIndex]
+    if (!rect) return
+    const current =
+      part.dividerAxis === 'v'
+        ? part.rectMm.x + part.rectMm.width / 2 - rect.x
+        : panel.heightMm - (part.rectMm.y + part.rectMm.height / 2 - rect.y)
+    event.preventDefault()
+    nudgeGesture(part.id)
+    const next = moveDividerTo(panels, part.panelIndex, part.dividerId, current + delta)
+    if (next) commitPanelsFromEffect(next, 'moveDivider')
+  })
+  const selectedDividerPartId = selectedDividerPart?.id ?? null
   useEffect(() => {
-    if (!selectedPartId || !selectedDividerOrientation || selectedDividerK === null) return
-    const panelIndex = parsePartId(selectedPartId)?.panelIndex
-    if (panelIndex === undefined) return
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-        return
-      }
-
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        event.preventDefault()
-        const next = removeDivider(panels, panelIndex, selectedDividerOrientation, selectedDividerK)
-        const updated = next[panelIndex]
-        if (!updated) return
-        const stillGridded = updated.columnWidths.length > 1 || updated.rowHeights.length > 1
-        const final = stillGridded ? next : next.map((p, i) => (i === panelIndex ? { ...p, dividerProfile: null } : p))
-        commitPanelsFromEffect(final, 'removeDivider')
-        setSelectedPartId(`p${panelIndex}:frame`)
-        setActiveSectionIndex(0)
-        return
-      }
-
-      const deltaMm =
-        selectedDividerOrientation === 'vertical'
-          ? event.key === 'ArrowLeft'
-            ? -1
-            : event.key === 'ArrowRight'
-              ? 1
-              : null
-          : event.key === 'ArrowUp'
-            ? -1
-            : event.key === 'ArrowDown'
-              ? 1
-              : null
-      if (deltaMm === null) return
-
-      const panel = panels[panelIndex]
-      if (!panel) return
-      const pitches = selectedDividerOrientation === 'vertical' ? panel.columnWidths : panel.rowHeights
-      const currentBoundary = cumulativeBoundaries(pitches)[selectedDividerK]
-      if (currentBoundary === undefined) return
-
-      event.preventDefault()
-      nudgeGesture(selectedPartId)
-      commitPanelsFromEffect(moveDivider(panels, panelIndex, selectedDividerOrientation, selectedDividerK, currentBoundary + deltaMm), 'moveDivider')
-    }
-
+    if (!selectedDividerPartId) return
+    const handleKeyDown = (event: KeyboardEvent) => onDividerKey(event)
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedPartId, selectedDividerOrientation, selectedDividerK, panels, setSelectedPartId, setActiveSectionIndex])
+  }, [selectedDividerPartId])
 
   // Keyboard control of a selected SLIDING sash (planing §10, the
   // handoff's shortcuts): `[` moves it one rail back (toward the
@@ -1795,6 +1956,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   layout={drawingLayout}
                   panels={panelRenders}
                   selectedPartId={selectedPartId}
+                  selectedPartIds={selectedPartIds}
                   hoveredPartId={hoveredPartId}
                   onSelect={onSelectPart}
                   onHover={setHoveredPartId}
@@ -1826,23 +1988,12 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                     )
                   }
                   issuesByPart={issuesByPart}
-                  barDrawMode={barDrawMode}
-                  onExitBarDrawMode={() => setBarDrawMode(false)}
-                  barsAvailable={activePanel.headShape !== HeadShape.FLAT}
-                  onBarDrawModeChange={setBarDrawMode}
                   undoRedo={{ canUndo, canRedo, undoLabel, redoLabel, onUndo, onRedo }}
-                  onAddBar={(bar) => updateActivePanel({ bars: [...activeBars, bar] }, 'drawBar')}
-                  selectedBarId={selectedBarId}
-                  onSelectBar={onSelectBar}
-                  pendingDeleteBarId={pendingDeleteBarId}
-                  onRequestDeleteBar={onRequestDeleteBar}
-                  onUpdateBarAnchor={(barId, end, anchor) =>
-                    updateActivePanel({ bars: activeBars.map((b) => (b.id === barId ? { ...b, [end]: anchor } : b)) }, 'moveBar')
-                  }
-                  onUpdateBarSag={(barId, sagMm) =>
-                    updateActivePanel({ bars: activeBars.map((b) => (b.id === barId ? { ...b, sagMm } : b)) }, 'bendBar')
-                  }
                   onDividerDrag={onDividerDrag}
+                  onDrawDivider={onDrawDivider}
+                  onBendDivider={onBendDivider}
+                  onMoveDividerEnd={onMoveDividerEnd}
+                  onSwapCrossing={onSwapCrossing}
                   onPanelEdgeDrag={onPanelEdgeDrag}
                   originOffsetMm={originOffsetMm}
                 />
@@ -1978,11 +2129,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   headShape={activePanel.headShape}
                   headRiseMm={activePanel.headRiseMm ?? null}
                   onHeadShapeChange={(shape) => {
-                    if (shape === HeadShape.FLAT) {
-                      updateActivePanel({ headShape: shape, headRiseMm: null, bars: [] }, 'changeHeadShape')
-                      setBarDrawMode(false)
-                      return
-                    }
                     // A fresh, shape-appropriate default every time the
                     // shape button changes — NOT a carried-over rise
                     // from whatever shape was selected before. A rise
@@ -1990,60 +2136,42 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                     // below gothic's own minimum (see
                     // arch-geometry.ts's minGothicRiseMm), where gothic
                     // stops being a point and turns into a
-                    // self-intersecting "heart" shape. With more than
-                    // one row, the rise is pinned to the top row's own
-                    // pitch instead of a freely-chosen default — the
-                    // Rise input is read-only in that case anyway.
+                    // self-intersecting "heart" shape.
                     const widthForRise = drawableMm(activeRaw?.widthMm ?? NaN, PLACEHOLDER_WIDTH_MM)
                     const heightForRise = drawableMm(activeRaw?.heightMm ?? NaN, PLACEHOLDER_HEIGHT_MM)
-                    if (activePanel.rowHeights.length > 1) {
-                      updateActivePanel({ headShape: shape, headRiseMm: activePanel.rowHeights[0] }, 'changeHeadShape')
-                      return
-                    }
                     const defaultRise =
                       shape === HeadShape.SEGMENTAL
                         ? Math.round(widthForRise / 3)
                         : shape === HeadShape.GOTHIC
                           ? Math.round(minGothicRiseMm(widthForRise) * 1.15) // clear margin past the floor, not sitting right on it
                           : Math.round(widthForRise / 2) // round — normalizeHeadRise pins this exactly regardless
-                    updateActivePanel({
-                      headShape: shape,
-                      headRiseMm: normalizeHeadRise(shape, widthForRise, defaultRise, heightForRise),
-                    }, 'changeHeadShape')
+                    const rise = shape === HeadShape.FLAT ? null : normalizeHeadRise(shape, widthForRise, defaultRise, heightForRise)
+                    // Dividers on the head re-land on the flat top (or
+                    // the other way round) — changeHeadShape (§8). Any
+                    // that can't are listed and confirmed first.
+                    const panelIndex = activePanelIndex
+                    const apply = () =>
+                      commitPanels(
+                        panels.map((p, i) => (i === panelIndex ? changeHeadShape(p, shape, rise, lightCtx(i)) : p)),
+                        'changeHeadShape',
+                      )
+                    const doomed = activeRaw && sized(activeRaw) ? headShapeDoomed(activeRaw, shape, rise, lightCtx(panelIndex)) : []
+                    if (doomed.length === 0) apply()
+                    else setHeadConfirm({ names: doomed.map((id) => dividerLabel(panelIndex, id)), apply })
                   }}
-                  onHeadRiseChange={(mm) =>
-                    updateActivePanel({
-                      headRiseMm: normalizeHeadRise(
-                        activePanel.headShape,
-                        drawableMm(activeRaw?.widthMm ?? NaN, PLACEHOLDER_WIDTH_MM),
-                        mm,
-                        drawableMm(activeRaw?.heightMm ?? NaN, PLACEHOLDER_HEIGHT_MM),
-                      ),
-                    }, 'changeHeadRise')
-                  }
-                  headShapeAllowed={canHaveArchedHead({
-                    isDoor: activePanel.isDoor,
-                    systemType: activeInfo.systemType,
-                    cols: activePanel.columnWidths.length,
-                    topRowOpeningType: activePanel.sections[0]?.openingType ?? null,
-                  })}
-                  headRiseReadOnly={activePanel.rowHeights.length > 1}
-                  roundDisallowedGridded={activePanel.rowHeights.length > 1}
-                  barDrawMode={barDrawMode}
-                  onBarDrawModeChange={setBarDrawMode}
-                  barCount={activePanel.bars.length}
-                  selectedBar={
-                    selectedBar
-                      ? {
-                          id: selectedBar.id,
-                          lengthMm: selectedBarLengthMm,
-                          radiusMm: selectedBarRadiusMm,
-                          minRadiusMm: selectedBarMinRadiusMm,
-                        }
-                      : null
-                  }
-                  onRequestDeleteBar={onRequestDeleteBar}
-                  onBarRadiusChange={onBarRadiusChange}
+                  onHeadRiseChange={(mm) => {
+                    const rise = normalizeHeadRise(
+                      activePanel.headShape,
+                      drawableMm(activeRaw?.widthMm ?? NaN, PLACEHOLDER_WIDTH_MM),
+                      mm,
+                      drawableMm(activeRaw?.heightMm ?? NaN, PLACEHOLDER_HEIGHT_MM),
+                    )
+                    commitPanels(
+                      panels.map((p, i) => (i === activePanelIndex ? withAlignedSections(p, { ...p, headRiseMm: rise }, lightCtx(i)) : p)),
+                      'changeHeadRise',
+                    )
+                  }}
+                  headShapeAllowed={canHaveArchedHead({ isDoor: activePanel.isDoor, systemType: activeInfo.systemType })}
                   interiorColor={activePanel.interiorColor ?? null}
                   exteriorColor={activePanel.exteriorColor ?? null}
                   onInteriorColorChange={(value) => updateActivePanel({ interiorColor: value as ScopedRef | null }, 'changeColor')}
@@ -2059,14 +2187,13 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   frameCatalogRef={activeInfo.frame?.catalog}
                   activeSection={{
                     sectionIndex: activeSectionIndex,
-                    row: activeSection.row,
-                    col: activeSection.col,
                     kind: activeSection.kind,
+                    fixedOnly: !!activeLight && isFixedOnlyLight(activeLight),
                     onKindChange: onSectionKindChange,
-                    widthMm: activePanel.columnWidths[activeSection.col] ?? NaN,
-                    heightMm: activePanel.rowHeights[activeSection.row] ?? NaN,
-                    onWidthChange: onSectionWidthChange,
-                    onHeightChange: onSectionHeightChange,
+                    widthMm: activeLightPitch ? Math.round(activeLightPitch.x1 - activeLightPitch.x0) : null,
+                    heightMm: activeLightPitch ? Math.round(activeLightPitch.y1 - activeLightPitch.y0) : null,
+                    onWidthChange: (mm) => onLightSizeChange('x', mm),
+                    onHeightChange: (mm) => onLightSizeChange('y', mm),
                     showOpeningTypes: activeInfo.showOpeningTypes,
                     openingType: activeSection.openingType ?? null,
                     onOpeningTypeChange: onSectionOpeningTypeChange,
@@ -2131,39 +2258,42 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
         </form>
       </div>
 
-      {/* Bar delete confirm — §6.3. The dependents it names are already
-          highlighted in the danger colour on the drawing underneath by
-          the time this renders (window-drawing.tsx reacts to
-          `pendingDeleteBarId` directly), not just described in words
-          here. A plain AlertDialog, not the typed-name confirm client/
-          project deletion use — this is in-memory form state, gone the
-          instant this screen is left without saving, not a server-side
-          cascade. */}
-      <AlertDialog open={pendingDeleteBarId !== null} onOpenChange={(next) => !next && setPendingDeleteBarId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('fields.barsDeleteConfirmTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingDeleteDependentsCount > 0
-                ? t('fields.barsDeleteConfirmDescriptionCascade', { count: pendingDeleteDependentsCount })
-                : t('fields.barsDeleteConfirmDescriptionPlain')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tCommon('actions.cancel')}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={confirmDeleteBar}>
-              {tCommon('actions.delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* One gate for every way to leave this screen with unsaved
           changes — see `requestLeave` above. `onOpenChange(false)` is
           the single place that decides "Discard" from every other way
           the dialog closes (Cancel, Escape, an outside click all mean
           "stay"), via `confirmedRef` set just before Discard's own
           click closes it. */}
+      <DeleteDividerDialog
+        request={deleteRequest}
+        onCancel={() => setDeleteRequest(null)}
+        onConfirm={(keep, mode) => {
+          if (deleteRequest) applyDividerDelete(deleteRequest.panelIndex, deleteRequest.ids, keep, mode)
+          setDeleteRequest(null)
+        }}
+      />
+      <AlertDialog open={headConfirm !== null} onOpenChange={(open) => !open && setHeadConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('windowDialog.design.headFlatConfirm.title')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('windowDialog.design.headFlatConfirm.description', { names: headConfirm?.names.join(', ') ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                headConfirm?.apply()
+                setHeadConfirm(null)
+              }}
+            >
+              {t('windowDialog.design.headFlatConfirm.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={confirmLeave !== null}
         onOpenChange={(open) => {
@@ -2222,6 +2352,11 @@ type EditLabel =
   | 'addDivider'
   | 'moveDivider'
   | 'removeDivider'
+  | 'drawDivider'
+  | 'bendDivider'
+  | 'moveDividerEnd'
+  | 'changeDividerRadius'
+  | 'swapCrossing'
   | 'changeFrame'
   | 'changeDividerProfile'
   | 'changeSectionType'
@@ -2237,11 +2372,6 @@ type EditLabel =
   | 'editSlidingLayout'
   | 'moveSash'
   | 'changeSlidingDirection'
-  | 'drawBar'
-  | 'moveBar'
-  | 'bendBar'
-  | 'deleteBar'
-  | 'changeBarRadius'
   | 'rename'
   | 'changeQuantity'
   | 'editLocation'
@@ -2274,16 +2404,10 @@ function emptyWindow(projectId: string, favoriteFrameProfile?: string | null): C
   }
 }
 
-/** A blank panel — a 1×1 grid whose single section starts `kind:
- * 'opening'` (the 2026-09-13 fixed-light rule: no sash is drawn until
- * the sash profile is picked, and "opening ⇒ sashProfile set" is a
- * submit rule, not a draw-time one). Width/height are NaN, not 0, so
- * their inputs render empty rather than showing a number nobody typed
- * (the drawing falls back to PLACEHOLDER_* for the elevation) — and
- * `columnWidths`/`rowHeights` mirror that same NaN rather than `[NaN]`
- * disagreeing with a real `widthMm`. Always this panel's very first
- * panel, or the create-mode default — the "+" flow that grows a real
- * grid is `insertRow`/`insertColumn`, not this factory. */
+/** A blank panel — no dividers, one fixed light. Width/height are NaN,
+ * not 0, so their inputs render empty rather than showing a number
+ * nobody typed (the drawing falls back to PLACEHOLDER_* for the
+ * elevation). */
 function emptyPanel(favoriteFrameProfile?: string | null): WindowPanelInput {
   return {
     xMm: 0,
@@ -2292,12 +2416,10 @@ function emptyPanel(favoriteFrameProfile?: string | null): WindowPanelInput {
     heightMm: NaN,
     frameProfile: (favoriteFrameProfile ?? '') as ScopedRef,
     dividerProfile: null,
-    columnWidths: [NaN],
-    rowHeights: [NaN],
+    dividers: [],
     sections: [
       {
-        row: 0,
-        col: 0,
+        faceKey: SINGLE_LIGHT_KEY,
         // A new window starts fixed (Mario, 2026-09-13) — matching
         // decision 6's general "a section is fixed by default" rule,
         // which this initial section used to carve an exception out of
@@ -2328,6 +2450,9 @@ function emptyPanel(favoriteFrameProfile?: string | null): WindowPanelInput {
     // panel before this feature existed.
     headShape: HeadShape.FLAT,
     headRiseMm: null,
-    bars: [],
   }
 }
+
+/** The one light of a flat panel with no dividers — its four sides
+ * (light-graph.ts face key). */
+const SINGLE_LIGHT_KEY = 'left|right|sill|top'

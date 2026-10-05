@@ -2230,11 +2230,12 @@ function InteractivePart({
   cursorClassName?: string
 }) {
   const rect = ringRect ?? part.rectMm
-  // A divider band or a shaped light is highlighted and hit by its own
-  // outline — its bounding box would cover the lights beside a slanted
-  // spoke and steal their clicks.
+  // A divider band, a shaped light or an arched frame/sash is
+  // highlighted and hit by its own outline — its bounding box would
+  // cover the lights beside a slanted spoke, or the empty corners above
+  // an arch, and steal their clicks.
   const shape = ringRect ? undefined : (part.band ?? part.outline)
-  const shapePath = shape ? loopToSvgPath(shape) : null
+  const shapePath = shape ? loopToSvgPath(shape) : !ringRect && part.head ? partOutlinePath(part) : null
   const severity = worstSeverity(issues)
   const onKeyDown = (e: KeyboardEvent<SVGGElement>) => {
     if (e.key === 'Enter' || e.key === ' ') {

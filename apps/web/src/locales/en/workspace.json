@@ -284,22 +284,7 @@
     },
     "headShapeDisabledHint": "An arched head isn't available for this panel's opening type.",
     "headShapeRoundTooWideHint": "A true semicircle needs more height than this panel has — try Segmental instead, or make the panel taller.",
-    "headShapeRoundGriddedHint": "A round head needs a single row — try Segmental or Gothic instead.",
     "headRiseMm": "Rise (mm)",
-    "headRiseGriddedHint": "With more than one row, the rise is set by the top row's own height.",
-    "barsSection": "Bars",
-    "barsDrawBar": "Draw a bar",
-    "barsDrawingActive": "Drawing… (Esc to stop)",
-    "barsDrawHint": "Click the arch to place the first end of a bar, then click again to place the second. Escape cancels the one in progress, or turns this off.",
-    "barsCount": "{{count}} bars",
-    "barsDeleteButton": "Delete bar",
-    "barsDeleteConfirmTitle": "Delete this bar?",
-    "barsDeleteConfirmDescriptionPlain": "This bar will be removed.",
-    "barsDeleteConfirmDescriptionCascade_one": "This also removes 1 bar that depends on it.",
-    "barsDeleteConfirmDescriptionCascade_other": "This also removes {{count}} bars that depend on it.",
-    "barRadiusMm": "Radius (mm)",
-    "barRadiusStraight": "R = ∞ · straight",
-    "barRadiusHint": "Clear the field to straighten it back to a line.",
     "interiorColor": "Interior colour",
     "exteriorColor": "Exterior colour",
     "colorPlaceholder": "No colour",
@@ -391,8 +376,8 @@
         "label": "Drawing tools",
         "select": "Select",
         "hand": "Hand — drag to move the view (or hold the mouse wheel)",
-        "bars": "Draw bars",
-        "barsNeedArch": "Bars need an arched head",
+        "divider": "Divider",
+        "dividerHint": "Draw a mullion or transom: click a side or a divider, then click where it should land. Esc cancels.",
         "undo": "Undo",
         "redo": "Redo",
         "undoAction": "Undo {{action}}",
@@ -406,6 +391,8 @@
         "addDivider": "Add mullion/transom",
         "moveDivider": "Move divider",
         "removeDivider": "Remove divider",
+        "drawDivider": "Draw divider",
+        "bendDivider": "Bend divider",
         "changeFrame": "Change frame profile",
         "changeDividerProfile": "Change divider profile",
         "changeSectionType": "Change section type",
@@ -421,15 +408,13 @@
         "editSlidingLayout": "Edit sliding layout",
         "moveSash": "Move sash",
         "changeSlidingDirection": "Change sliding direction",
-        "drawBar": "Draw bar",
-        "moveBar": "Move bar",
-        "bendBar": "Bend bar",
-        "deleteBar": "Delete bar",
-        "changeBarRadius": "Change bar radius",
         "rename": "Rename window",
         "changeQuantity": "Change quantity",
         "editLocation": "Edit location",
-        "editNotes": "Edit notes"
+        "editNotes": "Edit notes",
+        "moveDividerEnd": "Move divider end",
+        "changeDividerRadius": "Change divider radius",
+        "swapCrossing": "Swap crossing"
       },
       "zoom": {
         "in": "Zoom in",
@@ -448,7 +433,6 @@
         "sash": "Sash",
         "glass": "Glass",
         "flyScreen": "Fly screen",
-        "bar": "Bar",
         "section": "Section"
       },
       "parts": {
@@ -460,12 +444,25 @@
         "kind": {
           "fixed": "Fixed",
           "opening": "Opening"
-        }
+        },
+        "archLightFixed": "Lights inside the arch are always fixed."
       },
-      "barLength": "Length: {{length}} mm",
-      "barLengthUnknown": "Length: —",
       "dividerLength": "Length: {{length}} mm (indicative)",
       "removeDivider": "Remove divider",
+      "dividerTool": {
+        "members": {
+          "left": "Left jamb",
+          "right": "Right jamb",
+          "sill": "Sill",
+          "top": "Top",
+          "head": "Arch"
+        },
+        "springing": "Springing line",
+        "squareOnly": "Square only below the springing line",
+        "radius": "Radius (mm)",
+        "straight": "Straight",
+        "radiusHint": "Empty for straight; {{min}} mm at least (a half circle)."
+      },
       "issues": {
         "frameRequired": "Pick a frame profile.",
         "sashRequired": "Pick a sash profile.",
@@ -479,12 +476,11 @@
         "disconnectedPanels": "The panels aren't all joined — one or more is floating free. Resize or move them until every panel shares an edge with another.",
         "archObstructed": "The arched head is partly blocked by another panel resting on it — that carves a void inside the assembly rather than at its own outline. Still fabricable — just check it's what you meant.",
         "archBendRadius": "Head radius {{radius}} mm is below the {{min}} mm minimum bend radius for this profile (indicative limit).",
-        "dividerProfileRequired": "This panel is split into more than one section — pick a divider profile.",
+        "dividerBendRadius": "Divider radius {{radius}} mm is below the {{min}} mm minimum bend radius for this profile (indicative limit).",
+        "dividerProfileRequired": "This panel has mullions or transoms. Pick its transom profile.",
         "sectionTooSmall": "This section is narrower than 150 mm — too small to glaze.",
-        "gridMismatch": "The section grid doesn't add up to the panel size.",
         "dividerMisaligned": "This divider doesn't line up with the coupled panel next to it.",
         "archOnOpening": "The arched top section is set to open — check the sash clears the curve.",
-        "archWithMullion": "An arched head can't have a vertical divider — only a single column is supported.",
         "slidingLayoutRequired": "Pick a sliding layout for this section.",
         "slidingBlocked": "Sash {{sash}} can't slide — its neighbours are on the same rail. Move it to another rail.",
         "slidingIntoFrame": "Sash {{sash}} would slide into the frame. Use the suggested direction.",
@@ -493,7 +489,12 @@
         "slidingIntoNeighbour": "Sash {{sash}} would slide into sash {{neighbour}}, which is on the same rail.",
         "slidingEmptyRail_one": "Rail {{rails}} is empty — a {{used}}-rail frame would be cheaper.",
         "slidingEmptyRail_other": "Rails {{rails}} are empty — a {{used}}-rail frame would be cheaper.",
-        "slidingOnHinged": "This frame isn't a sliding system, but a sliding layout is set. Re-pick the frame or set the section to Fixed."
+        "slidingOnHinged": "This frame isn't a sliding system, but a sliding layout is set. Re-pick the frame or set the section to Fixed.",
+        "lightsMismatch": "This panel's lights don't match its saved sections. Move or redraw a divider to rebuild them.",
+        "lightsChanged": "The glazing bars in this arch became transoms, so its glass is now split into separate lights. Check each light, then save.",
+        "dividerNotSquare": "A mullion or transom below the springing line must be vertical or horizontal.",
+        "lightTooSmall": "A light here is too small to glaze. Move a divider to give it more room.",
+        "archLightOpening": "Lights inside the arch can only be fixed. Switch this light to fixed."
       },
       "panelOf": "Panel {{index}} of {{count}}",
       "deletePanel": "Remove this panel",
@@ -516,6 +517,32 @@
         "typeStep": {
           "title": "What are you adding?"
         }
+      },
+      "swapCrossing": "Swap which one runs through",
+      "deleteDivider": {
+        "title": "Delete {{names}}?",
+        "notAlone": "A divider can't be deleted alone — pick the side whose light goes with it. The other side takes the space and keeps its settings.",
+        "dependentsOnly": "Other dividers stand on it.",
+        "merge": "The lights on both sides merge.",
+        "side": "Side {{letter}} goes",
+        "dependents": "Standing on it: {{names}}",
+        "extendRest": "Extend the rest to the next member",
+        "deleteAll": "Delete them all",
+        "confirm": "Delete",
+        "refused": "Can't delete that: a light would be left too small to glaze."
+      },
+      "headFlatConfirm": {
+        "title": "Make the head flat?",
+        "description": "These dividers in the arch will be removed: {{names}}.",
+        "confirm": "Make flat"
+      },
+      "dividerInspector": {
+        "profile": "Profile",
+        "panelDefault": "Panel default: {{profile}}",
+        "useDefault": "Use the panel default",
+        "fromLeft": "Position from left (mm)",
+        "fromSill": "Position up from the bottom (mm)",
+        "end": "On {{host}} · cut {{cut}}"
       }
     }
   },

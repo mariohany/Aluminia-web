@@ -264,6 +264,19 @@ export function headBendRadiusMm(o: HeadOutline): number | null {
   return segmentalArc(o).r
 }
 
+/** The circle(s) the head curve is drawn on — one for round/segmental,
+ * `[left, right]` for gothic, none for flat. For light-graph.ts, which
+ * needs the exact arcs (not samples) to intersect dividers with the
+ * head. */
+export function headCircles(o: HeadOutline): { cx: number; cy: number; r: number }[] {
+  if (o.shape === HeadShape.FLAT || o.riseMm <= 0) return []
+  if (o.shape === HeadShape.GOTHIC) {
+    const arcs = gothicArcs(o)
+    return [arcs.left, arcs.right]
+  }
+  return [segmentalArc(o)]
+}
+
 export function insetHeadOutline(o: HeadOutline, d: number): HeadOutline {
   const maxD = Math.min(o.rect.width / 2 - 0.5, o.rect.height / 2 - 0.5, o.shape === HeadShape.FLAT ? Infinity : o.riseMm - 0.5)
   const clampedD = Math.min(Math.max(d, 0), Math.max(maxD, 0))
@@ -361,11 +374,34 @@ export function barCutLengthMm(chordMm: number, sagMm: number): number {
  * before it builds the outline actually rendered) — this is the one
  * place that guarantees a storable, renderable rise regardless of how
  * an otherwise-valid rise ends up paired with a since-shrunk height or
- * since-grown width. */
-export function normalizeHeadRise(shape: HeadShape, widthMm: number, riseMm: number, heightMm: number): number {
+ * since-grown width.
+ *
+ * `frameFaceMm` (client only — the server has no profile metrics and
+ * keeps the 1 mm floor; the geometry clamps again on every build): the
+ * frame's inner curve must spring on the sill's top face, never inside
+ * it. A flattened arch's inset curve springs lower than its outer one,
+ * so the largest such rise is found by bisection rather than `height −
+ * face`. With the 1 mm floor alone a round 2000×1000 panel sprang 51 mm
+ * down inside its sill and the arch's feet drew broken (bug-088). */
+export function normalizeHeadRise(shape: HeadShape, widthMm: number, riseMm: number, heightMm: number, frameFaceMm?: number): number {
   if (shape === HeadShape.FLAT) return 0
   const raw = shape === HeadShape.ROUND ? widthMm / 2 : riseMm
-  return Math.min(raw, heightMm - 1)
+  const capped = Math.min(raw, heightMm - 1)
+  if (!frameFaceMm || !(capped > 1)) return capped
+  const sillTop = heightMm - frameFaceMm
+  const fits = (rise: number) => {
+    const inner = insetHeadOutline({ rect: { x: 0, y: 0, width: widthMm, height: heightMm }, shape, riseMm: rise }, frameFaceMm)
+    return inner.rect.y + inner.riseMm <= sillTop
+  }
+  if (fits(capped)) return capped
+  let lo = 1
+  let hi = capped
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2
+    if (fits(mid)) lo = mid
+    else hi = mid
+  }
+  return lo
 }
 
 /** The minimum rise a gothic head needs to stay a simple, buildable

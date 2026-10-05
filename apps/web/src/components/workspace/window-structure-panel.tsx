@@ -4,7 +4,7 @@ import { AlertTriangle, ArrowLeft, ChevronDown, XCircle } from 'lucide-react'
 import { SectionKind } from '@repo/types/windows'
 import type { WindowPanelInput } from '@repo/types/windows'
 import type { TranslatedIssue } from '@/lib/window-weight'
-import { formatDimensionMm, sectionLetter, type WindowPart } from '@/lib/window-geometry'
+import { dividerNames, formatDimensionMm, sectionLetter, type WindowPart } from '@/lib/window-geometry'
 import { Button } from '@/components/ui/button'
 import { NumberField } from '@/components/workspace/window-part-panel'
 import { cn } from '@/lib/utils'
@@ -77,21 +77,26 @@ export function WindowStructurePanel({
     parts.find((p) => p.panelIndex === panelIndex && p.sectionIndex === sectionIndex)?.id ??
     null
 
-  // A panel's mullions (`div-v{k}`), then its transoms (`div-h{k}`), each
-  // in boundary order — the layout already pushes them that way. The
-  // length is the drawn part's own, same figure the inspector shows.
-  const dividersOf = (panelIndex: number) =>
-    parts
-      .filter((p) => p.panelIndex === panelIndex && p.kind === 'divider')
+  // A panel's mullions, then its transoms, numbered the way the drawing
+  // reads (`dividerNames`). The length is the divider's cut length, same
+  // figure the inspector shows.
+  const dividersOf = (panelIndex: number) => {
+    const own = parts.filter((p) => p.panelIndex === panelIndex)
+    const names = dividerNames(own)
+    return own
+      .filter((p) => p.kind === 'divider')
       .map((p) => {
-        const vertical = p.id.includes(':div-v')
+        const name = names.get(p.id)
         return {
           id: p.id,
-          vertical,
-          number: p.index + 1,
-          lengthMm: Math.round(vertical ? p.rectMm.height : p.rectMm.width),
+          vertical: p.dividerAxis === 'v',
+          kind: name?.kind ?? 'transom',
+          number: name?.number ?? p.index + 1,
+          lengthMm: Math.round(p.cutLengthMm ?? Math.max(p.rectMm.width, p.rectMm.height)),
         }
       })
+      .sort((a, b) => (a.kind === b.kind ? a.number - b.number : a.kind === 'mullion' ? -1 : 1))
+  }
 
   const sectionCaption = (section: WindowPanelInput['sections'][number]): string => {
     if (section.kind === SectionKind.FIXED) return t('windowDialog.design.section.kind.fixed')
@@ -153,7 +158,7 @@ export function WindowStructurePanel({
           </span>
         </div>
         {panels.map((panel, panelIndex) => {
-          const gridded = panel.columnWidths.length > 1 || panel.rowHeights.length > 1
+          const gridded = panel.dividers.length > 0
           const severity = panelSeverity(panelIndex)
           const panelActive = activePanelIndex === panelIndex
           const dividers = dividersOf(panelIndex)
@@ -187,8 +192,7 @@ export function WindowStructurePanel({
                 )}
               </button>
               {gridded &&
-                panel.sections.map((section) => {
-                  const sectionIndex = section.row * panel.columnWidths.length + section.col
+                panel.sections.map((section, sectionIndex) => {
                   const partId = sectionPartId(panelIndex, sectionIndex)
                   const active = panelActive && !dividerSelected && activeSectionIndex === sectionIndex
                   return (
@@ -225,7 +229,7 @@ export function WindowStructurePanel({
                       <span className={cn('rounded-[1px] bg-current opacity-60', divider.vertical ? 'h-3 w-[3px]' : 'h-[3px] w-3')} />
                     </span>
                     <span className="truncate">
-                      {t(divider.vertical ? 'windowDialog.design.parts.mullion' : 'windowDialog.design.parts.transom')} {divider.number}
+                      {t(divider.kind === 'mullion' ? 'windowDialog.design.parts.mullion' : 'windowDialog.design.parts.transom')} {divider.number}
                     </span>
                     <span className="ms-auto shrink-0 font-mono text-[11px] text-muted-foreground" dir="ltr">
                       {formatDimensionMm(divider.lengthMm)}

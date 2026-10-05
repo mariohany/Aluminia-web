@@ -76,34 +76,64 @@ export const HeadShape = {
 export type HeadShape = (typeof HeadShape)[keyof typeof HeadShape]
 const headShapeValues = Object.values(HeadShape) as [HeadShape, ...HeadShape[]]
 
-// An endpoint names what it's attached to, not a coordinate — the
-// head curve (`'arch'`), the springing line (`'sill'`), or an earlier
-// bar in the same panel's `bars` array (its id). `at` is a `0..1`
-// fraction along whichever of those it is, always measured the same
-// way regardless of anchor kind, so one field means "how far along"
-// no matter what's being measured. See §2's "why references, not
-// coordinates" — this is the one modelling choice a dependent
-// following its parent, and a delete cascading, both hang off.
-export const barAnchorSchema = z.object({
-  on: z.string().min(1),
-  at: z.number().min(0).max(1),
-})
-export type BarAnchorInput = z.infer<typeof barAnchorSchema>
+// A divider is one member of transom profile inside a frame — straight,
+// or (in the arch only) a circular arc — drawn point to point
+// (docs/free_dividers_planing.md §1). Each end names what it lands on: a
+// side of the clear opening, or a divider EARLIER in the same panel's
+// `dividers` array (that ordering is the whole acyclicity guarantee).
+// `at` is mm on a straight vertical/horizontal member — from the panel's
+// LEFT edge on a horizontal one, UP FROM ITS BOTTOM edge on a vertical one,
+// so a resize keeps dividers where they were — and a 0..1 fraction of
+// length on the head or on a slanted/curved divider. Which of the two it
+// is follows from the host, which is why it's one number, not a union.
+export const FrameMember = {
+  LEFT: 'left',
+  RIGHT: 'right',
+  SILL: 'sill',
+  TOP: 'top',
+  HEAD: 'head',
+} as const
+export type FrameMember = (typeof FrameMember)[keyof typeof FrameMember]
+const frameMemberValues = Object.values(FrameMember) as string[]
 
-// A bar is a line or a circular arc — never a free-form curve, since a
-// spline has no single bend radius and so no cut length a work order
-// can print. `sagMm` is what's stored rather than radius: it stays
-// finite and well-behaved as a bar flattens (a straight bar is simply
-// `0`), where radius runs to infinity there. See
-// arch-geometry.ts's `radiusFromSag`/`sagFromRadius` for the two-way
-// binding the UI shows the user.
-export const windowBarSchema = z.object({
-  id: z.string().min(1).max(40),
-  from: barAnchorSchema,
-  to: barAnchorSchema,
-  sagMm: z.number().int().min(-MAX_DIMENSION_MM).max(MAX_DIMENSION_MM),
-})
-export type WindowBarInput = z.infer<typeof windowBarSchema>
+export const dividerAnchorSchema = z
+  .object({
+    on: z.string().min(1).max(40),
+    at: z.number().min(0).max(MAX_DIMENSION_MM),
+  })
+  .strict()
+export type DividerAnchorInput = z.infer<typeof dividerAnchorSchema>
+
+// The saw cuts and length the editor derived on save — a cache for the
+// cutting-order report (Q10/Q19), never read back into geometry. Per end
+// AND per side: a fan hub end is a mitre on one side and the transom face
+// on the other.
+export const dividerCutSchema = z
+  .object({
+    lengthMm: z.number().min(0).max(MAX_DIMENSION_MM * 2),
+    fromLeftDeg: z.number().min(0).max(90),
+    fromRightDeg: z.number().min(0).max(90),
+    toLeftDeg: z.number().min(0).max(90),
+    toRightDeg: z.number().min(0).max(90),
+  })
+  .strict()
+export type DividerCutInput = z.infer<typeof dividerCutSchema>
+
+export const windowDividerSchema = z
+  .object({
+    id: z.string().min(1).max(40),
+    from: dividerAnchorSchema,
+    to: dividerAnchorSchema,
+    // `0` = straight. Signed bow (sagitta) of the arc, never a radius —
+    // it stays finite as a divider flattens. Same convention arch bars
+    // had, so converted bars keep their exact shape.
+    sagMm: z.number().int().min(-MAX_DIMENSION_MM).max(MAX_DIMENSION_MM),
+    // `null` = the panel's `dividerProfile` (Q12).
+    profile: scopedRefSchema.nullable(),
+    cut: dividerCutSchema,
+  })
+  .strict()
+export type WindowDividerInput = z.infer<typeof windowDividerSchema>
 
 // A section is fixed (bead + glass straight off the frame/divider) or
 // opening (sash + opening type + glass) — see
@@ -117,15 +147,14 @@ export const SectionKind = {
 } as const
 export type SectionKind = (typeof SectionKind)[keyof typeof SectionKind]
 
-// One cell of a panel's grid (`row`/`col`, both 0-based, row-major —
-// see windowPanelSchema's `columnWidths`/`rowHeights`). Everything that
-// varies per-light lives here now; everything shared by the whole
-// frame (profile, divider, grid, head, colours) stays on the panel —
-// docs/sections_planing.md decision 7.
+// One light of a panel — a closed area its frame and dividers make. It is
+// identified by `faceKey`: the sorted ids of the members around it,
+// joined by `|` (apps/web/src/lib/light-graph.ts), so moving a divider
+// never loses a light's settings. Everything that varies per light lives
+// here; everything shared by the whole frame stays on the panel.
 export const windowSectionSchema = z
   .object({
-    row: z.number().int().min(0),
-    col: z.number().int().min(0),
+    faceKey: z.string().min(1).max(400),
     kind: z.enum([SectionKind.FIXED, SectionKind.OPENING]),
     sashProfile: scopedRefSchema.nullable(),
     // A fixed light's glass sits straight in a glazing bead rather than
@@ -183,23 +212,16 @@ export const windowPanelSchema = z
     widthMm: z.number().int().min(1).max(MAX_DIMENSION_MM),
     heightMm: z.number().int().min(1).max(MAX_DIMENSION_MM),
     frameProfile: scopedRefSchema,
-    // Required iff the grid is bigger than 1×1 — one divider profile
-    // used by every mullion/transom in this panel (docs/sections_planing.md
-    // decision 4, rejecting a per-divider profile).
+    // The panel's default transom profile — required iff it has any
+    // divider; each divider may override it (Q12).
     dividerProfile: scopedRefSchema.nullable(),
-    // Boundary-to-boundary pitches, row-major, summing to `widthMm` /
-    // `heightMm` respectively — NOT clear glass sizes, which derive
-    // from `ProfileMetrics` at layout time so a placeholder change
-    // never moves a stored dimension (decision 8).
-    columnWidths: z.array(z.number().int().min(1).max(MAX_DIMENSION_MM)).min(1).max(12),
-    rowHeights: z.array(z.number().int().min(1).max(MAX_DIMENSION_MM)).min(1).max(12),
-    sections: z.array(windowSectionSchema).min(1).max(144),
+    dividers: z.array(windowDividerSchema).max(200),
+    sections: z.array(windowSectionSchema).min(1).max(200),
     isDoor: z.boolean(),
     interiorColor: scopedRefSchema.nullable().optional(),
     exteriorColor: scopedRefSchema.nullable().optional(),
     headShape: z.enum(headShapeValues),
     headRiseMm: z.number().int().min(1).max(MAX_DIMENSION_MM).nullable().optional(),
-    bars: z.array(windowBarSchema).max(200),
     // The sliding layout lives on each SECTION (`windowSectionSchema`),
     // not here — planing §12.
   })
@@ -227,91 +249,50 @@ export const windowPanelSchema = z
     if (panel.headShape !== HeadShape.FLAT && !hasRise) {
       ctx.addIssue({ code: 'custom', path: ['headRiseMm'], message: 'A non-flat head needs a rise.' })
     }
-    if (panel.headShape === HeadShape.FLAT && panel.bars.length > 0) {
-      ctx.addIssue({ code: 'custom', path: ['bars'], message: 'Bars only belong on a non-flat head.' })
-    }
 
-    // A bar may only reference the head, the springing line, or a bar
-    // EARLIER in this same array — that ordering rule is the whole
-    // acyclicity guarantee (see arch-bars.ts's `barsAreOrdered`), so
-    // this one pass both catches a forward/self reference and proves
-    // the rest of the array is a DAG.
+    // Dividers: unique ids; every end on a side of THIS head shape's
+    // opening (`top` only when flat, `head` only when arched) or on an
+    // EARLIER divider — the ordering rule is what makes the graph a DAG.
+    // Geometry (that an end really lies on its host, that the rect zone
+    // is square) needs the arch maths only apps/web has; the editor
+    // checks it (docs/free_dividers_planing.md's assumptions).
+    const sides = new Set<string>([FrameMember.LEFT, FrameMember.RIGHT, FrameMember.SILL, panel.headShape === HeadShape.FLAT ? FrameMember.TOP : FrameMember.HEAD])
     const earlierIds = new Set<string>()
-    panel.bars.forEach((bar, index) => {
-      if (earlierIds.has(bar.id)) {
-        ctx.addIssue({ code: 'custom', path: ['bars', index, 'id'], message: `Duplicate bar id "${bar.id}" in this panel.` })
+    panel.dividers.forEach((divider, index) => {
+      if (earlierIds.has(divider.id) || frameMemberValues.includes(divider.id)) {
+        ctx.addIssue({ code: 'custom', path: ['dividers', index, 'id'], message: `Divider id "${divider.id}" is a duplicate or a frame side's name.` })
       }
       for (const end of ['from', 'to'] as const) {
-        const anchor = bar[end]
-        if (anchor.on !== 'arch' && anchor.on !== 'sill' && !earlierIds.has(anchor.on)) {
+        const anchor = divider[end]
+        if (!sides.has(anchor.on) && !earlierIds.has(anchor.on)) {
           ctx.addIssue({
             code: 'custom',
-            path: ['bars', index, end, 'on'],
-            message: `Bar "${bar.id}" anchors to "${anchor.on}", which is not the head, the springing line, or an earlier bar in this panel.`,
+            path: ['dividers', index, end, 'on'],
+            message: `Divider "${divider.id}" lands on "${anchor.on}", which is not a side of this opening or an earlier divider.`,
           })
         }
       }
-      earlierIds.add(bar.id)
+      earlierIds.add(divider.id)
     })
-
-    // The grid itself: pitches must account for the whole panel, and
-    // every cell they imply must have exactly one section describing
-    // it — see docs/sections_planing.md's V8 `gridMismatch` (this is
-    // that same rule enforced at write time, not just flagged live in
-    // the editor).
-    const cols = panel.columnWidths.length
-    const rows = panel.rowHeights.length
-    const widthSum = panel.columnWidths.reduce((sum, w) => sum + w, 0)
-    if (widthSum !== panel.widthMm) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['columnWidths'],
-        message: `Column widths sum to ${widthSum}, not the panel width ${panel.widthMm}.`,
-      })
-    }
-    const heightSum = panel.rowHeights.reduce((sum, h) => sum + h, 0)
-    if (heightSum !== panel.heightMm) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['rowHeights'],
-        message: `Row heights sum to ${heightSum}, not the panel height ${panel.heightMm}.`,
-      })
+    if (panel.dividers.length > 0 && panel.dividerProfile == null) {
+      ctx.addIssue({ code: 'custom', path: ['dividerProfile'], message: 'A panel with dividers needs a default transom profile.' })
     }
 
-    if (panel.sections.length !== cols * rows) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['sections'],
-        message: `Expected ${cols * rows} sections for a ${cols}×${rows} grid, got ${panel.sections.length}.`,
-      })
-    } else {
-      const seen = new Set<string>()
-      panel.sections.forEach((section, index) => {
-        if (section.row >= rows || section.col >= cols) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['sections', index],
-            message: `Section (${section.row}, ${section.col}) is outside the ${cols}×${rows} grid.`,
-          })
-          return
+    // Sections: one per light, keyed by the members around it. Every
+    // token must be a side or a divider of this panel; that the keys
+    // match the lights one-to-one is the editor's `lightsMismatch`.
+    const seenKeys = new Set<string>()
+    panel.sections.forEach((section, index) => {
+      if (seenKeys.has(section.faceKey)) {
+        ctx.addIssue({ code: 'custom', path: ['sections', index, 'faceKey'], message: `Duplicate light "${section.faceKey}".` })
+      }
+      seenKeys.add(section.faceKey)
+      for (const token of section.faceKey.split('#')[0].split('|')) {
+        if (!sides.has(token) && !earlierIds.has(token)) {
+          ctx.addIssue({ code: 'custom', path: ['sections', index, 'faceKey'], message: `Light "${section.faceKey}" names "${token}", which is not in this panel.` })
         }
-        const key = `${section.row}:${section.col}`
-        if (seen.has(key)) {
-          ctx.addIssue({ code: 'custom', path: ['sections', index], message: `Duplicate section at (${section.row}, ${section.col}).` })
-        }
-        seen.add(key)
-      })
-    }
-
-    // A divider profile is required exactly when there's a divider to
-    // make (decision 4); a 1×1 panel has none to profile.
-    const isGridded = cols > 1 || rows > 1
-    if (isGridded && panel.dividerProfile == null) {
-      ctx.addIssue({ code: 'custom', path: ['dividerProfile'], message: 'A panel split into more than one section needs a divider profile.' })
-    }
-    if (!isGridded && panel.dividerProfile != null) {
-      ctx.addIssue({ code: 'custom', path: ['dividerProfile'], message: 'A single-section panel has no divider.' })
-    }
+      }
+    })
 
     // Per-section kind rules (decision 6 / decision 11): opening needs
     // a sash; fixed has neither a sash nor an opening type nor a fly
@@ -357,26 +338,6 @@ export const windowPanelSchema = z
       }
     })
 
-    // Arch + grid interaction (decision 5): dividers only run under an
-    // arch as transoms, never as mullions, and a Round head's rise is
-    // pinned to half the width so it can't survive a second row.
-    if (panel.headShape !== HeadShape.FLAT && cols > 1) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['headShape'],
-        message: 'An arched head needs a single column — vertical dividers are not supported under an arch.',
-      })
-    }
-    if (panel.headShape === HeadShape.ROUND && rows > 1) {
-      ctx.addIssue({ code: 'custom', path: ['headShape'], message: 'A round head needs a single row: its rise is fixed at half the width.' })
-    }
-    if (rows > 1 && panel.headShape !== HeadShape.FLAT && panel.headRiseMm !== panel.rowHeights[0]) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['headRiseMm'],
-        message: `With more than one row, the stored rise must equal the top row's pitch (${panel.rowHeights[0]}).`,
-      })
-    }
   })
 export type WindowPanelInput = z.infer<typeof windowPanelSchema>
 
@@ -423,8 +384,7 @@ export type UpdateWindowInput = z.infer<typeof updateWindowSchema>
  * same reasoning `WindowPanelDetail` below has for the panel).
  */
 export interface WindowSectionDetail {
-  row: number
-  col: number
+  faceKey: string
   kind: SectionKind
   sashProfile: string | null
   beadProfile: string | null
@@ -433,6 +393,16 @@ export interface WindowSectionDetail {
   glass: string
   hasFlyScreen: boolean
   sliding: SlidingLayoutInput | null
+}
+
+/** One divider as read back — the input shape, profile as a raw ref. */
+export interface WindowDividerDetail {
+  id: string
+  from: DividerAnchorInput
+  to: DividerAnchorInput
+  sagMm: number
+  profile: string | null
+  cut: DividerCutInput
 }
 
 /**
@@ -449,15 +419,13 @@ export interface WindowPanelDetail {
   heightMm: number
   frameProfile: string
   dividerProfile: string | null
-  columnWidths: number[]
-  rowHeights: number[]
+  dividers: WindowDividerDetail[]
   sections: WindowSectionDetail[]
   isDoor: boolean
   interiorColor: string | null
   exteriorColor: string | null
   headShape: HeadShape
   headRiseMm: number | null
-  bars: WindowBarInput[]
 }
 
 /**

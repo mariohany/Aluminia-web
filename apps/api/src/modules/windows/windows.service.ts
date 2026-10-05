@@ -12,6 +12,8 @@ import {
   type UpdateWindowInput,
   type WindowDetail,
   type WindowPanelInput,
+  type WindowDividerDetail,
+  type WindowDividerInput,
   type WindowPanelDetail,
   type WindowSectionInput,
   type WindowSectionDetail,
@@ -24,6 +26,7 @@ import {
 } from '@repo/types/company-lookups';
 import { Project } from '../../database/tenant/entities/project.entity';
 import { Window } from '../../database/tenant/entities/window.entity';
+import { WindowDivider } from '../../database/tenant/entities/window-divider.entity';
 import { WindowPanel } from '../../database/tenant/entities/window-panel.entity';
 import { WindowSection } from '../../database/tenant/entities/window-section.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
@@ -54,10 +57,14 @@ export class WindowsService {
         // parent one is requested — `panels: true` alone loads every
         // panel with `sections: undefined`, not `[]`, so `panels:
         // { sections: true }` is required here too.
-        relations: { panels: { sections: true } },
+        relations: { panels: { sections: true, dividers: true } },
         order: {
           name: 'ASC',
-          panels: { position: 'ASC', sections: { row: 'ASC', col: 'ASC' } },
+          panels: {
+            position: 'ASC',
+            sections: { position: 'ASC' },
+            dividers: { position: 'ASC' },
+          },
         },
       });
       return windows.map(toSummary);
@@ -187,8 +194,29 @@ export class WindowsService {
         saved[i].id,
         panels[i].sections,
       );
+      saved[i].dividers = await this.writeDividers(
+        manager,
+        saved[i].id,
+        panels[i].dividers,
+      );
     }
     return saved;
+  }
+
+  private async writeDividers(
+    manager: EntityManager,
+    panelId: string,
+    dividers: WindowDividerInput[],
+  ): Promise<WindowDivider[]> {
+    if (dividers.length === 0) return [];
+    const rows = dividers.map((divider, position) =>
+      manager.create(WindowDivider, {
+        ...toDividerColumns(divider),
+        panelId,
+        position,
+      }),
+    );
+    return manager.save(rows);
   }
 
   private async writeSections(
@@ -196,10 +224,11 @@ export class WindowsService {
     panelId: string,
     sections: WindowSectionInput[],
   ): Promise<WindowSection[]> {
-    const rows = sections.map((section) =>
+    const rows = sections.map((section, position) =>
       manager.create(WindowSection, {
         ...toSectionColumns(section),
         panelId,
+        position,
       }),
     );
     return manager.save(rows);
@@ -213,9 +242,13 @@ export class WindowsService {
       where: { id },
       // See list()'s own comment: the nested relation needs its own
       // explicit `true`, TypeORM does not cascade it from the parent.
-      relations: { panels: { sections: true } },
+      relations: { panels: { sections: true, dividers: true } },
       order: {
-        panels: { position: 'ASC', sections: { row: 'ASC', col: 'ASC' } },
+        panels: {
+          position: 'ASC',
+          sections: { position: 'ASC' },
+          dividers: { position: 'ASC' },
+        },
       },
     });
     // 404 rather than 403 for another tenant's id — same reasoning as
@@ -256,28 +289,18 @@ export class WindowsService {
 /** Normalises the origin and every panel's head, then enforces overlap
  * and connectivity.
  *
- * The four structural rules on a panel's own `headShape`/`bars` (flat
- * ⇔ null rise, bars only on a non-flat head, unique bar ids, every
- * anchor referencing something earlier in the array) — and, as of the
- * sections feature, every grid rule too (`columnWidths`/`rowHeights`
- * summing to the panel's own size, one section per cell, the
- * divider-profile requirement, the arch+grid interaction) — are NOT
- * re-checked here. Unlike overlap/connectivity — genuinely cross-panel
- * relationships a single-object Zod schema cannot see — all of these
- * are scoped entirely to one panel's own fields (its `sections` array
- * included), and `windowPanelSchema`'s `superRefine`
- * (packages/types/src/windows.ts) already enforces them on every
- * request via the global `ZodValidationPipe` (`AppModule`'s
- * `APP_PIPE`) before this method ever runs. `docs/sections_planing.md`
- * §2 originally called for a separate `validateGrid` here — deliberately
- * NOT built: nothing else in the codebase calls
- * `WindowsService.create`/`.update` outside that HTTP path, so it would
- * validate input that literally cannot reach this line unvalidated,
- * pure duplication with no defensive value (see `assertNoOverlap`/
- * `assertConnected`'s own comment: the service re-checks what Zod
- * structurally cannot see, not everything a client sends — and a
- * panel's own grid IS something Zod's per-panel `superRefine` can see
- * in full). */
+ * Every rule scoped to ONE panel's own fields — head shape and rise,
+ * divider ids and their anchor ordering, the default-profile
+ * requirement, section face keys — is NOT re-checked here:
+ * `windowPanelSchema`'s `superRefine` (packages/types/src/windows.ts)
+ * already enforces it on every request via the global
+ * `ZodValidationPipe` before this method runs, and nothing calls
+ * `WindowsService.create`/`.update` outside that HTTP path. The service
+ * re-checks only what Zod structurally cannot see: relationships
+ * BETWEEN panels (overlap, connectivity). Light GEOMETRY (that the
+ * face keys match the lights the dividers really make) needs the arch
+ * maths only apps/web has — the editor's `lightsMismatch` blocks Save
+ * (docs/free_dividers_planing.md's assumptions). */
 function prepareAssembly(panels: WindowPanelInput[]): WindowPanelInput[] {
   const normalized = normalizeHeads(normalizeOrigin(panels));
   assertNoOverlap(normalized);
@@ -396,7 +419,10 @@ function assertConnected(panels: WindowPanelInput[]): void {
 
 function toPanelColumns(
   panel: WindowPanelInput,
-): Omit<WindowPanel, 'id' | 'window' | 'windowId' | 'position' | 'sections'> {
+): Omit<
+  WindowPanel,
+  'id' | 'window' | 'windowId' | 'position' | 'sections' | 'dividers'
+> {
   const framePair = resolveScopedRef(panel.frameProfile);
   const dividerPair = resolveOptionalScopedRef(panel.dividerProfile);
   const interiorPair = resolveOptionalScopedRef(panel.interiorColor);
@@ -411,8 +437,6 @@ function toPanelColumns(
     frameCompanyProfileId: framePair.companyId,
     dividerPlatformProfileId: dividerPair.platformId,
     dividerCompanyProfileId: dividerPair.companyId,
-    columnWidths: panel.columnWidths,
-    rowHeights: panel.rowHeights,
     isDoor: panel.isDoor,
     interiorColorPlatformId: interiorPair.platformId,
     interiorColorCompanyId: interiorPair.companyId,
@@ -420,21 +444,40 @@ function toPanelColumns(
     exteriorColorCompanyId: exteriorPair.companyId,
     headShape: panel.headShape,
     headRiseMm: panel.headRiseMm ?? null,
-    bars: panel.bars,
+  };
+}
+
+function toDividerColumns(
+  divider: WindowDividerInput,
+): Omit<WindowDivider, 'id' | 'panel' | 'panelId' | 'position'> {
+  const profilePair = resolveOptionalScopedRef(divider.profile);
+  return {
+    dividerKey: divider.id,
+    fromOn: divider.from.on,
+    fromAt: divider.from.at,
+    toOn: divider.to.on,
+    toAt: divider.to.at,
+    sagMm: divider.sagMm,
+    profilePlatformId: profilePair.platformId,
+    profileCompanyId: profilePair.companyId,
+    cutLengthMm: divider.cut.lengthMm,
+    cutFromLeftDeg: divider.cut.fromLeftDeg,
+    cutFromRightDeg: divider.cut.fromRightDeg,
+    cutToLeftDeg: divider.cut.toLeftDeg,
+    cutToRightDeg: divider.cut.toRightDeg,
   };
 }
 
 function toSectionColumns(
   section: WindowSectionInput,
-): Omit<WindowSection, 'id' | 'panel' | 'panelId'> {
+): Omit<WindowSection, 'id' | 'panel' | 'panelId' | 'position'> {
   const sashPair = resolveOptionalScopedRef(section.sashProfile);
   const beadPair = resolveOptionalScopedRef(section.beadProfile);
   const glassPair = resolveScopedRef(section.glass);
   const isSingle = section.glassKind === GlassKind.SINGLE;
 
   return {
-    row: section.row,
-    col: section.col,
+    faceKey: section.faceKey,
     sectionKind: section.kind,
     sashPlatformProfileId: sashPair.platformId,
     sashCompanyProfileId: sashPair.companyId,
@@ -505,23 +548,27 @@ function orderedPanels(window: Window): WindowPanel[] {
 }
 
 /**
- * A panel's sections, row-major (row ascending, then col ascending) —
- * the same order `columnWidths`/`rowHeights` imply. A panel with none
- * is impossible through this service for the same reason
- * `orderedPanels` gives: the grid always has at least one cell.
+ * A panel's sections in the order the editor sent them (top to bottom,
+ * then left to right — docs/free_dividers_planing.md §4.2). A panel with
+ * none is impossible through this service: every panel has at least one
+ * light.
  */
 function orderedSections(panel: WindowPanel): WindowSection[] {
   const sections = panel.sections ?? [];
   if (sections.length === 0) {
     throw new Error(`Panel ${panel.id} has no sections.`);
   }
-  return [...sections].sort((a, b) => a.row - b.row || a.col - b.col);
+  return [...sections].sort((a, b) => a.position - b.position);
+}
+
+function orderedDividers(panel: WindowPanel): WindowDivider[] {
+  return [...(panel.dividers ?? [])].sort((a, b) => a.position - b.position);
 }
 
 function toSummary(window: Window): WindowSummary {
   const panels = orderedPanels(window);
   // The card's frame is the FIRST panel's, its glass is that panel's
-  // FIRST (row 0, col 0) section's — an assembly has no single frame
+  // FIRST (top-left) section's — an assembly has no single frame
   // or glass. The card draws the whole thing, so the full panel set
   // goes out with the summary: these rows are already loaded (resolving
   // `first`/`firstSection` needs them anyway), and the alternative is
@@ -558,8 +605,7 @@ function toGlassRef(section: WindowSection): ScopedRef {
 
 function toSectionDetail(section: WindowSection): WindowSectionDetail {
   return {
-    row: section.row,
-    col: section.col,
+    faceKey: section.faceKey,
     kind: section.sectionKind as WindowSectionDetail['kind'],
     sashProfile: toOptionalScopedRef(
       section.sashPlatformProfileId,
@@ -591,8 +637,7 @@ function toPanelDetail(panel: WindowPanel): WindowPanelDetail {
       panel.dividerPlatformProfileId,
       panel.dividerCompanyProfileId,
     ),
-    columnWidths: panel.columnWidths,
-    rowHeights: panel.rowHeights,
+    dividers: orderedDividers(panel).map(toDividerDetail),
     sections: orderedSections(panel).map(toSectionDetail),
     isDoor: panel.isDoor,
     interiorColor: toOptionalScopedRef(
@@ -605,7 +650,26 @@ function toPanelDetail(panel: WindowPanel): WindowPanelDetail {
     ),
     headShape: panel.headShape as WindowPanelDetail['headShape'],
     headRiseMm: panel.headRiseMm,
-    bars: panel.bars,
+  };
+}
+
+function toDividerDetail(divider: WindowDivider): WindowDividerDetail {
+  return {
+    id: divider.dividerKey,
+    from: { on: divider.fromOn, at: divider.fromAt },
+    to: { on: divider.toOn, at: divider.toAt },
+    sagMm: divider.sagMm,
+    profile: toOptionalScopedRef(
+      divider.profilePlatformId,
+      divider.profileCompanyId,
+    ),
+    cut: {
+      lengthMm: divider.cutLengthMm,
+      fromLeftDeg: divider.cutFromLeftDeg,
+      fromRightDeg: divider.cutFromRightDeg,
+      toLeftDeg: divider.cutToLeftDeg,
+      toRightDeg: divider.cutToRightDeg,
+    },
   };
 }
 

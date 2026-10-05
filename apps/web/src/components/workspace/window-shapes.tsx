@@ -1,10 +1,10 @@
 import { SystemType } from '@repo/types/lookups'
 import { HingedOpeningType, HeadShape } from '@repo/types/windows'
 import { DOUBLE_DOOR_OPENING_TYPES, type WindowPart } from '@/lib/window-geometry'
-import { headPointAt, insetHeadOutline, type HeadOutline, type PointMm } from '@/lib/arch-geometry'
-import { pointAlongBar, resolveBar } from '@/lib/arch-bars'
+import { headPointAt, insetHeadOutline, type HeadOutline } from '@/lib/arch-geometry'
+import { loopToSvgPath } from '@/lib/light-graph'
+import { interiorPoint, samplePath } from '@/lib/curves'
 import type { ProfileMetrics } from '@/lib/profile-metrics'
-import type { WindowBarInput } from '@repo/types/windows'
 import { movesLeft, movesRight } from '@repo/types/sliding'
 
 /**
@@ -341,6 +341,7 @@ export function renderFrameDetail({
   frameOpening,
   frameOutline,
   innerOutline,
+  clearOutline,
   hasSashes,
   fixedGlasses,
   doorHinged,
@@ -350,10 +351,14 @@ export function renderFrameDetail({
   frame: WindowPart
   frameOpening: WindowPart['rectMm'] | null
   frameOutline: HeadOutline | null
-  /** The arched hole in the frame ring: the single sash's outline, or
-   * on a fixed light (no sash) the single glass's — always section 0's,
-   * the only section an arch ever touches. */
+  /** The whole-arch light's sash outline, or on a fixed whole-arch light
+   * its glass's — `null` once dividers split the arch, when each arch
+   * light carries its own bead (docs/free_dividers_planing.md §5.2). */
   innerOutline: HeadOutline | null
+  /** The arched frame's clear opening (frame inset by its face) — where
+   * the frame ring stops and the bottom miters aim when there is no
+   * whole-arch light. */
+  clearOutline: HeadOutline | null
   /** Flat branch: does ANY section in this panel have a sash — decides
    * how far the frame's own corner miter reaches (docs/
    * sections_planing.md §4: "frame miters are unchanged" — kept as one
@@ -373,21 +378,35 @@ export function renderFrameDetail({
   style: DetailStyle
 }): React.ReactNode {
   const { frameFill, seamStroke, strokeWeight } = style
+  // Rectangular fixed lights get the four bead pieces; a shaped arch
+  // light its bead ring (clear opening minus glass); the whole-arch
+  // fixed light its curved band below.
+  const otherBeads = (
+    <>
+      {fixedGlasses.filter((g) => !g.head && !g.outline).flatMap((glass) => beadRects(glass, metrics.beadFace, style))}
+      {fixedGlasses.map((glass) => {
+        const d = shapedBeadPath(glass)
+        return d ? <path key={`bead-${glass.id}`} d={d} fillRule="evenodd" fill={frameFill} stroke={seamStroke} strokeWidth={strokeWeight * 0.8} /> : null
+      })}
+    </>
+  )
   if (frameOutline) {
-    if (!innerOutline) return null
+    const opening = innerOutline ?? clearOutline
+    if (!opening) return null
     // A fixed light's bead is bent round the frame's own head, the
     // same curved band + bottom piece a sash gets — with the frame as
     // the holder (`frameFace + beadFace` in to the glass).
-    const fixedBead = hasSashes
-      ? null
-      : archBeadPieces(frameOutline, innerOutline, metrics.frameFace + metrics.beadFace, metrics.beadFace)
+    const fixedBead =
+      hasSashes || !innerOutline
+        ? null
+        : archBeadPieces(frameOutline, innerOutline, metrics.frameFace + metrics.beadFace, metrics.beadFace)
     return (
       <g pointerEvents="none">
         {archFaceSeamPaths(frameOutline, FRAME_SEAM_OFFSETS_MM, metrics.frameFace).map((d, i) => (
           <path key={i} d={d} fill="none" stroke={seamStroke} strokeWidth={strokeWeight * 0.8} opacity={0.7} />
         ))}
         <path
-          d={miterLinesPath(frame.rectMm, fixedBead ? fixedBead.bottom : innerOutline.rect, 'bottom')}
+          d={miterLinesPath(frame.rectMm, fixedBead ? fixedBead.bottom : opening.rect, 'bottom')}
           fill="none"
           stroke={seamStroke}
           strokeWidth={strokeWeight}
@@ -412,6 +431,7 @@ export function renderFrameDetail({
             />
           </>
         )}
+        {otherBeads}
       </g>
     )
   }
@@ -431,7 +451,7 @@ export function renderFrameDetail({
         stroke={seamStroke}
         strokeWidth={strokeWeight}
       />
-      {fixedGlasses.flatMap((glass) => beadRects(glass, metrics.beadFace, style))}
+      {otherBeads}
     </g>
   )
 }
@@ -505,6 +525,10 @@ export function renderSashDetail({
  * colour rather than a `DetailStyle`.
  */
 export function renderDivider(divider: WindowPart, fill: string, stroke: string, strokeWidth: number): React.ReactNode {
+  // Its band: the face width along its centreline, each end cut against
+  // what it lands on (light-graph.ts) — a plain rect for a straight
+  // mullion/transom, anything at all in the arch.
+  if (divider.band) return <path d={loopToSvgPath(divider.band)} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" />
   return (
     <rect
       x={divider.rectMm.x}
@@ -524,7 +548,7 @@ export function renderDivider(divider: WindowPart, fill: string, stroke: string,
 export function renderGasket(glass: WindowPart, glassOutline: HeadOutline | null, strokeWeight: number): React.ReactNode {
   return (
     <path
-      d={archOutlinePath(glassOutline ?? { rect: glass.rectMm, shape: HeadShape.FLAT, riseMm: 0 })}
+      d={glass.outline ? loopToSvgPath(glass.outline) : archOutlinePath(glassOutline ?? { rect: glass.rectMm, shape: HeadShape.FLAT, riseMm: 0 })}
       fill="none"
       stroke={GASKET_STROKE}
       strokeWidth={strokeWeight * 1.6}
@@ -582,38 +606,20 @@ export function outlineOf(part: WindowPart): HeadOutline | null {
   return part.head ? { rect: part.rectMm, shape: part.head.shape, riseMm: part.head.riseMm } : null
 }
 
-// ---- Glazing bars -----------------------------------------------------
-
-/** SVG path data for one bar between two already-resolved points
- * (`resolveBar` in arch-bars.ts). A straight line for `sagMm === 0`;
- * otherwise sampled from the same `pointAlongBar` the anchor system
- * itself uses, for the same reason `archOutlinePath` samples
- * `headPointAt` rather than deriving its own arc command. */
-export function barPath(from: PointMm, to: PointMm, sagMm: number, segments = 16): string {
-  if (sagMm === 0) return `M${from.x} ${from.y} L${to.x} ${to.y}`
-  const pts: string[] = []
-  for (let i = 0; i <= segments; i++) {
-    const p = pointAlongBar(from, to, sagMm, i / segments)
-    pts.push(`${p.x} ${p.y}`)
-  }
-  return `M${pts.join(' L')}`
+/** The closed outline of any glazed part, whatever its shape: a shaped
+ * arch light's own loop (docs/free_dividers_planing.md §4.3), an arched
+ * part's head outline, or its plain rect. */
+export function partOutlinePath(part: WindowPart): string {
+  if (part.outline) return loopToSvgPath(part.outline)
+  return archOutlinePath(outlineOf(part) ?? { rect: part.rectMm, shape: HeadShape.FLAT, riseMm: 0 })
 }
 
-/** Every bar in a panel, resolved against its glass outline and turned
- * into path data — the one call both drawing components make to get
- * everything they need to render the bar layer. A bar whose anchor
- * chain is broken (a dangling reference mid-edit) is silently dropped
- * rather than drawn wrong; `resolveBar` already returns `null` for
- * exactly that rather than throwing. */
-export function barPathsFor(bars: WindowBarInput[], glassOutline: HeadOutline): { id: string; d: string }[] {
-  const paths: { id: string; d: string }[] = []
-  for (const bar of bars) {
-    const resolved = resolveBar(bar, bars, glassOutline)
-    if (!resolved) continue
-    paths.push({ id: bar.id, d: barPath(resolved.from, resolved.to, bar.sagMm) })
-  }
-  return paths
+/** A shaped light's bead: the ring between its clear opening and its
+ * glass, as one even-odd path. `null` for every other part. */
+export function shapedBeadPath(part: WindowPart): string | null {
+  return part.outline && part.clearOutline ? `${loopToSvgPath(part.clearOutline)} ${loopToSvgPath(part.outline)}` : null
 }
+
 // ---- Opening-type symbols -------------------------------------------
 //
 // One hinge/pivot/handle glyph per HingedOpeningType icon, transcribed
@@ -1169,16 +1175,19 @@ export function renderFixedSymbols(glasses: WindowPart[]): React.ReactNode {
       {glasses.map((glass) => {
         const { x, y, width, height } = glass.rectMm
         const scale = Math.min(width, height)
+        // A shaped arch light is marked at its deepest point and sized to
+        // fit inside it — its bounding-box centre can sit on a spoke.
+        const inner = glass.outline ? interiorPoint(samplePath(glass.outline)) : null
         // Kept inside the pane's middle 40% vertically so it clears the
         // section letter sitting in the bottom band of a shallow transom,
         // and capped in mm so a big picture window gets a mark, not a
         // crosshair the size of a door.
-        const arm = Math.min(width * 0.28, height * 0.2, 150)
+        const arm = inner ? Math.min(inner.radius * 0.7, 150) : Math.min(width * 0.28, height * 0.2, 150)
         // Clamped so a shallow transom's mark keeps the same line weight
         // as the big lights next to it, and a big light doesn't fatten.
         const strokeWidth = Math.min(Math.max(scale * 0.024, 12), 14)
-        const cx = x + width / 2
-        const cy = y + height / 2
+        const cx = inner ? inner.point.x : x + width / 2
+        const cy = inner ? inner.point.y : y + height / 2
         return (
           <g key={glass.id} strokeWidth={strokeWidth} strokeDasharray={`${strokeWidth * 2.5} ${strokeWidth * 1.7}`}>
             <line x1={cx - arm} y1={cy} x2={cx + arm} y2={cy} />

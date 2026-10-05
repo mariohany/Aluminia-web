@@ -12,7 +12,7 @@ import {
   type MergedSystemCatalogSummary,
   type MergedSystemProfileSummary,
 } from '@/lib/lookup-merge'
-import type { WindowBarInput, WindowPanelDetail, WindowSectionInput } from '@repo/types/windows'
+import type { WindowDividerInput, WindowPanelDetail, WindowSectionInput } from '@repo/types/windows'
 import type { SlidingLayoutInput } from '@repo/types/sliding'
 import {
   buildAssemblyLayout,
@@ -25,19 +25,21 @@ import {
 import { resolveProfileMetrics, type ProfileMetrics } from '@/lib/profile-metrics'
 import { collectPanelIssues, collectWindowIssues, type WindowIssue } from '@/lib/window-weight'
 import { headBendRadiusMm } from '@/lib/arch-geometry'
+import { dividerProblems, resolveDividers } from '@/lib/dividers'
+import { radiusFromSag } from '@/lib/divider-draw'
+import { isFixedOnlyLight, lightPitch, panelLights, withAlignedSections } from '@/lib/panel-lights'
+import type { IssueLight } from '@/lib/window-weight'
 
 /** The bead allowance subtracted from a sash's max glass thickness to
  * get the largest glass build-up it can actually take. See
  * docs/window_creation_planing.md §5's "The glass rule". */
 export const BEAD_ALLOWANCE_MM = 2
 
-/** One grid cell's catalogue-resolved facts, on top of what
+/** One light's catalogue-resolved facts, on top of what
  * `WindowSectionLayoutInput` already gives `buildWindowLayout` — a
  * `SectionRender` IS a `WindowSectionLayoutInput`, so it can be passed
  * straight into `buildWindowLayout`'s `sections[]` without remapping. */
 export interface SectionRender extends WindowSectionLayoutInput {
-  row: number
-  col: number
   /** Hex of this section's glass colour — only a glass COMBINATION has
    * one (a coloured sheet in its build-up); a plain single pane has no
    * colour field at all. */
@@ -68,19 +70,14 @@ export interface PanelRender {
    * the frame AND every divider (decision 10: a divider fills in
    * `frameFill`, the same face colour, not a colour of its own). */
   frameHex: string | null
-  /** Boundary-to-boundary pitches — see `WindowLayoutInput`'s own
-   * comment on why these aren't clear glass sizes. */
-  columnWidths: number[]
-  rowHeights: number[]
-  /** Row-major, one per grid cell — see `buildWindowLayout`. */
+  /** The panel's dividers, passed straight to `buildWindowLayout`. */
+  dividers: WindowDividerInput[]
+  /** One per light, in display order (panel-lights.ts). */
   sections: SectionRender[]
   /** Raw panel fields, not catalogue-resolved — passed straight through
-   * so the drawing can build a `HeadOutline` from whichever `WindowPart`
-   * actually carries the matching `head` (see window-geometry.ts) and
-   * resolve `bars` against it. `[]` on a flat panel, same as stored. */
+   * to `buildWindowLayout`. */
   headShape: HeadShape
   headRiseMm: number | null
-  bars: WindowBarInput[]
   /** The frame PROFILE's rail count (planing §11) — what the sliding
    * painters and the icon's plan strip draw depth against. `null` until
    * a frame is picked, or for a profile that has none. */
@@ -138,6 +135,12 @@ export interface PanelInfo {
 }
 
 export interface ResolvedPanel {
+  /** The panel as given, with its sections aligned one per light in
+   * display order (panel-lights.ts) — what `info.sections` and
+   * `render.sections` index. Equal to the input for an editor panel,
+   * which is always kept aligned; differs only for a saved panel that
+   * still carries a `migrated:` light (docs/free_dividers_planing.md §2). */
+  panel: WindowPanelInput
   info: PanelInfo
   render: PanelRender
 }
@@ -213,14 +216,16 @@ export function useResolvedPanels(
   const hexFor = (ref: string | null | undefined): string | null =>
     ref ? (colorsQuery.data?.find((c) => formatScopedRef(c.scope, c.id) === ref)?.hex ?? null) : null
 
-  return panels.map((panel) => {
-    const frame = profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === panel.frameProfile)
+  return panels.map((given) => {
+    const frame = profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === given.frameProfile)
     const frameCatalog = catalogsQuery.data?.find((c) => formatScopedRef(c.scope, c.id) === frame?.catalog)
-    const dividerProfile = panel.dividerProfile
-      ? profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === panel.dividerProfile)
+    const dividerProfile = given.dividerProfile
+      ? profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === given.dividerProfile)
       : undefined
     const systemType = frameCatalog?.systemType ?? null
     const showDoor = systemType === SystemType.HINGED
+    const metrics = resolveProfileMetrics(given.frameProfile)
+    const panel = withAlignedSections(null, given, { metrics, doorSill: given.isDoor && showDoor })
     const flyScreenAllowed = frame?.acceptsFlyScreen ?? false
 
     const shown = face === 'interior' ? panel.interiorColor : panel.exteriorColor
@@ -279,8 +284,7 @@ export function useResolvedPanels(
         currentCombination,
       })
       sectionRenders.push({
-        row: section.row,
-        col: section.col,
+        faceKey: section.faceKey,
         kind: section.kind,
         hasSash: !!section.sashProfile,
         openingType: section.openingType ?? null,
@@ -297,6 +301,7 @@ export function useResolvedPanels(
     }
 
     return {
+      panel,
       info: {
         frame,
         frameCatalog,
@@ -314,15 +319,13 @@ export function useResolvedPanels(
         hasFrame: !!frame,
         isDoor: panel.isDoor,
         frameHex,
-        columnWidths: panel.columnWidths,
-        rowHeights: panel.rowHeights,
+        dividers: panel.dividers,
         sections: sectionRenders,
         headShape: panel.headShape,
         headRiseMm: panel.headRiseMm ?? null,
-        bars: panel.bars,
         slidingRails: frame?.slidingRails ?? null,
         face,
-        metrics: resolveProfileMetrics(panel.frameProfile),
+        metrics,
       },
     }
   })
@@ -356,28 +359,30 @@ export function useWindowIssues(panels: WindowPanelDetail[]): WindowIssue[] {
     headShape: render.headShape,
     headRiseMm: render.headRiseMm,
     metrics: render.metrics,
-    columnWidths: render.columnWidths,
-    rowHeights: render.rowHeights,
+    dividers: render.dividers,
     sections: render.sections,
   }))
   const { parts } = buildAssemblyLayout(layoutInput)
 
   const issues: WindowIssue[] = []
-  panels.forEach((panel, i) => {
-    const info = resolved[i].info
+  resolved.forEach(({ panel, info }, i) => {
+    const raw = panels[i]
     const panelParts = parts.filter((p) => p.panelIndex === i)
     const framePart = panelParts.find((p) => p.kind === 'frame')
     const hasArchedHeadHere = !!framePart?.head
     const hasPanelOnTop = panels.some((other, j) => j !== i && touchesTopEdge(panel, other))
+    const lights = panelIssueLights(panel, resolved[i].render)
 
     issues.push(
       ...collectPanelIssues({
         dividerProfile: panel.dividerProfile,
-        columnWidths: panel.columnWidths,
-        rowHeights: panel.rowHeights,
-        widthMm: panel.widthMm,
-        heightMm: panel.heightMm,
-        headShape: panel.headShape,
+        dividerCount: panel.dividers.length,
+        dividerProblemPartIds: lights.dividerProblems.map((id) => `p${i}:div-${id}`),
+        dividerBends: lights.bends.map((b) => ({ partId: `p${i}:div-${b.id}`, radiusMm: b.radiusMm })),
+        minBendRadiusMm: resolved[i].render.metrics.minBendRadius,
+        metricsSource: resolved[i].render.metrics.source,
+        lightsMismatch: lights.mismatch,
+        lightsChanged: raw.sections.some((s) => s.faceKey.startsWith('migrated:')),
         systemType: info.systemType,
         framePartId: framePart?.id ?? `p${i}:frame`,
         slidingRails: info.frame?.slidingRails ?? null,
@@ -417,9 +422,7 @@ export function useWindowIssues(panels: WindowPanelDetail[]): WindowIssue[] {
             : null,
           minBendRadiusMm: resolved[i].render.metrics.minBendRadius,
           metricsSource: resolved[i].render.metrics.source,
-          columnWidthMm: panel.columnWidths[section.col] ?? panel.widthMm,
-          rowHeightMm: panel.rowHeights[section.row] ?? panel.heightMm,
-          isArchedOpeningSection: hasArchedHeadHere && section.row === 0 && section.kind === SectionKind.OPENING,
+          light: lights.byKey.get(section.faceKey) ?? null,
           openingTypeRequired: section.kind === SectionKind.OPENING && info.showOpeningTypes && section.openingType == null,
         }),
       )
@@ -427,4 +430,37 @@ export function useWindowIssues(panels: WindowPanelDetail[]): WindowIssue[] {
   })
 
   return issues.filter((issue) => issue.severity === 'error')
+}
+
+/** What the issue rules need to know about a panel's lights: each one's
+ * pitch and shape by key, whether the stored sections match them one to
+ * one (`lightsMismatch`), and which dividers don't resolve or slant below
+ * the springing line. Shared by `useWindowIssues` and the editor's own
+ * issue pass. */
+export function panelIssueLights(
+  panel: Pick<WindowPanelInput, 'widthMm' | 'heightMm' | 'headShape' | 'headRiseMm' | 'dividers' | 'sections' | 'isDoor'>,
+  render: Pick<PanelRender, 'metrics' | 'systemType'>,
+): { byKey: Map<string, IssueLight>; mismatch: boolean; dividerProblems: string[]; bends: { id: string; radiusMm: number }[] } {
+  if (!Number.isFinite(panel.widthMm) || !Number.isFinite(panel.heightMm)) return { byKey: new Map(), mismatch: false, dividerProblems: [], bends: [] }
+  const ctx = { metrics: render.metrics, doorSill: panel.isDoor && render.systemType === SystemType.HINGED }
+  const { geo, graph } = panelLights(panel, ctx)
+  const byKey = new Map<string, IssueLight>()
+  for (const light of graph.lights) {
+    const pitch = lightPitch(light, panel, ctx)
+    byKey.set(light.key, {
+      pitchWidthMm: pitch ? pitch.x1 - pitch.x0 : null,
+      pitchHeightMm: pitch ? pitch.y1 - pitch.y0 : null,
+      glazable: !!light.clear,
+      fixedOnly: isFixedOnlyLight(light),
+      wholeArch: !!light.head,
+    })
+  }
+  const keys = panel.sections.map((s) => s.faceKey)
+  const mismatch = keys.length !== graph.lights.length || graph.lights.some((l) => !keys.includes(l.key))
+  const bends: { id: string; radiusMm: number }[] = []
+  for (const r of resolveDividers(geo, panel.dividers).values()) {
+    const radiusMm = radiusFromSag(Math.hypot(r.to.x - r.from.x, r.to.y - r.from.y), r.divider.sagMm)
+    if (radiusMm !== null) bends.push({ id: r.id, radiusMm })
+  }
+  return { byKey, mismatch, dividerProblems: dividerProblems(geo, panel.dividers).map((p) => p.id), bends }
 }

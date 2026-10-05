@@ -10,18 +10,17 @@ import { WindowPanel } from './window-panel.entity';
 import type { SlidingLayoutInput } from '@repo/types/sliding';
 
 /**
- * One cell of a panel's grid — a fixed light (bead + glass straight off
- * the frame/divider) or an opening leaf (sash + opening type + glass).
- * See docs/sections_planing.md. `row`/`col` are 0-based, row-major,
- * against the owning panel's own `columnWidths`/`rowHeights`; a 1×1
- * panel still has exactly one of these, at `(0, 0)`.
+ * One light of a panel — a closed area its frame and dividers make —
+ * either fixed (bead + glass straight off the frame/divider) or opening
+ * (sash + opening type + glass). See docs/free_dividers_planing.md.
+ * `face_key` is the light's identity (the sorted ids of the members
+ * around it, so moving a divider never loses its settings); `position`
+ * is the editor's display order. A panel with no dividers still has
+ * exactly one of these.
  *
- * Everything here used to live directly on `WindowPanel` — a panel
- * WAS one light. This table is what makes "+ → Transom/Mullion" grow
- * the same panel instead of coupling a second frame next to it: the
- * frame profile, divider profile, and grid stay on the panel; only
- * what varies per-light (sash, opening type, glass, fly screen) moves
- * here.
+ * What varies per light (sash, opening type, glass, fly screen,
+ * sliding layout) lives here; the frame profile, the default divider
+ * profile, the dividers themselves and the head stay on the panel.
  */
 @Entity('window_sections')
 export class WindowSection {
@@ -39,11 +38,14 @@ export class WindowSection {
   panel?: WindowPanel;
 
   /** 0-based, row-major within one panel. */
+  /** Display order (top to bottom, then left to right) as the editor
+   * sent it — docs/free_dividers_planing.md §4.2. */
   @Column({ type: 'integer' })
-  row: number;
+  position: number;
 
-  @Column({ type: 'integer' })
-  col: number;
+  /** The light's identity: sorted ids of the members around it. */
+  @Column({ name: 'face_key', type: 'varchar', length: 400 })
+  faceKey: string;
 
   // 'fixed' | 'opening' — see packages/types/src/windows.ts's
   // SectionKind. Plain varchar, same posture as glassKind/openingType

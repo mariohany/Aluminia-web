@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2 } from 'lucide-react'
 import { GlassKind, HeadShape, HingedOpeningType, SectionKind } from '@repo/types/windows'
@@ -84,21 +84,21 @@ export interface WindowPartPanelGlassOption {
  * and swaps this whole bundle when the selection moves to a different
  * section. */
 export interface ActiveSectionProps {
-  /** `row * cols + col` — matches every sash/glass/flyScreen part's own
-   * `sectionIndex`, so this block can pick its parts straight out of
-   * the panel's full layout without the caller pre-filtering them. */
+  /** Matches every sash/glass/flyScreen part's own `sectionIndex` (the
+   * light's place in display order), so this block can pick its parts
+   * straight out of the panel's full layout. */
   sectionIndex: number
-  row: number
-  col: number
   kind: SectionKind
+  /** An arch light other than the whole-arch one — fixed only (Q7,
+   * docs/free_dividers_planing.md): no opening choices are offered. */
+  fixedOnly: boolean
   onKindChange: (kind: SectionKind) => void
 
-  /** The section's own grid pitch — editable per docs/sections_planing.md's
-   * assumption that resizing a section grows the PANEL (never steals
-   * from a neighbour); `window-editor-page.tsx` routes this through
-   * `resizeSection`. */
-  widthMm: number
-  heightMm: number
+  /** The light's own boundary-to-boundary size — `null` for a shaped
+   * arch light, which has no width/height to type. Typing one grows the
+   * PANEL (Q14, `resizeLight`), never steals from a neighbour. */
+  widthMm: number | null
+  heightMm: number | null
   onWidthChange: (mm: number) => void
   onHeightChange: (mm: number) => void
 
@@ -155,6 +155,18 @@ export interface SelectedDividerProps {
    * one is picked. */
   profileNumber: string | undefined
   lengthMm: number
+  /** Present for an arch-zone divider, the only kind that bends (§6.5):
+   * its radius (`null` while straight) and the tightest one its chord
+   * allows, a half circle. */
+  bend: { radiusMm: number | null; minMm: number; onChange: (mm: number | null) => void } | null
+  /** Its own profile (Q12): `override` is set only when it differs from
+   * the panel default, which the picker shows otherwise. */
+  profile: { override: string | null; panelDefault: string | null; onChange: (ref: ScopedRef | null) => void }
+  /** A straight mullion/transom's position (Q15) — mm from the left, or
+   * up from the sill. `null` for an arch divider. */
+  position: { axis: 'v' | 'h'; valueMm: number; onChange: (mm: number) => void } | null
+  /** Each end, already translated: what it stands on and its cut. */
+  ends: string[]
   onRemove: () => void
 }
 
@@ -204,45 +216,15 @@ export interface WindowPartPanelProps {
   // `canHaveArchedHead()` from window-geometry.ts — false disables the
   // shape buttons rather than letting the user pick a shape
   // `buildWindowLayout` would silently draw flat (sliding, double-door,
-  // fixed-mullion, a hinged door, or — new with Sections — more than
-  // one column). `headRiseReadOnly` is docs/sections_planing.md's own
-  // rule: with more than one row the rise is DERIVED (pinned to the top
-  // row's own pitch), so the Rise input goes read-only instead of
-  // accepting a typed value that superRefine would just reject.
+  // or a hinged door).
   headShape: HeadShape
   headRiseMm: number | null
+  /** The frame face — the arch springs on the sill, never inside it
+   * (normalizeHeadRise). */
+  frameFaceMm: number
   onHeadShapeChange: (shape: HeadShape) => void
   onHeadRiseChange: (mm: number) => void
   headShapeAllowed: boolean
-  headRiseReadOnly: boolean
-  /** Round needs rows === 1 (its rise is pinned to width / 2, which
-   * can't survive a second row) — disabled distinctly from
-   * `headShapeAllowed` so its own hint explains why, rather than
-   * folding into the generic "not available" one. */
-  roundDisallowedGridded: boolean
-
-  // Bars — arch_windows_planing.md §6.1/§6.2. A persistent toggle (the
-  // user's own chosen interaction, over a one-shot tool): it stays on
-  // across multiple bars, and window-editor-page.tsx owns turning it back
-  // off (re-click, `Escape` with nothing pending, switching panels, or
-  // flattening the head).
-  barDrawMode: boolean
-  onBarDrawModeChange: (on: boolean) => void
-  barCount: number
-  /** Non-null while a bar is selected — arch_windows_planing.md §6.3.
-   * `lengthMm`/`radiusMm`/`minRadiusMm` are already resolved/derived,
-   * `null` only for a dangling anchor chain mid-edit (or, for
-   * `radiusMm` specifically, a straight bar — `R = ∞`), same as
-   * everywhere else a resolved value can legitimately be missing. */
-  selectedBar: { id: string; lengthMm: number | null; radiusMm: number | null; minRadiusMm: number | null } | null
-  /** Starts the delete confirm (button here, or `Delete`/`Backspace`
-   * on the drawing) — the actual removal, and the danger-colour
-   * highlight of what else goes with it, are owned by `WindowEditor`. */
-  onRequestDeleteBar: () => void
-  /** `null` clears the field, flattening the bar back to a line
-   * (§6.5) — the radius input's own mirror of dragging the bow handle
-   * to zero, not a separate control. */
-  onBarRadiusChange: (radiusMm: number | null) => void
 
   showDoor: boolean
   isDoor: boolean
@@ -301,7 +283,6 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
   const sectionRef = useRef<HTMLDivElement>(null)
   const dividerRef = useRef<HTMLDivElement>(null)
   const flyScreenRef = useRef<HTMLDivElement>(null)
-  const barRef = useRef<HTMLDivElement>(null)
   const sectionRefs: Partial<Record<WindowPartKind, React.RefObject<HTMLDivElement | null>>> = {
     sash: sectionRef,
     glass: sectionRef,
@@ -318,12 +299,6 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
     // not every render, and not a re-render of the layout itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.selectedPartId])
-
-  useEffect(() => {
-    if (!props.selectedBar) return
-    barRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.selectedBar?.id])
 
   return (
     <div className="flex flex-col gap-4 text-sm">
@@ -382,17 +357,12 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
             // is too wide for its own height: a real semicircle that
             // wide needs more vertical room than the panel has. Disable
             // the button itself rather than silently drawing a flatter
-            // curve than "round" promised. A gridded (rows > 1) panel
-            // disables Round for a different reason — its rise can't
-            // survive a second row at all.
+            // curve than "round" promised.
             const roundDoesNotFit = shape === HeadShape.ROUND && props.widthMm / 2 >= props.heightMm
-            const roundGridded = shape === HeadShape.ROUND && props.roundDisallowedGridded
-            const disabled = !props.headShapeAllowed || roundDoesNotFit || roundGridded
+            const disabled = !props.headShapeAllowed || roundDoesNotFit
             const disabledHint = !props.headShapeAllowed
               ? t('fields.headShapeDisabledHint')
-              : roundGridded
-                ? t('fields.headShapeRoundGriddedHint')
-                : roundDoesNotFit
+              : roundDoesNotFit
                   ? t('fields.headShapeRoundTooWideHint')
                   : undefined
             return (
@@ -433,98 +403,24 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
               label={t('fields.headRiseMm')}
               value={
                 props.headShape === HeadShape.ROUND
-                  ? normalizeHeadRise(HeadShape.ROUND, props.widthMm, 0, props.heightMm)
+                  ? normalizeHeadRise(HeadShape.ROUND, props.widthMm, 0, props.heightMm, props.frameFaceMm)
                   : (props.headRiseMm ?? 0)
               }
               onChange={props.onHeadRiseChange}
-              disabled={props.headShape === HeadShape.ROUND || props.headRiseReadOnly}
+              disabled={props.headShape === HeadShape.ROUND}
               // Below this, a gothic head's two arcs stop meeting at a
               // point and cross each other instead — a shape with no
               // real bend a fabricator could set out to. See
               // arch-geometry.ts's minGothicRiseMm.
               min={props.headShape === HeadShape.GOTHIC ? Math.ceil(minGothicRiseMm(props.widthMm)) + 1 : 1}
-              // At or above this, the springing line falls at or below
-              // the panel's own bottom edge — no jamb, and the curve
-              // starts extending outside the panel's own rect entirely.
-              // See arch-geometry.ts's normalizeHeadRise.
-              max={Math.max(Math.floor(props.heightMm) - 1, 1)}
+              // Above this, the springing line falls inside the sill —
+              // the curve runs on into the bottom frame member. See
+              // arch-geometry.ts's normalizeHeadRise.
+              max={Math.max(Math.floor(normalizeHeadRise(props.headShape, props.widthMm, props.heightMm, props.heightMm, props.frameFaceMm)), 1)}
             />
-            {props.headRiseReadOnly && (
-              <p className="mt-1 text-xs text-muted-foreground">{t('fields.headRiseGriddedHint')}</p>
-            )}
           </div>
         )}
       </div>
-
-      {props.headShape !== HeadShape.FLAT && (
-        <div>
-          <FieldLabel htmlFor="panel-bars-toggle">{t('fields.barsSection')}</FieldLabel>
-          <div className="mt-1.5 flex items-center gap-2">
-            <Button
-              id="panel-bars-toggle"
-              type="button"
-              size="sm"
-              variant={props.barDrawMode ? 'default' : 'outline'}
-              aria-pressed={props.barDrawMode}
-              onClick={() => props.onBarDrawModeChange(!props.barDrawMode)}
-            >
-              {props.barDrawMode ? t('fields.barsDrawingActive') : t('fields.barsDrawBar')}
-            </Button>
-            <span className="text-xs text-muted-foreground">{t('fields.barsCount', { count: props.barCount })}</span>
-          </div>
-          {props.barDrawMode && <p className="mt-1.5 text-xs text-muted-foreground">{t('fields.barsDrawHint')}</p>}
-        </div>
-      )}
-
-      {/* Shown once a bar is selected on the drawing — §7. */}
-      {props.selectedBar && (
-        <Section innerRef={barRef} title={t('windowDialog.design.sections.bar')} focused>
-          <p className="text-xs text-muted-foreground">
-            {props.selectedBar.lengthMm !== null
-              ? t('windowDialog.design.barLength', { length: Math.round(props.selectedBar.lengthMm) })
-              : t('windowDialog.design.barLengthUnknown')}
-          </p>
-          {/* Bow, or type the radius — §6.5. `line` and `arc` are never
-              two separate tools, only two values of this one field:
-              clearing it flattens the bar (`sagMm: 0`), typing a number
-              bows it. A typed radius below the chord's own half-length
-              can't fit — `onBarRadiusChange` clamps it server-side of
-              the callback (`sagFromRadius`), and what's shown back here
-              is always the ACTUAL current radius, so a too-small typed
-              value visibly snaps to the real minimum rather than just
-              silently accepting an impossible number. */}
-          {props.selectedBar.minRadiusMm !== null && (
-            <div>
-              <FieldLabel htmlFor="bar-radius">{t('fields.barRadiusMm')}</FieldLabel>
-              <Input
-                id="bar-radius"
-                className="mt-1.5"
-                type="number"
-                min={Math.ceil(props.selectedBar.minRadiusMm)}
-                dir="ltr"
-                placeholder="∞"
-                value={props.selectedBar.radiusMm !== null ? Math.round(props.selectedBar.radiusMm) : ''}
-                onChange={(e) => {
-                  const raw = e.target.value
-                  if (raw.trim() === '') {
-                    props.onBarRadiusChange(null)
-                    return
-                  }
-                  const parsed = Number(raw)
-                  if (Number.isFinite(parsed)) props.onBarRadiusChange(parsed)
-                }}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                {props.selectedBar.radiusMm === null ? t('fields.barRadiusStraight') : t('fields.barRadiusHint')}
-              </p>
-            </div>
-          )}
-          <Button type="button" size="sm" variant="destructive" onClick={props.onRequestDeleteBar}>
-            <Trash2 className="size-3.5" aria-hidden="true" />
-            {t('fields.barsDeleteButton')}
-          </Button>
-        </Section>
-      )}
 
       {props.showDoor && (
         <div className="flex flex-wrap gap-2">
@@ -573,14 +469,59 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
 
       {props.selectedDivider ? (
         <Section innerRef={dividerRef} title={props.selectedDivider.label} focused>
-          <p className="text-xs text-muted-foreground">
-            {props.selectedDivider.profileNumber
-              ? `${t('fields.dividerProfile')}: ${props.selectedDivider.profileNumber}`
-              : t('fields.dividerProfileRequired')}
-          </p>
+          <div>
+            <FieldLabel htmlFor="divider-profile">{t('windowDialog.design.dividerInspector.profile')}</FieldLabel>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {props.selectedDivider.profileNumber
+                ? props.selectedDivider.profile.override
+                  ? `${t('fields.dividerProfile')}: ${props.selectedDivider.profileNumber}`
+                  : t('windowDialog.design.dividerInspector.panelDefault', { profile: props.selectedDivider.profileNumber })
+                : t('fields.dividerProfileRequired')}
+            </p>
+            <div id="divider-profile" className="mt-1.5 h-40 min-h-0 rounded-md border border-border">
+              <ProfileTreePicker
+                profileType={ProfileType.TRANSOM}
+                value={props.selectedDivider.profile.override ?? props.selectedDivider.profile.panelDefault}
+                onChange={props.selectedDivider.profile.onChange}
+                catalogRef={props.frameCatalogRef}
+              />
+            </div>
+            {props.selectedDivider.profile.override && (
+              <Button type="button" size="sm" variant="ghost" className="mt-1" onClick={() => props.selectedDivider?.profile.onChange(null)}>
+                {t('windowDialog.design.dividerInspector.useDefault')}
+              </Button>
+            )}
+          </div>
+          {props.selectedDivider.position && (
+            <CommitNumberField
+              id="divider-position"
+              // Re-seeded when it moves from elsewhere (drag, nudge, undo).
+              key={props.selectedDivider.position.valueMm}
+              label={t(
+                props.selectedDivider.position.axis === 'v'
+                  ? 'windowDialog.design.dividerInspector.fromLeft'
+                  : 'windowDialog.design.dividerInspector.fromSill',
+              )}
+              valueMm={props.selectedDivider.position.valueMm}
+              onCommit={(mm) => mm !== null && props.selectedDivider?.position?.onChange(mm)}
+            />
+          )}
           <p className="text-xs text-muted-foreground">
             {t('windowDialog.design.dividerLength', { length: Math.round(props.selectedDivider.lengthMm) })}
           </p>
+          {props.selectedDivider.ends.map((line, i) => (
+            <p key={i} className="text-xs text-muted-foreground" dir="auto">
+              {line}
+            </p>
+          ))}
+          {props.selectedDivider.bend && (
+            <RadiusField
+              // Re-seeded whenever the bend changes from elsewhere (the
+              // drawing's handle, undo).
+              key={props.selectedDivider.bend.radiusMm ?? 'straight'}
+              {...props.selectedDivider.bend}
+            />
+          )}
           <Button type="button" size="sm" variant="destructive" onClick={props.selectedDivider.onRemove}>
             <Trash2 className="size-3.5" aria-hidden="true" />
             {t('windowDialog.design.removeDivider')}
@@ -708,7 +649,8 @@ function SectionBlock({
           for a hinged section, the grid below already carries
           `FIXED_CLOSED`, so a separate Fixed/Opening toggle would just
           be two ways to say the same thing (Mario, 2026-09-13). */}
-      {!section.showOpeningTypes && !section.isSliding && (
+      {section.fixedOnly && <p className="text-xs text-muted-foreground">{t('windowDialog.design.section.archLightFixed')}</p>}
+      {!section.fixedOnly && !section.showOpeningTypes && !section.isSliding && (
         <div role="group" aria-label={t('windowDialog.design.sections.section')} className="grid grid-cols-2 gap-1">
           {([SectionKind.FIXED, SectionKind.OPENING] as const).map((kind) => {
             const selected = section.kind === kind
@@ -730,7 +672,7 @@ function SectionBlock({
         </div>
       )}
 
-      {isGridded && (
+      {isGridded && section.widthMm !== null && section.heightMm !== null && (
         <div className="grid grid-cols-2 gap-2">
           <NumberField
             id="section-width"
@@ -800,7 +742,7 @@ function SectionBlock({
 
       {/* Mounted for a FIXED sliding section too — its Fixed tile is the
           selected one then, and any preset tile is the way back. */}
-      {section.isSliding && (
+      {!section.fixedOnly && section.isSliding && (
         <SlidingLayoutEditor
           layout={section.slidingLayout}
           rails={section.slidingRails}
@@ -812,7 +754,7 @@ function SectionBlock({
         />
       )}
 
-      {section.showOpeningTypes && (
+      {!section.fixedOnly && section.showOpeningTypes && (
         <div>
           <FieldLabel htmlFor="section-opening-type">{t('fields.openingTypeSection')}</FieldLabel>
           <div id="section-opening-type" role="group" aria-label={t('fields.openingTypeSection')} className="mt-1.5 grid grid-cols-8 gap-1">
@@ -1065,6 +1007,70 @@ function CheckboxChip({
       <Checkbox checked={checked} disabled={disabled} onCheckedChange={(next) => onCheckedChange(!!next)} />
       {label}
     </label>
+  )
+}
+
+/** A number committed on Enter or blur, not per key — typing "1500"
+ * must not move or bend a divider through 1, 15 and 150 on the way.
+ * Empty commits `null`. */
+function CommitNumberField({
+  id,
+  label,
+  valueMm,
+  min,
+  placeholder,
+  hint,
+  onCommit,
+}: {
+  id: string
+  label: string
+  valueMm: number | null
+  min?: number
+  placeholder?: string
+  hint?: string
+  onCommit: (mm: number | null) => void
+}) {
+  const [draft, setDraft] = useState(valueMm === null ? '' : String(valueMm))
+  const commit = () => {
+    const parsed = Number(draft)
+    if (draft.trim() === '') onCommit(null)
+    else if (Number.isFinite(parsed) && parsed > 0) onCommit(parsed)
+  }
+  return (
+    <div>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input
+        id={id}
+        className="mt-1.5"
+        type="number"
+        min={min}
+        dir="ltr"
+        placeholder={placeholder}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+        }}
+      />
+      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  )
+}
+
+/** A curved divider's radius. Empty means straight. */
+function RadiusField({ radiusMm, minMm, onChange }: { radiusMm: number | null; minMm: number; onChange: (mm: number | null) => void }) {
+  const { t } = useTranslation('workspace')
+  return (
+    <CommitNumberField
+      id="divider-radius"
+      label={t('windowDialog.design.dividerTool.radius')}
+      valueMm={radiusMm}
+      min={minMm}
+      placeholder={t('windowDialog.design.dividerTool.straight')}
+      hint={t('windowDialog.design.dividerTool.radiusHint', { min: minMm })}
+      onCommit={onChange}
+    />
   )
 }
 

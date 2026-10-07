@@ -77,8 +77,8 @@ import {
   type PanelSide,
 } from '@/lib/window-geometry'
 import { headBendRadiusMm, minGothicRiseMm, normalizeHeadRise, type PointMm } from '@/lib/arch-geometry'
-import { allMembers, anchorOn, bendDivider, dividerProblems, isFrameMember, moveEnd, planDelete, moveStraight, resolveDividers, swapCrossing, zoneOf, type Crossing } from '@/lib/dividers'
-import { pathProject } from '@/lib/curves'
+import { allMembers, anchorOn, bendDivider, dividerProblems, isFrameMember, moveEnd, planDelete, moveStraight, magnetPoints, resolveDividers, findCrossings, swapCrossing, zoneOf, type Crossing } from '@/lib/dividers'
+import { dist, pathProject } from '@/lib/curves'
 import { DeleteDividerDialog, type DeleteDividerRequest } from '@/components/workspace/delete-divider-dialog'
 import { defaultBowSign, radiusFromSag, sagFromRadius } from '@/lib/divider-draw'
 import {
@@ -90,6 +90,7 @@ import {
   panelGeometry,
   panelLights,
   dividerSides,
+  sidesMatch,
   headShapeDoomed,
   resizeLight,
   stretchForEdge,
@@ -858,6 +859,11 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
         keep.push(...(goesLeft ? sides.right : sides.left))
       }
     }
+    // Both sides set up alike — nothing to choose (Mario, 2026-10-06).
+    if (!keep && dividerIds.length === 1) {
+      const sides = dividerSides(panel, dividerIds[0], ctx)
+      if (sidesMatch(panel, sides)) keep = sides.left
+    }
     if (keep && dependents.length === 0) {
       applyDividerDelete(panelIndex, dividerIds, keep, 'extend')
       return
@@ -903,8 +909,8 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   }
 
   // The Divider tool's second click (docs/free_dividers_planing.md §6.4):
-  // the drawing has already added the divider, split at its crossings
-  // (Q3) and sorted; the lights re-align here and the new divider is
+  // the drawing has already added the divider, running through whatever
+  // it crosses (Q3, which is cut there) and sorted; the lights re-align here and the new divider is
   // selected. An unsized panel has no mm to anchor to, so nothing lands.
   const onDrawDivider = (panelIndex: number, dividers: WindowDividerInput[], added: string[]) => {
     const panel = panels[panelIndex]
@@ -928,8 +934,8 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       label,
     )
   }
-  // ⇄ on a cross (Q3): the cut piece runs through, the through member is
-  // cut there instead.
+  // Swapping a cross (Q3, from the right-click menu): the cut piece runs
+  // through, the through member is cut there instead.
   const onSwapCrossing = (panelIndex: number, crossing: Crossing) => {
     const panel = panels[panelIndex]
     if (!panel || !sized(panel)) return
@@ -943,10 +949,13 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   }
 
   // Dragging an arch divider's end along the member it stands on (§7).
-  // `point` is panel-local; it slides to the nearest point of that member.
+  // `point` is panel-local; it slides to the nearest point of that member,
+  // and within `toleranceMm` of a magnet point (`magnetPoints`: the
+  // member's middle and the middle of each stretch between ends already
+  // on it) it sticks there (Mario, 2026-10-05).
   // Held back where the divider would leave the arch zone with a slant
   // or a light would stop being glazable.
-  const onMoveDividerEnd = (dividerPartId: string, end: 'from' | 'to', point: PointMm) => {
+  const onMoveDividerEnd = (dividerPartId: string, end: 'from' | 'to', point: PointMm, toleranceMm: number) => {
     const part = drawingLayout.parts.find((p) => p.id === dividerPartId)
     const panel = part ? panels[part.panelIndex] : undefined
     if (!part?.dividerId || !panel || !sized(panel)) return
@@ -955,8 +964,13 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     const divider = panel.dividers.find((d) => d.id === part.dividerId)
     const host = divider && allMembers(geo, resolveDividers(geo, panel.dividers)).get(divider[end].on)
     if (!divider || !host) return
-    const anchor = anchorOn(geo, host, pathProject(host.path, point).point)
-    const rounded = host.axis ? { ...anchor, at: Math.round(anchor.at) } : anchor
+    const projected = pathProject(host.path, point).point
+    let magnet: PointMm | null = null
+    for (const m of magnetPoints(geo, resolveDividers(geo, panel.dividers), host.id, divider.id, end)) {
+      if (dist(projected, m) <= toleranceMm && (!magnet || dist(projected, m) < dist(projected, magnet))) magnet = m
+    }
+    const anchor = anchorOn(geo, host, magnet ?? projected)
+    const rounded = host.axis && !magnet ? { ...anchor, at: Math.round(anchor.at) } : anchor
     const dividers = moveEnd(panel.dividers, divider.id, end, rounded)
     if (dividerProblems(geo, dividers).some((x) => x.id === divider.id) || !lightsValid({ ...panel, dividers }, part.panelIndex)) return
     commitPanels(
@@ -1235,6 +1249,42 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const hoveredSlidingSash = slidingSashOf(hoveredPartId)
   const menuSashEntry = slidingSashOf(menuSashPartId)
   const menuSash = menuSashEntry?.sash ? { ...menuSashEntry, sash: menuSashEntry.sash } : null
+
+  // Right-clicking a divider (Q3, Mario 2026-10-05 — replaces the ⇄ button
+  // on the drawing, which hid the bow handle of a divider crossed at its
+  // middle): one row per cross it has, naming the other bar, then
+  // Delete…. Opened right on a cross, only that cross's row shows.
+  // Captured on open, like the sash menu above.
+  const [hoveredCrossing, setHoveredCrossing] = useState<{ panelIndex: number; crossing: Crossing } | null>(null)
+  const hoveredDivider = (() => {
+    const m = hoveredPartId ? /^p(\d+):div-(.+)$/.exec(hoveredPartId) : null
+    if (m) return { panelIndex: Number(m[1]), dividerId: m[2] }
+    return hoveredCrossing ? { panelIndex: hoveredCrossing.panelIndex, dividerId: hoveredCrossing.crossing.throughId } : null
+  })()
+  const [menuDivider, setMenuDivider] = useState<{ panelIndex: number; dividerId: string; rows: { crossing: Crossing; label: string }[] } | null>(null)
+  const openDividerMenu = (panelIndex: number, dividerId: string) => {
+    const panel = panels[panelIndex]
+    if (!panel || !sized(panel)) return
+    const all = findCrossings(panelGeometry(panel, lightCtx(panelIndex)), panel.dividers)
+    const onCross = hoveredCrossing?.panelIndex === panelIndex ? hoveredCrossing.crossing : null
+    const crossings = onCross
+      ? all.filter((c) => c.throughId === onCross.throughId && c.pieceAId === onCross.pieceAId && c.pieceBId === onCross.pieceBId)
+      : all.filter((c) => [c.throughId, c.pieceAId, c.pieceBId].includes(dividerId))
+    // Opened on a cross but over neither bar there (the pointer is just
+    // off them): act for the bar running through.
+    const self = crossings.some((c) => [c.throughId, c.pieceAId, c.pieceBId].includes(dividerId)) ? dividerId : (onCross?.throughId ?? dividerId)
+    const rows = crossings.map((c) => ({
+      crossing: c,
+      label:
+        c.throughId === self
+          ? t('windowDialog.design.crossingMenu.letRunThrough', {
+              names: [...new Set([dividerLabel(panelIndex, c.pieceAId), dividerLabel(panelIndex, c.pieceBId)])].join(' / '),
+            })
+          : t('windowDialog.design.crossingMenu.runThroughAt', { name: dividerLabel(panelIndex, c.throughId) }),
+    }))
+    setMenuDivider({ panelIndex, dividerId: self, rows })
+    onSelectPart(`p${panelIndex}:div-${self}`, false)
+  }
 
   // The hinged opening-type grid IS the fixed/opening choice now (Mario,
   // 2026-09-13: a separate Fixed/Opening toggle is redundant once the
@@ -1621,7 +1671,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // Off while anything modal is open (§5): undoing under an open add
   // card would leave it anchored to a panel that may no longer exist.
   // The add-divider card is the same `addRequest` flow.
-  const historyBlocked = addRequest !== null || confirmLeave !== null || menuSashPartId !== null || deleteRequest !== null || headConfirm !== null
+  const historyBlocked = addRequest !== null || confirmLeave !== null || menuSashPartId !== null || menuDivider !== null || deleteRequest !== null || headConfirm !== null
   const canUndo = history.canUndo && !historyBlocked
   const canRedo = history.canRedo && !historyBlocked
 
@@ -1940,6 +1990,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                 onOpenChange={(open) => {
                   if (!open) {
                     setMenuSashPartId(null)
+                    setMenuDivider(null)
                     return
                   }
                   // Opening also selects the sash, like a left-click —
@@ -1947,10 +1998,12 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   if (hoveredSlidingSash) {
                     setMenuSashPartId(hoveredSlidingSash.partId)
                     onSelectPart(hoveredSlidingSash.partId, false)
+                  } else if (hoveredDivider) {
+                    openDividerMenu(hoveredDivider.panelIndex, hoveredDivider.dividerId)
                   }
                 }}
               >
-              <ContextMenuTrigger asChild disabled={!hoveredSlidingSash}>
+              <ContextMenuTrigger asChild disabled={!hoveredSlidingSash && !hoveredDivider}>
               <div className="min-h-0 flex-1" onPointerDownCapture={onCanvasPointerDown}>
                 <WindowDrawing
                   layout={drawingLayout}
@@ -1993,7 +2046,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   onDrawDivider={onDrawDivider}
                   onBendDivider={onBendDivider}
                   onMoveDividerEnd={onMoveDividerEnd}
-                  onSwapCrossing={onSwapCrossing}
+                  onCrossingHover={setHoveredCrossing}
                   onPanelEdgeDrag={onPanelEdgeDrag}
                   originOffsetMm={originOffsetMm}
                 />
@@ -2048,6 +2101,22 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                       sash, so that is its own section by the time this fires. */}
                   <ContextMenuItem onSelect={() => onSectionKindChange(SectionKind.FIXED)}>
                     {t('fields.sliding.wholeFrameFixed')}
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              )}
+              {menuDivider && (
+                <ContextMenuContent>
+                  {menuDivider.rows.map((row) => (
+                    <ContextMenuItem
+                      key={`${row.crossing.throughId}:${row.crossing.pieceAId}:${row.crossing.pieceBId}`}
+                      onSelect={() => onSwapCrossing(menuDivider.panelIndex, row.crossing)}
+                    >
+                      {row.label}
+                    </ContextMenuItem>
+                  ))}
+                  {menuDivider.rows.length > 0 && <ContextMenuSeparator />}
+                  <ContextMenuItem variant="destructive" onSelect={() => requestDividerDelete(menuDivider.panelIndex, [menuDivider.dividerId], [])}>
+                    {t('windowDialog.design.crossingMenu.delete')}
                   </ContextMenuItem>
                 </ContextMenuContent>
               )}

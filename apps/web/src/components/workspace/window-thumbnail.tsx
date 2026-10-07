@@ -86,7 +86,8 @@ export function WindowThumbnail({
   // viewBox edge. Far tighter than the interactive drawing's margin,
   // which has to leave room for dimension lines and "+" markers.
   const pad = Math.max(outerMm.width, outerMm.height) * 0.02
-  const strokeWeight = Math.max(outerMm.width, outerMm.height) * 0.004
+  // Thinned from 0.004 with the editor's outlines (Mario, 2026-10-05).
+  const strokeWeight = Math.max(outerMm.width, outerMm.height) * 0.0024
   const meshCell = Math.max(outerMm.width, outerMm.height) * 0.03
   const georgianBarWidth = Math.max(outerMm.width, outerMm.height) * 0.012
   const meshPatternId = `thumb-mesh-${Math.round(outerMm.width)}x${Math.round(outerMm.height)}`

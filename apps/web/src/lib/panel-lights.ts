@@ -389,6 +389,30 @@ export function dividerSides(panel: PanelShape, dividerId: string, ctx: PanelLig
   return sidesOf(graph, geo, panel.dividers, dividerId)
 }
 
+/** True when every light on both sides of a divider carries the same
+ * settings (everything but its `faceKey`) — then it doesn't matter which
+ * side the merged light takes after, so the delete dialog skips asking. */
+export function sidesMatch(panel: WindowPanelInput, sides: { left: string[]; right: string[] }): boolean {
+  const config = (key: string) => {
+    const section = panel.sections.find((s) => s.faceKey === key)
+    if (!section) return null
+    const { faceKey: _faceKey, ...rest } = section
+    return canonical(rest)
+  }
+  const configs = [...sides.left, ...sides.right].map(config)
+  return configs.length > 0 && configs.every((c) => c !== null && c === configs[0])
+}
+
+/** JSON with object keys sorted, so equal settings compare equal
+ * whatever order their keys were written in. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_k, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  )
+}
+
 /** Deletes dividers (Q11/Q18): `mode` is what happens to the dividers
  * standing on them; the merged lights take the settings of the lights
  * in `keep` — the side the user kept. */

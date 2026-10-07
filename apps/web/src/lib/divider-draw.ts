@@ -48,10 +48,12 @@ export interface DrawPreview<T extends DividerLike> {
   hit: RayHit | null
   lengthMm: number
   refusal: DrawRefusal | null
-  /** The panel's dividers with the new one added, split at its
-   * crossings (Q3) and sorted — `null` when refused. */
+  /** The panel's dividers with the new one added — running through
+   * whatever it crosses, which is cut there (Q3) — and sorted; `null`
+   * when refused. */
   dividers: T[] | null
-  /** The new divider's ids (more than one when it was split). */
+  /** The new divider's id (pieces only if a cross couldn't be handed
+   * over to it). */
   added: string[]
 }
 
@@ -60,7 +62,8 @@ export interface DrawPreview<T extends DividerLike> {
  * would give. Below the springing line it is square to the start member;
  * above, its angle snaps to whole degrees (`aimFrom`). Refused when it
  * meets nothing, when it would slant below the springing line (Q2), or
- * when it would lie on an existing member.
+ * when it would lie on an existing member. Whatever it crosses is cut
+ * there; the new one runs through (Q3).
  */
 export function previewDraw<T extends DividerLike>(
   geo: FrameGeometry,
@@ -80,22 +83,23 @@ export function previewDraw<T extends DividerLike>(
   const lengthMm = dist(start.point, hit.point)
   const refused = (refusal: DrawRefusal): DrawPreview<T> => ({ ...base, hit, lengthMm, refusal, dividers: null, added: [] })
 
-  const next = drawDivider(geo, dividers, make, start, hit)
-  const before = new Set(dividers.map((d) => d.id))
-  const added = next.filter((d) => !before.has(d.id)).map((d) => d.id)
+  const { dividers: next, added } = drawDivider(geo, dividers, make, start, hit)
   if (added.length === 0) return refused('noHit')
   if (dividerProblems(geo, next).some((p) => added.includes(p.id))) return refused('notSquare')
 
-  // A piece whose middle sits on an existing member would double it up
-  // (drawing up along a mullion from its own foot).
+  // A new divider lying along an existing member would double it up
+  // (drawing up along a mullion from its own foot). Two points, not just
+  // the middle: running through, the new one may cross a member exactly
+  // at its middle.
   const members = allMembers(geo, resolved)
   const nextResolved = resolveDividers(geo, next)
   for (const id of added) {
     const piece = nextResolved.get(id)
     if (!piece) return refused('noHit')
-    const mid = pathPointAt(piece.path, 0.5)
+    const p1 = pathPointAt(piece.path, 0.3)
+    const p2 = pathPointAt(piece.path, 0.7)
     for (const m of members.values()) {
-      if (pathProject(m.path, mid).dist < 1) return refused('overlap')
+      if (pathProject(m.path, p1).dist < 1 && pathProject(m.path, p2).dist < 1) return refused('overlap')
     }
   }
   return { ...base, hit, lengthMm, refusal: null, dividers: next, added }

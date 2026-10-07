@@ -387,7 +387,7 @@ export function insetLoop(
     onCorner?.(i, corner, [carriers[i]!, carriers[(i + 1) % n]!])
   }
 
-  // An edge can legitimately shrink to nothing — the 41 mm of jamb
+  // An edge can legitimately shrink to nothing — the half divider face of jamb
   // between the springing point and a transom whose top face sits on the
   // springing line — and is dropped; one that turns round is a collapse.
   const out: Seg[] = []

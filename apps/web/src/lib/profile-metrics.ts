@@ -49,18 +49,16 @@ export interface ProfileMetrics {
   source: 'PLACEHOLDER' | 'PROFILE'
 }
 
-// The set every panel draws with today — the working numbers from
-// docs/transom_docs/WINDOW_GEOMETRY_SPEC.md (typical for a mid-range
-// thermally-broken aluminium system), so the drawing reads like a real
-// elevation: a slim outer frame and a visibly heavier sash, with a
-// narrow bead strip on a fixed section. The sash-bar and interlock
-// widths carry over from before the spec; nothing in it contradicts
-// them.
+// The set every panel draws with today. Started from the working
+// numbers in docs/transom_docs/WINDOW_GEOMETRY_SPEC.md; frame, sash,
+// bead and divider faces set by Mario on 2026-10-05 (45 / 60 / 8 / 50,
+// were 52 / 70 / 18 / 82). The sash-bar and interlock widths carry over
+// from before the spec.
 export const PLACEHOLDER_METRICS: ProfileMetrics = {
-  frameFace: 52,
-  sashFace: 70,
-  beadFace: 18,
-  dividerFace: 82,
+  frameFace: 45,
+  sashFace: 60,
+  beadFace: 8,
+  dividerFace: 50,
   sashBarFace: 50,
   slidingInterlock: 30,
   minBendRadius: 300,

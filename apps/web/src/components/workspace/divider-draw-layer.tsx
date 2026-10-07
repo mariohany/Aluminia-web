@@ -131,7 +131,8 @@ export function DividerDrawLayer({ panels, panelRects, parts, viewBox, scale, st
     return `${t(name.kind === 'mullion' ? 'windowDialog.design.parts.mullion' : 'windowDialog.design.parts.transom')} ${name.number}`
   }
   const fontSize = scale * 0.02
-  const dot = strokeWeight * 2.2
+  // Same size as before the outlines were thinned (0.0028 → 0.0016).
+  const dot = strokeWeight * 2.45
   const refusedColor = 'var(--destructive)'
 
   let label: { at: PointMm; text: string; danger: boolean } | null = null

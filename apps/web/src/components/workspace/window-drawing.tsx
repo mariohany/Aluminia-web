@@ -58,7 +58,7 @@ import { insetHeadOutline, type PointMm } from '@/lib/arch-geometry'
 import type { TranslatedIssue } from '@/lib/window-weight'
 import type { WindowDividerInput } from '@repo/types/windows'
 import { interiorPoint, pathPointAt, sagFromPoint, samplePath } from '@/lib/curves'
-import { findCrossings, resolveDividers, zoneOf, type Crossing } from '@/lib/dividers'
+import { findCrossings, magnetPoints, resolveDividers, zoneOf, type Crossing } from '@/lib/dividers'
 import { panelLights } from '@/lib/panel-lights'
 import { loopToSvgPath, visibleAngles } from '@/lib/light-graph'
 import { DividerDrawLayer } from '@/components/workspace/divider-draw-layer'
@@ -194,9 +194,10 @@ export interface WindowDrawingProps {
   onBendDivider: (dividerPartId: string, sagMm: number) => void
   /** Dragging a selected arch divider's end along its host (§7) —
    * panel-local mm; the editor slides it onto the host. */
-  onMoveDividerEnd: (dividerPartId: string, end: 'from' | 'to', point: PointMm) => void
-  /** The ⇄ button on a cross (Q3). */
-  onSwapCrossing: (panelIndex: number, crossing: Crossing) => void
+  onMoveDividerEnd: (dividerPartId: string, end: 'from' | 'to', point: PointMm, toleranceMm: number) => void
+  /** The cross under the pointer, or `null` — the editor's right-click
+   * menu offers just that cross's swap when opened on one (Q3). */
+  onCrossingHover: (hit: { panelIndex: number; crossing: Crossing } | null) => void
 
   /** Dragging a panel's own FREE outer edge in/out — Mario: "resize the
    * window by dragging any side in or out." Fires on every mouse-move
@@ -248,7 +249,7 @@ export function WindowDrawing({
   onDrawDivider,
   onBendDivider,
   onMoveDividerEnd,
-  onSwapCrossing,
+  onCrossingHover,
   onPanelEdgeDrag,
   originOffsetMm,
 }: WindowDrawingProps) {
@@ -359,8 +360,9 @@ export function WindowDrawing({
   // wrong here," not compete with the part it's sitting on.
   const glyphRadius = scale * 0.011
   // The thin outline every shape (frame/sash/glass) gets around its own
-  // edges — gray by default, orange (primary) once selected.
-  const strokeWeight = Math.max(outerMm.width, outerMm.height) * 0.0028
+  // edges — gray by default, orange (primary) once selected. Thinned
+  // from 0.0028 (Mario, 2026-10-05: "lower the outlines").
+  const strokeWeight = Math.max(outerMm.width, outerMm.height) * 0.0016
   // A Georgian bar reads as a slim version of the frame/sash face, not a
   // hairline — same material colour, just thinner.
   const georgianBarWidth = Math.max(outerMm.width, outerMm.height) * 0.012
@@ -593,8 +595,13 @@ export function WindowDrawing({
     const resolved = pg.resolved.get(match[2])
     if (!resolved || zoneOf(pg.geo, resolved) !== 'arch') return null
     const mid = pathPointAt(resolved.path, 0.5)
+    // Where each end is pulled to on the member it stands on — shown
+    // while that end is dragged (Mario, 2026-10-05: "magnet effect").
+    const magnets = (end: 'from' | 'to') =>
+      magnetPoints(pg.geo, pg.resolved, resolved.divider[end].on, resolved.id, end).map((p) => ({ x: p.x + rect.x, y: p.y + rect.y }))
     return {
       partId: selectedPartId as string,
+      magnets: { from: magnets('from'), to: magnets('to') },
       rect,
       from: resolved.from,
       to: resolved.to,
@@ -616,7 +623,12 @@ export function WindowDrawing({
       if (!svgRef.current) return
       const resolved = svgPointFromClient(svgRef.current, e.clientX, e.clientY)
       if (!resolved) return
-      onMoveDividerEndRef.current(endDrag.partId, endDrag.end, { x: resolved.point.x - endDrag.rect.x, y: resolved.point.y - endDrag.rect.y })
+      onMoveDividerEndRef.current(
+        endDrag.partId,
+        endDrag.end,
+        { x: resolved.point.x - endDrag.rect.x, y: resolved.point.y - endDrag.rect.y },
+        SIZE_MATCH_SNAP_TOLERANCE_PX / resolved.pxPerMm,
+      )
     }
     const onUp = () => setEndDrag(null)
     window.addEventListener('mousemove', onMove)
@@ -627,30 +639,33 @@ export function WindowDrawing({
     }
   }, [endDrag])
 
-  // The ⇄ swap buttons (Q3): on the cross under the pointer, and on every
-  // cross of a selected divider (Mario, 2026-10-05). Tracked from the
-  // pointer, not a hit area — one over the cross would swallow clicks
-  // meant for the dividers there.
-  const [hoveredCross, setHoveredCross] = useState<string | null>(null)
+  // The cross under the pointer, for the editor's right-click menu (Q3:
+  // swapping which bar runs through). Tracked from the pointer, not a hit
+  // area — one over the cross would swallow clicks meant for the dividers
+  // there. No button on the drawing: one on the cross hid the bow handle
+  // of a divider crossed at its middle (Mario, 2026-10-05).
+  const hoveredCrossRef = useRef<string | null>(null)
   const crossKey = (panelIndex: number, c: Crossing) => `${panelIndex}:${c.throughId}:${c.pieceAId}:${c.pieceBId}`
+  const reportCross = (hit: { panelIndex: number; crossing: Crossing } | null) => {
+    const key = hit ? crossKey(hit.panelIndex, hit.crossing) : null
+    if (key === hoveredCrossRef.current) return
+    hoveredCrossRef.current = key
+    onCrossingHover(hit)
+  }
   const onCrossHover = (e: MouseEvent<SVGSVGElement>) => {
-    if (!panelGeos.some((pg) => pg.crossings.length > 0)) return
+    if (!panelGeos.some((pg) => pg.crossings.length > 0)) return reportCross(null)
     const resolved = svgPointFromClient(e.currentTarget, e.clientX, e.clientY)
     if (!resolved) return
     const tol = (SIZE_MATCH_SNAP_TOLERANCE_PX * 1.5) / resolved.pxPerMm
-    let found: string | null = null
+    let found: { panelIndex: number; crossing: Crossing } | null = null
     panelGeos.forEach((pg, i) => {
       const rect = panelRects[i]
       for (const c of pg.crossings) {
-        if (rect && Math.hypot(c.point.x + rect.x - resolved.point.x, c.point.y + rect.y - resolved.point.y) <= tol) found = crossKey(i, c)
+        if (rect && Math.hypot(c.point.x + rect.x - resolved.point.x, c.point.y + rect.y - resolved.point.y) <= tol) found = { panelIndex: i, crossing: c }
       }
     })
-    if (found !== hoveredCross) setHoveredCross(found)
+    reportCross(found)
   }
-  const selectedDividerIds = new Set(selectedPartIds.flatMap((id) => {
-    const m = /^p(\d+):div-(.+)$/.exec(id)
-    return m ? [`${m[1]}:${m[2]}`] : []
-  }))
   const onBendDividerRef = useRef(onBendDivider)
   useLayoutEffect(() => {
     onBendDividerRef.current = onBendDivider
@@ -693,7 +708,9 @@ export function WindowDrawing({
   // panels' edges landing on the exact same coordinate) is
   // indicator-only, unchanged from the earlier "just show the
   // indicator" ask, and is only checked against whatever position the
-  // size-match step (if any) already settled on.
+  // size-match step (if any) already settled on. One exception: when a
+  // size lock would leave the dragged edge a near-miss of another
+  // panel's edge, the edge snaps flush instead (Mario, 2026-10-06).
   const [edgeDrag, setEdgeDrag] = useState<{ panelIndex: number; side: PanelSide } | null>(null)
   const [edgeAlignment, setEdgeAlignment] = useState<
     { kind: 'edge'; axis: 'x' | 'y'; position: number } | { kind: 'size'; matchedPanelIndices: number[] } | null
@@ -758,9 +775,19 @@ export function WindowDrawing({
       const rawSize = prospectivePanelSize(target, side, raw)
       const sizeToleranceMm = SIZE_MATCH_SNAP_TOLERANCE_PX / pxPerMm
       const matchedSize = matchedPanelSize(panelPlacementsRef.current, panelIndex, dimension, rawSize, sizeToleranceMm)
-      const finalPosition = matchedSize !== null ? positionFromPanelSize(target, side, matchedSize) : raw
+      const sizedPosition = matchedSize !== null ? positionFromPanelSize(target, side, matchedSize) : raw
+      // A size lock that parks the dragged edge a few mm off another
+      // panel's edge is a trap: equal numbers, but the outline steps by
+      // that gap (Window-01: both 2000 wide, 1 mm apart, assembly 2001).
+      // Flush wins — the edge snaps onto that edge and the size gives way.
+      const nearEdge =
+        matchedSize !== null ? alignedEdgeMm(panelPlacementsRef.current, panelIndex, axis, sizedPosition, sizeToleranceMm) : null
+      const edgeWins = nearEdge !== null && nearEdge !== sizedPosition
+      const finalPosition = edgeWins ? nearEdge : sizedPosition
 
-      if (matchedSize !== null) {
+      if (edgeWins) {
+        setEdgeAlignment({ kind: 'edge', axis, position: nearEdge })
+      } else if (matchedSize !== null) {
         const matchedPanelIndices = panelPlacementsRef.current
           .map((p, i) => (i !== panelIndex && (dimension === 'width' ? p.widthMm : p.heightMm) === matchedSize ? i : -1))
           .filter((i) => i >= 0)
@@ -835,7 +862,7 @@ export function WindowDrawing({
         // stopPropagation so no part under the cursor starts its own drag;
         // preventDefault stops the browser's autoscroll.
         onMouseMove={onCrossHover}
-        onMouseLeave={() => setHoveredCross(null)}
+        onMouseLeave={() => reportCross(null)}
         onMouseDownCapture={(e) => {
           if (e.button !== 1) return
           e.stopPropagation()
@@ -951,7 +978,8 @@ export function WindowDrawing({
         ))}
 
         {/* Angles between members, every one but 90° (Q9) — always
-            shown, not only while selected. */}
+            shown, not only while selected. Just the number, no arc mark
+            (Mario, 2026-10-05). */}
         <g pointerEvents="none">
           {panelGeos.flatMap((pg, panelIndex) => {
             const rect = panelRects[panelIndex]
@@ -960,29 +988,25 @@ export function WindowDrawing({
             return pg.angles.map((a, k) => {
               const cx = a.at.x + rect.x
               const cy = a.at.y + rect.y
-              const p0 = { x: cx + Math.cos(a.start) * r, y: cy + Math.sin(a.start) * r }
-              const p1 = { x: cx + Math.cos(a.start + a.sweep) * r, y: cy + Math.sin(a.start + a.sweep) * r }
               const mid = a.start + a.sweep / 2
               const lx = cx + Math.cos(mid) * r * 1.75
               const ly = cy + Math.sin(mid) * r * 1.75
               return (
-                <g key={`angle-${panelIndex}-${k}`}>
-                  <path d={`M ${p0.x} ${p0.y} A ${r} ${r} 0 0 1 ${p1.x} ${p1.y}`} fill="none" stroke="var(--primary)" strokeWidth={strokeWeight} />
-                  <text
-                    x={lx}
-                    y={ly + scale * 0.006}
-                    textAnchor="middle"
-                    fontSize={scale * 0.017}
-                    fontWeight={600}
-                    fill="var(--foreground)"
-                    stroke="var(--card)"
-                    strokeWidth={scale * 0.004}
-                    paintOrder="stroke"
-                    style={{ fontVariantNumeric: 'tabular-nums' }}
-                  >
-                    {Math.round(a.deg)}°
-                  </text>
-                </g>
+                <text
+                  key={`angle-${panelIndex}-${k}`}
+                  x={lx}
+                  y={ly + scale * 0.006}
+                  textAnchor="middle"
+                  fontSize={scale * 0.017}
+                  fontWeight={600}
+                  fill="var(--foreground)"
+                  stroke="var(--card)"
+                  strokeWidth={scale * 0.004}
+                  paintOrder="stroke"
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {Math.round(a.deg)}°
+                </text>
               )
             })
           })}
@@ -1109,14 +1133,10 @@ export function WindowDrawing({
           )
         })}
 
+        {/* Handles are drawn small (Mario, 2026-10-05: "make all the
+            points smaller") over a larger invisible grab area. */}
         {bowHandle && !viewOnly && (
-          <circle
-            cx={bowHandle.x}
-            cy={bowHandle.y}
-            r={plusRadius * 0.32}
-            fill="var(--card)"
-            stroke="var(--primary)"
-            strokeWidth={strokeWeight * 1.2}
+          <g
             className="cursor-move"
             onMouseDown={(e) => {
               if (e.button !== 0 || !bowTarget) return
@@ -1124,21 +1144,35 @@ export function WindowDrawing({
               e.stopPropagation()
               setBowDrag(bowTarget)
             }}
-          />
+          >
+            <circle cx={bowHandle.x} cy={bowHandle.y} r={plusRadius * 0.32} fill="transparent" />
+            <circle cx={bowHandle.x} cy={bowHandle.y} r={plusRadius * 0.19} fill="var(--card)" stroke="var(--primary)" strokeWidth={strokeWeight} />
+          </g>
         )}
+
+        {/* The magnets on the member under the dragged end. */}
+        {bowTarget &&
+          endDrag &&
+          bowTarget.partId === endDrag.partId &&
+          bowTarget.magnets[endDrag.end].map((m, i) => {
+            const k = plusRadius * 0.17
+            return (
+              <path
+                key={i}
+                d={`M ${m.x} ${m.y - k} L ${m.x + k} ${m.y} L ${m.x} ${m.y + k} L ${m.x - k} ${m.y} Z`}
+                fill="none"
+                stroke="var(--primary)"
+                strokeWidth={strokeWeight}
+                pointerEvents="none"
+              />
+            )
+          })}
 
         {bowTarget &&
           !viewOnly &&
           (['from', 'to'] as const).map((end) => (
-            <rect
+            <g
               key={end}
-              x={bowTarget.ends[end].x - plusRadius * 0.25}
-              y={bowTarget.ends[end].y - plusRadius * 0.25}
-              width={plusRadius * 0.5}
-              height={plusRadius * 0.5}
-              fill="var(--card)"
-              stroke="var(--primary)"
-              strokeWidth={strokeWeight * 1.2}
               className="cursor-move"
               onMouseDown={(e) => {
                 if (e.button !== 0) return
@@ -1146,50 +1180,19 @@ export function WindowDrawing({
                 e.stopPropagation()
                 setEndDrag({ partId: bowTarget.partId, end, rect: bowTarget.rect })
               }}
-            />
+            >
+              <circle cx={bowTarget.ends[end].x} cy={bowTarget.ends[end].y} r={plusRadius * 0.3} fill="transparent" />
+              <rect
+                x={bowTarget.ends[end].x - plusRadius * 0.15}
+                y={bowTarget.ends[end].y - plusRadius * 0.15}
+                width={plusRadius * 0.3}
+                height={plusRadius * 0.3}
+                fill="var(--card)"
+                stroke="var(--primary)"
+                strokeWidth={strokeWeight}
+              />
+            </g>
           ))}
-
-        {tool === 'select' &&
-          !viewOnly &&
-          panelGeos.flatMap((pg, panelIndex) =>
-            pg.crossings
-              .filter((c) => {
-                const key = crossKey(panelIndex, c)
-                return hoveredCross === key || [c.throughId, c.pieceAId, c.pieceBId].some((id) => selectedDividerIds.has(`${panelIndex}:${id}`))
-              })
-              .map((c) => {
-                const rect = panelRects[panelIndex]
-                if (!rect) return null
-                const r = plusRadius * 0.45
-                return (
-                  <g
-                    key={crossKey(panelIndex, c)}
-                    role="button"
-                    aria-label={t('windowDialog.design.swapCrossing')}
-                    className="cursor-pointer"
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onSwapCrossing(panelIndex, c)
-                    }}
-                  >
-                    <title>{t('windowDialog.design.swapCrossing')}</title>
-                    <circle cx={c.point.x + rect.x} cy={c.point.y + rect.y} r={r} fill="var(--card)" stroke="var(--primary)" strokeWidth={strokeWeight * 1.2} />
-                    <text
-                      x={c.point.x + rect.x}
-                      y={c.point.y + rect.y + r * 0.36}
-                      textAnchor="middle"
-                      fontSize={r * 1.1}
-                      fontWeight={700}
-                      fill="var(--primary)"
-                      pointerEvents="none"
-                    >
-                      ⇄
-                    </text>
-                  </g>
-                )
-              }),
-          )}
 
         {tool === 'divider' && !panDrag && (
           <DividerDrawLayer

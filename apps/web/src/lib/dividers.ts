@@ -399,13 +399,19 @@ function reanchorOnto<T extends DividerLike>(geo: FrameGeometry, dividers: T[], 
 }
 
 /**
- * Flips which member runs through a cross (Q3's swap button): pieces
- * `pieceA` (ending on `throughId`) and `pieceB` (starting on it, at the
- * same point) merge into one through member, and `throughId` is cut in
- * two there instead. Anything standing on the old members is re-anchored
- * onto the new ones. `null` if the three don't form a cross.
+ * Flips which member runs through a cross (Q3's swap, from the
+ * right-click menu): pieces `pieceA` (ending on `throughId`) and `pieceB`
+ * (starting on it, at the same point) merge into one through member, and
+ * `throughId` is cut in two there instead. Anything standing on the old
+ * members is re-anchored onto the new ones. `null` if the three don't
+ * form a cross.
  */
 export function swapCrossing<T extends DividerLike>(geo: FrameGeometry, dividers: readonly T[], throughId: string, pieceAId: string, pieceBId: string): T[] | null {
+  return swapCrossingMerged(geo, dividers, throughId, pieceAId, pieceBId)?.dividers ?? null
+}
+
+/** `swapCrossing`, also naming the merged member. */
+function swapCrossingMerged<T extends DividerLike>(geo: FrameGeometry, dividers: readonly T[], throughId: string, pieceAId: string, pieceBId: string): { dividers: T[]; mergedId: string } | null {
   const resolved = resolveDividers(geo, dividers)
   const through = resolved.get(throughId)
   const a = resolved.get(pieceAId)
@@ -444,7 +450,8 @@ export function swapCrossing<T extends DividerLike>(geo: FrameGeometry, dividers
   let next: T[] = [...withMerged.filter((d) => d.id !== throughId), t1, t2]
   next = reanchorOnto(geo, next, resolved, new Set([throughId]), [t1.id, t2.id])
   next = reanchorOnto(geo, next, resolved, new Set([pieceAId, pieceBId]), [mergedId])
-  return sortDividers(next)
+  const sorted = sortDividers(next)
+  return sorted ? { dividers: sorted, mergedId } : null
 }
 
 export interface Crossing {
@@ -501,6 +508,29 @@ function sagOnCircle(seg: Extract<Seg, { kind: 'arc' }>, p0: PointMm, p1: PointM
   const mid = { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 }
   const d = dist(mid, seg.c)
   return Math.sign(signFrom || 1) * Math.max(seg.r - d, 0)
+}
+
+/**
+ * Where a dragged end is pulled to on member `hostId` (Mario,
+ * 2026-10-05): the middle of the member, and the middle of every stretch
+ * between the ends already standing on it — so with a transom on a
+ * side's middle, the middles of both halves pull too. The end being
+ * dragged (`dividerId`'s `end`) doesn't count.
+ */
+export function magnetPoints(geo: FrameGeometry, resolved: Map<string, ResolvedDivider>, hostId: string, dividerId: string, end: 'from' | 'to'): PointMm[] {
+  const host = allMembers(geo, resolved).get(hostId)
+  if (!host) return []
+  const ts = [0, 1]
+  for (const r of resolved.values()) {
+    for (const e of ['from', 'to'] as const) {
+      if (r.divider[e].on !== hostId || (r.id === dividerId && e === end)) continue
+      ts.push(pathProject(host.path, e === 'from' ? r.from : r.to).t)
+    }
+  }
+  ts.sort((a, b) => a - b)
+  const mids = new Set([0.5])
+  for (let i = 1; i < ts.length; i++) if (ts[i] - ts[i - 1] > 1e-3) mids.add((ts[i] + ts[i - 1]) / 2)
+  return [...mids].map((t) => pathPointAt(host.path, t))
 }
 
 // ---- Ray casting -----------------------------------------------------------
@@ -834,14 +864,47 @@ export function pickHit(aim: Aim, start: PointMm, pointer: PointMm, toleranceMm:
   return aim.hits.find((h) => h.distance >= along - toleranceMm) ?? aim.hits[aim.hits.length - 1]
 }
 
-/** Appends a new straight divider from `start` to `hit`, splitting it at
- * every crossing (Q3) and re-sorting. */
-export function drawDivider<T extends DividerLike>(geo: FrameGeometry, dividers: readonly T[], make: (from: DividerAnchor, to: DividerAnchor) => T, start: SnapHit, hit: RayHit): T[] {
+/**
+ * Appends a new straight divider from `start` to `hit`. Where it crosses
+ * an existing divider the NEW one runs through and the existing one is
+ * cut there (Q3, reversed by Mario 2026-10-05; the right-click menu swaps
+ * it back). `added` is the new divider's id — a single id unless a swap
+ * could not be made, when its pieces are listed instead.
+ */
+export function drawDivider<T extends DividerLike>(geo: FrameGeometry, dividers: readonly T[], make: (from: DividerAnchor, to: DividerAnchor) => T, start: SnapHit, hit: RayHit): { dividers: T[]; added: string[] } {
   const members = allMembers(geo, resolveDividers(geo, dividers))
   const host = members.get(hit.memberId)
-  if (!host) return [...dividers]
+  if (!host) return { dividers: [...dividers], added: [] }
   const created = make(start.anchor, anchorOn(geo, host, hit.point))
-  return splitAtCrossings(geo, [...dividers, created], created.id)
+  // Split the new one at every cross first (the pieces land on what they
+  // cross), then hand each cross over to it, merging its pieces back.
+  let next = splitAtCrossings(geo, [...dividers, created], created.id)
+  const before = new Set(dividers.map((d) => d.id))
+  let added = new Set(next.filter((d) => !before.has(d.id)).map((d) => d.id))
+  for (;;) {
+    const cross = findCrossings(geo, next).find((c) => added.has(c.pieceAId) && added.has(c.pieceBId) && !added.has(c.throughId))
+    if (!cross) break
+    const swapped = swapCrossingMerged(geo, next, cross.throughId, cross.pieceAId, cross.pieceBId)
+    if (!swapped) break
+    added = new Set([...added].filter((id) => id !== cross.pieceAId && id !== cross.pieceBId))
+    added.add(swapped.mergedId)
+    next = swapped.dividers
+  }
+  // Merging renames pieces (`d4c`) and may flip the direction; give the
+  // through divider back the id it was drawn with, running from where it
+  // was started.
+  if (added.size === 1) {
+    const [mergedId] = added
+    const taken = next.some((d) => d.id === created.id && d.id !== mergedId)
+    const rename = (id: string) => (id === mergedId && !taken ? created.id : id)
+    next = next.map((d) => {
+      let out = d.id === mergedId && d.from.on !== created.from.on && d.to.on === created.from.on ? { ...d, from: d.to, to: d.from, sagMm: -d.sagMm } : d
+      if (out.from.on === mergedId || out.to.on === mergedId || out.id === mergedId) out = { ...out, id: rename(out.id), from: { ...out.from, on: rename(out.from.on) }, to: { ...out.to, on: rename(out.to.on) } }
+      return out
+    })
+    added = new Set([rename(mergedId)])
+  }
+  return { dividers: sortDividers(next) ?? next, added: [...added] }
 }
 
 /** Problems a resolved set can have before any light is computed —

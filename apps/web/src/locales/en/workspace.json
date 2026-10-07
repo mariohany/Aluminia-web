@@ -518,7 +518,11 @@
           "title": "What are you adding?"
         }
       },
-      "swapCrossing": "Swap which one runs through",
+      "crossingMenu": {
+        "runThroughAt": "Run through at {{name}}",
+        "letRunThrough": "Let {{names}} run through",
+        "delete": "Delete…"
+      },
       "deleteDivider": {
         "title": "Delete {{names}}?",
         "notAlone": "A divider can't be deleted alone — pick the side whose light goes with it. The other side takes the space and keeps its settings.",

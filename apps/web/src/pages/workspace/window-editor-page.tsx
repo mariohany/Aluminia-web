@@ -1972,6 +1972,13 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               quantity={quantity}
               onQuantityChange={(value) => commitField('quantity', value)}
               quantityError={showValidation && errors.quantity ? t('fields.quantityRequired') : undefined}
+              name={watch('name')}
+              onNameChange={(value) => commitField('name', value)}
+              nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
+              location={watch('location') ?? null}
+              onLocationChange={(value) => commitField('location', value)}
+              notes={watch('notes') ?? null}
+              onNotesChange={(value) => commitField('notes', value)}
               panels={panels}
               parts={drawingLayout.parts}
               outerMm={drawingLayout.outerMm}
@@ -2186,9 +2193,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   panelCount={panels.length}
                   onDeletePanel={canDeletePanel ? onDeletePanel : undefined}
                   deleteDisabledReason={canDeletePanel ? undefined : t('windowDialog.design.deletePanelBlocked')}
-                  name={watch('name')}
-                  onNameChange={(value) => commitField('name', value)}
-                  nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
                   widthMm={activeRaw?.widthMm ?? NaN}
                   heightMm={activeRaw?.heightMm ?? NaN}
                   onWidthChange={(mm) => onPanelSizeChange(mm, activeRaw?.heightMm ?? mm)}
@@ -2291,10 +2295,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                     beadMaxGlassThickness: activeSectionInfo?.beadMaxGlassThickness ?? null,
                   }}
                   selectedDivider={selectedDivider}
-                  location={watch('location') ?? null}
-                  onLocationChange={(value) => commitField('location', value)}
-                  notes={watch('notes') ?? null}
-                  onNotesChange={(value) => commitField('notes', value)}
                 />
               )}
             </div>

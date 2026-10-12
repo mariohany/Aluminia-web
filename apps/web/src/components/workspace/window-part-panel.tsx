@@ -18,7 +18,6 @@ import { archOutlinePath } from '@/components/workspace/window-shapes'
 import { ProfileTreePicker } from '@/components/workspace/profile-tree-picker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -193,14 +192,6 @@ export interface WindowPartPanelProps {
   onDeletePanel?: () => void
   deleteDisabledReason?: string
 
-  name: string
-  onNameChange: (value: string) => void
-  /** Already-translated "required" messages — undefined/blank means no
-   * error is shown. window-editor-page.tsx only ever passes these once
-   * `showValidation` is true (edit mode, or after a first submit
-   * attempt in create mode) — see its own comment for why. */
-  nameError?: string
-
   /** The SELECTED PANEL's own outer size, not the assembly's — the
    * assembly's is derived from the panels' bounding box and shown
    * read-only on the drawing. (Quantity — the whole assembly's, not a
@@ -257,25 +248,20 @@ export interface WindowPartPanelProps {
    * INSTEAD of the Section block, never alongside it (selecting one
    * always deselects the other on the drawing). */
   selectedDivider: SelectedDividerProps | null
-
-  // Belongs to no drawn part — same posture as name/size/quantity above.
-  location: string | null
-  onLocationChange: (value: string | null) => void
-  notes: string | null
-  onNotesChange: (value: string | null) => void
 }
 
 /**
- * The dialog's fixed-width options column. Name, size/quantity, Head,
+ * The dialog's fixed-width options column. Size, Head,
  * Bars, divider profile, and both colours sit at the top as plain panel-
  * level fields; below them, exactly one of the Section block (the
  * active section's own fixed/opening fields — headed "Section A" with
  * its own size only once a divider exists; a 1×1 panel's opening
  * fields are just more panel fields) or the Divider block (a
- * selected divider's label/profile/length/Remove) shows, followed by
- * location/notes. Clicking a sash/glass/fly-screen part on the drawing
- * scrolls the Section block into view; clicking a divider scrolls to
- * the Divider block instead.
+ * selected divider's label/profile/length/Remove) shows. Name, location
+ * and notes live in the structure panel (docs/inspector_redesign_planing.md
+ * §2). Clicking a sash/glass/fly-screen part on the drawing scrolls the
+ * Section block into view; clicking a divider scrolls to the Divider
+ * block instead.
  */
 export function WindowPartPanel(props: WindowPartPanelProps) {
   const { t } = useTranslation('workspace')
@@ -308,20 +294,6 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
         onDeletePanel={props.onDeletePanel}
         deleteDisabledReason={props.deleteDisabledReason}
       />
-
-      <div>
-        <FieldLabel htmlFor="panel-name" required>
-          {t('fields.windowName')}
-        </FieldLabel>
-        <Input
-          id="panel-name"
-          className="mt-1.5"
-          aria-invalid={!!props.nameError}
-          value={props.name}
-          onChange={(e) => props.onNameChange(e.target.value)}
-        />
-        {props.nameError && <p className="mt-1 text-xs text-destructive">{props.nameError}</p>}
-      </div>
 
       <div className="grid grid-cols-2 gap-2">
         <NumberField
@@ -539,30 +511,6 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
         />
       )}
 
-      <div>
-        <FieldLabel htmlFor="panel-location" optional>
-          {t('fields.location')}
-        </FieldLabel>
-        <Input
-          id="panel-location"
-          className="mt-1.5"
-          value={props.location ?? ''}
-          onChange={(e) => props.onLocationChange(blankToNull(e.target.value))}
-        />
-      </div>
-
-      <div>
-        <FieldLabel htmlFor="panel-notes" optional>
-          {t('fields.notes')}
-        </FieldLabel>
-        <Textarea
-          id="panel-notes"
-          className="mt-1.5"
-          rows={3}
-          value={props.notes ?? ''}
-          onChange={(e) => props.onNotesChange(blankToNull(e.target.value))}
-        />
-      </div>
     </div>
   )
 }
@@ -902,16 +850,6 @@ function SectionBlock({
       <IssueList issues={glassIssues.filter((i) => i.messageKey !== 'beadRequired')} />
     </Section>
   )
-}
-
-// Same blank->null rule as apps/web/src/lib/form-fields.ts's
-// `optionalTextField` (a register()-only helper this panel can't use,
-// since every field here is controlled) — an empty box means "clear
-// it" (null), not "leave alone" (undefined never applies to a
-// controlled input's own onChange).
-function blankToNull(value: string): string | null {
-  const trimmed = value.trim()
-  return trimmed === '' ? null : trimmed
 }
 
 /** The "Panel N of M" row + delete button — shown only for a real

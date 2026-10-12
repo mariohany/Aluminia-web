@@ -249,8 +249,6 @@
       "railOutside": "خارج",
       "railInside": "داخل",
       "railN": "مجرى {{n}}",
-      "moveBack": "للخلف (نحو الخارج)",
-      "moveForward": "للأمام (نحو الداخل)",
       "direction": "تنزلق",
       "types": {
         "sliding_left": "تنزلق لليسار",
@@ -261,7 +259,6 @@
       "auto": "تلقائي",
       "manual": "يدوي",
       "resetAuto": "العودة إلى التلقائي",
-      "wholeFrameFixed": "الإطار كله ← زجاج ثابت",
       "railsShrunkToast_zero": "لم تُنقل أي ضلفة.",
       "railsShrunkToast_one": "نُقلت الضلفة {{sashes}} إلى المجرى الأمامي.",
       "railsShrunkToast_two": "نُقلت الضلفتان {{sashes}} إلى المجرى الأمامي.",
@@ -309,8 +306,6 @@
     "headShapeDisabledHint": "القوس غير متاح لنوع فتح هذه اللوحة.",
     "headShapeRoundTooWideHint": "نصف الدائرة الحقيقي يحتاج ارتفاعاً أكبر مما تسمح به هذه اللوحة — جرّب القطاعي، أو اجعل اللوحة أطول.",
     "headRiseMm": "الارتفاع (مم)",
-    "interiorColor": "اللون الداخلي",
-    "exteriorColor": "اللون الخارجي",
     "colorPlaceholder": "بدون لون",
     "location": "الموضع في الموقع"
   },
@@ -463,7 +458,6 @@
       },
       "untitled": "شباك بدون اسم",
       "computedSize": "{{width}} × {{height}} مم (تقريبي)",
-      "sashWeight": "الوزن التقديري: {{weight}} كجم (حد الكتالوج {{max}} كجم)",
       "sections": {
         "frame": "البرواز",
         "sash": "الدفة",
@@ -483,7 +477,6 @@
         },
         "archLightFixed": "الفتحات داخل القوس ثابتة دائمًا."
       },
-      "dividerLength": "الطول: {{length}} مم (تقريبي)",
       "removeDivider": "إزالة الفاصل",
       "dividerTool": {
         "members": {
@@ -536,7 +529,6 @@
         "lightTooSmall": "فتحة هنا أصغر من أن تُزجَّج. حرّك قاطعًا لإعطائها مساحة أكبر.",
         "archLightOpening": "الفتحات داخل القوس ثابتة فقط. حوّل هذه الفتحة إلى ثابتة."
       },
-      "panelOf": "اللوح {{index}} من {{count}}",
       "deletePanel": "إزالة هذا اللوح",
       "deletePanelBlocked": "لا يمكن إزالة هذا اللوح — لا بد من لوح واحد على الأقل، وإزالته ستفصل بقية الألواح عن بعضها.",
       "addPanel": {
@@ -581,11 +573,7 @@
         "confirm": "اجعله مستويًا"
       },
       "dividerInspector": {
-        "profile": "البروفيل",
-        "panelDefault": "افتراضي اللوح: {{profile}}",
         "useDefault": "استخدم افتراضي اللوح",
-        "fromLeft": "الموضع من اليسار (مم)",
-        "fromSill": "الموضع من الأسفل (مم)",
         "end": "على {{host}} · قطع {{cut}}"
       }
     },

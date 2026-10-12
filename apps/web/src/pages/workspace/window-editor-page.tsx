@@ -43,6 +43,7 @@ import { WindowDrawing } from '@/components/workspace/window-drawing'
 import { WindowIssuesPanel } from '@/components/workspace/window-issues-panel'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/bilingual'
+import { isDoorOpeningType } from '@/components/workspace/inspector/opening-types'
 import { WindowStructurePanel } from '@/components/workspace/window-structure-panel'
 import { panelIssueLights, slidingSectionArgs, useResolvedPanels, type PanelRender, type SectionRender } from '@/lib/window-render'
 import { useEditHistory } from '@/lib/use-edit-history'
@@ -1306,12 +1307,27 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       }, 'changeOpening')
       return
     }
-    updateActiveSection({
+    const changes: Partial<WindowSectionInput> = {
       kind: SectionKind.OPENING,
       sashProfile: activeSection.kind === SectionKind.OPENING ? activeSection.sashProfile : ('' as ScopedRef),
       beadProfile: null,
       openingType: value,
-    }, 'changeOpening')
+    }
+    // A door type turns the panel's Door on in the SAME step, so one undo
+    // reverses both (docs/inspector_redesign_planing.md §6). A window
+    // type never turns it off (Mario, 2026-10-12: "door stays on").
+    if (isDoorOpeningType(value) && activeInfo.showDoor && !activePanel.isDoor) {
+      commitPanels(
+        panels.map((panel, i) =>
+          i === activePanelIndex
+            ? { ...panel, isDoor: true, sections: panel.sections.map((s, j) => (j === activeSectionIndex ? { ...s, ...changes } : s)) }
+            : panel,
+        ),
+        'changeOpening',
+      )
+      return
+    }
+    updateActiveSection(changes, 'changeOpening')
   }
 
   // ---- Per-panel render descriptors --------------------------------------

@@ -658,6 +658,21 @@
       },
       "crumbs": {
         "window": "النافذة"
+      },
+      "light": "الفتحة",
+      "editOnPanel": "تعديل في اللوح {{n}}",
+      "maxThickness": "حتى {{max}} مم",
+      "weightValue": "{{weight}} كجم · الحد {{max}}",
+      "opening": {
+        "search": "ابحث في طرق الفتح",
+        "windows": "شبابيك",
+        "doors": "أبواب",
+        "doorNote": "اختيار نوع باب يُفعّل «باب» للوح {{n}}."
+      },
+      "search": {
+        "profiles": "ابحث في البروفايلات",
+        "glass": "ابحث في الزجاج",
+        "noMatches": "لا شيء يطابق هذا البحث."
       }
     }
   },

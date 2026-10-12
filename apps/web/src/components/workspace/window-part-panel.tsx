@@ -5,51 +5,18 @@ import { GlassKind, HeadShape, HingedOpeningType, SectionKind, type WindowSectio
 import type { SystemType } from '@repo/types/lookups'
 import { ProfileType } from '@repo/types/lookups'
 import type { SlidingLayoutInput } from '@repo/types/sliding'
-import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
-import { sectionLetter, type WindowLayout, type WindowPartKind } from '@/lib/window-geometry'
-import { dedupeIssues, type TranslatedIssue } from '@/lib/window-weight'
+import type { ScopedRef } from '@repo/types/company-lookups'
+import type { WindowLayout } from '@/lib/window-geometry'
+import type { TranslatedIssue } from '@/lib/window-weight'
 import type { MergedSystemProfileSummary } from '@/lib/lookup-merge'
 import { cn } from '@/lib/utils'
 import { FieldLabel } from '@/components/workspace/field-label'
-import { IssueList } from '@/components/workspace/issue-list'
-import { SlidingLayoutEditor } from '@/components/workspace/sliding-layout-editor'
-import { OpeningTypeIcon } from '@/components/icons/opening-type-icon'
 import { ProfileTreePicker } from '@/components/workspace/profile-tree-picker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PanelInspector } from '@/components/workspace/inspector/panel-inspector'
+import { SectionInspector } from '@/components/workspace/inspector/section-inspector'
 import { inspectorLevel } from '@/components/workspace/inspector/inspector-level'
-
-// Radix rejects an empty-string item value — same sentinel window-editor-page.tsx uses.
-const NONE = '__none'
-
-// Grid order — one row of the four "primary" hinge/pivot ways a single
-// leaf opens, then their mirrored/tilt-turn pairs, then the two-leaf
-// families last (the less common picks). `FIXED_VERTICAL_MULLION`/
-// `FIXED_HORIZONTAL_MULLION` are deliberately NOT offered here — a
-// divider is the right tool for that now (docs/sections_planing.md's
-// own stated default, "the section panel no longer offers them"). The
-// enum values themselves stay (a saved section picked before Sections
-// still resolves and draws exactly as before, per `window-geometry.ts`'s
-// unchanged fixed-mullion branch) — only new picks are blocked.
-const OPENING_TYPE_OPTIONS: HingedOpeningType[] = [
-  HingedOpeningType.FIXED_CLOSED,
-  HingedOpeningType.TOP_HUNG,
-  HingedOpeningType.SIDE_HUNG_LEFT,
-  HingedOpeningType.SIDE_HUNG_RIGHT,
-  HingedOpeningType.TILT_TURN_LEFT,
-  HingedOpeningType.TILT_TURN_RIGHT,
-  HingedOpeningType.PIVOT_BOTTOM,
-  HingedOpeningType.PIVOT_SIDE,
-  HingedOpeningType.SINGLE_DOOR_HINGE_LEFT,
-  HingedOpeningType.SINGLE_DOOR_HINGE_RIGHT,
-  HingedOpeningType.DOUBLE_DOOR_FRENCH_A,
-  HingedOpeningType.DOUBLE_DOOR_FRENCH_B,
-  HingedOpeningType.DOUBLE_DOOR_HANDLES_A,
-  HingedOpeningType.DOUBLE_DOOR_HANDLES_B,
-]
 
 export interface WindowPartPanelColorOption {
   value: string
@@ -275,9 +242,7 @@ export interface WindowPartPanelFrameProps {
  */
 export function WindowPartPanel(props: WindowPartPanelProps) {
   const { t } = useTranslation('workspace')
-  const sectionRef = useRef<HTMLDivElement>(null)
   const dividerRef = useRef<HTMLDivElement>(null)
-  const flyScreenRef = useRef<HTMLDivElement>(null)
 
   const selectedPart = props.layout.parts.find((p) => p.id === props.selectedPartId) ?? null
   const level = inspectorLevel(selectedPart?.kind ?? null, props.selectedDivider !== null)
@@ -289,6 +254,7 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
     const issues = [...props.issuesByPart].filter(([partId]) => partId.startsWith(prefix)).flatMap(([, list]) => list)
     return <PanelInspector props={props} issues={issues} />
   }
+  if (level === 'section') return <SectionInspector props={props} />
 
   const divider = props.selectedDivider
   return (
@@ -353,355 +319,8 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
           {t('windowDialog.design.removeDivider')}
         </Button>
       </Section>
-      ) : (
-        <SectionBlock
-          innerRef={sectionRef}
-          flyScreenRef={flyScreenRef}
-          section={props.activeSection}
-          selectedPartKind={selectedPart?.kind ?? null}
-          issuesByPart={props.issuesByPart}
-          layout={props.layout}
-          isGridded={props.isGridded}
-        />
-      )}
+      ) : null}
     </div>
-  )
-}
-
-/** The active section's own block — a Fixed/Opening toggle, then
- * whichever fields that kind actually has, glass last (shared by both
- * kinds). Heading and section Width/Height only when `isGridded` (a
- * 1×1 panel has no sections to name or size — Mario, 2026-09-20).
- * `layout`/`issuesByPart` are the whole panel's — filtered here
- * by the section's own part ids (sash/glass/flyScreen carry a
- * `sectionIndex`; this block only ever shows ONE section's parts). */
-function SectionBlock({
-  innerRef,
-  flyScreenRef,
-  section,
-  selectedPartKind,
-  issuesByPart,
-  layout,
-  isGridded,
-}: {
-  innerRef: React.RefObject<HTMLDivElement | null>
-  flyScreenRef: React.RefObject<HTMLDivElement | null>
-  section: ActiveSectionProps
-  selectedPartKind: WindowPartKind | null
-  issuesByPart: Map<string, TranslatedIssue[]>
-  layout: WindowLayout
-  isGridded: boolean
-}) {
-  const { t } = useTranslation('workspace')
-  const { t: tLookups } = useTranslation('lookups')
-
-  // This block always describes ONE section — the parts it draws from
-  // are whichever sash/glass/flyScreen carry this exact `sectionIndex`,
-  // out of the whole panel's layout (a gridded panel's `layout.parts`
-  // holds every section's parts at once).
-  const sectionParts = layout.parts.filter(
-    (p) => (p.kind === 'sash' || p.kind === 'glass' || p.kind === 'flyScreen') && p.sectionIndex === section.sectionIndex,
-  )
-  const sashPart = sectionParts.find((p) => p.kind === 'sash')
-  const glassPart = sectionParts.find((p) => p.kind === 'glass')
-  const flyScreenPart = sectionParts.find((p) => p.kind === 'flyScreen')
-
-  // A sliding sash's own build issues (`sliding*` keys, planing §8) show
-  // under that sash's row in the layout editor, keyed by its index —
-  // everything else on a sash part (sashRequired, weight) stays in the
-  // section-level list under the sash Select below.
-  const isSlidingIssue = (issue: TranslatedIssue) => issue.messageKey.startsWith('sliding')
-  const slidingIssuesBySash = new Map<number, TranslatedIssue[]>()
-  for (const part of sectionParts) {
-    if (part.kind !== 'sash') continue
-    const own = (issuesByPart.get(part.id) ?? []).filter(isSlidingIssue)
-    if (own.length > 0) slidingIssuesBySash.set(part.index, own)
-  }
-  const sashIssues = dedupeIssues(
-    sectionParts.filter((p) => p.kind === 'sash').flatMap((p) => (issuesByPart.get(p.id) ?? []).filter((i) => !isSlidingIssue(i))),
-  )
-  // A section-level sliding issue (`slidingLayoutRequired`,
-  // `slidingOnHinged` — planing §12) lands on the section's first glass
-  // part; it belongs under the layout tiles, not under the glass Select.
-  const allGlassIssues = dedupeIssues(sectionParts.filter((p) => p.kind === 'glass').flatMap((p) => issuesByPart.get(p.id) ?? []))
-  const slidingSectionIssues = allGlassIssues.filter(isSlidingIssue)
-  const glassIssues = allGlassIssues.filter((i) => !isSlidingIssue(i))
-  const flyScreenIssues = flyScreenPart ? (issuesByPart.get(flyScreenPart.id) ?? []) : []
-
-  const isOpening = section.kind === SectionKind.OPENING
-
-  // A panel is only "sectioned" from its first divider on (Mario,
-  // 2026-09-20): a 1×1 panel's opening fields sit directly under the
-  // panel's own — no SECTION heading, and no section Width/Height
-  // (they'd just repeat the panel size). The letter matches the one
-  // drawn on the elevation for this exact section (`sectionLetter`,
-  // `window-drawing.tsx`).
-  const title = isGridded ? `${t('windowDialog.design.sections.section')} ${sectionLetter(section.sectionIndex)}` : undefined
-
-  return (
-    <Section
-      innerRef={innerRef}
-      title={title}
-      focused={selectedPartKind === 'sash' || selectedPartKind === 'glass' || selectedPartKind === 'flyScreen'}
-    >
-      {/* Only shown when there's no type/layout grid to fold this into
-          (curtain-wall — `showOpeningTypes` is hinged-only, and the
-          sliding tiles lead with their own Fixed tile since 2026-09-20):
-          for a hinged section, the grid below already carries
-          `FIXED_CLOSED`, so a separate Fixed/Opening toggle would just
-          be two ways to say the same thing (Mario, 2026-09-13). */}
-      {section.fixedOnly && <p className="text-xs text-muted-foreground">{t('windowDialog.design.section.archLightFixed')}</p>}
-      {!section.fixedOnly && !section.showOpeningTypes && !section.isSliding && (
-        <div role="group" aria-label={t('windowDialog.design.sections.section')} className="grid grid-cols-2 gap-1">
-          {([SectionKind.FIXED, SectionKind.OPENING] as const).map((kind) => {
-            const selected = section.kind === kind
-            return (
-              <button
-                key={kind}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => section.onKindChange(kind)}
-                className={cn(
-                  'rounded-md border px-3 py-1.5 text-xs transition-colors',
-                  selected ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-muted-foreground',
-                )}
-              >
-                {t(`windowDialog.design.section.kind.${kind}`)}
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {isGridded && section.widthMm !== null && section.heightMm !== null && (
-        <div className="grid grid-cols-2 gap-2">
-          <NumberField
-            id="section-width"
-            label={t('fields.widthMm')}
-            value={section.widthMm}
-            onChange={section.onWidthChange}
-          />
-          <NumberField
-            id="section-height"
-            label={t('fields.heightMm')}
-            value={section.heightMm}
-            onChange={section.onHeightChange}
-          />
-        </div>
-      )}
-
-      {!isOpening && (
-        <div>
-          <FieldLabel htmlFor="section-bead" required>
-            {t('fields.beadProfile')}
-          </FieldLabel>
-          <Select
-            value={section.beadProfile || NONE}
-            disabled={section.beadOptions.length === 0}
-            onValueChange={(value) => {
-              if (!value) return
-              section.onBeadChange(value as ScopedRef)
-            }}
-          >
-            <SelectTrigger id="section-bead" className="mt-1.5 w-full">
-              <SelectValue
-                placeholder={section.beadOptions.length === 0 ? t('fields.beadProfileNeedsFrame') : t('fields.beadProfilePlaceholder')}
-              />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE} disabled>
-                {t('fields.beadProfilePlaceholder')}
-              </SelectItem>
-              {section.beadOptions.map((opt) => (
-                <SelectItem key={opt.id} value={formatScopedRef(opt.scope, opt.id)}>
-                  {opt.profileNo} — {tLookups('fields.maxGlassThickness')}: {opt.maxGlassThickness}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {/* beadRequired lands on this section's own glass part(s) (bug-055
-              — a fixed section draws no separate bead part), so it comes out
-              of `glassIssues` below; shown here instead, right under the
-              actual field it's about. */}
-          <IssueList issues={glassIssues.filter((i) => i.messageKey === 'beadRequired')} />
-        </div>
-      )}
-
-      {isOpening && (
-        <div ref={flyScreenRef} className="flex flex-wrap gap-2">
-          <CheckboxChip
-            checked={section.hasFlyScreen}
-            disabled={!section.flyScreenAllowed}
-            onCheckedChange={section.onFlyScreenChange}
-            label={t('fields.hasFlyScreen')}
-            focused={selectedPartKind === 'flyScreen'}
-            title={!section.flyScreenAllowed ? t('fields.flyScreenDisabledHint') : undefined}
-          />
-        </div>
-      )}
-      {isOpening && <IssueList issues={flyScreenIssues} />}
-
-      {/* Mounted for a FIXED sliding section too — its Fixed tile is the
-          selected one then, and any preset tile is the way back. */}
-      {!section.fixedOnly && section.isSliding && (
-        <SlidingLayoutEditor
-          layout={section.slidingLayout}
-          rails={section.slidingRails}
-          kind={section.kind}
-          onFixed={() => section.onKindChange(SectionKind.FIXED)}
-          onChange={section.onSlidingLayoutChange}
-          issues={slidingSectionIssues}
-          issuesBySash={slidingIssuesBySash}
-        />
-      )}
-
-      {!section.fixedOnly && section.showOpeningTypes && (
-        <div>
-          <FieldLabel htmlFor="section-opening-type">{t('fields.openingTypeSection')}</FieldLabel>
-          <div id="section-opening-type" role="group" aria-label={t('fields.openingTypeSection')} className="mt-1.5 grid grid-cols-8 gap-1">
-            {OPENING_TYPE_OPTIONS.map((type) => {
-              // `FIXED_CLOSED` doubles as the fixed/opening choice itself
-              // now — a `FIXED` section has `openingType: null` (not
-              // literally `FIXED_CLOSED`, per the schema), so it needs
-              // its own selected check rather than the plain equality
-              // every other icon uses.
-              const selected =
-                type === HingedOpeningType.FIXED_CLOSED
-                  ? section.kind === SectionKind.FIXED || section.openingType === HingedOpeningType.FIXED_CLOSED
-                  : section.openingType === type
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  title={t(`fields.openingTypeLabels.${type}`)}
-                  aria-label={t(`fields.openingTypeLabels.${type}`)}
-                  aria-pressed={selected}
-                  onClick={() => section.onOpeningTypeChange(type)}
-                  className={cn(
-                    'flex items-center justify-center rounded-md border p-1 transition-colors',
-                    selected ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground',
-                  )}
-                >
-                  <OpeningTypeIcon type={type} className="size-full" />
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {isOpening && (
-        <div>
-          <FieldLabel htmlFor="section-sash" required>
-            {t('fields.sashProfile')}
-          </FieldLabel>
-          <Select
-            value={section.sashProfile || NONE}
-            disabled={section.sashOptions.length === 0}
-            onValueChange={(value) => {
-              if (!value) return
-              section.onSashChange(value as ScopedRef)
-            }}
-          >
-            <SelectTrigger id="section-sash" className="mt-1.5 w-full">
-              <SelectValue
-                placeholder={section.sashOptions.length === 0 ? t('fields.sashProfileNeedsFrame') : t('fields.sashProfilePlaceholder')}
-              />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE} disabled>
-                {t('fields.sashProfilePlaceholder')}
-              </SelectItem>
-              {section.sashOptions.map((opt) => (
-                <SelectItem key={opt.id} value={formatScopedRef(opt.scope, opt.id)}>
-                  {opt.profileNo} — {tLookups('fields.maxGlassThickness')}: {opt.maxGlassThickness}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {sashPart && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t('windowDialog.design.computedSize', {
-                width: Math.round(sashPart.rectMm.width),
-                height: Math.round(sashPart.rectMm.height),
-              })}
-            </p>
-          )}
-          {section.sashWeightKg !== null && (
-            <p
-              className={cn(
-                'mt-1 text-xs',
-                section.maxSashWeight !== null && section.sashWeightKg > section.maxSashWeight
-                  ? 'font-medium text-amber-600 dark:text-amber-500'
-                  : 'text-muted-foreground',
-              )}
-            >
-              {t('windowDialog.design.sashWeight', {
-                weight: Math.round(section.sashWeightKg * 10) / 10,
-                max: section.maxSashWeight ?? '—',
-              })}
-            </p>
-          )}
-          {/* sashWeightExceeded is already shown above with its own
-              computed-vs-allowed figures — don't repeat it as a plain
-              issue line too. */}
-          <IssueList issues={sashIssues.filter((i) => i.messageKey !== 'sashWeightExceeded')} />
-        </div>
-      )}
-
-      <div>
-        <FieldLabel htmlFor="section-glass" required>
-          {t('fields.glass')}
-        </FieldLabel>
-        <Select
-          value={section.glassValue}
-          disabled={section.glassOptions.length === 0}
-          onValueChange={(value) => {
-            if (!value) return
-            const [kind, ref] = value.split('|') as [GlassKind, ScopedRef]
-            section.onGlassChange(kind, ref)
-          }}
-        >
-          <SelectTrigger id="section-glass" className="mt-1.5 w-full">
-            <SelectValue
-              placeholder={
-                section.glassOptions.length > 0
-                  ? t('fields.glassPlaceholder')
-                  : isOpening
-                    ? t('fields.glassNeedsSash')
-                    : t('fields.glassNeedsBead')
-              }
-            />
-          </SelectTrigger>
-          <SelectContent>
-            {section.glassOptions.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {section.maxGlassAllowed !== null &&
-          (isOpening ? (
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t('fields.glassDisclaimer', { max: section.maxGlassAllowed, sashMax: section.sashMaxGlassThickness })}
-            </p>
-          ) : (
-            <p className="mt-1 text-xs text-muted-foreground">
-              {t('fields.glassDisclaimerBead', { max: section.maxGlassAllowed, beadMax: section.beadMaxGlassThickness })}
-            </p>
-          ))}
-      </div>
-      {glassPart && (
-        <p className="text-xs text-muted-foreground">
-          {t('windowDialog.design.computedSize', {
-            width: Math.round(glassPart.rectMm.width),
-            height: Math.round(glassPart.rectMm.height),
-          })}
-        </p>
-      )}
-      <IssueList issues={glassIssues.filter((i) => i.messageKey !== 'beadRequired')} />
-    </Section>
   )
 }
 
@@ -729,39 +348,6 @@ export function Section({
       {title && <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>}
       {children}
     </div>
-  )
-}
-
-function CheckboxChip({
-  checked,
-  disabled,
-  onCheckedChange,
-  label,
-  focused,
-  title,
-}: {
-  checked: boolean
-  disabled?: boolean
-  onCheckedChange: (checked: boolean) => void
-  label: string
-  focused?: boolean
-  /** Shown as a native hover tooltip — used for the fly-screen chip's
-   * "this frame doesn't accept one" explanation, which used to sit
-   * permanently under the checkboxes and now only appears on hover. */
-  title?: string
-}) {
-  return (
-    <label
-      title={title}
-      className={cn(
-        'flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors',
-        focused ? 'border-primary bg-primary/5' : 'border-border',
-        disabled && 'opacity-50',
-      )}
-    >
-      <Checkbox checked={checked} disabled={disabled} onCheckedChange={(next) => onCheckedChange(!!next)} />
-      {label}
-    </label>
   )
 }
 

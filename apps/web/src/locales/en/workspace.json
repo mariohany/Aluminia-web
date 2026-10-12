@@ -610,6 +610,21 @@
       },
       "crumbs": {
         "window": "Window"
+      },
+      "light": "Light",
+      "editOnPanel": "Edit on Panel {{n}}",
+      "maxThickness": "max {{max}} mm",
+      "weightValue": "{{weight}} kg · max {{max}}",
+      "opening": {
+        "search": "Search opening types",
+        "windows": "Windows",
+        "doors": "Doors",
+        "doorNote": "Picking a door type turns on Door for Panel {{n}}."
+      },
+      "search": {
+        "profiles": "Search profiles",
+        "glass": "Search glass",
+        "noMatches": "Nothing matches that search."
       }
     }
   },

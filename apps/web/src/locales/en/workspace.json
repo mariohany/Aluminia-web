@@ -548,6 +548,66 @@
         "fromSill": "Position up from the bottom (mm)",
         "end": "On {{host}} · cut {{cut}}"
       }
+    },
+    "inspector": {
+      "moreActions": "More actions",
+      "chips": {
+        "noIssues": "No issues",
+        "warnings_one": "{{count}} warning",
+        "warnings_other": "{{count}} warnings",
+        "errors_one": "{{count}} error",
+        "errors_other": "{{count}} errors"
+      },
+      "groups": {
+        "frame": "Frame",
+        "sizeShape": "Size & shape",
+        "finish": "Finish",
+        "dividers": "Dividers",
+        "lights": "Lights",
+        "light": "Light",
+        "opening": "Opening",
+        "glazing": "Glazing",
+        "glass": "Glass",
+        "sliding": "Sliding",
+        "fromPanel": "From Panel {{n}}",
+        "profile": "Profile",
+        "position": "Position",
+        "bend": "Bend",
+        "ends": "Ends"
+      },
+      "rows": {
+        "profile": "Profile",
+        "system": "System",
+        "width": "Width",
+        "height": "Height",
+        "head": "Head",
+        "rise": "Rise",
+        "door": "Door",
+        "interior": "Interior",
+        "exterior": "Exterior",
+        "defaultDivider": "Default",
+        "kind": "Kind",
+        "type": "Type",
+        "sash": "Sash",
+        "bead": "Bead",
+        "flyScreen": "Fly screen",
+        "weight": "Weight",
+        "glass": "Glass",
+        "thickness": "Thickness",
+        "layout": "Layout",
+        "sashes": "Sashes",
+        "rails": "Rails",
+        "frame": "Frame",
+        "colours": "Colours",
+        "fromLeft": "From left",
+        "fromSill": "From sill",
+        "length": "Length",
+        "radius": "Radius",
+        "top": "Top",
+        "bottom": "Bottom",
+        "left": "Left",
+        "right": "Right"
+      }
     }
   },
   "deleteClient": {

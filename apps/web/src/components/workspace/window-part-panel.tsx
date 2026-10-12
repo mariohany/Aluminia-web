@@ -1,25 +1,26 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2 } from 'lucide-react'
-import { GlassKind, HeadShape, HingedOpeningType, SectionKind } from '@repo/types/windows'
+import { GlassKind, HeadShape, HingedOpeningType, SectionKind, type WindowSectionInput } from '@repo/types/windows'
+import type { SystemType } from '@repo/types/lookups'
 import { ProfileType } from '@repo/types/lookups'
 import type { SlidingLayoutInput } from '@repo/types/sliding'
 import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
 import { sectionLetter, type WindowLayout, type WindowPartKind } from '@/lib/window-geometry'
 import { dedupeIssues, type TranslatedIssue } from '@/lib/window-weight'
 import type { MergedSystemProfileSummary } from '@/lib/lookup-merge'
-import { minGothicRiseMm, normalizeHeadRise, type HeadOutline } from '@/lib/arch-geometry'
 import { cn } from '@/lib/utils'
 import { FieldLabel } from '@/components/workspace/field-label'
 import { IssueList } from '@/components/workspace/issue-list'
 import { SlidingLayoutEditor } from '@/components/workspace/sliding-layout-editor'
 import { OpeningTypeIcon } from '@/components/icons/opening-type-icon'
-import { archOutlinePath } from '@/components/workspace/window-shapes'
 import { ProfileTreePicker } from '@/components/workspace/profile-tree-picker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { PanelInspector } from '@/components/workspace/inspector/panel-inspector'
+import { inspectorLevel } from '@/components/workspace/inspector/inspector-level'
 
 // Radix rejects an empty-string item value — same sentinel window-editor-page.tsx uses.
 const NONE = '__none'
@@ -49,20 +50,6 @@ const OPENING_TYPE_OPTIONS: HingedOpeningType[] = [
   HingedOpeningType.DOUBLE_DOOR_HANDLES_A,
   HingedOpeningType.DOUBLE_DOOR_HANDLES_B,
 ]
-
-const HEAD_SHAPE_OPTIONS: HeadShape[] = [HeadShape.FLAT, HeadShape.ROUND, HeadShape.SEGMENTAL, HeadShape.GOTHIC]
-
-// Fixed 40×46 demo outlines for the four shape-button icons — not the
-// panel's own rect. `round`'s rise is the real formula (width / 2);
-// `segmental`/`gothic` are just representative enough to read as
-// "shallow" and "pointed" at icon size, same way OpeningTypeIcon's
-// glyphs are illustrative rather than derived from a real sash.
-const HEAD_SHAPE_ICON_OUTLINES: Record<HeadShape, HeadOutline> = {
-  [HeadShape.FLAT]: { rect: { x: 2, y: 2, width: 36, height: 42 }, shape: HeadShape.FLAT, riseMm: 0 },
-  [HeadShape.ROUND]: { rect: { x: 2, y: 2, width: 36, height: 42 }, shape: HeadShape.ROUND, riseMm: 18 },
-  [HeadShape.SEGMENTAL]: { rect: { x: 2, y: 2, width: 36, height: 42 }, shape: HeadShape.SEGMENTAL, riseMm: 10 },
-  [HeadShape.GOTHIC]: { rect: { x: 2, y: 2, width: 36, height: 42 }, shape: HeadShape.GOTHIC, riseMm: 31 },
-}
 
 export interface WindowPartPanelColorOption {
   value: string
@@ -248,257 +235,124 @@ export interface WindowPartPanelProps {
    * INSTEAD of the Section block, never alongside it (selecting one
    * always deselects the other on the drawing). */
   selectedDivider: SelectedDividerProps | null
+
+  // Panel view (docs/inspector_redesign_planing.md §4).
+  /** The frame-profile picker, moved here from the top of the aside. */
+  frame: WindowPartPanelFrameProps
+  systemType: SystemType | null
+  /** The panel default divider profile's own number, for its row. */
+  dividerProfileNo: string | undefined
+  dividerCount: number
+  /** The panel's sections, one per light in display order — the Lights list. */
+  sections: WindowSectionInput[]
+  /** Selects a part exactly like a click on the drawing — a Lights row
+   * picks that light's glass, which opens its Section view. */
+  onSelectPart: (partId: string) => void
+}
+
+export interface WindowPartPanelFrameProps {
+  value: string | null
+  /** The picked profile's number and catalogue, for the row. */
+  profileNo: string | undefined
+  catalogName: string | undefined
+  /** `catalogue · brand · system` — the read-only System row. */
+  systemName: string | undefined
+  onChange: (ref: ScopedRef) => void
+  favoriteRef?: string | null
+  onSetFavorite?: (ref: ScopedRef) => void
+  preferredCatalogRef?: string | null
+  preferredBrandRef?: string | null
+  /** Already-translated "required", once validation shows. */
+  error?: string
 }
 
 /**
- * The dialog's fixed-width options column. Size, Head,
- * Bars, divider profile, and both colours sit at the top as plain panel-
- * level fields; below them, exactly one of the Section block (the
- * active section's own fixed/opening fields — headed "Section A" with
- * its own size only once a divider exists; a 1×1 panel's opening
- * fields are just more panel fields) or the Divider block (a
- * selected divider's label/profile/length/Remove) shows. Name, location
- * and notes live in the structure panel (docs/inspector_redesign_planing.md
- * §2). Clicking a sash/glass/fly-screen part on the drawing scrolls the
- * Section block into view; clicking a divider scrolls to the Divider
- * block instead.
+ * The inspector's body — docs/inspector_redesign_planing.md §3: ONE
+ * level at a time, picked by the selection. A divider shows the Divider
+ * block; a sash, glass or fly-screen part shows its Section block;
+ * anything else (the frame, a panel row in the tree, nothing) shows the
+ * Panel view. Name, location and notes live in the structure panel (§2).
  */
 export function WindowPartPanel(props: WindowPartPanelProps) {
   const { t } = useTranslation('workspace')
-
   const sectionRef = useRef<HTMLDivElement>(null)
   const dividerRef = useRef<HTMLDivElement>(null)
   const flyScreenRef = useRef<HTMLDivElement>(null)
-  const sectionRefs: Partial<Record<WindowPartKind, React.RefObject<HTMLDivElement | null>>> = {
-    sash: sectionRef,
-    glass: sectionRef,
-    flyScreen: flyScreenRef,
-    divider: dividerRef,
-  }
 
   const selectedPart = props.layout.parts.find((p) => p.id === props.selectedPartId) ?? null
+  const level = inspectorLevel(selectedPart?.kind ?? null, props.selectedDivider !== null)
 
-  useEffect(() => {
-    if (!selectedPart) return
-    sectionRefs[selectedPart.kind]?.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    // Only the identity of the selection should re-trigger a scroll —
-    // not every render, and not a re-render of the layout itself.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.selectedPartId])
+  if (level === 'panel') {
+    // Same prefix rule as the structure tree's warning icon: every issue
+    // on any of this panel's parts.
+    const prefix = `p${props.panelIndex}:`
+    const issues = [...props.issuesByPart].filter(([partId]) => partId.startsWith(prefix)).flatMap(([, list]) => list)
+    return <PanelInspector props={props} issues={issues} />
+  }
 
+  const divider = props.selectedDivider
   return (
-    <div className="flex flex-col gap-4 text-sm">
-      <PanelHeader
-        panelIndex={props.panelIndex}
-        panelCount={props.panelCount}
-        onDeletePanel={props.onDeletePanel}
-        deleteDisabledReason={props.deleteDisabledReason}
-      />
-
-      <div className="grid grid-cols-2 gap-2">
-        <NumberField
-          id="panel-width"
-          label={t('fields.widthMm')}
-          value={props.widthMm}
-          onChange={props.onWidthChange}
-          error={props.widthError}
-        />
-        <NumberField
-          id="panel-height"
-          label={t('fields.heightMm')}
-          value={props.heightMm}
-          onChange={props.onHeightChange}
-          error={props.heightError}
-        />
-      </div>
-
-      <div>
-        <FieldLabel htmlFor="panel-head-shape">{t('fields.headShapeSection')}</FieldLabel>
-        <div
-          id="panel-head-shape"
-          role="group"
-          aria-label={t('fields.headShapeSection')}
-          className="mt-1.5 grid grid-cols-4 gap-1"
-        >
-          {HEAD_SHAPE_OPTIONS.map((shape) => {
-            const selected = props.headShape === shape
-            // `round`'s rise is always exactly `widthMm / 2` — a true
-            // semicircle, never adjustable — so unlike segmental/gothic
-            // (whose rise the user can simply pick something smaller
-            // for), there's no valid rise left to offer once the panel
-            // is too wide for its own height: a real semicircle that
-            // wide needs more vertical room than the panel has. Disable
-            // the button itself rather than silently drawing a flatter
-            // curve than "round" promised.
-            const roundDoesNotFit = shape === HeadShape.ROUND && props.widthMm / 2 >= props.heightMm
-            const disabled = !props.headShapeAllowed || roundDoesNotFit
-            const disabledHint = !props.headShapeAllowed
-              ? t('fields.headShapeDisabledHint')
-              : roundDoesNotFit
-                  ? t('fields.headShapeRoundTooWideHint')
-                  : undefined
-            return (
-              <button
-                key={shape}
-                type="button"
-                disabled={disabled}
-                title={disabledHint ?? t(`fields.headShapeLabels.${shape}`)}
-                aria-label={t(`fields.headShapeLabels.${shape}`)}
-                aria-pressed={selected}
-                // Re-clicking the already-selected shape is a no-op —
-                // window-editor-page.tsx's handler always writes a fresh
-                // shape-appropriate default rise, which would otherwise
-                // clobber a value the user is still editing every time
-                // they happened to click the button they're already on.
-                onClick={() => {
-                  if (!selected) props.onHeadShapeChange(shape)
-                }}
-                className={cn(
-                  'flex flex-col items-center gap-1 rounded-md border p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-                  selected ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground',
-                )}
-              >
-                <svg viewBox="0 0 40 46" className="h-8 w-7 text-foreground" aria-hidden="true">
-                  <path d={archOutlinePath(HEAD_SHAPE_ICON_OUTLINES[shape])} fill="none" stroke="currentColor" strokeWidth="2" />
-                </svg>
-                <span className="text-[10px] leading-none text-muted-foreground">
-                  {t(`fields.headShapeLabels.${shape}`)}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-        {props.headShape !== HeadShape.FLAT && (
-          <div className="mt-2 max-w-32">
-            <NumberField
-              id="panel-head-rise"
-              label={t('fields.headRiseMm')}
-              value={
-                props.headShape === HeadShape.ROUND
-                  ? normalizeHeadRise(HeadShape.ROUND, props.widthMm, 0, props.heightMm, props.frameFaceMm)
-                  : (props.headRiseMm ?? 0)
-              }
-              onChange={props.onHeadRiseChange}
-              disabled={props.headShape === HeadShape.ROUND}
-              // Below this, a gothic head's two arcs stop meeting at a
-              // point and cross each other instead — a shape with no
-              // real bend a fabricator could set out to. See
-              // arch-geometry.ts's minGothicRiseMm.
-              min={props.headShape === HeadShape.GOTHIC ? Math.ceil(minGothicRiseMm(props.widthMm)) + 1 : 1}
-              // Above this, the springing line falls inside the sill —
-              // the curve runs on into the bottom frame member. See
-              // arch-geometry.ts's normalizeHeadRise.
-              max={Math.max(Math.floor(normalizeHeadRise(props.headShape, props.widthMm, props.heightMm, props.heightMm, props.frameFaceMm)), 1)}
-            />
-          </div>
-        )}
-      </div>
-
-      {props.showDoor && (
-        <div className="flex flex-wrap gap-2">
-          <CheckboxChip checked={props.isDoor} onCheckedChange={props.onDoorChange} label={t('fields.isDoor')} />
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-2">
-        <ColorField
-          id="panel-interior-color"
-          label={t('fields.interiorColor')}
-          placeholder={t('fields.colorPlaceholder')}
-          value={props.interiorColor}
-          options={props.colorOptions}
-          onChange={props.onInteriorColorChange}
-        />
-        <ColorField
-          id="panel-exterior-color"
-          label={t('fields.exteriorColor')}
-          placeholder={t('fields.colorPlaceholder')}
-          value={props.exteriorColor}
-          options={props.colorOptions}
-          onChange={props.onExteriorColorChange}
-        />
-      </div>
-
-      {/* One divider profile for the whole panel (docs/sections_planing.md
-          decision 4) — appears the first time a panel gains a divider,
-          required from then on. */}
-      {props.isGridded && (
+    <div className="flex flex-col gap-4 px-3 pt-3 pb-4 text-sm">
+      {level === 'divider' && divider ? (
+      <Section innerRef={dividerRef} title={divider.label} focused>
         <div>
-          <FieldLabel htmlFor="panel-divider-profile" required>
-            {t('fields.dividerProfile')}
-          </FieldLabel>
-          <div id="panel-divider-profile" className="mt-1.5 h-40 min-h-0 rounded-md border border-border">
+          <FieldLabel htmlFor="divider-profile">{t('windowDialog.design.dividerInspector.profile')}</FieldLabel>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {divider.profileNumber
+              ? divider.profile.override
+                ? `${t('fields.dividerProfile')}: ${divider.profileNumber}`
+                : t('windowDialog.design.dividerInspector.panelDefault', { profile: divider.profileNumber })
+              : t('fields.dividerProfileRequired')}
+          </p>
+          <div id="divider-profile" className="mt-1.5 h-40 min-h-0 rounded-md border border-border">
             <ProfileTreePicker
               profileType={ProfileType.TRANSOM}
-              value={props.dividerProfile}
-              onChange={props.onDividerProfileChange}
+              value={divider.profile.override ?? divider.profile.panelDefault}
+              onChange={divider.profile.onChange}
               catalogRef={props.frameCatalogRef}
             />
           </div>
-          {props.dividerProfileError && <p className="mt-1 text-xs text-destructive">{props.dividerProfileError}</p>}
+          {divider.profile.override && (
+            <Button type="button" size="sm" variant="ghost" className="mt-1" onClick={() => divider.profile.onChange(null)}>
+              {t('windowDialog.design.dividerInspector.useDefault')}
+            </Button>
+          )}
         </div>
-      )}
-
-      {props.selectedDivider ? (
-        <Section innerRef={dividerRef} title={props.selectedDivider.label} focused>
-          <div>
-            <FieldLabel htmlFor="divider-profile">{t('windowDialog.design.dividerInspector.profile')}</FieldLabel>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {props.selectedDivider.profileNumber
-                ? props.selectedDivider.profile.override
-                  ? `${t('fields.dividerProfile')}: ${props.selectedDivider.profileNumber}`
-                  : t('windowDialog.design.dividerInspector.panelDefault', { profile: props.selectedDivider.profileNumber })
-                : t('fields.dividerProfileRequired')}
-            </p>
-            <div id="divider-profile" className="mt-1.5 h-40 min-h-0 rounded-md border border-border">
-              <ProfileTreePicker
-                profileType={ProfileType.TRANSOM}
-                value={props.selectedDivider.profile.override ?? props.selectedDivider.profile.panelDefault}
-                onChange={props.selectedDivider.profile.onChange}
-                catalogRef={props.frameCatalogRef}
-              />
-            </div>
-            {props.selectedDivider.profile.override && (
-              <Button type="button" size="sm" variant="ghost" className="mt-1" onClick={() => props.selectedDivider?.profile.onChange(null)}>
-                {t('windowDialog.design.dividerInspector.useDefault')}
-              </Button>
+        {divider.position && (
+          <CommitNumberField
+            id="divider-position"
+            // Re-seeded when it moves from elsewhere (drag, nudge, undo).
+            key={divider.position.valueMm}
+            label={t(
+              divider.position.axis === 'v'
+                ? 'windowDialog.design.dividerInspector.fromLeft'
+                : 'windowDialog.design.dividerInspector.fromSill',
             )}
-          </div>
-          {props.selectedDivider.position && (
-            <CommitNumberField
-              id="divider-position"
-              // Re-seeded when it moves from elsewhere (drag, nudge, undo).
-              key={props.selectedDivider.position.valueMm}
-              label={t(
-                props.selectedDivider.position.axis === 'v'
-                  ? 'windowDialog.design.dividerInspector.fromLeft'
-                  : 'windowDialog.design.dividerInspector.fromSill',
-              )}
-              valueMm={props.selectedDivider.position.valueMm}
-              onCommit={(mm) => mm !== null && props.selectedDivider?.position?.onChange(mm)}
-            />
-          )}
-          <p className="text-xs text-muted-foreground">
-            {t('windowDialog.design.dividerLength', { length: Math.round(props.selectedDivider.lengthMm) })}
+            valueMm={divider.position.valueMm}
+            onCommit={(mm) => mm !== null && divider.position?.onChange(mm)}
+          />
+        )}
+        <p className="text-xs text-muted-foreground">
+          {t('windowDialog.design.dividerLength', { length: Math.round(divider.lengthMm) })}
+        </p>
+        {divider.ends.map((line, i) => (
+          <p key={i} className="text-xs text-muted-foreground" dir="auto">
+            {line}
           </p>
-          {props.selectedDivider.ends.map((line, i) => (
-            <p key={i} className="text-xs text-muted-foreground" dir="auto">
-              {line}
-            </p>
-          ))}
-          {props.selectedDivider.bend && (
-            <RadiusField
-              // Re-seeded whenever the bend changes from elsewhere (the
-              // drawing's handle, undo).
-              key={props.selectedDivider.bend.radiusMm ?? 'straight'}
-              {...props.selectedDivider.bend}
-            />
-          )}
-          <Button type="button" size="sm" variant="destructive" onClick={props.selectedDivider.onRemove}>
-            <Trash2 className="size-3.5" aria-hidden="true" />
-            {t('windowDialog.design.removeDivider')}
-          </Button>
-        </Section>
+        ))}
+        {divider.bend && (
+          <RadiusField
+            // Re-seeded whenever the bend changes from elsewhere (the
+            // drawing's handle, undo).
+            key={divider.bend.radiusMm ?? 'straight'}
+            {...divider.bend}
+          />
+        )}
+        <Button type="button" size="sm" variant="destructive" onClick={divider.onRemove}>
+          <Trash2 className="size-3.5" aria-hidden="true" />
+          {t('windowDialog.design.removeDivider')}
+        </Button>
+      </Section>
       ) : (
         <SectionBlock
           innerRef={sectionRef}
@@ -510,7 +364,6 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
           isGridded={props.isGridded}
         />
       )}
-
     </div>
   )
 }
@@ -852,42 +705,6 @@ function SectionBlock({
   )
 }
 
-/** The "Panel N of M" row + delete button — shown only for a real
- * multi-panel assembly (a single-panel window's delete button lives at
- * the dialog's own footer level instead, same as before this ever
- * needed a name). */
-export function PanelHeader({
-  panelIndex,
-  panelCount,
-  onDeletePanel,
-  deleteDisabledReason,
-}: {
-  panelIndex: number
-  panelCount: number
-  onDeletePanel?: () => void
-  deleteDisabledReason?: string
-}) {
-  const { t } = useTranslation('workspace')
-  if (panelCount <= 1) return null
-  return (
-    <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 px-2.5 py-1.5">
-      <span className="text-xs font-medium">{t('windowDialog.design.panelOf', { index: panelIndex + 1, count: panelCount })}</span>
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        className="h-6 px-1.5 text-muted-foreground hover:text-destructive"
-        disabled={!onDeletePanel}
-        title={deleteDisabledReason ?? t('windowDialog.design.deletePanel')}
-        aria-label={t('windowDialog.design.deletePanel')}
-        onClick={() => onDeletePanel?.()}
-      >
-        <Trash2 className="size-3.5" aria-hidden="true" />
-      </Button>
-    </div>
-  )
-}
-
 export function Section({
   innerRef,
   title,
@@ -1052,56 +869,6 @@ export function NumberField({
         }}
       />
       {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-    </div>
-  )
-}
-
-function ColorField({
-  id,
-  label,
-  placeholder,
-  value,
-  options,
-  onChange,
-}: {
-  id: string
-  label: string
-  placeholder: string
-  value: string | null
-  options: WindowPartPanelColorOption[]
-  onChange: (value: string | null) => void
-}) {
-  return (
-    <div>
-      <FieldLabel htmlFor={id} optional>
-        {label}
-      </FieldLabel>
-      <Select
-        value={value ?? NONE}
-        onValueChange={(next) => {
-          if (!next) return
-          onChange(next === NONE ? null : next)
-        }}
-      >
-        <SelectTrigger id={id} className="mt-1.5 w-full">
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NONE}>{placeholder}</SelectItem>
-          {options.map((opt) => (
-            <SelectItem key={opt.value} value={opt.value}>
-              <span className="flex items-center gap-1.5">
-                <span
-                  className="size-3 shrink-0 rounded-sm border border-border"
-                  style={{ backgroundColor: opt.hex }}
-                  aria-hidden="true"
-                />
-                {opt.label}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
     </div>
   )
 }

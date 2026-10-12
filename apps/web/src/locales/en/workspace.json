@@ -607,6 +607,9 @@
         "bottom": "Bottom",
         "left": "Left",
         "right": "Right"
+      },
+      "crumbs": {
+        "window": "Window"
       }
     }
   },

@@ -39,13 +39,11 @@ import { useProjectQuery, useUpdateProjectMutation } from '@/lib/projects-querie
 import { useCreateWindowMutation, useUpdateWindowMutation, useWindowQuery } from '@/lib/windows-queries'
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
-import { FieldLabel } from '@/components/workspace/field-label'
 import { WindowDrawing } from '@/components/workspace/window-drawing'
 import { WindowIssuesPanel } from '@/components/workspace/window-issues-panel'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/bilingual'
 import { WindowStructurePanel } from '@/components/workspace/window-structure-panel'
-import { ProfileSearchPicker } from '@/components/workspace/profile-search-picker'
 import { panelIssueLights, slidingSectionArgs, useResolvedPanels, type PanelRender, type SectionRender } from '@/lib/window-render'
 import { useEditHistory } from '@/lib/use-edit-history'
 import { WindowPartPanel } from '@/components/workspace/window-part-panel'
@@ -2156,28 +2154,9 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               onFocusCapture={onFieldFocus}
               onBlurCapture={onFieldBlur}
             >
-            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pt-3 pb-4">
-              {/* Frame profile — search + favourite + Browse
-                  (docs/window_editor_redesign_planing.md §4), replacing
-                  the old always-open left-column tree. */}
-              <div className="mb-4 flex flex-col gap-1.5">
-                <FieldLabel htmlFor="window-frame" required>
-                  {t('fields.frameProfile')}
-                </FieldLabel>
-                <ProfileSearchPicker
-                  id="window-frame"
-                  profileType={ProfileType.FRAME}
-                  value={activePanel.frameProfile || null}
-                  onChange={onFrameChange}
-                  favoriteRef={project?.favoriteFrameProfile}
-                  onSetFavorite={project ? onSetFavorite : undefined}
-                  preferredCatalogRef={isEdit ? undefined : project?.defaultSystemCatalog}
-                  preferredBrandRef={isEdit ? undefined : project?.defaultSystemBrand}
-                />
-                {showValidation && errors.panels && (
-                  <p className="text-xs text-destructive">{t('fields.frameProfileRequired')}</p>
-                )}
-              </div>
+            {/* The body scrolls; each inspector level pads itself
+                (docs/inspector_redesign_planing.md §1). */}
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
               {activeInfo && (
                 <WindowPartPanel
                   layout={{
@@ -2295,6 +2274,25 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                     beadMaxGlassThickness: activeSectionInfo?.beadMaxGlassThickness ?? null,
                   }}
                   selectedDivider={selectedDivider}
+                  frame={{
+                    value: activePanel.frameProfile || null,
+                    profileNo: activeInfo.frame?.profileNo,
+                    catalogName: activeInfo.frame?.catalogName ?? undefined,
+                    systemName: activeInfo.frameCatalog
+                      ? [activeInfo.frameCatalog.name, activeInfo.frameCatalog.brandName].filter(Boolean).join(' · ')
+                      : undefined,
+                    onChange: onFrameChange,
+                    favoriteRef: project?.favoriteFrameProfile,
+                    onSetFavorite: project ? onSetFavorite : undefined,
+                    preferredCatalogRef: isEdit ? undefined : project?.defaultSystemCatalog,
+                    preferredBrandRef: isEdit ? undefined : project?.defaultSystemBrand,
+                    error: showValidation && errors.panels ? t('fields.frameProfileRequired') : undefined,
+                  }}
+                  systemType={activeInfo.systemType}
+                  dividerProfileNo={activeInfo.dividerProfile?.profileNo}
+                  dividerCount={activePanel.dividers.length}
+                  sections={activePanel.sections}
+                  onSelectPart={(partId) => onSelectPart(partId, false)}
                 />
               )}
             </div>

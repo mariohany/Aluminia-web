@@ -63,7 +63,11 @@ describe('Clients & projects tenant isolation (e2e)', () => {
     await controlPlane.query(
       `INSERT INTO users (email, password_hash, role, company_id, status)
        VALUES ($1, $2, $3, NULL, 'active')`,
-      [superAdminEmail, await passwordService.hash(password), UserRole.SUPER_ADMIN],
+      [
+        superAdminEmail,
+        await passwordService.hash(password),
+        UserRole.SUPER_ADMIN,
+      ],
     );
 
     tokenOne = await loginAs(adminOneEmail);
@@ -73,7 +77,9 @@ describe('Clients & projects tenant isolation (e2e)', () => {
 
   afterAll(async () => {
     await dropCompanies(controlPlane, [companyOneName, companyTwoName]);
-    await controlPlane.query(`DELETE FROM users WHERE email = $1`, [superAdminEmail]);
+    await controlPlane.query(`DELETE FROM users WHERE email = $1`, [
+      superAdminEmail,
+    ]);
     await app.close();
   });
 
@@ -115,8 +121,12 @@ describe('Clients & projects tenant isolation (e2e)', () => {
       .set('Authorization', `Bearer ${tokenTwo}`)
       .expect(200);
 
-    const namesOne = (treeOne.body as ClientWithProjects[]).map((c) => c.enName);
-    const namesTwo = (treeTwo.body as ClientWithProjects[]).map((c) => c.enName);
+    const namesOne = (treeOne.body as ClientWithProjects[]).map(
+      (c) => c.enName,
+    );
+    const namesTwo = (treeTwo.body as ClientWithProjects[]).map(
+      (c) => c.enName,
+    );
 
     expect(namesOne).toContain('Alpha Client');
     expect(namesTwo).toContain('Beta Client');
@@ -326,7 +336,11 @@ describe('Clients & projects tenant isolation (e2e)', () => {
     const auth = { Authorization: `Bearer ${superToken}` };
 
     await request(server).get('/clients').set(auth).expect(403);
-    await request(server).post('/clients').set(auth).send({ enName: 'X' }).expect(403);
+    await request(server)
+      .post('/clients')
+      .set(auth)
+      .send({ enName: 'X' })
+      .expect(403);
   });
 
   // A note on what the test above does and does not prove, established
@@ -361,14 +375,23 @@ describe('Clients & projects tenant isolation (e2e)', () => {
 async function dropCompanies(controlPlane: DataSource, names: string[]) {
   for (const name of names) {
     const companies: Array<{ id: string; schema_name: string }> =
-      await controlPlane.query(`SELECT id, schema_name FROM companies WHERE name = $1`, [
-        name,
-      ]);
+      await controlPlane.query(
+        `SELECT id, schema_name FROM companies WHERE name = $1`,
+        [name],
+      );
     for (const company of companies) {
-      await controlPlane.query(`DROP SCHEMA IF EXISTS "${company.schema_name}" CASCADE`);
-      await controlPlane.query(`DELETE FROM users WHERE company_id = $1`, [company.id]);
-      await controlPlane.query(`DELETE FROM billing WHERE company_id = $1`, [company.id]);
-      await controlPlane.query(`DELETE FROM companies WHERE id = $1`, [company.id]);
+      await controlPlane.query(
+        `DROP SCHEMA IF EXISTS "${company.schema_name}" CASCADE`,
+      );
+      await controlPlane.query(`DELETE FROM users WHERE company_id = $1`, [
+        company.id,
+      ]);
+      await controlPlane.query(`DELETE FROM billing WHERE company_id = $1`, [
+        company.id,
+      ]);
+      await controlPlane.query(`DELETE FROM companies WHERE id = $1`, [
+        company.id,
+      ]);
     }
   }
 }

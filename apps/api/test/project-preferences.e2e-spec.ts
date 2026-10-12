@@ -217,7 +217,9 @@ describe('Project preferences (e2e)', () => {
   });
 
   it('rejects a malformed ScopedRef', async () => {
-    await createProject({ defaultSystemBrand: `foo:${platformBrandId}` }).expect(400);
+    await createProject({
+      defaultSystemBrand: `foo:${platformBrandId}`,
+    }).expect(400);
   });
 
   it('rejects a bare uuid with no scope prefix', async () => {
@@ -235,15 +237,24 @@ describe('Project preferences (e2e)', () => {
 
 async function dropCompanies(controlPlane: DataSource, names: string[]) {
   for (const name of names) {
-    const companies: Array<{ id: string; schema_name: string }> = await controlPlane.query(
-      `SELECT id, schema_name FROM companies WHERE name = $1`,
-      [name],
-    );
+    const companies: Array<{ id: string; schema_name: string }> =
+      await controlPlane.query(
+        `SELECT id, schema_name FROM companies WHERE name = $1`,
+        [name],
+      );
     for (const company of companies) {
-      await controlPlane.query(`DROP SCHEMA IF EXISTS "${company.schema_name}" CASCADE`);
-      await controlPlane.query(`DELETE FROM users WHERE company_id = $1`, [company.id]);
-      await controlPlane.query(`DELETE FROM billing WHERE company_id = $1`, [company.id]);
-      await controlPlane.query(`DELETE FROM companies WHERE id = $1`, [company.id]);
+      await controlPlane.query(
+        `DROP SCHEMA IF EXISTS "${company.schema_name}" CASCADE`,
+      );
+      await controlPlane.query(`DELETE FROM users WHERE company_id = $1`, [
+        company.id,
+      ]);
+      await controlPlane.query(`DELETE FROM billing WHERE company_id = $1`, [
+        company.id,
+      ]);
+      await controlPlane.query(`DELETE FROM companies WHERE id = $1`, [
+        company.id,
+      ]);
     }
   }
 }

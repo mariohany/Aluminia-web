@@ -40,7 +40,11 @@ describe('Session persistence (e2e)', () => {
     // the wrong reason.
     app.use(cookieParser());
     await app.init();
-    await clearRateLimits(app, 'AuthController.refresh', 'AuthController.logout');
+    await clearRateLimits(
+      app,
+      'AuthController.refresh',
+      'AuthController.logout',
+    );
 
     controlPlane = app.get<DataSource>(getDataSourceToken());
     const passwordService = app.get(PasswordService);

@@ -9,7 +9,11 @@ import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Company, Session]), AuditLogModule, AuthModule],
+  imports: [
+    TypeOrmModule.forFeature([User, Company, Session]),
+    AuditLogModule,
+    AuthModule,
+  ],
   controllers: [UsersController],
   providers: [UsersService],
   // Exported so CompanyModule's company-admin surface reuses this exact

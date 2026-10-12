@@ -17,17 +17,17 @@ describe('pendingTenantMigrations', () => {
   it('reports only the migrations a schema is actually missing', () => {
     const applied = new Map([['tenant_acme', new Set(['AddOne1'])]]);
 
-    expect(
-      pendingTenantMigrations(expected, applied, ['tenant_acme']),
-    ).toEqual([{ schemaName: 'tenant_acme', pending: ['AddTwo2', 'AddThree3'] }]);
+    expect(pendingTenantMigrations(expected, applied, ['tenant_acme'])).toEqual(
+      [{ schemaName: 'tenant_acme', pending: ['AddTwo2', 'AddThree3'] }],
+    );
   });
 
   // A schema with no tenant_migrations table at all never reaches the
   // map — a half-provisioned tenant, which has run nothing.
   it('treats a schema with no bookkeeping table as having run nothing', () => {
-    expect(pendingTenantMigrations(expected, new Map(), ['tenant_new'])).toEqual(
-      [{ schemaName: 'tenant_new', pending: expected }],
-    );
+    expect(
+      pendingTenantMigrations(expected, new Map(), ['tenant_new']),
+    ).toEqual([{ schemaName: 'tenant_new', pending: expected }]);
   });
 
   it('reports each lagging schema separately and skips the healthy ones', () => {
@@ -37,7 +37,10 @@ describe('pendingTenantMigrations', () => {
     ]);
 
     expect(
-      pendingTenantMigrations(expected, applied, ['tenant_acme', 'tenant_beta']),
+      pendingTenantMigrations(expected, applied, [
+        'tenant_acme',
+        'tenant_beta',
+      ]),
     ).toEqual([{ schemaName: 'tenant_beta', pending: ['AddThree3'] }]);
   });
 

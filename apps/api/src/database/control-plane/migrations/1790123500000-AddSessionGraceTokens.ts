@@ -20,6 +20,8 @@ export class AddSessionGraceTokens1790123500000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "sessions" DROP COLUMN "grace_tokens"`);
+    await queryRunner.query(
+      `ALTER TABLE "sessions" DROP COLUMN "grace_tokens"`,
+    );
   }
 }

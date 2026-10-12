@@ -10,7 +10,11 @@ import {
   Post,
 } from '@nestjs/common';
 import { UserRole } from '@repo/types/auth';
-import type { CompanyDetail, CompanyListItem, CompanySummary } from '@repo/types/companies';
+import type {
+  CompanyDetail,
+  CompanyListItem,
+  CompanySummary,
+} from '@repo/types/companies';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/jwt-payload';

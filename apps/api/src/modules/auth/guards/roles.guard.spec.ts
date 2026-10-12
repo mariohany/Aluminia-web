@@ -35,11 +35,15 @@ describe('RolesGuard', () => {
 
   it('rejects a user whose role is not in the required list', () => {
     const guard = new RolesGuard(makeReflector(['super_admin']));
-    expect(() => guard.canActivate(makeContext('company_admin'))).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(makeContext('company_admin'))).toThrow(
+      ForbiddenException,
+    );
   });
 
   it('rejects a request with no user on it, rather than defaulting to allow', () => {
     const guard = new RolesGuard(makeReflector(['super_admin']));
-    expect(() => guard.canActivate(makeContext(undefined))).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(makeContext(undefined))).toThrow(
+      ForbiddenException,
+    );
   });
 });

@@ -27,17 +27,13 @@ export interface PendingMigrations {
 }
 
 export function hasPending(pending: PendingMigrations): boolean {
-  return (
-    pending.controlPlane.length > 0 || pending.tenantSchemas.length > 0
-  );
+  return pending.controlPlane.length > 0 || pending.tenantSchemas.length > 0;
 }
 
 export function describePending(pending: PendingMigrations): string {
   const lines: string[] = [];
   if (pending.controlPlane.length > 0) {
-    lines.push(
-      `control plane: ${pending.controlPlane.join(', ')}`,
-    );
+    lines.push(`control plane: ${pending.controlPlane.join(', ')}`);
   }
   for (const tenant of pending.tenantSchemas) {
     lines.push(`${tenant.schemaName}: ${tenant.pending.join(', ')}`);
@@ -52,9 +48,7 @@ export function describePending(pending: PendingMigrations): string {
  * about declaring it (both spellings resolve to the same string today,
  * and this keeps that from mattering).
  */
-export function migrationName(
-  migration: new () => MigrationInterface,
-): string {
+export function migrationName(migration: new () => MigrationInterface): string {
   const declared = (new migration() as { name?: string }).name;
   return declared ?? migration.name;
 }

@@ -14,7 +14,10 @@ import type {
   CreateCompanyInput,
   UpdateCompanyInput,
 } from '@repo/types/companies';
-import { Company, CompanyStatus } from '../../database/control-plane/entities/company.entity';
+import {
+  Company,
+  CompanyStatus,
+} from '../../database/control-plane/entities/company.entity';
 import { User } from '../../database/control-plane/entities/user.entity';
 import { BillingRecord } from '../../database/control-plane/entities/billing-record.entity';
 import { assertValidSchemaName } from '../../database/tenant/schema-name';
@@ -29,7 +32,8 @@ export class CompaniesService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(Company) private readonly companies: Repository<Company>,
     @InjectRepository(User) private readonly users: Repository<User>,
-    @InjectRepository(BillingRecord) private readonly billing: Repository<BillingRecord>,
+    @InjectRepository(BillingRecord)
+    private readonly billing: Repository<BillingRecord>,
     private readonly provisioning: TenantProvisioningService,
     private readonly auditLog: AuditLogService,
     private readonly projectCounts: ProjectCountsService,
@@ -37,7 +41,9 @@ export class CompaniesService {
   ) {}
 
   async list(): Promise<CompanyListItem[]> {
-    const companies = await this.companies.find({ order: { createdAt: 'DESC' } });
+    const companies = await this.companies.find({
+      order: { createdAt: 'DESC' },
+    });
     if (companies.length === 0) return [];
 
     const [counts, projectCounts] = await Promise.all([
@@ -50,7 +56,9 @@ export class CompaniesService {
         .getRawMany<{ companyId: string; count: string }>(),
       this.projectCounts.byCompany(),
     ]);
-    const countByCompany = new Map(counts.map((row) => [row.companyId, Number(row.count)]));
+    const countByCompany = new Map(
+      counts.map((row) => [row.companyId, Number(row.count)]),
+    );
 
     return companies.map((company) => ({
       ...toCompanySummary(company, countByCompany.get(company.id) ?? 0),
@@ -58,7 +66,9 @@ export class CompaniesService {
       // missing from a still-cached map was created or reactivated within
       // the cache's 90 s, so 0 is the honest answer for a new one.
       projectCount:
-        company.status === CompanyStatus.ACTIVE ? (projectCounts.get(company.id) ?? 0) : null,
+        company.status === CompanyStatus.ACTIVE
+          ? (projectCounts.get(company.id) ?? 0)
+          : null,
     }));
   }
 
@@ -67,8 +77,14 @@ export class CompaniesService {
     if (!company) throw new NotFoundException('Company not found.');
 
     const [users, billing, projectCounts] = await Promise.all([
-      this.users.find({ where: { companyId: id }, order: { createdAt: 'ASC' } }),
-      this.billing.find({ where: { companyId: id }, order: { effectiveFrom: 'DESC' } }),
+      this.users.find({
+        where: { companyId: id },
+        order: { createdAt: 'ASC' },
+      }),
+      this.billing.find({
+        where: { companyId: id },
+        order: { effectiveFrom: 'DESC' },
+      }),
       this.projectCounts.byCompany(),
     ]);
 
@@ -76,7 +92,9 @@ export class CompaniesService {
       ...toCompanySummary(company, users.length),
       // Same rule as list(): archived → null ("—").
       projectCount:
-        company.status === CompanyStatus.ACTIVE ? (projectCounts.get(company.id) ?? 0) : null,
+        company.status === CompanyStatus.ACTIVE
+          ? (projectCounts.get(company.id) ?? 0)
+          : null,
       schemaName: company.schemaName,
       updatedAt: company.updatedAt.toISOString(),
       users: users.map(toCompanyUserSummary),
@@ -84,7 +102,10 @@ export class CompaniesService {
     };
   }
 
-  async create(input: CreateCompanyInput, actorId: string): Promise<CompanySummary> {
+  async create(
+    input: CreateCompanyInput,
+    actorId: string,
+  ): Promise<CompanySummary> {
     const { company } = await this.provisioning.provision(input);
 
     // TenantProvisioningService owns its own transaction end to end and
@@ -97,19 +118,29 @@ export class CompaniesService {
       action: 'company.created',
       targetType: 'company',
       targetId: company.id,
-      metadata: { name: company.name, plan: company.plan, maxUsers: company.maxUsers },
+      metadata: {
+        name: company.name,
+        plan: company.plan,
+        maxUsers: company.maxUsers,
+      },
     });
 
     return toCompanySummary(company, 1);
   }
 
-  async update(id: string, input: UpdateCompanyInput, actorId: string): Promise<CompanySummary> {
+  async update(
+    id: string,
+    input: UpdateCompanyInput,
+    actorId: string,
+  ): Promise<CompanySummary> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      const company = await queryRunner.manager.findOne(Company, { where: { id } });
+      const company = await queryRunner.manager.findOne(Company, {
+        where: { id },
+      });
       if (!company) throw new NotFoundException('Company not found.');
 
       const planOrSeatsChanged =
@@ -137,7 +168,11 @@ export class CompaniesService {
         action: planOrSeatsChanged ? 'company.plan_changed' : 'company.updated',
         targetType: 'company',
         targetId: company.id,
-        metadata: { name: company.name, plan: company.plan, maxUsers: company.maxUsers },
+        metadata: {
+          name: company.name,
+          plan: company.plan,
+          maxUsers: company.maxUsers,
+        },
       });
 
       await queryRunner.commitTransaction();
@@ -157,7 +192,9 @@ export class CompaniesService {
     await queryRunner.startTransaction();
 
     try {
-      const company = await queryRunner.manager.findOne(Company, { where: { id } });
+      const company = await queryRunner.manager.findOne(Company, {
+        where: { id },
+      });
       if (!company) throw new NotFoundException('Company not found.');
       if (company.status === CompanyStatus.SUSPENDED) {
         throw new BadRequestException('Company is already archived.');
@@ -178,7 +215,9 @@ export class CompaniesService {
       );
       // ...and their access tokens are refused from their next request,
       // on every route, not only tenant-scoped ones (stability S3).
-      const bumped = await this.authVersions.bump(queryRunner.manager, { companyId: id });
+      const bumped = await this.authVersions.bump(queryRunner.manager, {
+        companyId: id,
+      });
 
       await this.auditLog.record(queryRunner.manager, {
         actorUserId: actorId,
@@ -206,7 +245,9 @@ export class CompaniesService {
     await queryRunner.startTransaction();
 
     try {
-      const company = await queryRunner.manager.findOne(Company, { where: { id } });
+      const company = await queryRunner.manager.findOne(Company, {
+        where: { id },
+      });
       if (!company) throw new NotFoundException('Company not found.');
       if (company.status === CompanyStatus.ACTIVE) {
         throw new BadRequestException('Company is already active.');
@@ -234,26 +275,39 @@ export class CompaniesService {
     }
   }
 
-  async remove(id: string, confirmName: string, actorId: string): Promise<void> {
+  async remove(
+    id: string,
+    confirmName: string,
+    actorId: string,
+  ): Promise<void> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      const company = await queryRunner.manager.findOne(Company, { where: { id } });
+      const company = await queryRunner.manager.findOne(Company, {
+        where: { id },
+      });
       if (!company) throw new NotFoundException('Company not found.');
       if (company.status !== CompanyStatus.SUSPENDED) {
-        throw new BadRequestException('Only an archived company can be permanently deleted.');
+        throw new BadRequestException(
+          'Only an archived company can be permanently deleted.',
+        );
       }
       if (confirmName !== company.name) {
-        throw new BadRequestException('Company name confirmation does not match.');
+        throw new BadRequestException(
+          'Company name confirmation does not match.',
+        );
       }
 
       // users.company_id is ON DELETE RESTRICT (Phase 4) — deletion has
       // to remove them explicitly and in the right order, or Postgres
       // correctly refuses. Their sessions cascade automatically.
       const deletedUserIds = (
-        await queryRunner.manager.find(User, { where: { companyId: company.id }, select: { id: true } })
+        await queryRunner.manager.find(User, {
+          where: { companyId: company.id },
+          select: { id: true },
+        })
       ).map((user) => user.id);
       await queryRunner.manager.delete(User, { companyId: company.id });
 
@@ -265,7 +319,11 @@ export class CompaniesService {
         action: 'company.deleted',
         targetType: 'company',
         targetId: company.id,
-        metadata: { name: company.name, schemaName: company.schemaName, plan: company.plan },
+        metadata: {
+          name: company.name,
+          schemaName: company.schemaName,
+          plan: company.plan,
+        },
       });
 
       // billing rows cascade automatically (ON DELETE CASCADE).

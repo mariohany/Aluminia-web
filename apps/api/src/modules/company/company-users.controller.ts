@@ -103,7 +103,12 @@ export class CompanyUsersController {
     @Body() dto: ResetCompanyUserPasswordDto,
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<void> {
-    await this.users.resetPassword(id, dto.password, actor.id, companyOf(actor));
+    await this.users.resetPassword(
+      id,
+      dto.password,
+      actor.id,
+      companyOf(actor),
+    );
   }
 
   @Delete(':id')

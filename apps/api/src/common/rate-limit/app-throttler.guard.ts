@@ -20,7 +20,11 @@ export class AppThrottlerGuard extends ThrottlerGuard {
   // Readable instead of the library's hash — `LeadsController.create:
   // default:ip:1.2.3.4` — so a count can be found (and cleared) in Redis
   // by route and caller.
-  protected generateKey(context: ExecutionContext, tracker: string, name: string): string {
+  protected generateKey(
+    context: ExecutionContext,
+    tracker: string,
+    name: string,
+  ): string {
     return `${context.getClass().name}.${context.getHandler().name}:${name}:${tracker}`;
   }
 }

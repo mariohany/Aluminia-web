@@ -7,8 +7,15 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, MoreThan, QueryRunner, Repository } from 'typeorm';
 import { UserRole } from '@repo/types/auth';
-import type { CreateUserInput, UpdateUserInput, UserSummary } from '@repo/types/users';
-import { User, UserStatus } from '../../database/control-plane/entities/user.entity';
+import type {
+  CreateUserInput,
+  UpdateUserInput,
+  UserSummary,
+} from '@repo/types/users';
+import {
+  User,
+  UserStatus,
+} from '../../database/control-plane/entities/user.entity';
 import { Company } from '../../database/control-plane/entities/company.entity';
 import { Session } from '../../database/control-plane/entities/session.entity';
 import { PasswordService } from '../auth/password.service';
@@ -65,12 +72,18 @@ export class UsersService {
       this.users.find({ where: { companyId }, order: { createdAt: 'DESC' } }),
       this.companies.findOne({ where: { id: companyId } }),
       // Live sessions of this company's users only (stability S14).
-      this.sessions.find({ where: { expiresAt: MoreThan(new Date()), user: { companyId } } }),
+      this.sessions.find({
+        where: { expiresAt: MoreThan(new Date()), user: { companyId } },
+      }),
     ]);
     const sessionByUserId = new Map(sessions.map((s) => [s.userId, s]));
 
     return users.map((user) =>
-      toUserSummary(user, company?.name ?? null, sessionByUserId.get(user.id) ?? null),
+      toUserSummary(
+        user,
+        company?.name ?? null,
+        sessionByUserId.get(user.id) ?? null,
+      ),
     );
   }
 
@@ -80,10 +93,16 @@ export class UsersService {
     await queryRunner.startTransaction();
 
     try {
-      const company = await this.lockCompanyForSeatCheck(queryRunner, input.companyId);
+      const company = await this.lockCompanyForSeatCheck(
+        queryRunner,
+        input.companyId,
+      );
 
-      const existing = await queryRunner.manager.findOne(User, { where: { email: input.email } });
-      if (existing) throw new BadRequestException('A user with this email already exists.');
+      const existing = await queryRunner.manager.findOne(User, {
+        where: { email: input.email },
+      });
+      if (existing)
+        throw new BadRequestException('A user with this email already exists.');
 
       await this.assertSeatAvailable(queryRunner, company);
 
@@ -102,7 +121,11 @@ export class UsersService {
         action: 'user.created',
         targetType: 'user',
         targetId: user.id,
-        metadata: { email: user.email, role: user.role, companyId: user.companyId },
+        metadata: {
+          email: user.email,
+          role: user.role,
+          companyId: user.companyId,
+        },
       });
 
       await queryRunner.commitTransaction();
@@ -119,7 +142,11 @@ export class UsersService {
   // changes a user's role and company assignment, which is super-admin
   // work by definition. A company admin gets no editing surface here at
   // all — see CompanyUsersController.
-  async update(id: string, input: UpdateUserInput, actorId: string): Promise<UserSummary> {
+  async update(
+    id: string,
+    input: UpdateUserInput,
+    actorId: string,
+  ): Promise<UserSummary> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -133,10 +160,13 @@ export class UsersService {
       // company_admin and user (company unchanged) doesn't need to
       // resend companyId. The checks below validate the merged result.
       const nextRole = input.role ?? user.role;
-      const nextCompanyId = input.companyId !== undefined ? input.companyId : user.companyId;
+      const nextCompanyId =
+        input.companyId !== undefined ? input.companyId : user.companyId;
 
       if (id === actorId && nextRole !== UserRole.SUPER_ADMIN) {
-        throw new ForbiddenException('You cannot remove your own super admin access.');
+        throw new ForbiddenException(
+          'You cannot remove your own super admin access.',
+        );
       }
       // Platform staff and company staff are separate accounts (Mario,
       // 2026-10-03): a company user can't be promoted to super admin, and
@@ -159,7 +189,9 @@ export class UsersService {
         );
       }
       if (nextRole !== UserRole.SUPER_ADMIN && !nextCompanyId) {
-        throw new BadRequestException('A company must be assigned for this role.');
+        throw new BadRequestException(
+          'A company must be assigned for this role.',
+        );
       }
 
       const companyChanged = nextCompanyId !== user.companyId;
@@ -168,19 +200,32 @@ export class UsersService {
 
       if (nextCompanyId) {
         if (companyChanged) {
-          const company = await this.lockCompanyForSeatCheck(queryRunner, nextCompanyId);
+          const company = await this.lockCompanyForSeatCheck(
+            queryRunner,
+            nextCompanyId,
+          );
           await this.assertSeatAvailable(queryRunner, company);
           companyName = company.name;
         } else {
-          companyName = (await queryRunner.manager.findOne(Company, { where: { id: nextCompanyId } }))?.name ?? null;
+          companyName =
+            (
+              await queryRunner.manager.findOne(Company, {
+                where: { id: nextCompanyId },
+              })
+            )?.name ?? null;
         }
       }
 
       if (input.email !== undefined && input.email !== user.email) {
         // Same check as create(): without it the unique constraint
         // catches the clash and the caller gets a 500 (stability S12).
-        const taken = await queryRunner.manager.findOne(User, { where: { email: input.email } });
-        if (taken) throw new BadRequestException('A user with this email already exists.');
+        const taken = await queryRunner.manager.findOne(User, {
+          where: { email: input.email },
+        });
+        if (taken)
+          throw new BadRequestException(
+            'A user with this email already exists.',
+          );
         user.email = input.email;
       }
       user.role = nextRole;
@@ -193,10 +238,14 @@ export class UsersService {
       // since it's another company's data: they sign in again.
       const bumped =
         roleChanged || companyChanged
-          ? await this.authVersions.bump(queryRunner.manager, { userId: user.id })
+          ? await this.authVersions.bump(queryRunner.manager, {
+              userId: user.id,
+            })
           : [];
       if (companyChanged) {
-        await queryRunner.query(`DELETE FROM "sessions" WHERE "user_id" = $1`, [user.id]);
+        await queryRunner.query(`DELETE FROM "sessions" WHERE "user_id" = $1`, [
+          user.id,
+        ]);
       }
 
       await this.auditLog.record(queryRunner.manager, {
@@ -204,12 +253,18 @@ export class UsersService {
         action: 'user.updated',
         targetType: 'user',
         targetId: user.id,
-        metadata: { email: user.email, role: user.role, companyId: user.companyId },
+        metadata: {
+          email: user.email,
+          role: user.role,
+          companyId: user.companyId,
+        },
       });
 
       await queryRunner.commitTransaction();
       await this.authVersions.publish(bumped);
-      const session = await this.sessions.findOne({ where: { userId: user.id } });
+      const session = await this.sessions.findOne({
+        where: { userId: user.id },
+      });
       return toUserSummary(user, companyName, session);
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -218,7 +273,6 @@ export class UsersService {
       await queryRunner.release();
     }
   }
-
 
   /**
    * Company-scoped variants take `scopeCompanyId`. When present, it is
@@ -234,7 +288,8 @@ export class UsersService {
     actorId: string,
     scopeCompanyId?: string,
   ): Promise<UserSummary> {
-    if (id === actorId) throw new ForbiddenException('You cannot deactivate your own account.');
+    if (id === actorId)
+      throw new ForbiddenException('You cannot deactivate your own account.');
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -255,8 +310,12 @@ export class UsersService {
       // Logged out immediately, same as archiving a company: the session
       // goes (no refresh) and the version bump refuses the access token
       // they still hold on their next request (stability S3).
-      await queryRunner.query(`DELETE FROM "sessions" WHERE "user_id" = $1`, [id]);
-      const bumped = await this.authVersions.bump(queryRunner.manager, { userId: id });
+      await queryRunner.query(`DELETE FROM "sessions" WHERE "user_id" = $1`, [
+        id,
+      ]);
+      const bumped = await this.authVersions.bump(queryRunner.manager, {
+        userId: id,
+      });
 
       await this.auditLog.record(queryRunner.manager, {
         actorUserId: actorId,
@@ -340,8 +399,12 @@ export class UsersService {
       // A reset is often a response to a compromised account — revoke
       // any existing session and access token so the new password is
       // required immediately, not just on the next natural re-login.
-      await queryRunner.query(`DELETE FROM "sessions" WHERE "user_id" = $1`, [id]);
-      const bumped = await this.authVersions.bump(queryRunner.manager, { userId: id });
+      await queryRunner.query(`DELETE FROM "sessions" WHERE "user_id" = $1`, [
+        id,
+      ]);
+      const bumped = await this.authVersions.bump(queryRunner.manager, {
+        userId: id,
+      });
 
       await this.auditLog.record(queryRunner.manager, {
         actorUserId: actorId,
@@ -387,7 +450,8 @@ export class UsersService {
     actorId: string,
     scopeCompanyId?: string,
   ): Promise<void> {
-    if (id === actorId) throw new ForbiddenException('You cannot delete your own account.');
+    if (id === actorId)
+      throw new ForbiddenException('You cannot delete your own account.');
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -407,7 +471,11 @@ export class UsersService {
         action: 'user.deleted',
         targetType: 'user',
         targetId: user.id,
-        metadata: { email: user.email, role: user.role, companyId: user.companyId },
+        metadata: {
+          email: user.email,
+          role: user.role,
+          companyId: user.companyId,
+        },
       });
 
       // Session cascades automatically (sessions.user_id ON DELETE CASCADE).
@@ -424,7 +492,9 @@ export class UsersService {
     }
   }
 
-  private async companyNameFor(companyId: string | null): Promise<string | null> {
+  private async companyNameFor(
+    companyId: string | null,
+  ): Promise<string | null> {
     if (!companyId) return null;
     const company = await this.companies.findOne({ where: { id: companyId } });
     return company?.name ?? null;
@@ -452,16 +522,21 @@ export class UsersService {
     queryRunner: QueryRunner,
     company: CompanyLockRow,
   ): Promise<void> {
-    const [{ count }] = (await queryRunner.query(`SELECT COUNT(*)::int AS count FROM users WHERE company_id = $1`, [
-      company.id,
-    ])) as Array<{ count: number }>;
+    const [{ count }] = (await queryRunner.query(
+      `SELECT COUNT(*)::int AS count FROM users WHERE company_id = $1`,
+      [company.id],
+    )) as Array<{ count: number }>;
     if (count >= company.maxUsers) {
       throw new BadRequestException(`"${company.name}" is at its seat limit.`);
     }
   }
 }
 
-function toUserSummary(user: User, companyName: string | null, session: Session | null): UserSummary {
+function toUserSummary(
+  user: User,
+  companyName: string | null,
+  session: Session | null,
+): UserSummary {
   const online = !!session && session.expiresAt.getTime() > Date.now();
   return {
     id: user.id,

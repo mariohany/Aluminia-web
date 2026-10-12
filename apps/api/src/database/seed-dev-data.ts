@@ -50,9 +50,13 @@ async function main() {
   try {
     // Read after the app loads .env, so a NODE_ENV set only there counts
     // too — and before anything is written.
-    const nodeEnv = app.get(ConfigService<Env, true>).get('NODE_ENV', { infer: true });
+    const nodeEnv = app
+      .get(ConfigService<Env, true>)
+      .get('NODE_ENV', { infer: true });
     if (nodeEnv === 'production') {
-      console.error('✖ seed:dev refuses to run with NODE_ENV=production — it creates accounts with a known password.');
+      console.error(
+        '✖ seed:dev refuses to run with NODE_ENV=production — it creates accounts with a known password.',
+      );
       process.exitCode = 1;
       return;
     }

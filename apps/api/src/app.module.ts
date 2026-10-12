@@ -4,6 +4,7 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import { ConfigModule } from './config/config.module';
 import { LoggerModule } from './common/logger.module';
 import { RedisModule } from './common/redis.module';
+import { RateLimitModule } from './common/rate-limit/rate-limit.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ControlPlaneDatabaseModule } from './database/control-plane/typeorm.module';
 import { TenantDatabaseModule } from './database/tenant/typeorm.module';
@@ -32,6 +33,8 @@ import { LeadsModule } from './modules/leads/leads.module';
     TenantDatabaseModule,
     HealthModule,
     AuthModule,
+    // After AuthModule: its guard keys the limit on request.user.
+    RateLimitModule,
     TenancyModule,
     AuditLogModule,
     CompaniesModule,

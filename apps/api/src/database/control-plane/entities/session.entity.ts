@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -32,6 +33,8 @@ export class Session {
   @JoinColumn({ name: 'user_id' })
   user?: User;
 
+  // Looked up on every refresh (migration AddSessionRefreshTokenHashIndex).
+  @Index('UQ_sessions_refresh_token_hash', { unique: true })
   @Column({ name: 'refresh_token_hash', type: 'varchar', length: 255 })
   refreshTokenHash: string;
 

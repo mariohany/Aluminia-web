@@ -21,10 +21,10 @@ export const envSchema = z.object({
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
 
-  // Separate secrets so a leaked access token can't be replayed as a
-  // refresh token or vice versa.
+  // Signs the access token only. The refresh token isn't a JWT: it's 32
+  // random bytes, stored hashed in `sessions` — revocable one by one and
+  // rotated on every use, with nothing to sign (stability S17).
   JWT_ACCESS_SECRET: z.string().min(32),
-  JWT_REFRESH_SECRET: z.string().min(32),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   // Sliding, not absolute: every refresh pushes it out again, so a user
   // who opens the app at all within a month never sees the login screen.

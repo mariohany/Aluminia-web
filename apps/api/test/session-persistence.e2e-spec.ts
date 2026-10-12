@@ -7,6 +7,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { UserRole } from '@repo/types/auth';
 import { AppModule } from './../src/app.module';
+import { clearRateLimits } from './fixtures/clear-rate-limits';
 import { PasswordService } from './../src/modules/auth/password.service';
 
 /**
@@ -39,6 +40,7 @@ describe('Session persistence (e2e)', () => {
     // the wrong reason.
     app.use(cookieParser());
     await app.init();
+    await clearRateLimits(app, 'AuthController.refresh', 'AuthController.logout');
 
     controlPlane = app.get<DataSource>(getDataSourceToken());
     const passwordService = app.get(PasswordService);

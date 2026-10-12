@@ -2,11 +2,18 @@ import { createHash } from 'node:crypto';
 import { UnauthorizedException } from '@nestjs/common';
 import type { EntityManager, Repository } from 'typeorm';
 import { AuthService } from './auth.service';
-import { User, UserStatus } from '../../database/control-plane/entities/user.entity';
-import { Company, CompanyStatus } from '../../database/control-plane/entities/company.entity';
+import {
+  User,
+  UserStatus,
+} from '../../database/control-plane/entities/user.entity';
+import {
+  Company,
+  CompanyStatus,
+} from '../../database/control-plane/entities/company.entity';
 import { UserRole } from '@repo/types/auth';
 import { Session } from '../../database/control-plane/entities/session.entity';
 import { REFRESH_GRACE_DEPTH, REFRESH_GRACE_MS } from './auth.constants';
+import { TooManyLoginAttemptsException } from './too-many-login-attempts.exception';
 
 // Plain fakes rather than @nestjs/testing's TestingModule — AuthService
 // takes plain constructor params, so this is enough to isolate the one
@@ -15,6 +22,7 @@ function makeService(options: {
   user: User | null;
   company: Company | null;
   session?: Session | null;
+  passwordOk?: boolean;
 }) {
   const usersRepo = { findOne: jest.fn().mockResolvedValue(options.user) };
   // `refresh` does all of its work through the session repository's
@@ -27,11 +35,14 @@ function makeService(options: {
   const manager = {
     upsert: jest.fn().mockResolvedValue(undefined),
     delete: jest.fn().mockResolvedValue(undefined),
-    findOne: jest.fn((entity: unknown, opts: { where: { refreshTokenHash?: string } }) => {
-      if (entity !== Session) return Promise.resolve(options.user);
-      const hit = session && session.refreshTokenHash === opts.where.refreshTokenHash;
-      return Promise.resolve(hit ? session : null);
-    }),
+    findOne: jest.fn(
+      (entity: unknown, opts: { where: { refreshTokenHash?: string } }) => {
+        if (entity !== Session) return Promise.resolve(options.user);
+        const hit =
+          session && session.refreshTokenHash === opts.where.refreshTokenHash;
+        return Promise.resolve(hit ? session : null);
+      },
+    ),
     createQueryBuilder: jest.fn(() => {
       let probeHash: string | null = null;
       const builder = {
@@ -53,11 +64,26 @@ function makeService(options: {
       cb(manager as unknown as EntityManager),
     ),
   };
-  const sessionsRepo = { upsert: jest.fn().mockResolvedValue(undefined), manager };
-  const companiesRepo = { findOne: jest.fn().mockResolvedValue(options.company) };
-  const jwtService = { signAsync: jest.fn().mockResolvedValue('signed-access-token') };
-  const passwordService = { verify: jest.fn().mockResolvedValue(true) };
+  const sessionsRepo = {
+    upsert: jest.fn().mockResolvedValue(undefined),
+    manager,
+  };
+  const companiesRepo = {
+    findOne: jest.fn().mockResolvedValue(options.company),
+  };
+  const jwtService = {
+    signAsync: jest.fn().mockResolvedValue('signed-access-token'),
+  };
+  const passwordService = {
+    verify: jest.fn().mockResolvedValue(options.passwordOk ?? true),
+    verifyDummy: jest.fn().mockResolvedValue(false),
+  };
   const config = { get: jest.fn().mockReturnValue('30d') };
+  const loginAttempts = {
+    assertAllowed: jest.fn().mockResolvedValue(undefined),
+    recordFailure: jest.fn().mockResolvedValue(undefined),
+    recordSuccess: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new AuthService(
     usersRepo as unknown as Repository<User>,
@@ -66,9 +92,18 @@ function makeService(options: {
     jwtService as never,
     passwordService as never,
     config as never,
+    loginAttempts as never,
   );
 
-  return { service, usersRepo, sessionsRepo, companiesRepo, manager };
+  return {
+    service,
+    usersRepo,
+    sessionsRepo,
+    companiesRepo,
+    manager,
+    passwordService,
+    loginAttempts,
+  };
 }
 
 const hashToken = (token: string) =>
@@ -83,7 +118,7 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     createdAt: new Date(),
     ...overrides,
-  } as Session;
+  };
 }
 
 const companyScopedUser = {
@@ -111,17 +146,17 @@ describe('AuthService.login — archived company blocks login', () => {
       company: { id: 'company-1', status: CompanyStatus.SUSPENDED } as Company,
     });
 
-    await expect(service.login('admin@acme.local', 'correct-password')).rejects.toThrow(
-      UnauthorizedException,
-    );
+    await expect(
+      service.login('admin@acme.local', 'correct-password', '203.0.113.7'),
+    ).rejects.toThrow(UnauthorizedException);
   });
 
   it('rejects login when the company row is missing entirely (fail closed)', async () => {
     const { service } = makeService({ user: companyScopedUser, company: null });
 
-    await expect(service.login('admin@acme.local', 'correct-password')).rejects.toThrow(
-      UnauthorizedException,
-    );
+    await expect(
+      service.login('admin@acme.local', 'correct-password', '203.0.113.7'),
+    ).rejects.toThrow(UnauthorizedException);
   });
 
   it('allows login for a user whose company is active', async () => {
@@ -130,17 +165,22 @@ describe('AuthService.login — archived company blocks login', () => {
       company: { id: 'company-1', status: CompanyStatus.ACTIVE } as Company,
     });
 
-    await expect(service.login('admin@acme.local', 'correct-password')).resolves.toMatchObject({
+    await expect(
+      service.login('admin@acme.local', 'correct-password', '203.0.113.7'),
+    ).resolves.toMatchObject({
       user: companyScopedUser,
     });
   });
 
   it('skips the company check entirely for a super admin (no companyId)', async () => {
-    const { service, companiesRepo } = makeService({ user: superAdminUser, company: null });
+    const { service, companiesRepo } = makeService({
+      user: superAdminUser,
+      company: null,
+    });
 
-    await expect(service.login('admin@aluminia.local', 'correct-password')).resolves.toMatchObject(
-      { user: superAdminUser },
-    );
+    await expect(
+      service.login('admin@aluminia.local', 'correct-password', '203.0.113.7'),
+    ).resolves.toMatchObject({ user: superAdminUser });
     expect(companiesRepo.findOne).not.toHaveBeenCalled();
   });
 });
@@ -166,9 +206,13 @@ describe('AuthService.refresh — rotation grace window', () => {
 
     const written = manager.upsert.mock.calls[0][1] as Session;
     expect(written.graceTokens[0].hash).toBe(hashToken('current-token'));
-    expect(new Date(written.graceTokens[0].expiresAt).getTime()).toBeGreaterThan(Date.now());
+    expect(
+      new Date(written.graceTokens[0].expiresAt).getTime(),
+    ).toBeGreaterThan(Date.now());
     // Sliding expiry: a session in daily use never reaches its cap.
-    expect(written.expiresAt.getTime()).toBeGreaterThan(session.expiresAt.getTime() - 1000);
+    expect(written.expiresAt.getTime()).toBeGreaterThan(
+      session.expiresAt.getTime() - 1000,
+    );
   });
 
   it('accepts the token it just rotated away, inside the grace window', async () => {
@@ -227,7 +271,10 @@ describe('AuthService.refresh — rotation grace window', () => {
     const session = makeSession({
       refreshTokenHash: hashToken('rotated-in'),
       graceTokens: [
-        { hash: hashToken('rotated-out'), expiresAt: new Date(Date.now() - 1).toISOString() },
+        {
+          hash: hashToken('rotated-out'),
+          expiresAt: new Date(Date.now() - 1).toISOString(),
+        },
       ],
     });
     const { service, manager } = makeService({
@@ -236,7 +283,9 @@ describe('AuthService.refresh — rotation grace window', () => {
       session,
     });
 
-    await expect(service.refresh('rotated-out')).rejects.toThrow(UnauthorizedException);
+    await expect(service.refresh('rotated-out')).rejects.toThrow(
+      UnauthorizedException,
+    );
     // The legitimate holder of `rotated-in` stays logged in.
     expect(manager.delete).not.toHaveBeenCalled();
   });
@@ -249,7 +298,9 @@ describe('AuthService.refresh — rotation grace window', () => {
       session,
     });
 
-    await expect(service.refresh('current-token')).rejects.toThrow(UnauthorizedException);
+    await expect(service.refresh('current-token')).rejects.toThrow(
+      UnauthorizedException,
+    );
     expect(manager.delete).toHaveBeenCalled();
   });
 });
@@ -269,9 +320,94 @@ describe('AuthService.login — grace token', () => {
       }),
     });
 
-    await service.login('admin@aluminia.local', 'correct-password');
+    await service.login(
+      'admin@aluminia.local',
+      'correct-password',
+      '203.0.113.7',
+    );
 
     const written = manager.upsert.mock.calls[0][1] as Session;
     expect(written.graceTokens).toEqual([]);
+  });
+});
+
+// Stability S1 + S16: the failed-login limit, and every failure taking
+// the same argon2 work whether or not the email has an account.
+describe('AuthService.login — failed-login limit and timing', () => {
+  const ip = '203.0.113.7';
+
+  it('verifies against the dummy hash when the email has no account', async () => {
+    const { service, passwordService, loginAttempts } = makeService({
+      user: null,
+      company: null,
+    });
+
+    await expect(
+      service.login('nobody@acme.local', 'guess', ip),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(passwordService.verifyDummy).toHaveBeenCalledWith('guess');
+    expect(loginAttempts.recordFailure).toHaveBeenCalledWith(
+      'nobody@acme.local',
+      ip,
+    );
+  });
+
+  it('still verifies the password of an inactive user before refusing', async () => {
+    const { service, passwordService, loginAttempts } = makeService({
+      user: { ...companyScopedUser, status: UserStatus.INACTIVE },
+      company: null,
+    });
+
+    await expect(
+      service.login('admin@acme.local', 'correct-password', ip),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(passwordService.verify).toHaveBeenCalled();
+    expect(loginAttempts.recordFailure).toHaveBeenCalled();
+  });
+
+  it('records a wrong password as a failure', async () => {
+    const { service, loginAttempts } = makeService({
+      user: superAdminUser,
+      company: null,
+      passwordOk: false,
+    });
+
+    await expect(
+      service.login('admin@aluminia.local', 'wrong', ip),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(loginAttempts.recordFailure).toHaveBeenCalledWith(
+      'admin@aluminia.local',
+      ip,
+    );
+    expect(loginAttempts.recordSuccess).not.toHaveBeenCalled();
+  });
+
+  it('clears the email count on a successful login', async () => {
+    const { service, loginAttempts } = makeService({
+      user: superAdminUser,
+      company: null,
+    });
+
+    await service.login('admin@aluminia.local', 'correct-password', ip);
+    expect(loginAttempts.recordSuccess).toHaveBeenCalledWith(
+      'admin@aluminia.local',
+    );
+    expect(loginAttempts.recordFailure).not.toHaveBeenCalled();
+  });
+
+  it('refuses a blocked caller before looking up the user or hashing', async () => {
+    const { service, usersRepo, passwordService, loginAttempts } = makeService({
+      user: superAdminUser,
+      company: null,
+    });
+    loginAttempts.assertAllowed.mockRejectedValue(
+      new TooManyLoginAttemptsException(600),
+    );
+
+    await expect(
+      service.login('admin@aluminia.local', 'correct-password', ip),
+    ).rejects.toThrow(TooManyLoginAttemptsException);
+    expect(usersRepo.findOne).not.toHaveBeenCalled();
+    expect(passwordService.verify).not.toHaveBeenCalled();
   });
 });

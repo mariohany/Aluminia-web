@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, QueryRunner, Repository } from 'typeorm';
+import { DataSource, MoreThan, QueryRunner, Repository } from 'typeorm';
 import { UserRole } from '@repo/types/auth';
 import type { CreateUserInput, UpdateUserInput, UserSummary } from '@repo/types/users';
 import { User, UserStatus } from '../../database/control-plane/entities/user.entity';
@@ -13,6 +13,7 @@ import { Company } from '../../database/control-plane/entities/company.entity';
 import { Session } from '../../database/control-plane/entities/session.entity';
 import { PasswordService } from '../auth/password.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuthVersionService } from '../auth/auth-version.service';
 
 interface CompanyLockRow {
   id: string;
@@ -29,13 +30,17 @@ export class UsersService {
     @InjectRepository(Session) private readonly sessions: Repository<Session>,
     private readonly passwordService: PasswordService,
     private readonly auditLog: AuditLogService,
+    private readonly authVersions: AuthVersionService,
   ) {}
 
   async list(): Promise<UserSummary[]> {
     const [users, companies, sessions] = await Promise.all([
       this.users.find({ order: { createdAt: 'DESC' } }),
       this.companies.find(),
-      this.sessions.find(),
+      // Live sessions only: an expired row is never "online", and rows
+      // of users who stopped visiting pile up until a cleanup job exists
+      // (stability S14).
+      this.sessions.find({ where: { expiresAt: MoreThan(new Date()) } }),
     ]);
     const companyNameById = new Map(companies.map((c) => [c.id, c.name]));
     const sessionByUserId = new Map(sessions.map((s) => [s.userId, s]));
@@ -59,7 +64,8 @@ export class UsersService {
     const [users, company, sessions] = await Promise.all([
       this.users.find({ where: { companyId }, order: { createdAt: 'DESC' } }),
       this.companies.findOne({ where: { id: companyId } }),
-      this.sessions.find(),
+      // Live sessions of this company's users only (stability S14).
+      this.sessions.find({ where: { expiresAt: MoreThan(new Date()), user: { companyId } } }),
     ]);
     const sessionByUserId = new Map(sessions.map((s) => [s.userId, s]));
 
@@ -157,6 +163,7 @@ export class UsersService {
       }
 
       const companyChanged = nextCompanyId !== user.companyId;
+      const roleChanged = nextRole !== user.role;
       let companyName: string | null = null;
 
       if (nextCompanyId) {
@@ -169,10 +176,28 @@ export class UsersService {
         }
       }
 
-      if (input.email !== undefined) user.email = input.email;
+      if (input.email !== undefined && input.email !== user.email) {
+        // Same check as create(): without it the unique constraint
+        // catches the clash and the caller gets a 500 (stability S12).
+        const taken = await queryRunner.manager.findOne(User, { where: { email: input.email } });
+        if (taken) throw new BadRequestException('A user with this email already exists.');
+        user.email = input.email;
+      }
       user.role = nextRole;
       user.companyId = nextCompanyId;
       await queryRunner.manager.save(user);
+
+      // A role or company change takes effect on the user's next
+      // request (stability S3). A role change keeps the session — the
+      // browser's refresh picks up the new role; a company move ends it,
+      // since it's another company's data: they sign in again.
+      const bumped =
+        roleChanged || companyChanged
+          ? await this.authVersions.bump(queryRunner.manager, { userId: user.id })
+          : [];
+      if (companyChanged) {
+        await queryRunner.query(`DELETE FROM "sessions" WHERE "user_id" = $1`, [user.id]);
+      }
 
       await this.auditLog.record(queryRunner.manager, {
         actorUserId: actorId,
@@ -183,6 +208,7 @@ export class UsersService {
       });
 
       await queryRunner.commitTransaction();
+      await this.authVersions.publish(bumped);
       const session = await this.sessions.findOne({ where: { userId: user.id } });
       return toUserSummary(user, companyName, session);
     } catch (error) {
@@ -226,10 +252,11 @@ export class UsersService {
       user.status = UserStatus.INACTIVE;
       await queryRunner.manager.save(user);
 
-      // Logged out immediately, same as archiving a company — not left
-      // to wait for their token to expire or their next refresh attempt
-      // to fail.
+      // Logged out immediately, same as archiving a company: the session
+      // goes (no refresh) and the version bump refuses the access token
+      // they still hold on their next request (stability S3).
       await queryRunner.query(`DELETE FROM "sessions" WHERE "user_id" = $1`, [id]);
+      const bumped = await this.authVersions.bump(queryRunner.manager, { userId: id });
 
       await this.auditLog.record(queryRunner.manager, {
         actorUserId: actorId,
@@ -240,6 +267,7 @@ export class UsersService {
       });
 
       await queryRunner.commitTransaction();
+      await this.authVersions.publish(bumped);
       const companyName = await this.companyNameFor(user.companyId);
       return toUserSummary(user, companyName, null);
     } catch (error) {
@@ -310,9 +338,10 @@ export class UsersService {
       await queryRunner.manager.save(user);
 
       // A reset is often a response to a compromised account — revoke
-      // any existing session so the new password is required
-      // immediately, not just on the next natural re-login.
+      // any existing session and access token so the new password is
+      // required immediately, not just on the next natural re-login.
       await queryRunner.query(`DELETE FROM "sessions" WHERE "user_id" = $1`, [id]);
+      const bumped = await this.authVersions.bump(queryRunner.manager, { userId: id });
 
       await this.auditLog.record(queryRunner.manager, {
         actorUserId: actorId,
@@ -323,6 +352,7 @@ export class UsersService {
       });
 
       await queryRunner.commitTransaction();
+      await this.authVersions.publish(bumped);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -335,7 +365,12 @@ export class UsersService {
     const user = await this.users.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found.');
 
-    await this.sessions.delete({ userId: id });
+    // The access token goes with the session (stability S3).
+    const bumped = await this.dataSource.transaction(async (manager) => {
+      await manager.delete(Session, { userId: id });
+      return this.authVersions.bump(manager, { userId: id });
+    });
+    await this.authVersions.publish(bumped);
 
     await this.auditLog.record(this.dataSource.manager, {
       actorUserId: actorId,
@@ -379,6 +414,8 @@ export class UsersService {
       await queryRunner.manager.delete(User, { id: user.id });
 
       await queryRunner.commitTransaction();
+      // The access token they still hold is refused from here (S3).
+      await this.authVersions.publishDeleted([user.id]);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;

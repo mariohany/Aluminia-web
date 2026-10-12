@@ -137,4 +137,16 @@ describe('Admin user roles (e2e)', () => {
     await patch(companyAdminId, { role: UserRole.USER }).expect(200);
     await patch(companyAdminId, { role: UserRole.COMPANY_ADMIN }).expect(200);
   });
+
+  // Stability S12: used to reach the unique constraint and come back 500.
+  it('refuses changing an email to one already in use with a 400', async () => {
+    const res = await patch(companyAdminId, { email: otherSuperEmail }).expect(400);
+    expect((res.body as { message: string }).message).toBe(
+      'A user with this email already exists.',
+    );
+  });
+
+  it('accepts resending a user\'s own email unchanged', async () => {
+    await patch(companyAdminId, { email: companyAdminEmail }).expect(200);
+  });
 });

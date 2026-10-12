@@ -22,6 +22,7 @@ import type { Env } from '../../config/env.schema';
 import { REFRESH_GRACE_DEPTH, REFRESH_GRACE_MS } from './auth.constants';
 import type { JwtPayload } from './jwt-payload';
 import { PasswordService } from './password.service';
+import { LoginAttemptsService } from './login-attempts.service';
 
 interface TokenPair {
   accessToken: string;
@@ -48,26 +49,37 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly passwordService: PasswordService,
     private readonly config: ConfigService<Env, true>,
+    private readonly loginAttempts: LoginAttemptsService,
   ) {}
 
-  async login(email: string, password: string): Promise<TokenPair> {
+  async login(email: string, password: string, ip: string): Promise<TokenPair> {
+    // Before any lookup or hashing, so a blocked caller costs nothing.
+    await this.loginAttempts.assertAllowed(email, ip);
+
     const user = await this.users.findOne({ where: { email } });
-    if (
-      !user ||
-      user.status !== UserStatus.ACTIVE ||
-      !(await this.passwordService.verify(user.passwordHash, password))
-    ) {
+    // The hash is verified whether or not the user exists (a dummy hash
+    // stands in), and before the status check: every failure then takes
+    // the same argon2 time, so response time can't tell which emails
+    // have an account (stability S16).
+    const passwordOk = user
+      ? await this.passwordService.verify(user.passwordHash, password)
+      : await this.passwordService.verifyDummy(password);
+    if (!user || !passwordOk || user.status !== UserStatus.ACTIVE) {
+      await this.loginAttempts.recordFailure(email, ip);
       // Deliberately the same error for "no such user" and "wrong
       // password" — telling them apart lets an attacker enumerate emails.
       throw new UnauthorizedException('Invalid email or password.');
     }
+    await this.loginAttempts.recordSuccess(email);
 
     // Closes the gap Phase 7 left open: a super admin carries no
     // companyId and skips this entirely; a company-scoped user whose
     // company has been archived is rejected here, on every login
     // attempt, not just at the moment of archiving.
     if (user.companyId) {
-      const company = await this.companies.findOne({ where: { id: user.companyId } });
+      const company = await this.companies.findOne({
+        where: { id: user.companyId },
+      });
       if (!company || company.status !== CompanyStatus.ACTIVE) {
         throw new UnauthorizedException('This company is not active.');
       }
@@ -100,10 +112,9 @@ export class AuthService {
         (await manager
           .createQueryBuilder(Session, 'session')
           .setLock('pessimistic_write')
-          .where(
-            `session.grace_tokens @> :probe::jsonb`,
-            { probe: JSON.stringify([{ hash }]) },
-          )
+          .where(`session.grace_tokens @> :probe::jsonb`, {
+            probe: JSON.stringify([{ hash }]),
+          })
           .getOne());
 
       // A token that is neither the current one nor a live grace token
@@ -111,7 +122,8 @@ export class AuthService {
       // holder may still be sitting on the current token, and a stale
       // cookie replayed from a second browser must not log them out.
       // Only an actually expired session is cleaned up here.
-      if (!session) throw new UnauthorizedException('Session expired or invalid.');
+      if (!session)
+        throw new UnauthorizedException('Session expired or invalid.');
       if (session.expiresAt.getTime() < Date.now()) {
         await manager.delete(Session, { id: session.id });
         throw new UnauthorizedException('Session expired or invalid.');
@@ -120,7 +132,9 @@ export class AuthService {
         throw new UnauthorizedException('Session expired or invalid.');
       }
 
-      const user = await manager.findOne(User, { where: { id: session.userId } });
+      const user = await manager.findOne(User, {
+        where: { id: session.userId },
+      });
       if (!user || user.status !== UserStatus.ACTIVE) {
         await manager.delete(Session, { id: session.id });
         throw new UnauthorizedException('User no longer active.');
@@ -156,6 +170,7 @@ export class AuthService {
       sub: user.id,
       role: user.role,
       companyId: user.companyId,
+      ver: user.authVersion,
     };
     const accessToken = await this.jwtService.signAsync(payload);
 

@@ -41,13 +41,34 @@ export function setAccessToken(token: string | null): void {
 // cover the same race *across* tabs, which this can't see.
 let refreshPromise: Promise<LoginResponse | null> | null = null
 
+// Told the outcome of every refresh, including the silent ones behind a
+// 401 retry: the new user when it worked — the API refuses a token as
+// soon as the user's access changes, so a refresh is how a new role
+// arrives (stability S3) — or null when the server said the session is
+// gone (deactivated, password reset, moved, company archived). Not on a
+// network error or a 429: those don't mean the user was logged out.
+type SessionListener = (session: LoginResponse | null) => void
+const sessionListeners = new Set<SessionListener>()
+
+export function onSessionChange(listener: SessionListener): () => void {
+  sessionListeners.add(listener)
+  return () => sessionListeners.delete(listener)
+}
+
 export function refreshSession(): Promise<LoginResponse | null> {
   refreshPromise ??= (async () => {
     try {
       const res = await fetch(`${API_URL}/auth/refresh`, { method: 'POST', credentials: 'include' })
-      if (!res.ok) return null
+      if (!res.ok) {
+        if (res.status === 401) {
+          setAccessToken(null)
+          sessionListeners.forEach((listener) => listener(null))
+        }
+        return null
+      }
       const data = (await res.json()) as LoginResponse
       setAccessToken(data.accessToken)
+      sessionListeners.forEach((listener) => listener(data))
       return data
     } catch {
       return null

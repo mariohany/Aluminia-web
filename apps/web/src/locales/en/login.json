@@ -10,5 +10,7 @@
     "submitting": "Logging in…"
   },
   "error": "That email or password isn't right.",
+  "tooManyAttempts": "Too many failed attempts. Try again in a few minutes.",
+  "tooManyAttemptsFor": "Too many failed attempts. Try again in {{minutes}} min.",
   "backHome": "Back to home"
 }

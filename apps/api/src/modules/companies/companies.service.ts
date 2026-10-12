@@ -21,6 +21,7 @@ import { assertValidSchemaName } from '../../database/tenant/schema-name';
 import { TenantProvisioningService } from '../tenancy/tenant-provisioning.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ProjectCountsService } from '../project-counts/project-counts.service';
+import { AuthVersionService } from '../auth/auth-version.service';
 
 @Injectable()
 export class CompaniesService {
@@ -32,6 +33,7 @@ export class CompaniesService {
     private readonly provisioning: TenantProvisioningService,
     private readonly auditLog: AuditLogService,
     private readonly projectCounts: ProjectCountsService,
+    private readonly authVersions: AuthVersionService,
   ) {}
 
   async list(): Promise<CompanyListItem[]> {
@@ -174,6 +176,9 @@ export class CompaniesService {
         `DELETE FROM "sessions" WHERE "user_id" IN (SELECT "id" FROM "users" WHERE "company_id" = $1)`,
         [id],
       );
+      // ...and their access tokens are refused from their next request,
+      // on every route, not only tenant-scoped ones (stability S3).
+      const bumped = await this.authVersions.bump(queryRunner.manager, { companyId: id });
 
       await this.auditLog.record(queryRunner.manager, {
         actorUserId: actorId,
@@ -184,6 +189,7 @@ export class CompaniesService {
       });
 
       await queryRunner.commitTransaction();
+      await this.authVersions.publish(bumped);
       const userCount = await this.users.count({ where: { companyId: id } });
       return toCompanySummary(company, userCount);
     } catch (error) {
@@ -246,6 +252,9 @@ export class CompaniesService {
       // users.company_id is ON DELETE RESTRICT (Phase 4) — deletion has
       // to remove them explicitly and in the right order, or Postgres
       // correctly refuses. Their sessions cascade automatically.
+      const deletedUserIds = (
+        await queryRunner.manager.find(User, { where: { companyId: company.id }, select: { id: true } })
+      ).map((user) => user.id);
       await queryRunner.manager.delete(User, { companyId: company.id });
 
       // Written before the company row disappears: the log has to
@@ -266,6 +275,7 @@ export class CompaniesService {
       await queryRunner.query(`DROP SCHEMA "${company.schemaName}" CASCADE`);
 
       await queryRunner.commitTransaction();
+      await this.authVersions.publishDeleted(deletedUserIds);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;

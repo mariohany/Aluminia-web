@@ -6,6 +6,7 @@ import { BillingRecord } from '../../database/control-plane/entities/billing-rec
 import { AuditLogModule } from '../audit-log/audit-log.module';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { ProjectCountsModule } from '../project-counts/project-counts.module';
+import { AuthModule } from '../auth/auth.module';
 import { CompaniesController } from './companies.controller';
 import { CompaniesService } from './companies.service';
 
@@ -15,6 +16,7 @@ import { CompaniesService } from './companies.service';
     AuditLogModule,
     TenancyModule,
     ProjectCountsModule,
+    AuthModule,
   ],
   controllers: [CompaniesController],
   providers: [CompaniesService],

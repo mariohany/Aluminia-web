@@ -7,6 +7,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import type { QuoteRequestResponse } from '@repo/types/quote-request';
 import { AppModule } from './../src/app.module';
+import { clearRateLimits } from './fixtures/clear-rate-limits';
 
 /**
  * The one route an anonymous visitor can reach. No login, no tenant —
@@ -41,6 +42,7 @@ describe('Leads (e2e)', () => {
     // schema validation, so the gap never surfaced before this route.
     app.useGlobalPipes(new ZodValidationPipe());
     await app.init();
+    await clearRateLimits(app, 'LeadsController.create');
 
     dataSource = app.get<DataSource>(getDataSourceToken());
   });
@@ -96,7 +98,7 @@ describe('Leads (e2e)', () => {
   });
 
   it('rate-limits repeated submissions from the same caller', async () => {
-    // The limit is 5 per 10 minutes (leads.module.ts). Six in a row from
+    // The limit is 5 per 10 minutes (leads.controller.ts). Six in a row from
     // the same test client — sharing one IP, same as a real flood —
     // must produce at least one 429. A test that fires one request at a
     // time and checks nothing was throttled would not catch a guard

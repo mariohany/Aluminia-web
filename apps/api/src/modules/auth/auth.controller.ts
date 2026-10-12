@@ -9,6 +9,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import type { LoginResponse, MeResponse } from '@repo/types/auth';
 import { Public } from '../../common/decorators/public.decorator';
@@ -17,7 +18,11 @@ import { AuthService, toAuthenticatedUser } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from './jwt-payload';
-import { REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH } from './auth.constants';
+import {
+  REFRESH_COOKIE_NAME,
+  REFRESH_COOKIE_PATH,
+  REFRESH_RATE_LIMIT,
+} from './auth.constants';
 
 @Controller()
 export class AuthController {
@@ -31,15 +36,21 @@ export class AuthController {
   @HttpCode(200)
   async login(
     @Body() dto: LoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
     const { accessToken, refreshToken, refreshExpiresAt, user } =
-      await this.authService.login(dto.email, dto.password);
+      await this.authService.login(
+        dto.email,
+        dto.password,
+        req.ip ?? 'unknown',
+      );
     this.setRefreshCookie(res, refreshToken, refreshExpiresAt);
     return { accessToken, user: toAuthenticatedUser(user) };
   }
 
   @Public()
+  @Throttle({ default: REFRESH_RATE_LIMIT })
   @Post('auth/refresh')
   @HttpCode(200)
   async refresh(
@@ -56,6 +67,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: REFRESH_RATE_LIMIT })
   @Post('auth/logout')
   @HttpCode(204)
   async logout(

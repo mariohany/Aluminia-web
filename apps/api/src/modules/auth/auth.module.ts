@@ -10,6 +10,8 @@ import type { Env } from '../../config/env.schema';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { PasswordService } from './password.service';
+import { LoginAttemptsService } from './login-attempts.service';
+import { AuthVersionService } from './auth-version.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 
@@ -30,6 +32,8 @@ import { RolesGuard } from './guards/roles.guard';
   providers: [
     AuthService,
     PasswordService,
+    LoginAttemptsService,
+    AuthVersionService,
     // Protected by default across the whole app — registered globally
     // here rather than per-controller, with @Public() as the opt-out.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
@@ -38,6 +42,6 @@ import { RolesGuard } from './guards/roles.guard';
     // this checks @Roles(). Routes without @Roles() are unrestricted.
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  exports: [PasswordService],
+  exports: [PasswordService, AuthVersionService],
 })
 export class AuthModule {}

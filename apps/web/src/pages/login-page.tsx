@@ -17,7 +17,9 @@ export function LoginPage() {
   const { t } = useTranslation('login')
   const { login } = useAuth()
   const navigate = useNavigate()
-  const [serverError, setServerError] = useState(false)
+  // What the alert says, or null: wrong credentials, or the failed-login
+  // limit (429) with the minutes left when the API says.
+  const [serverError, setServerError] = useState<string | null>(null)
 
   const {
     register,
@@ -29,7 +31,7 @@ export function LoginPage() {
   })
 
   const onSubmit = async (data: LoginRequestInput) => {
-    setServerError(false)
+    setServerError(null)
     try {
       const user = await login(data.email, data.password)
       // A super admin goes to the platform console, everyone else to
@@ -39,7 +41,12 @@ export function LoginPage() {
       void navigate(homePathForRole(user.role), { replace: true })
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        setServerError(true)
+        setServerError(t('error'))
+      } else if (err instanceof ApiError && err.status === 429) {
+        const seconds = retryAfterSeconds(err.body)
+        setServerError(
+          seconds === null ? t('tooManyAttempts') : t('tooManyAttemptsFor', { minutes: Math.max(1, Math.ceil(seconds / 60)) }),
+        )
       } else {
         throw err
       }
@@ -55,7 +62,7 @@ export function LoginPage() {
         <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate className="mt-8 space-y-5">
           {serverError && (
             <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {t('error')}
+              {serverError}
             </div>
           )}
 
@@ -105,4 +112,12 @@ export function LoginPage() {
       </div>
     </Container>
   )
+}
+
+function retryAfterSeconds(body: unknown): number | null {
+  if (body && typeof body === 'object' && 'retryAfterSeconds' in body) {
+    const value = (body as { retryAfterSeconds?: unknown }).retryAfterSeconds
+    if (typeof value === 'number' && value > 0) return value
+  }
+  return null
 }

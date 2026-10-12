@@ -53,6 +53,14 @@ export class User {
   })
   status: UserStatus;
 
+  // Carried in the access token as `ver`; every change to what this user
+  // may do (role, company, deactivation, password reset, ended session,
+  // company archived) adds 1, and JwtAuthGuard refuses a token whose
+  // `ver` is behind — so the change takes effect on the next request,
+  // not when the token expires (stability S3, AuthVersionService).
+  @Column({ name: 'auth_version', type: 'int', default: 0 })
+  authVersion: number;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

@@ -20,6 +20,8 @@ interface ErrorBody {
   path: string;
   timestamp: string;
   requestId?: string;
+  /** Set on a 429 that knows when it lifts (the failed-login limit). */
+  retryAfterSeconds?: number;
 }
 
 @Catch()
@@ -49,6 +51,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       requestId: request.id,
     };
 
+    const retryAfterSeconds = isHttpException
+      ? extractRetryAfter(exception)
+      : undefined;
+    if (retryAfterSeconds !== undefined) {
+      body.retryAfterSeconds = retryAfterSeconds;
+      response.setHeader('Retry-After', String(retryAfterSeconds));
+    }
+
     if (!isHttpException || statusCode >= INTERNAL_SERVER_ERROR_CODE) {
       this.logger.error(
         { err: exception, requestId: request.id },
@@ -71,4 +81,17 @@ function extractMessage(exception: HttpException): string | string[] {
     return (response as { message: string | string[] }).message;
   }
   return exception.message;
+}
+
+function extractRetryAfter(exception: HttpException): number | undefined {
+  const response = exception.getResponse();
+  if (
+    typeof response === 'object' &&
+    response !== null &&
+    'retryAfterSeconds' in response &&
+    typeof response.retryAfterSeconds === 'number'
+  ) {
+    return response.retryAfterSeconds;
+  }
+  return undefined;
 }

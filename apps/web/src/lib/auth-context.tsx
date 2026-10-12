@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { AuthenticatedUser, LoginResponse } from '@repo/types/auth'
-import { apiFetch, refreshSession, setAccessToken } from '@/lib/api-client'
+import { apiFetch, onSessionChange, refreshSession, setAccessToken } from '@/lib/api-client'
 
 interface AuthContextValue {
   user: AuthenticatedUser | null
@@ -44,6 +44,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false)
     })
   }, [])
+
+  // A refresh anywhere (the 401 retry in api-client) carries the user's
+  // access as it is now: a changed role re-renders the routes that
+  // depend on it, and a session the server ended logs this tab out.
+  useEffect(() => onSessionChange((data) => setUser(data?.user ?? null)), [])
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await apiFetch<LoginResponse>('/auth/login', {

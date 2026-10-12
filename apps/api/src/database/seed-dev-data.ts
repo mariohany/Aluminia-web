@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import { UserRole } from '@repo/types/auth';
 import { AppModule } from '../app.module';
 import { TenantProvisioningService } from '../modules/tenancy/tenant-provisioning.service';
@@ -6,6 +7,7 @@ import { PasswordService } from '../modules/auth/password.service';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { User, UserStatus } from './control-plane/entities/user.entity';
+import type { Env } from '../config/env.schema';
 
 /**
  * Local development seed: one super admin plus TWO fully-provisioned
@@ -17,6 +19,9 @@ import { User, UserStatus } from './control-plane/entities/user.entity';
  * data as a side effect of provisioning.
  *
  * Idempotent: skips anything that already exists, so it's safe to re-run.
+ * Refuses to run with NODE_ENV=production: it plants accounts with a
+ * known password, and being idempotent it would report success doing so
+ * (stability S18). Production gets its super admin from `seed:super-admin`.
  *
  *   npm run seed:dev
  */
@@ -43,6 +48,15 @@ async function main() {
   });
 
   try {
+    // Read after the app loads .env, so a NODE_ENV set only there counts
+    // too — and before anything is written.
+    const nodeEnv = app.get(ConfigService<Env, true>).get('NODE_ENV', { infer: true });
+    if (nodeEnv === 'production') {
+      console.error('✖ seed:dev refuses to run with NODE_ENV=production — it creates accounts with a known password.');
+      process.exitCode = 1;
+      return;
+    }
+
     const dataSource = app.get<DataSource>(getDataSourceToken());
     const provisioning = app.get(TenantProvisioningService);
     const passwords = app.get(PasswordService);

@@ -604,7 +604,8 @@
         "errors_two": "خطآن",
         "errors_few": "{{count}} أخطاء",
         "errors_many": "{{count}} خطأً",
-        "errors_other": "{{count}} خطأ"
+        "errors_other": "{{count}} خطأ",
+        "bent": "منحنٍ"
       },
       "groups": {
         "frame": "البرواز",
@@ -673,7 +674,9 @@
         "profiles": "ابحث في البروفايلات",
         "glass": "ابحث في الزجاج",
         "noMatches": "لا شيء يطابق هذا البحث."
-      }
+      },
+      "panelDefault": "افتراضي اللوح",
+      "nudge": "تحريك {{mm}} مم"
     }
   },
   "deleteClient": {

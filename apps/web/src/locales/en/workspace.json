@@ -556,7 +556,8 @@
         "warnings_one": "{{count}} warning",
         "warnings_other": "{{count}} warnings",
         "errors_one": "{{count}} error",
-        "errors_other": "{{count}} errors"
+        "errors_other": "{{count}} errors",
+        "bent": "Bent"
       },
       "groups": {
         "frame": "Frame",
@@ -625,7 +626,9 @@
         "profiles": "Search profiles",
         "glass": "Search glass",
         "noMatches": "Nothing matches that search."
-      }
+      },
+      "panelDefault": "panel default",
+      "nudge": "Move {{mm}} mm"
     }
   },
   "deleteClient": {

@@ -69,6 +69,7 @@ export function PropertyNumber({
   id,
   value,
   onCommit,
+  onClear,
   unit = 'mm',
   min = 1,
   max,
@@ -79,6 +80,9 @@ export function PropertyNumber({
   id: string
   value: number | null
   onCommit: (value: number) => void
+  /** When given, an empty box is a valid answer (a divider's radius:
+   * empty = straight) instead of snapping back. */
+  onClear?: () => void
   unit?: string
   min?: number
   max?: number
@@ -97,6 +101,10 @@ export function PropertyNumber({
   }
 
   const commit = () => {
+    if (draft.trim() === '' && onClear) {
+      if (value !== null) onClear()
+      return
+    }
     const parsed = Number(draft)
     const ok = draft.trim() !== '' && Number.isFinite(parsed) && parsed >= min && (max === undefined || parsed <= max)
     if (ok && parsed !== value) onCommit(parsed)

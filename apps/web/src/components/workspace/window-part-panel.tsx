@@ -1,21 +1,13 @@
-import { useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { Trash2 } from 'lucide-react'
 import { GlassKind, HeadShape, HingedOpeningType, SectionKind, type WindowSectionInput } from '@repo/types/windows'
 import type { SystemType } from '@repo/types/lookups'
-import { ProfileType } from '@repo/types/lookups'
 import type { SlidingLayoutInput } from '@repo/types/sliding'
 import type { ScopedRef } from '@repo/types/company-lookups'
 import type { WindowLayout } from '@/lib/window-geometry'
 import type { TranslatedIssue } from '@/lib/window-weight'
 import type { MergedSystemProfileSummary } from '@/lib/lookup-merge'
-import { cn } from '@/lib/utils'
-import { FieldLabel } from '@/components/workspace/field-label'
-import { ProfileTreePicker } from '@/components/workspace/profile-tree-picker'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { PanelInspector } from '@/components/workspace/inspector/panel-inspector'
 import { SectionInspector } from '@/components/workspace/inspector/section-inspector'
+import { DividerInspector } from '@/components/workspace/inspector/divider-inspector'
 import { inspectorLevel } from '@/components/workspace/inspector/inspector-level'
 
 export interface WindowPartPanelColorOption {
@@ -236,14 +228,11 @@ export interface WindowPartPanelFrameProps {
 /**
  * The inspector's body — docs/inspector_redesign_planing.md §3: ONE
  * level at a time, picked by the selection. A divider shows the Divider
- * block; a sash, glass or fly-screen part shows its Section block;
+ * view; a sash, glass or fly-screen part shows its Section view;
  * anything else (the frame, a panel row in the tree, nothing) shows the
  * Panel view. Name, location and notes live in the structure panel (§2).
  */
 export function WindowPartPanel(props: WindowPartPanelProps) {
-  const { t } = useTranslation('workspace')
-  const dividerRef = useRef<HTMLDivElement>(null)
-
   const selectedPart = props.layout.parts.find((p) => p.id === props.selectedPartId) ?? null
   const level = inspectorLevel(selectedPart?.kind ?? null, props.selectedDivider !== null)
 
@@ -254,207 +243,6 @@ export function WindowPartPanel(props: WindowPartPanelProps) {
     const issues = [...props.issuesByPart].filter(([partId]) => partId.startsWith(prefix)).flatMap(([, list]) => list)
     return <PanelInspector props={props} issues={issues} />
   }
-  if (level === 'section') return <SectionInspector props={props} />
-
-  const divider = props.selectedDivider
-  return (
-    <div className="flex flex-col gap-4 px-3 pt-3 pb-4 text-sm">
-      {level === 'divider' && divider ? (
-      <Section innerRef={dividerRef} title={divider.label} focused>
-        <div>
-          <FieldLabel htmlFor="divider-profile">{t('windowDialog.design.dividerInspector.profile')}</FieldLabel>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {divider.profileNumber
-              ? divider.profile.override
-                ? `${t('fields.dividerProfile')}: ${divider.profileNumber}`
-                : t('windowDialog.design.dividerInspector.panelDefault', { profile: divider.profileNumber })
-              : t('fields.dividerProfileRequired')}
-          </p>
-          <div id="divider-profile" className="mt-1.5 h-40 min-h-0 rounded-md border border-border">
-            <ProfileTreePicker
-              profileType={ProfileType.TRANSOM}
-              value={divider.profile.override ?? divider.profile.panelDefault}
-              onChange={divider.profile.onChange}
-              catalogRef={props.frameCatalogRef}
-            />
-          </div>
-          {divider.profile.override && (
-            <Button type="button" size="sm" variant="ghost" className="mt-1" onClick={() => divider.profile.onChange(null)}>
-              {t('windowDialog.design.dividerInspector.useDefault')}
-            </Button>
-          )}
-        </div>
-        {divider.position && (
-          <CommitNumberField
-            id="divider-position"
-            // Re-seeded when it moves from elsewhere (drag, nudge, undo).
-            key={divider.position.valueMm}
-            label={t(
-              divider.position.axis === 'v'
-                ? 'windowDialog.design.dividerInspector.fromLeft'
-                : 'windowDialog.design.dividerInspector.fromSill',
-            )}
-            valueMm={divider.position.valueMm}
-            onCommit={(mm) => mm !== null && divider.position?.onChange(mm)}
-          />
-        )}
-        <p className="text-xs text-muted-foreground">
-          {t('windowDialog.design.dividerLength', { length: Math.round(divider.lengthMm) })}
-        </p>
-        {divider.ends.map((line, i) => (
-          <p key={i} className="text-xs text-muted-foreground" dir="auto">
-            {line}
-          </p>
-        ))}
-        {divider.bend && (
-          <RadiusField
-            // Re-seeded whenever the bend changes from elsewhere (the
-            // drawing's handle, undo).
-            key={divider.bend.radiusMm ?? 'straight'}
-            {...divider.bend}
-          />
-        )}
-        <Button type="button" size="sm" variant="destructive" onClick={divider.onRemove}>
-          <Trash2 className="size-3.5" aria-hidden="true" />
-          {t('windowDialog.design.removeDivider')}
-        </Button>
-      </Section>
-      ) : null}
-    </div>
-  )
-}
-
-export function Section({
-  innerRef,
-  title,
-  focused,
-  children,
-}: {
-  innerRef: React.RefObject<HTMLDivElement | null>
-  /** Omitted for a 1×1 panel's opening block — it isn't a "section"
-   * until a divider makes it one, so it gets no heading. */
-  title?: string
-  focused: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <div
-      ref={innerRef}
-      className={cn(
-        'flex scroll-my-2 flex-col gap-3 rounded-lg border p-3 transition-colors',
-        focused ? 'border-primary bg-primary/5' : 'border-transparent',
-      )}
-    >
-      {title && <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{title}</h3>}
-      {children}
-    </div>
-  )
-}
-
-/** A number committed on Enter or blur, not per key — typing "1500"
- * must not move or bend a divider through 1, 15 and 150 on the way.
- * Empty commits `null`. */
-function CommitNumberField({
-  id,
-  label,
-  valueMm,
-  min,
-  placeholder,
-  hint,
-  onCommit,
-}: {
-  id: string
-  label: string
-  valueMm: number | null
-  min?: number
-  placeholder?: string
-  hint?: string
-  onCommit: (mm: number | null) => void
-}) {
-  const [draft, setDraft] = useState(valueMm === null ? '' : String(valueMm))
-  const commit = () => {
-    const parsed = Number(draft)
-    if (draft.trim() === '') onCommit(null)
-    else if (Number.isFinite(parsed) && parsed > 0) onCommit(parsed)
-  }
-  return (
-    <div>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input
-        id={id}
-        className="mt-1.5"
-        type="number"
-        min={min}
-        dir="ltr"
-        placeholder={placeholder}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') commit()
-        }}
-      />
-      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  )
-}
-
-/** A curved divider's radius. Empty means straight. */
-function RadiusField({ radiusMm, minMm, onChange }: { radiusMm: number | null; minMm: number; onChange: (mm: number | null) => void }) {
-  const { t } = useTranslation('workspace')
-  return (
-    <CommitNumberField
-      id="divider-radius"
-      label={t('windowDialog.design.dividerTool.radius')}
-      valueMm={radiusMm}
-      min={minMm}
-      placeholder={t('windowDialog.design.dividerTool.straight')}
-      hint={t('windowDialog.design.dividerTool.radiusHint', { min: minMm })}
-      onCommit={onChange}
-    />
-  )
-}
-
-export function NumberField({
-  id,
-  label,
-  value,
-  onChange,
-  error,
-  disabled,
-  min = 1,
-  max,
-}: {
-  id: string
-  label: string
-  value: number
-  onChange: (mm: number) => void
-  error?: string
-  disabled?: boolean
-  min?: number
-  max?: number
-}) {
-  return (
-    <div>
-      <FieldLabel htmlFor={id} required>
-        {label}
-      </FieldLabel>
-      <Input
-        id={id}
-        className="mt-1.5"
-        type="number"
-        min={min}
-        max={max}
-        dir="ltr"
-        disabled={disabled}
-        aria-invalid={!!error}
-        value={Number.isFinite(value) ? value : ''}
-        onChange={(e) => {
-          const parsed = Number(e.target.value)
-          if (Number.isFinite(parsed)) onChange(parsed)
-        }}
-      />
-      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-    </div>
-  )
+  if (level === 'section' || !props.selectedDivider) return <SectionInspector props={props} />
+  return <DividerInspector props={props} divider={props.selectedDivider} />
 }

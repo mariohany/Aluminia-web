@@ -232,7 +232,8 @@
       "save": "Save changes",
       "saving": "Saving…",
       "success": "Company updated.",
-      "error": "Couldn't save changes."
+      "error": "Couldn't save changes.",
+      "maxUsersBelowCount": "This company has {{count}} users. Remove some before lowering the limit below that."
     },
     "billingSection": {
       "title": "Billing history",

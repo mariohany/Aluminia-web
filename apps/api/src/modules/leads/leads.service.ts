@@ -12,6 +12,7 @@ import type {
 import type { DeleteLeadsResponse, LeadSummary } from '@repo/types/leads';
 import { Lead } from '../../database/control-plane/entities/lead.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { rollbackQuietly } from '../../database/rollback';
 
 @Injectable()
 export class LeadsService {
@@ -87,8 +88,7 @@ export class LeadsService {
       await queryRunner.manager.delete(Lead, { id });
       await queryRunner.commitTransaction();
     } catch (error) {
-      if (queryRunner.isTransactionActive)
-        await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -141,8 +141,7 @@ export class LeadsService {
       await queryRunner.commitTransaction();
       return { deletedCount: leads.length };
     } catch (error) {
-      if (queryRunner.isTransactionActive)
-        await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();

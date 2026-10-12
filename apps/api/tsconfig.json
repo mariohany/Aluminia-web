@@ -14,9 +14,14 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./",
-    "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
+    // TypeScript 6 turns `strict` on and empties `types` by default;
+    // both are set here so the API compiles as it did on 5.x. Turning
+    // on full strict mode is its own change (entities alone need ~100
+    // definite-assignment fixes).
+    "strict": false,
+    "types": ["node", "jest", "multer"],
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,

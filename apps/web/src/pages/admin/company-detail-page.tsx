@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -304,11 +304,22 @@ function DetailsCard({ company }: { company: CompanyDetail }) {
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<UpdateCompanyInput>({
     resolver: zodResolver(updateCompanySchema),
     defaultValues: { name: company.name, plan: company.plan, maxUsers: company.maxUsers },
   })
+
+  // Same rule as the API (stability S13): the limit can't be lowered
+  // below the users the company already has. Said under the field
+  // instead of after a save.
+  const maxUsers = useWatch({ control, name: 'maxUsers' })
+  const belowUserCount =
+    maxUsers !== undefined &&
+    Number.isFinite(maxUsers) &&
+    maxUsers < company.maxUsers &&
+    maxUsers < company.userCount
 
   // Re-seed after a save (or an archive elsewhere) refetches the company.
   useEffect(() => {
@@ -352,14 +363,22 @@ function DetailsCard({ company }: { company: CompanyDetail }) {
               type="number"
               min={1}
               className="mt-1.5"
-              aria-invalid={!!errors.maxUsers}
+              aria-invalid={!!errors.maxUsers || belowUserCount}
               {...register('maxUsers', { valueAsNumber: true })}
             />
-            {errors.maxUsers && <p className="mt-1 text-xs text-destructive">{errors.maxUsers.message}</p>}
+            {errors.maxUsers ? (
+              <p className="mt-1 text-xs text-destructive">{errors.maxUsers.message}</p>
+            ) : (
+              belowUserCount && (
+                <p className="mt-1 text-xs text-destructive">
+                  {t('companyDetail.editSection.maxUsersBelowCount', { count: company.userCount })}
+                </p>
+              )
+            )}
           </div>
           {/* Lines up with the inputs: label (text-sm, leading-none = 14px)
               + the inputs' mt-1.5 (6px) = 20px. */}
-          <Button type="submit" className="sm:mt-5" disabled={!isDirty || isSubmitting}>
+          <Button type="submit" className="sm:mt-5" disabled={!isDirty || isSubmitting || belowUserCount}>
             {t(isSubmitting ? 'companyDetail.editSection.saving' : 'companyDetail.editSection.save')}
           </Button>
         </form>

@@ -25,6 +25,7 @@ import { TenantProvisioningService } from '../tenancy/tenant-provisioning.servic
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ProjectCountsService } from '../project-counts/project-counts.service';
 import { AuthVersionService } from '../auth/auth-version.service';
+import { rollbackQuietly } from '../../database/rollback';
 
 @Injectable()
 export class CompaniesService {
@@ -138,10 +139,28 @@ export class CompaniesService {
     await queryRunner.startTransaction();
 
     try {
+      // Locked so a user created at the same moment (users.service takes
+      // the same row lock for its seat check) can't slip in between the
+      // count below and the save.
       const company = await queryRunner.manager.findOne(Company, {
         where: { id },
+        lock: { mode: 'pessimistic_write' },
       });
       if (!company) throw new NotFoundException('Company not found.');
+
+      // Stability S13: the limit never drops below the users the company
+      // already has (deactivated ones still hold a seat, as in the seat
+      // check), so nobody is left "5 of 2 seats".
+      if (input.maxUsers !== undefined && input.maxUsers < company.maxUsers) {
+        const userCount = await queryRunner.manager.count(User, {
+          where: { companyId: id },
+        });
+        if (input.maxUsers < userCount) {
+          throw new BadRequestException(
+            `"${company.name}" has ${userCount} users; remove some before lowering the limit to ${input.maxUsers}.`,
+          );
+        }
+      }
 
       const planOrSeatsChanged =
         (input.plan !== undefined && input.plan !== company.plan) ||
@@ -179,7 +198,7 @@ export class CompaniesService {
       const userCount = await this.users.count({ where: { companyId: id } });
       return toCompanySummary(company, userCount);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -232,7 +251,7 @@ export class CompaniesService {
       const userCount = await this.users.count({ where: { companyId: id } });
       return toCompanySummary(company, userCount);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -268,7 +287,7 @@ export class CompaniesService {
       const userCount = await this.users.count({ where: { companyId: id } });
       return toCompanySummary(company, userCount);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -335,7 +354,7 @@ export class CompaniesService {
       await queryRunner.commitTransaction();
       await this.authVersions.publishDeleted(deletedUserIds);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();

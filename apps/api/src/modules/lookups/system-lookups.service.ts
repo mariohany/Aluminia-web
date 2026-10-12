@@ -32,6 +32,7 @@ import {
   type ParsedCatalogRow,
   type ParsedProfileRow,
 } from './systems-import.util';
+import { rollbackQuietly } from '../../database/rollback';
 
 // Same accepted-risk tradeoff as ColorLookupsService — see its header
 // comment. bulk* methods are the exception, same reasoning as
@@ -137,7 +138,7 @@ export class SystemLookupsService {
       await queryRunner.commitTransaction();
       return { deletedIds: deletableIds, blockedIds: [...blockedIds] };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -173,7 +174,7 @@ export class SystemLookupsService {
       await queryRunner.commitTransaction();
       return created.map(toSystemBrandSummary);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -285,7 +286,7 @@ export class SystemLookupsService {
       await queryRunner.commitTransaction();
       return { deletedIds: deletableIds, blockedIds: [...blockedIds] };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -322,7 +323,7 @@ export class SystemLookupsService {
       await queryRunner.commitTransaction();
       return created.map(toSystemCatalogSummary);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       return translatePostgresError(error, 'That brand does not exist.');
     } finally {
       await queryRunner.release();
@@ -444,7 +445,7 @@ export class SystemLookupsService {
       await queryRunner.commitTransaction();
       return { deletedIds: ids, blockedIds: [] };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -481,7 +482,7 @@ export class SystemLookupsService {
       await queryRunner.commitTransaction();
       return created.map(toSystemProfileSummary);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       return translatePostgresError(error, 'That catalogue does not exist.');
     } finally {
       await queryRunner.release();
@@ -842,7 +843,7 @@ export class SystemLookupsService {
         profiles: profilesResult,
       };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();

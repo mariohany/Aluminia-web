@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { assertValidSchemaName } from '../../database/tenant/schema-name';
 import { TENANT_DATA_SOURCE } from '../../database/tenant/tenant-pool.data-source';
+import { rollbackQuietly } from '../../database/rollback';
 
 /**
  * Runs work inside one tenant's Postgres schema.
@@ -77,12 +78,7 @@ export class TenantConnectionService {
       await queryRunner.commitTransaction();
       return result;
     } catch (error) {
-      // Guarded because the transaction may already be dead — a failed
-      // COMMIT ends it, and rolling back a finished transaction throws
-      // an error that would mask the real one.
-      if (queryRunner.isTransactionActive) {
-        await queryRunner.rollbackTransaction();
-      }
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();

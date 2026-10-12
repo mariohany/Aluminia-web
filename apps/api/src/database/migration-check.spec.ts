@@ -1,4 +1,4 @@
-import type { MigrationInterface, QueryRunner } from 'typeorm';
+import type { MigrationInterface } from 'typeorm';
 import { migrationName, pendingTenantMigrations } from './migration-check';
 
 // The boot gate's comparison, isolated from the queries that feed it —
@@ -52,13 +52,13 @@ describe('pendingTenantMigrations', () => {
 describe('migrationName', () => {
   class Declared1000 implements MigrationInterface {
     name = 'Declared1000';
-    public async up(_queryRunner: QueryRunner): Promise<void> {}
-    public async down(_queryRunner: QueryRunner): Promise<void> {}
+    public async up(): Promise<void> {}
+    public async down(): Promise<void> {}
   }
 
   class Undeclared2000 implements MigrationInterface {
-    public async up(_queryRunner: QueryRunner): Promise<void> {}
-    public async down(_queryRunner: QueryRunner): Promise<void> {}
+    public async up(): Promise<void> {}
+    public async down(): Promise<void> {}
   }
 
   // This track's migrations are inconsistent about declaring `name`;

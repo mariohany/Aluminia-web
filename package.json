@@ -5,13 +5,14 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
     "turbo": "^2.10.8",
-    "typescript": "5.9.2"
+    "typescript": "6.0.3"
   },
   "engines": {
     "node": ">=18"
@@ -27,6 +28,7 @@
     "packages/*"
   ],
   "overrides": {
+    "typescript": "$typescript",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4"
   }

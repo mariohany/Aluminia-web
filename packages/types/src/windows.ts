@@ -287,7 +287,7 @@ export const windowPanelSchema = z
         ctx.addIssue({ code: 'custom', path: ['sections', index, 'faceKey'], message: `Duplicate light "${section.faceKey}".` })
       }
       seenKeys.add(section.faceKey)
-      for (const token of section.faceKey.split('#')[0].split('|')) {
+      for (const token of (section.faceKey.split('#')[0] ?? '').split('|')) {
         if (!sides.has(token) && !earlierIds.has(token)) {
           ctx.addIssue({ code: 'custom', path: ['sections', index, 'faceKey'], message: `Light "${section.faceKey}" names "${token}", which is not in this panel.` })
         }

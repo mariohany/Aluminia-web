@@ -45,15 +45,7 @@ export async function migrateAllTenants(): Promise<Result[]> {
     };
 
     try {
-      assertValidSchemaName(tenant.schema_name);
-      const tenantDataSource = createTenantDataSource(tenant.schema_name);
-      await tenantDataSource.initialize();
-      try {
-        const applied = await tenantDataSource.runMigrations();
-        result.applied = applied.map((m) => m.name);
-      } finally {
-        await tenantDataSource.destroy();
-      }
+      result.applied = await migrateTenantSchema(tenant.schema_name);
     } catch (error) {
       result.error = error instanceof Error ? error.message : String(error);
     }
@@ -63,6 +55,27 @@ export async function migrateAllTenants(): Promise<Result[]> {
 
   await controlPlaneDataSource.destroy();
   return results;
+}
+
+/**
+ * Applies pending tenant migrations to one schema with TypeORM's own
+ * runner and returns the names it applied. Provisioning applies the same
+ * list its own way (inside the provisioning transaction), so on a freshly
+ * provisioned schema this must apply nothing —
+ * test/tenant-migration-drift.e2e-spec.ts holds the two to that.
+ */
+export async function migrateTenantSchema(
+  schemaName: string,
+): Promise<string[]> {
+  assertValidSchemaName(schemaName);
+  const tenantDataSource = createTenantDataSource(schemaName);
+  await tenantDataSource.initialize();
+  try {
+    const applied = await tenantDataSource.runMigrations();
+    return applied.map((m) => m.name);
+  } finally {
+    await tenantDataSource.destroy();
+  }
 }
 
 async function main() {

@@ -27,6 +27,7 @@ import {
   findBlockedIds,
   runWithSingleVersionBump,
 } from './lookup-version.util';
+import { rollbackQuietly } from '../../database/rollback';
 
 const COMBINATION_ITEM_RELATIONS = {
   glass: true,
@@ -139,7 +140,7 @@ export class GlassLookupsService {
       await queryRunner.commitTransaction();
       return { deletedIds: deletableIds, blockedIds: [...blockedIds] };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -175,7 +176,7 @@ export class GlassLookupsService {
       await queryRunner.commitTransaction();
       return created.map(toGlassSummary);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -241,7 +242,7 @@ export class GlassLookupsService {
       await queryRunner.commitTransaction();
       return toGlassCombinationSummary(combo, items);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       return translatePostgresError(
         error,
         'One of the glass or colour references in this combination does not exist.',
@@ -295,7 +296,7 @@ export class GlassLookupsService {
       await queryRunner.commitTransaction();
       return toGlassCombinationSummary(combo, items);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       return translatePostgresError(
         error,
         'One of the glass or colour references in this combination does not exist.',
@@ -357,7 +358,7 @@ export class GlassLookupsService {
       await queryRunner.commitTransaction();
       return { deletedIds: ids, blockedIds: [] };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -444,7 +445,7 @@ export class GlassLookupsService {
         failedCount,
       };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       return translatePostgresError(
         error,
         'One of the glass or colour references in this combination does not exist.',

@@ -22,6 +22,7 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import { translatePostgresError } from './pg-error.util';
 import { parseColorWorkbook, type ParsedColorRow } from './color-import.util';
 import { findBlockedIds } from './lookup-version.util';
+import { rollbackQuietly } from '../../database/rollback';
 
 // Single-table writes, not wrapped in an explicit transaction: same
 // accepted-risk tradeoff already made in CompaniesService.create() for
@@ -137,7 +138,7 @@ export class ColorLookupsService {
       await queryRunner.commitTransaction();
       return { deletedIds: deletableIds, blockedIds: [...blockedIds] };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -173,7 +174,7 @@ export class ColorLookupsService {
       await queryRunner.commitTransaction();
       return created.map(toColorSummary);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       return translatePostgresError(
         error,
         'One or more of those colours already exist.',
@@ -274,7 +275,7 @@ export class ColorLookupsService {
         });
         await queryRunner.commitTransaction();
       } catch (error) {
-        await queryRunner.rollbackTransaction();
+        await rollbackQuietly(queryRunner);
         throw error;
       } finally {
         await queryRunner.release();

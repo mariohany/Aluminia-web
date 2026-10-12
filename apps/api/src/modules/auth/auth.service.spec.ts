@@ -33,8 +33,10 @@ function makeService(options: {
   // straight hit on the current hash, and the jsonb fallback that finds
   // a tab one rotation behind.
   const manager = {
-    upsert: jest.fn().mockResolvedValue(undefined),
-    delete: jest.fn().mockResolvedValue(undefined),
+    upsert: jest
+      .fn<Promise<void>, [unknown, Session, unknown]>()
+      .mockResolvedValue(undefined),
+    delete: jest.fn<Promise<void>, unknown[]>().mockResolvedValue(undefined),
     findOne: jest.fn(
       (entity: unknown, opts: { where: { refreshTokenHash?: string } }) => {
         if (entity !== Session) return Promise.resolve(options.user);
@@ -60,10 +62,16 @@ function makeService(options: {
       };
       return builder;
     }),
-    transaction: jest.fn((cb: (m: EntityManager) => Promise<unknown>) =>
-      cb(manager as unknown as EntityManager),
-    ),
+    transaction: jest.fn<
+      Promise<unknown>,
+      [(m: EntityManager) => Promise<unknown>]
+    >(),
   };
+  // Set after the object exists: referring to `manager` inside its own
+  // initializer would make TypeScript infer it as `any`.
+  manager.transaction.mockImplementation((cb) =>
+    cb(manager as unknown as EntityManager),
+  );
   const sessionsRepo = {
     upsert: jest.fn().mockResolvedValue(undefined),
     manager,
@@ -204,7 +212,7 @@ describe('AuthService.refresh — rotation grace window', () => {
       user: companyScopedUser,
     });
 
-    const written = manager.upsert.mock.calls[0][1] as Session;
+    const written = manager.upsert.mock.calls[0][1];
     expect(written.graceTokens[0].hash).toBe(hashToken('current-token'));
     expect(
       new Date(written.graceTokens[0].expiresAt).getTime(),
@@ -237,7 +245,7 @@ describe('AuthService.refresh — rotation grace window', () => {
 
     // The token that tab still holds stays valid too — this is what
     // lets a third and fourth tab in the same burst through.
-    const written = manager.upsert.mock.calls[0][1] as Session;
+    const written = manager.upsert.mock.calls[0][1];
     expect(written.graceTokens.map((token) => token.hash)).toEqual([
       hashToken('rotated-in'),
       hashToken('rotated-out'),
@@ -259,7 +267,7 @@ describe('AuthService.refresh — rotation grace window', () => {
 
     await service.refresh('current-token');
 
-    const written = manager.upsert.mock.calls[0][1] as Session;
+    const written = manager.upsert.mock.calls[0][1];
     expect(written.graceTokens).toHaveLength(REFRESH_GRACE_DEPTH);
     expect(written.graceTokens[0].hash).toBe(hashToken('current-token'));
     expect(written.graceTokens.at(-1)!.hash).toBe(
@@ -326,7 +334,7 @@ describe('AuthService.login — grace token', () => {
       '203.0.113.7',
     );
 
-    const written = manager.upsert.mock.calls[0][1] as Session;
+    const written = manager.upsert.mock.calls[0][1];
     expect(written.graceTokens).toEqual([]);
   });
 });

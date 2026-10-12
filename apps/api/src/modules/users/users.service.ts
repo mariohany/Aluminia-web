@@ -21,6 +21,7 @@ import { Session } from '../../database/control-plane/entities/session.entity';
 import { PasswordService } from '../auth/password.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthVersionService } from '../auth/auth-version.service';
+import { rollbackQuietly } from '../../database/rollback';
 
 interface CompanyLockRow {
   id: string;
@@ -131,7 +132,7 @@ export class UsersService {
       await queryRunner.commitTransaction();
       return toUserSummary(user, company.name, null);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -267,7 +268,7 @@ export class UsersService {
       });
       return toUserSummary(user, companyName, session);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -330,7 +331,7 @@ export class UsersService {
       const companyName = await this.companyNameFor(user.companyId);
       return toUserSummary(user, companyName, null);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -370,7 +371,7 @@ export class UsersService {
       const companyName = await this.companyNameFor(user.companyId);
       return toUserSummary(user, companyName, null);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -417,7 +418,7 @@ export class UsersService {
       await queryRunner.commitTransaction();
       await this.authVersions.publish(bumped);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();
@@ -485,7 +486,7 @@ export class UsersService {
       // The access token they still hold is refused from here (S3).
       await this.authVersions.publishDeleted([user.id]);
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();

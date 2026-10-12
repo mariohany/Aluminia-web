@@ -21,6 +21,7 @@ import {
 } from '../../database/tenant/migrations';
 import { TENANT_MIGRATIONS_TABLE } from '../../database/tenant/tenant-data-source';
 import { PasswordService } from '../auth/password.service';
+import { rollbackQuietly } from '../../database/rollback';
 
 export interface ProvisionCompanyInput {
   name: string;
@@ -100,7 +101,7 @@ export class TenantProvisioningService {
       await queryRunner.commitTransaction();
       return { company, admin };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      await rollbackQuietly(queryRunner);
       throw error;
     } finally {
       await queryRunner.release();

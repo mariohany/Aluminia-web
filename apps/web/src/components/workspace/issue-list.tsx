@@ -2,7 +2,7 @@ import type { TranslatedIssue } from '@/lib/window-weight'
 import { cn } from '@/lib/utils'
 
 /** The part panel's per-field issue lines — pulled out of
- * window-part-panel.tsx so the sliding layout editor can show each
+ * window-part-panel.tsx so the sliding layout editor could show each
  * sash's own issues under its row without importing the whole panel
  * (which imports it back). */
 export function IssueList({ issues }: { issues: TranslatedIssue[] }) {

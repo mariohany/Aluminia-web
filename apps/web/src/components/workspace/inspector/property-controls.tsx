@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, Star } from 'lucide-react'
+import { ChevronDown, Minus, Plus, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -243,5 +243,46 @@ export function PropertySegment<T extends string>({
         )
       })}
     </div>
+  )
+}
+
+/** A small whole-number count with − / + — the sliding sash count. */
+export function PropertyStepper({
+  id,
+  value,
+  min,
+  max,
+  onChange,
+  decreaseLabel,
+  increaseLabel,
+}: {
+  id?: string
+  value: number | null
+  min: number
+  max: number
+  onChange: (value: number) => void
+  decreaseLabel: string
+  increaseLabel: string
+}) {
+  const btn =
+    'flex size-7.5 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40'
+  return (
+    <span id={id} className="flex h-7.5 items-center gap-0.5 rounded-md bg-muted">
+      <button type="button" className={btn} aria-label={decreaseLabel} disabled={value === null || value <= min} onClick={() => value !== null && onChange(value - 1)}>
+        <Minus className="size-3.5" aria-hidden="true" />
+      </button>
+      <span className="min-w-6 text-center font-mono text-[12.5px]" aria-live="polite">
+        {value ?? '—'}
+      </span>
+      <button
+        type="button"
+        className={btn}
+        aria-label={increaseLabel}
+        disabled={value !== null && value >= max}
+        onClick={() => onChange(value === null ? min : value + 1)}
+      >
+        <Plus className="size-3.5" aria-hidden="true" />
+      </button>
+    </span>
   )
 }

@@ -8,7 +8,7 @@ import type { MergedSystemProfileSummary } from '@/lib/lookup-merge'
 import { cn } from '@/lib/utils'
 import { OpeningTypeIcon } from '@/components/icons/opening-type-icon'
 import { PartShapeIcon } from '@/components/workspace/part-shape-icon'
-import { SlidingLayoutEditor } from '@/components/workspace/sliding-layout-editor'
+import { SlidingLayoutGroup } from '@/components/workspace/inspector/sliding-layout-group'
 import { InspectorChip, InspectorHeader, InspectorIssueChip } from '@/components/workspace/inspector/inspector-header'
 import { PropertyGroup } from '@/components/workspace/inspector/property-group'
 import { PropertyRow, PropertyText } from '@/components/workspace/inspector/property-row'
@@ -25,7 +25,7 @@ const isSlidingIssue = (issue: TranslatedIssue) => issue.messageKey.startsWith('
  * §5/§6: one light's own settings. Light (kind, size), then Opening
  * (type, sash, fly screen, weight) or Glazing (bead), then Glass, then a
  * read-only "From Panel N" with a way back to the panel. A sliding
- * section keeps today's layout editor in its own group until Step 6.
+ * section adds its Sliding group (layout, sash count, rails, §7).
  */
 export function SectionInspector({ props }: { props: WindowPartPanelProps }) {
   const { t } = useTranslation('workspace')
@@ -44,15 +44,11 @@ export function SectionInspector({ props }: { props: WindowPartPanelProps }) {
   const issuesOf = (kind: string) => dedupeIssues(sectionParts.filter((p) => p.kind === kind).flatMap((p) => props.issuesByPart.get(p.id) ?? []))
   const allIssues = dedupeIssues(sectionParts.flatMap((p) => props.issuesByPart.get(p.id) ?? []))
 
-  // A sliding sash's own build issues show under its row in the layout
-  // editor; a section-level sliding issue (no layout yet) lands on the
-  // first glass part and shows under the editor's tiles.
-  const slidingIssuesBySash = new Map<number, TranslatedIssue[]>()
-  for (const part of sectionParts) {
-    if (part.kind !== 'sash') continue
-    const own = (props.issuesByPart.get(part.id) ?? []).filter(isSlidingIssue)
-    if (own.length > 0) slidingIssuesBySash.set(part.index, own)
-  }
+  // A sliding sash's own build issues (blocked, slides into the frame…)
+  // show in the Issues panel and on the drawing only — the sash's rail
+  // and direction are set by right-click now (planing §8). A
+  // section-level sliding issue (no layout yet) lands on the first glass
+  // part and shows under the Layout row.
   const sashIssues = issuesOf('sash').filter((i) => !isSlidingIssue(i) && i.messageKey !== 'sashWeightExceeded')
   const glassAll = issuesOf('glass')
   const slidingSectionIssues = glassAll.filter(isSlidingIssue)
@@ -109,19 +105,17 @@ export function SectionInspector({ props }: { props: WindowPartPanelProps }) {
         {section.fixedOnly ? (
           <p className="py-1 text-xs text-muted-foreground">{t('windowDialog.design.section.archLightFixed')}</p>
         ) : (
-          !section.isSliding && (
-            // Sliding keeps its Fixed tile in the layout editor for now
-            // (Step 6 turns it into this same segment).
-            <PropertyRow label={t('windowDialog.inspector.rows.kind')} htmlFor="section-kind">
-              <PropertySegment
-                id="section-kind"
-                label={t('windowDialog.inspector.rows.kind')}
-                value={section.kind}
-                options={[SectionKind.FIXED, SectionKind.OPENING].map((kind) => ({ value: kind, label: t(`windowDialog.design.section.kind.${kind}`) }))}
-                onChange={section.onKindChange}
-              />
-            </PropertyRow>
-          )
+          // Sliding too: the segment replaced its old Fixed tile; Opening
+          // brings back the layout it had (rememberedSlidingLayouts).
+          <PropertyRow label={t('windowDialog.inspector.rows.kind')} htmlFor="section-kind">
+            <PropertySegment
+              id="section-kind"
+              label={t('windowDialog.inspector.rows.kind')}
+              value={section.kind}
+              options={[SectionKind.FIXED, SectionKind.OPENING].map((kind) => ({ value: kind, label: t(`windowDialog.design.section.kind.${kind}`) }))}
+              onChange={section.onKindChange}
+            />
+          </PropertyRow>
         )}
         {props.isGridded && section.widthMm !== null && section.heightMm !== null && (
           <>
@@ -135,18 +129,13 @@ export function SectionInspector({ props }: { props: WindowPartPanelProps }) {
         )}
       </PropertyGroup>
 
-      {!section.fixedOnly && section.isSliding && (
-        <PropertyGroup id="section.sliding" title={t('windowDialog.inspector.groups.sliding')}>
-          <SlidingLayoutEditor
-            layout={section.slidingLayout}
-            rails={section.slidingRails}
-            kind={section.kind}
-            onFixed={() => section.onKindChange(SectionKind.FIXED)}
-            onChange={section.onSlidingLayoutChange}
-            issues={slidingSectionIssues}
-            issuesBySash={slidingIssuesBySash}
-          />
-        </PropertyGroup>
+      {!section.fixedOnly && section.isSliding && isOpening && (
+        <SlidingLayoutGroup
+          layout={section.slidingLayout}
+          rails={section.slidingRails}
+          onChange={section.onSlidingLayoutChange}
+          issues={slidingSectionIssues}
+        />
       )}
 
       {isOpening ? (

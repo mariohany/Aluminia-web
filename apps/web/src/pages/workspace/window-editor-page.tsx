@@ -1174,12 +1174,12 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     }, 'changeSectionType')
   }
 
-  // The sliding layout editor's one write path (planing §7): every
-  // control in `sliding-layout-editor.tsx` — and any future context
-  // menu or keyboard shortcut — lands here, already re-derived, so an
+  // The sliding layout's one write path (planing §7): the inspector's
+  // Sliding group (`inspector/sliding-layout-group.tsx`) and the sash
+  // context menu both land here, already re-derived, so an
   // `auto` sash can never be stored disagreeing with its rails.
-  // A layout landing on a FIXED sliding section (its tiles double as
-  // the fixed/opening choice, 2026-09-20) flips that section to
+  // A layout landing on a FIXED sliding section (a layout pick doubles
+  // as the way back to opening) flips that section to
   // opening in the same write — the `onSectionKindChange(OPENING)`
   // reset, minus the layout it would restore, since this IS the layout.
   const setSlidingLayoutOf = (panelIndex: number, sectionIndex: number, layout: SlidingLayoutInput, label: EditLabel) => {

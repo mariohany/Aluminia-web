@@ -676,7 +676,20 @@
         "noMatches": "لا شيء يطابق هذا البحث."
       },
       "panelDefault": "افتراضي اللوح",
-      "nudge": "تحريك {{mm}} مم"
+      "nudge": "تحريك {{mm}} مم",
+      "sliding": {
+        "sashesN_zero": "{{count}} ضلفة",
+        "sashesN_one": "ضلفة واحدة",
+        "sashesN_two": "ضلفتان",
+        "sashesN_few": "{{count}} ضلف",
+        "sashesN_many": "{{count}} ضلفة",
+        "sashesN_other": "{{count}} ضلفة",
+        "search": "ابحث في التوزيعات",
+        "customHint": "انقر بالزر الأيمن على ضلفة في الرسم لتغيير مجراها أو اتجاه انزلاقها.",
+        "fewer": "ضلفة أقل",
+        "more": "ضلفة أكثر",
+        "fromFrame": "من بروفايل الإطار"
+      }
     }
   },
   "deleteClient": {

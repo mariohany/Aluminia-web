@@ -628,7 +628,16 @@
         "noMatches": "Nothing matches that search."
       },
       "panelDefault": "panel default",
-      "nudge": "Move {{mm}} mm"
+      "nudge": "Move {{mm}} mm",
+      "sliding": {
+        "sashesN_one": "{{count}} sash",
+        "sashesN_other": "{{count}} sashes",
+        "search": "Search layouts",
+        "customHint": "Right-click a sash on the drawing to change its rail or which way it slides.",
+        "fewer": "One sash fewer",
+        "more": "One sash more",
+        "fromFrame": "from the frame profile"
+      }
     }
   },
   "deleteClient": {

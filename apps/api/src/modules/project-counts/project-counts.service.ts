@@ -8,6 +8,7 @@ import {
 } from '../../database/control-plane/entities/company.entity';
 import { Project } from '../../database/tenant/entities/project.entity';
 import { REDIS_CLIENT } from '../../common/redis.module';
+import { logRedisFallback } from '../../common/redis-fallback';
 import { TenantConnectionService } from '../tenancy/tenant-connection.service';
 
 // Short-lived, not version-keyed like the lookups cache: there's no
@@ -37,7 +38,13 @@ export class ProjectCountsService {
   ) {}
 
   async byCompany(): Promise<Map<string, number>> {
-    const cached = await this.redis.get(CACHE_KEY);
+    // Redis down (stability S9): count afresh and skip the cache write.
+    let cached: string | null = null;
+    try {
+      cached = await this.redis.get(CACHE_KEY);
+    } catch (error: unknown) {
+      logRedisFallback('project counts', error, 'counting afresh');
+    }
     if (cached !== null) {
       return new Map(
         Object.entries(JSON.parse(cached) as Record<string, number>),
@@ -62,12 +69,16 @@ export class ProjectCountsService {
     );
     const byCompany = new Map(counts);
 
-    await this.redis.set(
-      CACHE_KEY,
-      JSON.stringify(Object.fromEntries(byCompany)),
-      'EX',
-      CACHE_TTL_SECONDS,
-    );
+    try {
+      await this.redis.set(
+        CACHE_KEY,
+        JSON.stringify(Object.fromEntries(byCompany)),
+        'EX',
+        CACHE_TTL_SECONDS,
+      );
+    } catch (error: unknown) {
+      logRedisFallback('project counts', error, 'not cached');
+    }
     return byCompany;
   }
 

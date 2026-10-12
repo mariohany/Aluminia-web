@@ -9,6 +9,7 @@ import {
   type LookupVersion,
 } from '@repo/types/lookups';
 import { REDIS_CLIENT } from '../../common/redis.module';
+import { logRedisFallback } from '../../common/redis-fallback';
 import { LookupMeta } from '../../database/control-plane/entities/lookup-meta.entity';
 
 const CACHE_TTL_SECONDS = 24 * 60 * 60;
@@ -49,11 +50,22 @@ export class LookupCacheService {
     const versions = await this.getVersionsFor(entities);
     const key = `lookups:v${entities.map((entity) => versions[entity]).join('-')}:${slice}`;
 
-    const cached = await this.redis.get(key);
+    // Redis down (stability S9): read Postgres and skip the cache write.
+    // The cache only ever saves work, so skipping it is always correct.
+    let cached: string | null = null;
+    try {
+      cached = await this.redis.get(key);
+    } catch (error: unknown) {
+      logRedisFallback('lookup cache', error, 'reading Postgres');
+    }
     if (cached) return { versions, data: JSON.parse(cached) as T };
 
     const data = await load();
-    await this.redis.set(key, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
+    try {
+      await this.redis.set(key, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
+    } catch (error: unknown) {
+      logRedisFallback('lookup cache', error, 'not cached');
+    }
     return { versions, data };
   }
 }

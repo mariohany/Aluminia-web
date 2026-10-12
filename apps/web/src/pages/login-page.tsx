@@ -17,8 +17,9 @@ export function LoginPage() {
   const { t } = useTranslation('login')
   const { login } = useAuth()
   const navigate = useNavigate()
-  // What the alert says, or null: wrong credentials, or the failed-login
-  // limit (429) with the minutes left when the API says.
+  // What the alert says, or null: wrong credentials, the failed-login
+  // limit (429) with the minutes left when the API says, or sign-in
+  // being briefly unavailable (503, the API's Redis is down).
   const [serverError, setServerError] = useState<string | null>(null)
 
   const {
@@ -47,6 +48,8 @@ export function LoginPage() {
         setServerError(
           seconds === null ? t('tooManyAttempts') : t('tooManyAttemptsFor', { minutes: Math.max(1, Math.ceil(seconds / 60)) }),
         )
+      } else if (err instanceof ApiError && err.status === 503) {
+        setServerError(t('unavailable'))
       } else {
         throw err
       }

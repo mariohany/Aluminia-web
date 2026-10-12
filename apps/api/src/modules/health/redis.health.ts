@@ -10,13 +10,24 @@ export class RedisHealthIndicator {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
+  /**
+   * Reports Redis without failing /health on it (stability S9): every use
+   * of Redis falls back while it's down, so the app still serves, and
+   * failing here would make the load balancer pull every instance at
+   * once (they all share the one Redis). Shown as
+   * `redis: { status: 'up', connected: false }` so monitoring can alert
+   * on it.
+   */
   async pingCheck(key: string) {
     const indicator = this.healthIndicatorService.check(key);
     try {
       await this.redis.ping();
-      return indicator.up();
-    } catch (error) {
-      return indicator.down({ message: (error as Error).message });
+      return indicator.up({ connected: true });
+    } catch (error: unknown) {
+      return indicator.up({
+        connected: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 }

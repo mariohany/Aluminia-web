@@ -1,5 +1,6 @@
 import type Redis from 'ioredis';
 import type { ThrottlerStorage } from '@nestjs/throttler';
+import { logRedisFallback } from '../redis-fallback';
 
 // Not exported from the package root.
 type ThrottlerStorageRecord = Awaited<
@@ -43,15 +44,30 @@ export class RedisThrottlerStorage implements ThrottlerStorage {
     limit: number,
     blockDuration: number,
   ): Promise<ThrottlerStorageRecord> {
-    const [hits, windowMs, blocked, blockMs] = (await this.redis.eval(
-      INCREMENT_SCRIPT,
-      2,
-      `${THROTTLE_KEY_PREFIX}${key}`,
-      `${THROTTLE_KEY_PREFIX}${key}:block`,
-      ttl,
-      limit,
-      blockDuration,
-    )) as [number, number, number, number];
+    let reply: [number, number, number, number];
+    try {
+      reply = (await this.redis.eval(
+        INCREMENT_SCRIPT,
+        2,
+        `${THROTTLE_KEY_PREFIX}${key}`,
+        `${THROTTLE_KEY_PREFIX}${key}:block`,
+        ttl,
+        limit,
+        blockDuration,
+      )) as [number, number, number, number];
+    } catch (error: unknown) {
+      // Redis down: let the request through uncounted (stability S9,
+      // Mario's call: an outage shouldn't take the app down with it).
+      // The failed-login limit is separate and does refuse.
+      logRedisFallback('rate limit', error, 'requests are not counted');
+      return {
+        totalHits: 0,
+        timeToExpire: 0,
+        isBlocked: false,
+        timeToBlockExpire: 0,
+      };
+    }
+    const [hits, windowMs, blocked, blockMs] = reply;
     // The guard expects seconds, rounded up, like the in-memory store.
     return {
       totalHits: hits,

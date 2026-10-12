@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../common/redis.module';
+import { logRedisFallback } from '../../common/redis-fallback';
 import {
   LOGIN_FAILURE_LIMIT_PER_EMAIL,
   LOGIN_FAILURE_LIMIT_PER_IP,
@@ -21,6 +26,11 @@ export const LOGIN_FAILURE_KEY_PREFIX = 'login-fail:';
  *
  * Fixed window from the first failure; a successful login clears that
  * email's count (not the IP's).
+ *
+ * Redis down (stability S9): logins are refused with a 503 rather than
+ * let through uncounted, so the limit is never off (Mario's call).
+ * People already signed in are unaffected. Recording a result is
+ * best-effort: by then the check has passed, so Redis was up a moment ago.
  */
 @Injectable()
 export class LoginAttemptsService {
@@ -29,12 +39,21 @@ export class LoginAttemptsService {
   async assertAllowed(email: string, ip: string): Promise<void> {
     const emailKey = this.emailKey(email);
     const ipKey = this.ipKey(ip);
-    const [emailHits, emailTtl, ipHits, ipTtl] = await Promise.all([
-      this.redis.get(emailKey),
-      this.redis.pttl(emailKey),
-      this.redis.get(ipKey),
-      this.redis.pttl(ipKey),
-    ]);
+    let counts: [string | null, number, string | null, number];
+    try {
+      counts = await Promise.all([
+        this.redis.get(emailKey),
+        this.redis.pttl(emailKey),
+        this.redis.get(ipKey),
+        this.redis.pttl(ipKey),
+      ]);
+    } catch (error: unknown) {
+      logRedisFallback('login limit', error, 'logins are refused');
+      throw new ServiceUnavailableException(
+        'Sign-in is temporarily unavailable. Try again in a minute.',
+      );
+    }
+    const [emailHits, emailTtl, ipHits, ipTtl] = counts;
 
     let retryMs = 0;
     if (Number(emailHits) >= LOGIN_FAILURE_LIMIT_PER_EMAIL)
@@ -47,17 +66,25 @@ export class LoginAttemptsService {
   }
 
   async recordFailure(email: string, ip: string): Promise<void> {
-    await this.redis
-      .multi()
-      .incr(this.emailKey(email))
-      .pexpire(this.emailKey(email), LOGIN_FAILURE_WINDOW_MS, 'NX')
-      .incr(this.ipKey(ip))
-      .pexpire(this.ipKey(ip), LOGIN_FAILURE_WINDOW_MS, 'NX')
-      .exec();
+    try {
+      await this.redis
+        .multi()
+        .incr(this.emailKey(email))
+        .pexpire(this.emailKey(email), LOGIN_FAILURE_WINDOW_MS, 'NX')
+        .incr(this.ipKey(ip))
+        .pexpire(this.ipKey(ip), LOGIN_FAILURE_WINDOW_MS, 'NX')
+        .exec();
+    } catch (error: unknown) {
+      logRedisFallback('login limit', error, 'a failure went uncounted');
+    }
   }
 
   async recordSuccess(email: string): Promise<void> {
-    await this.redis.del(this.emailKey(email));
+    try {
+      await this.redis.del(this.emailKey(email));
+    } catch (error: unknown) {
+      logRedisFallback('login limit', error, 'a count was not cleared');
+    }
   }
 
   // Hashed so the keys don't hold users' email addresses in the clear.

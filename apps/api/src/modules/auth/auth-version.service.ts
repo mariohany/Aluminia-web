@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type { EntityManager, Repository } from 'typeorm';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../common/redis.module';
+import { logRedisFallback } from '../../common/redis-fallback';
 import { User } from '../../database/control-plane/entities/user.entity';
 
 export const AUTH_VERSION_KEY_PREFIX = 'auth:ver:';
@@ -60,7 +61,7 @@ export class AuthVersionService {
       if (cached !== null) return Number(cached);
     } catch (error: unknown) {
       // Redis down: answer from Postgres instead of refusing everyone.
-      this.logger.warn({ err: error }, 'auth version: Redis read failed');
+      logRedisFallback('auth version', error, 'reading Postgres');
       return this.load(userId);
     }
 
@@ -70,7 +71,7 @@ export class AuthVersionService {
       // NX: a bump published meanwhile is newer than what was just read.
       await this.redis.set(key, String(version), 'EX', CACHE_TTL_SECONDS, 'NX');
     } catch (error: unknown) {
-      this.logger.warn({ err: error }, 'auth version: Redis write failed');
+      logRedisFallback('auth version', error, 'not cached');
     }
     return version;
   }

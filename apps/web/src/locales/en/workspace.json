@@ -636,7 +636,8 @@
         "customHint": "Right-click a sash on the drawing to change its rail or which way it slides.",
         "fewer": "One sash fewer",
         "more": "One sash more",
-        "fromFrame": "from the frame profile"
+        "fromFrame": "from the frame profile",
+        "rail": "Rail"
       }
     }
   },

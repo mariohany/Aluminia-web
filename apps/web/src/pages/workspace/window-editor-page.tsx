@@ -18,12 +18,9 @@ import {
 } from '@repo/types/windows'
 import { ProfileType, SystemType } from '@repo/types/lookups'
 import {
-  SlidingDirectionSource,
-  SlidingOpeningType,
   defaultSlidingLayout,
   remapSlidingRails,
   resolveSlidingLayout,
-  suggestSlidingOpeningType,
   type SlidingLayoutInput,
 } from '@repo/types/sliding'
 import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
@@ -44,6 +41,8 @@ import { WindowIssuesPanel } from '@/components/workspace/window-issues-panel'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/bilingual'
 import { isDoorOpeningType } from '@/components/workspace/inspector/opening-types'
+import { SlidingSashBlock } from '@/components/workspace/inspector/sliding-sash-block'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { WindowStructurePanel } from '@/components/workspace/window-structure-panel'
 import { panelIssueLights, slidingSectionArgs, useResolvedPanels, type PanelRender, type SectionRender } from '@/lib/window-render'
 import { useEditHistory } from '@/lib/use-edit-history'
@@ -1245,6 +1244,8 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // is up. The trigger is disabled unless the pointer is over a sliding
   // sash, so a right-click anywhere else is the browser's own menu.
   const [menuSashPartId, setMenuSashPartId] = useState<string | null>(null)
+  // Where the right-click happened — the sash popover's anchor.
+  const [menuSashPoint, setMenuSashPoint] = useState<{ x: number; y: number } | null>(null)
   const hoveredSlidingSash = slidingSashOf(hoveredPartId)
   const menuSashEntry = slidingSashOf(menuSashPartId)
   const menuSash = menuSashEntry?.sash ? { ...menuSashEntry, sash: menuSashEntry.sash } : null
@@ -2010,22 +2011,29 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               <ContextMenu
                 onOpenChange={(open) => {
                   if (!open) {
-                    setMenuSashPartId(null)
                     setMenuDivider(null)
                     return
                   }
-                  // Opening also selects the sash, like a left-click —
-                  // so the part panel below shows the row being acted on.
-                  if (hoveredSlidingSash) {
-                    setMenuSashPartId(hoveredSlidingSash.partId)
-                    onSelectPart(hoveredSlidingSash.partId, false)
-                  } else if (hoveredDivider) {
-                    openDividerMenu(hoveredDivider.panelIndex, hoveredDivider.dividerId)
-                  }
+                  if (hoveredDivider) openDividerMenu(hoveredDivider.panelIndex, hoveredDivider.dividerId)
                 }}
               >
-              <ContextMenuTrigger asChild disabled={!hoveredSlidingSash && !hoveredDivider}>
-              <div className="min-h-0 flex-1" onPointerDownCapture={onCanvasPointerDown}>
+              {/* The divider menu only. A sliding sash's right-click opens the
+                  sash popover instead (below): its handler runs first and
+                  prevents the default, which also keeps the browser's menu away. */}
+              <ContextMenuTrigger asChild disabled={!hoveredDivider || !!hoveredSlidingSash}>
+              <div
+                className="min-h-0 flex-1"
+                onPointerDownCapture={onCanvasPointerDown}
+                onContextMenu={(event) => {
+                  if (!hoveredSlidingSash) return
+                  event.preventDefault()
+                  // Opening also selects the sash, like a left-click, so the
+                  // inspector shows the section being acted on.
+                  setMenuSashPoint({ x: event.clientX, y: event.clientY })
+                  setMenuSashPartId(hoveredSlidingSash.partId)
+                  onSelectPart(hoveredSlidingSash.partId, false)
+                }}
+              >
                 <WindowDrawing
                   layout={drawingLayout}
                   panels={panelRenders}
@@ -2073,58 +2081,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                 />
               </div>
               </ContextMenuTrigger>
-              {menuSash && (
-                <ContextMenuContent>
-                  <ContextMenuItem
-                    disabled={menuSash.sash.rail === 0}
-                    onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { rail: menuSash.sash.rail - 1 }, 'moveSash')}
-                  >
-                    {t('fields.sliding.moveBack')}
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    disabled={menuSash.sash.rail >= menuSash.rails - 1}
-                    onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { rail: menuSash.sash.rail + 1 }, 'moveSash')}
-                  >
-                    {t('fields.sliding.moveForward')}
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  {(
-                    [SlidingOpeningType.LEFT, SlidingOpeningType.FREE, SlidingOpeningType.RIGHT] as const
-                  ).map((type) => {
-                    const suggested = suggestSlidingOpeningType(
-                      menuSash.layout.sashes.map((x) => x.rail),
-                      menuSash.index,
-                    )
-                    const current = menuSash.sash.openingType === type
-                    return (
-                      <ContextMenuItem
-                        key={type}
-                        onSelect={() =>
-                          updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { openingType: type, directionSource: SlidingDirectionSource.MANUAL }, 'changeSlidingDirection')
-                        }
-                      >
-                        <span className="w-4 text-center">{current ? '✓' : ''}</span>
-                        {t(`fields.sliding.types.${type}`)}
-                        {suggested === type && <span className="ms-auto text-xs text-muted-foreground">{t('fields.sliding.suggested')}</span>}
-                      </ContextMenuItem>
-                    )
-                  })}
-                  {menuSash.sash.directionSource === SlidingDirectionSource.MANUAL && (
-                    <ContextMenuItem
-                      onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { directionSource: SlidingDirectionSource.AUTO }, 'changeSlidingDirection')}
-                    >
-                      <span className="w-4" />
-                      {t('fields.sliding.resetAuto')}
-                    </ContextMenuItem>
-                  )}
-                  <ContextMenuSeparator />
-                  {/* Acts on the ACTIVE section — opening the menu selected this
-                      sash, so that is its own section by the time this fires. */}
-                  <ContextMenuItem onSelect={() => onSectionKindChange(SectionKind.FIXED)}>
-                    {t('fields.sliding.wholeFrameFixed')}
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              )}
               {menuDivider && (
                 <ContextMenuContent>
                   {menuDivider.rows.map((row) => (
@@ -2142,6 +2098,39 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                 </ContextMenuContent>
               )}
               </ContextMenu>
+              {/* The sash popover (docs/inspector_redesign_planing.md §8): the
+                  old side-panel sash block, anchored where the right-click
+                  happened. It stays open across edits; Esc or a click
+                  outside closes it. */}
+              <Popover
+                open={menuSash !== null && menuSashPoint !== null}
+                onOpenChange={(open) => {
+                  if (open) return
+                  setMenuSashPartId(null)
+                  setMenuSashPoint(null)
+                }}
+              >
+                <PopoverAnchor
+                  virtualRef={{
+                    current: {
+                      getBoundingClientRect: () => DOMRect.fromRect({ x: menuSashPoint?.x ?? 0, y: menuSashPoint?.y ?? 0, width: 0, height: 0 }),
+                    },
+                  }}
+                />
+                {menuSash && (
+                  <PopoverContent side="bottom" align={document.documentElement.dir === 'rtl' ? 'end' : 'start'} className="w-56 p-2">
+                    <SlidingSashBlock
+                      index={menuSash.index}
+                      sash={menuSash.sash}
+                      sashRails={menuSash.layout.sashes.map((x) => x.rail)}
+                      rails={menuSash.rails}
+                      onChange={({ changes, label }) =>
+                        updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, changes, label)
+                      }
+                    />
+                  </PopoverContent>
+                )}
+              </Popover>
               {/* Fixed-height and always present, so messages coming and
                   going never resize the drawing (see the component). The
                   "illustration only" caption rides along as an info row —

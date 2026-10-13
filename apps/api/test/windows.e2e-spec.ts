@@ -11,6 +11,10 @@ import type { WindowDetail, WindowSummary } from '@repo/types/windows';
 import type { CompanySystemProfileSummary } from '@repo/types/company-lookups';
 import { AppModule } from './../src/app.module';
 import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provisioning.service';
+import {
+  dropPlatformCatalogue,
+  seedPlatformCatalogue,
+} from './fixtures/platform-catalogue';
 
 /**
  * docs/window_creation_planing.md + docs/window_assembly_planing.md —
@@ -35,6 +39,7 @@ describe('Windows (e2e)', () => {
   let controlPlane: DataSource;
 
   const companyName = 'E2E Windows Aluminium';
+  const CATALOGUE_PREFIX = 'E2E WIN';
   const adminEmail = 'e2e-windows-admin@test.local';
   const otherCompanyName = 'E2E Windows Other Co';
   const otherAdminEmail = 'e2e-windows-other@test.local';
@@ -81,43 +86,20 @@ describe('Windows (e2e)', () => {
     token = await loginAs(adminEmail);
     otherToken = await loginAs(otherAdminEmail);
 
-    const [frame]: { id: string }[] = await controlPlane.query(
-      `SELECT id FROM system_profile WHERE profile_type = 'frame' LIMIT 1`,
+    const catalogue = await seedPlatformCatalogue(
+      controlPlane,
+      CATALOGUE_PREFIX,
     );
-    platformFrameId = frame.id;
-
-    const [sash]: { id: string }[] = await controlPlane.query(
-      `SELECT id FROM system_profile WHERE profile_type = 'leaf' LIMIT 1`,
-    );
-    platformSashId = sash.id;
-
-    const [bead]: { id: string }[] = await controlPlane.query(
-      `SELECT id FROM system_profile WHERE profile_type = 'glass_beading' LIMIT 1`,
-    );
-    platformBeadId = bead.id;
-
-    const [glass]: { id: string }[] = await controlPlane.query(
-      `SELECT id FROM glass ORDER BY thickness ASC LIMIT 1`,
-    );
-    platformGlassId = glass.id;
-
-    const [catalog]: { id: string }[] = await controlPlane.query(
-      `SELECT id FROM system_catalog LIMIT 1`,
-    );
-    platformCatalogId = catalog.id;
-
+    platformFrameId = catalogue.frameId;
+    platformSashId = catalogue.leafId;
+    platformBeadId = catalogue.beadId;
+    platformGlassId = catalogue.glassId;
+    platformCatalogId = catalogue.hingedCatalogId;
     // A divider (mullion/transom) is one `ProfileType.TRANSOM` profile
     // (docs/sections_planing.md decision 4) — the exact same catalogue
     // category the old coupled transom panel drew its bar from.
-    const [divider]: { id: string }[] = await controlPlane.query(
-      `SELECT id FROM system_profile WHERE profile_type = 'transom' LIMIT 1`,
-    );
-    platformDividerId = divider.id;
-
-    const [color]: { id: string }[] = await controlPlane.query(
-      `SELECT id FROM color LIMIT 1`,
-    );
-    colorId = color.id;
+    platformDividerId = catalogue.transomId;
+    colorId = catalogue.colorId;
 
     const client = await request(app.getHttpServer())
       .post('/clients')
@@ -164,6 +146,7 @@ describe('Windows (e2e)', () => {
       .send({ confirmName: 'Windows Client' })
       .expect(204);
     await dropCompanies(controlPlane, [companyName, otherCompanyName]);
+    await dropPlatformCatalogue(controlPlane, CATALOGUE_PREFIX);
     await app.close();
   });
 

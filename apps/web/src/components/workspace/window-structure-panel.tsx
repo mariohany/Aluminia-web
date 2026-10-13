@@ -174,36 +174,35 @@ export function WindowStructurePanel({
           />
           {nameError && <p className="text-xs text-destructive">{nameError}</p>}
         </div>
-        <div className="grid grid-cols-[5rem_1fr] gap-2">
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <FieldLabel htmlFor="window-quantity" required>
-              {t('fields.quantity')}
-            </FieldLabel>
-            <Input
-              id="window-quantity"
-              className="h-8 font-mono text-[13px]"
-              type="number"
-              min={1}
-              dir="ltr"
-              aria-invalid={!!quantityError}
-              value={Number.isFinite(quantity) ? quantity : ''}
-              onChange={(e) => {
-                const parsed = Number(e.target.value)
-                if (Number.isFinite(parsed)) onQuantityChange(parsed)
-              }}
-            />
-          </div>
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <FieldLabel htmlFor="window-location" optional>
-              {t('fields.location')}
-            </FieldLabel>
-            <Input
-              id="window-location"
-              className="h-8 text-[13px]"
-              value={location ?? ''}
-              onChange={(e) => onLocationChange(blankToNull(e.target.value))}
-            />
-          </div>
+        {/* Labels on one row, inputs on the next: "Location in site
+            (optional)" wraps in this narrow column, and the inputs must
+            still line up. */}
+        <div className="grid grid-cols-[5rem_1fr] items-end gap-x-2 gap-y-1.5">
+          <FieldLabel htmlFor="window-quantity" required>
+            {t('fields.quantity')}
+          </FieldLabel>
+          <FieldLabel htmlFor="window-location" optional>
+            {t('fields.location')}
+          </FieldLabel>
+          <Input
+            id="window-quantity"
+            className="h-8 font-mono text-[13px]"
+            type="number"
+            min={1}
+            dir="ltr"
+            aria-invalid={!!quantityError}
+            value={Number.isFinite(quantity) ? quantity : ''}
+            onChange={(e) => {
+              const parsed = Number(e.target.value)
+              if (Number.isFinite(parsed)) onQuantityChange(parsed)
+            }}
+          />
+          <Input
+            id="window-location"
+            className="h-8 min-w-0 text-[13px]"
+            value={location ?? ''}
+            onChange={(e) => onLocationChange(blankToNull(e.target.value))}
+          />
         </div>
         {quantityError && <p className="-mt-1.5 text-xs text-destructive">{quantityError}</p>}
         <div className="flex flex-col gap-1.5">
@@ -212,8 +211,8 @@ export function WindowStructurePanel({
           </FieldLabel>
           <Textarea
             id="window-notes"
-            className="min-h-0 resize-none text-[13px]"
-            rows={2}
+            className="min-h-24 resize-y text-[13px]"
+            rows={4}
             value={notes ?? ''}
             onChange={(e) => onNotesChange(blankToNull(e.target.value))}
           />

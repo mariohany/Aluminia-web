@@ -1173,26 +1173,31 @@ export const SYMBOL_STROKE_BLUE = '#2563eb'
  * near-white in dark mode and vanished against the pale glass. */
 export const SECTION_LETTER_FILL = '#1f2933'
 
+/** Where a fixed light's cross sits and how long its arms are — shared
+ * with the section letters, which keep clear of it. */
+export function fixedSymbolCross(glass: WindowPart): { cx: number; cy: number; arm: number } {
+  const { x, y, width, height } = glass.rectMm
+  // A shaped arch light is marked at its deepest point and sized to
+  // fit inside it — its bounding-box centre can sit on a spoke.
+  const inner = glass.outline ? interiorPoint(samplePath(glass.outline)) : null
+  // Kept inside the pane's middle 40% vertically so it clears the
+  // section letter sitting in the bottom band of a shallow transom,
+  // and capped in mm so a big picture window gets a mark, not a
+  // crosshair the size of a door.
+  const arm = inner ? Math.min(inner.radius * 0.7, 150) : Math.min(width * 0.28, height * 0.2, 150)
+  return { cx: inner ? inner.point.x : x + width / 2, cy: inner ? inner.point.y : y + height / 2, arm }
+}
+
 export function renderFixedSymbols(glasses: WindowPart[]): React.ReactNode {
   if (glasses.length === 0) return null
   return (
     <g stroke={SYMBOL_STROKE_BLUE} fill="none" strokeLinecap="round">
       {glasses.map((glass) => {
-        const { x, y, width, height } = glass.rectMm
-        const scale = Math.min(width, height)
-        // A shaped arch light is marked at its deepest point and sized to
-        // fit inside it — its bounding-box centre can sit on a spoke.
-        const inner = glass.outline ? interiorPoint(samplePath(glass.outline)) : null
-        // Kept inside the pane's middle 40% vertically so it clears the
-        // section letter sitting in the bottom band of a shallow transom,
-        // and capped in mm so a big picture window gets a mark, not a
-        // crosshair the size of a door.
-        const arm = inner ? Math.min(inner.radius * 0.7, 150) : Math.min(width * 0.28, height * 0.2, 150)
+        const scale = Math.min(glass.rectMm.width, glass.rectMm.height)
+        const { cx, cy, arm } = fixedSymbolCross(glass)
         // Clamped so a shallow transom's mark keeps the same line weight
         // as the big lights next to it, and a big light doesn't fatten.
         const strokeWidth = Math.min(Math.max(scale * 0.024, 12), 14)
-        const cx = inner ? inner.point.x : x + width / 2
-        const cy = inner ? inner.point.y : y + height / 2
         return (
           <g key={glass.id} strokeWidth={strokeWidth} strokeDasharray={`${strokeWidth * 2.5} ${strokeWidth * 1.7}`}>
             <line x1={cx - arm} y1={cy} x2={cx + arm} y2={cy} />

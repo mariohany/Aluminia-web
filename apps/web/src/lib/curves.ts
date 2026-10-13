@@ -345,6 +345,24 @@ export function pointInPolygon(p: PointMm, poly: PointMm[]): boolean {
  * edge — where a light's mark or letter goes when the light isn't a
  * rectangle (its bounding-box centre can sit on a divider or outside
  * the light). A coarse grid, then a finer one around the best cell. */
+/** How far `p` is from the nearest edge of the closed polygon `poly`. */
+export function distanceToEdge(p: PointMm, poly: PointMm[]): number {
+  let best = Infinity
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    best = Math.min(best, distanceToSegment(p, poly[j], poly[i]))
+  }
+  return best
+}
+
+/** How far `p` is from the segment a–b. */
+export function distanceToSegment(p: PointMm, a: PointMm, b: PointMm): number {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const len2 = dx * dx + dy * dy || 1
+  const t = clamp01(((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)
+  return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t))
+}
+
 export function interiorPoint(poly: PointMm[]): { point: PointMm; radius: number } {
   const xs = poly.map((p) => p.x)
   const ys = poly.map((p) => p.y)
@@ -352,19 +370,7 @@ export function interiorPoint(poly: PointMm[]): { point: PointMm; radius: number
   const y0 = Math.min(...ys)
   const w = Math.max(...xs) - x0
   const h = Math.max(...ys) - y0
-  const edgeDist = (p: PointMm) => {
-    let best = Infinity
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const a = poly[j]
-      const b = poly[i]
-      const dx = b.x - a.x
-      const dy = b.y - a.y
-      const len2 = dx * dx + dy * dy || 1
-      const t = clamp01(((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)
-      best = Math.min(best, Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t)))
-    }
-    return best
-  }
+  const edgeDist = (p: PointMm) => distanceToEdge(p, poly)
   let point = { x: x0 + w / 2, y: y0 + h / 2 }
   let radius = pointInPolygon(point, poly) ? edgeDist(point) : -1
   let cx = point.x

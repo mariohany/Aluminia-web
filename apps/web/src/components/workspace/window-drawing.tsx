@@ -54,11 +54,12 @@ import {
   slidingPaintOrder,
   slidingStrokeScale,
   SECTION_LETTER_FILL,
+  fixedSymbolCross,
 } from '@/components/workspace/window-shapes'
 import { insetHeadOutline, type PointMm } from '@/lib/arch-geometry'
 import type { TranslatedIssue } from '@/lib/window-weight'
 import type { WindowDividerInput } from '@repo/types/windows'
-import { interiorPoint, pathPointAt, sagFromPoint, samplePath } from '@/lib/curves'
+import { distanceToEdge, distanceToSegment, interiorPoint, pathPointAt, sagFromPoint, pointInPolygon, samplePath } from '@/lib/curves'
 import { findCrossings, magnetPoints, resolveDividers, zoneOf, type Crossing } from '@/lib/dividers'
 import { panelLights } from '@/lib/panel-lights'
 import { loopToSvgPath, visibleAngles } from '@/lib/light-graph'
@@ -580,6 +581,17 @@ export function WindowDrawing({
     const { geo, graph } = panelLights(shape, ctx)
     return { geo, angles: visibleAngles(graph.angles), crossings: findCrossings(geo, panel.dividers), resolved: resolveDividers(geo, panel.dividers) }
   })
+  // Where each panel's angle numbers sit (assembly mm) — drawn below,
+  // and kept clear by the section letters.
+  const angleLabels = panelGeos.map((pg, panelIndex) => {
+    const rect = panelRects[panelIndex]
+    if (!rect) return []
+    const r = scale * 0.035
+    return pg.angles.map((a) => {
+      const mid = a.start + a.sweep / 2
+      return { x: a.at.x + rect.x + Math.cos(mid) * r * 1.75, y: a.at.y + rect.y + Math.sin(mid) * r * 1.75, deg: a.deg }
+    })
+  })
 
   // The selected divider's handles (§6.5, §7): only an arch-zone divider
   // bends or has its ends dragged — below the springing line every
@@ -981,23 +993,21 @@ export function WindowDrawing({
             them — also one split only by slanted or bent arch dividers,
             which have no dimension chain. */}
         {panels.map((_, panelIndex) => (
-          <SectionLetters key={`letters-${panelIndex}`} parts={parts.filter((p) => p.panelIndex === panelIndex)} fontSize={scale * 0.026} />
+          <SectionLetters
+            key={`letters-${panelIndex}`}
+            parts={parts.filter((p) => p.panelIndex === panelIndex)}
+            fontSize={scale * 0.026}
+            avoid={angleLabels[panelIndex] ?? []}
+            avoidRadius={scale * 0.04}
+          />
         ))}
 
         {/* Angles between members, every one but 90° (Q9) — always
             shown, not only while selected. Just the number, no arc mark
             (Mario, 2026-10-05). */}
         <g pointerEvents="none">
-          {panelGeos.flatMap((pg, panelIndex) => {
-            const rect = panelRects[panelIndex]
-            if (!rect) return []
-            const r = scale * 0.035
-            return pg.angles.map((a, k) => {
-              const cx = a.at.x + rect.x
-              const cy = a.at.y + rect.y
-              const mid = a.start + a.sweep / 2
-              const lx = cx + Math.cos(mid) * r * 1.75
-              const ly = cy + Math.sin(mid) * r * 1.75
+          {angleLabels.flatMap((labels, panelIndex) =>
+            labels.map(({ x: lx, y: ly, deg }, k) => {
               return (
                 <text
                   key={`angle-${panelIndex}-${k}`}
@@ -1012,11 +1022,11 @@ export function WindowDrawing({
                   paintOrder="stroke"
                   style={{ fontVariantNumeric: 'tabular-nums' }}
                 >
-                  {Math.round(a.deg)}°
+                  {Math.round(deg)}°
                 </text>
               )
-            })
-          })}
+            }),
+          )}
         </g>
 
         {/* Outer-edge resize handles — one invisible hit-strip per FREE
@@ -1980,44 +1990,120 @@ function PanelDimensionCallouts({
   )
 }
 
-/** A letter in each light of a gridded panel (A, B, C…), in the fixed
- * dark ink — it sits on the glass. */
-function SectionLetters({ parts, fontSize }: { parts: WindowPart[]; fontSize: number }) {
+/** A letter in each light of a panel with more than one (A, B, C…), in
+ * the fixed dark ink — it sits on the glass. Each goes low in its light,
+ * unless that spot hits an angle number or the fixed cross; then it
+ * moves to the roomiest spot in the light that clears both. */
+function SectionLetters({
+  parts,
+  fontSize,
+  avoid,
+  avoidRadius,
+}: {
+  parts: WindowPart[]
+  fontSize: number
+  /** The angle numbers' centres, assembly mm. */
+  avoid: PointMm[]
+  /** How far a letter's centre must stay from an angle number's. */
+  avoidRadius: number
+}) {
   const sectionIndices = [...new Set(parts.map((p) => p.sectionIndex).filter((i): i is number => i !== null))]
   // A single light needs no name — nothing to tell it apart from.
   if (sectionIndices.length <= 1) return null
   return (
     <g pointerEvents="none">
-        {sectionIndices.map((sectionIndex) => {
-          // `parts`' own `rectMm` is already in ASSEMBLY space (see
-          // `buildAssemblyLayout`'s own offsetting) — no further
-          // `panelRect.x/y` offset belongs here, unlike the chain ticks
-          // above, which are PANEL-local and so do need it.
-          const sectionParts = parts.filter(
-            (p) => p.sectionIndex === sectionIndex && (p.kind === 'sash' || p.kind === 'glass' || p.kind === 'flyScreen'),
-          )
-          if (sectionParts.length === 0) return null
-          const rect = boundingRect(sectionParts.map((p) => p.rectMm))
-          // A shaped arch light gets its letter at its deepest point —
-          // the bounding box's bottom centre can fall outside it.
-          const shaped = sectionParts.find((p) => p.outline)?.outline
-          const inner = shaped ? interiorPoint(samplePath(shaped)) : null
-          return (
-            <text
-              key={sectionIndex}
-              x={inner ? inner.point.x : rect.x + rect.width / 2}
-              y={inner ? inner.point.y + inner.radius * 0.6 : rect.y + rect.height * 0.92}
-              textAnchor="middle"
-              fontSize={fontSize}
-              fontWeight={600}
-              fill={SECTION_LETTER_FILL}
-            >
-              {sectionLetter(sectionIndex)}
-            </text>
-          )
-        })}
+      {sectionIndices.map((sectionIndex) => {
+        // `parts`' own `rectMm` is already in ASSEMBLY space (see
+        // `buildAssemblyLayout`'s own offsetting).
+        const sectionParts = parts.filter(
+          (p) => p.sectionIndex === sectionIndex && (p.kind === 'sash' || p.kind === 'glass' || p.kind === 'flyScreen'),
+        )
+        if (sectionParts.length === 0) return null
+        const rect = boundingRect(sectionParts.map((p) => p.rectMm))
+        const shaped = sectionParts.find((p) => p.outline)?.outline
+        const poly = shaped
+          ? samplePath(shaped)
+          : [
+              { x: rect.x, y: rect.y },
+              { x: rect.x + rect.width, y: rect.y },
+              { x: rect.x + rect.width, y: rect.y + rect.height },
+              { x: rect.x, y: rect.y + rect.height },
+            ]
+        // A shaped arch light gets its letter below its deepest point —
+        // the bounding box's bottom centre can fall outside it.
+        const inner = shaped ? interiorPoint(poly) : null
+        // `y` is the letter's visual centre; the text baseline sits lower.
+        const preferred = inner
+          ? { x: inner.point.x, y: inner.point.y + inner.radius * 0.6 - fontSize * 0.35 }
+          : { x: rect.x + rect.width / 2, y: rect.y + rect.height * 0.92 - fontSize * 0.35 }
+        const glass = sectionParts.some((p) => p.kind === 'sash') ? null : sectionParts.find((p) => p.kind === 'glass')
+        const cross = glass ? fixedSymbolCross(glass) : null
+        const at = placeLetter(poly, preferred, avoid, avoidRadius, cross, fontSize)
+        return (
+          <text
+            key={sectionIndex}
+            x={at.x}
+            y={at.y + fontSize * 0.35}
+            textAnchor="middle"
+            fontSize={fontSize}
+            fontWeight={600}
+            fill={SECTION_LETTER_FILL}
+          >
+            {sectionLetter(sectionIndex)}
+          </text>
+        )
+      })}
     </g>
   )
+}
+
+/** A spot for a section letter in the light `poly`: `preferred` when it
+ * has room, else the point that stays furthest from the light's edges,
+ * the angle numbers and the fixed cross's arms. */
+function placeLetter(
+  poly: PointMm[],
+  preferred: PointMm,
+  avoid: PointMm[],
+  avoidRadius: number,
+  cross: { cx: number; cy: number; arm: number } | null,
+  fontSize: number,
+): PointMm {
+  const half = fontSize * 0.6
+  const room = (p: PointMm) => {
+    let r = distanceToEdge(p, poly) - half
+    for (const a of avoid) r = Math.min(r, Math.hypot(p.x - a.x, p.y - a.y) - avoidRadius)
+    if (cross) {
+      const { cx, cy, arm } = cross
+      r = Math.min(
+        r,
+        distanceToSegment(p, { x: cx - arm, y: cy }, { x: cx + arm, y: cy }) - half,
+        distanceToSegment(p, { x: cx, y: cy - arm }, { x: cx, y: cy + arm }) - half,
+      )
+    }
+    return r
+  }
+  if (pointInPolygon(preferred, poly) && room(preferred) >= 0) return preferred
+  const xs = poly.map((p) => p.x)
+  const ys = poly.map((p) => p.y)
+  const x0 = Math.min(...xs)
+  const y0 = Math.min(...ys)
+  const w = Math.max(...xs) - x0
+  const h = Math.max(...ys) - y0
+  let best = preferred
+  let bestRoom = pointInPolygon(preferred, poly) ? room(preferred) : -Infinity
+  const n = 24
+  for (let i = 1; i < n; i++) {
+    for (let j = 1; j < n; j++) {
+      const p = { x: x0 + (w * i) / n, y: y0 + (h * j) / n }
+      if (!pointInPolygon(p, poly)) continue
+      const r = room(p)
+      if (r > bestRoom) {
+        bestRoom = r
+        best = p
+      }
+    }
+  }
+  return best
 }
 
 /** The pitches a panel's dimension chains show: between the panel's own

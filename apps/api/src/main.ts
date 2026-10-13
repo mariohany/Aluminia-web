@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -14,7 +15,9 @@ import {
 } from './database/migration-check';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
   app.useLogger(app.get(Logger));
   app.enableShutdownHooks();
 
@@ -37,6 +40,12 @@ async function bootstrap() {
       );
     await app.close();
     process.exit(1);
+  }
+
+  // See TRUST_PROXY in config/env.schema.ts.
+  const trustProxy = config.get('TRUST_PROXY', { infer: true });
+  if (trustProxy !== undefined) {
+    app.set('trust proxy', trustProxy === 'true' ? true : trustProxy);
   }
 
   app.use(helmet());

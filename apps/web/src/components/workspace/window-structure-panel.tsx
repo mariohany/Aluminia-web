@@ -6,41 +6,25 @@ import type { WindowPanelInput } from '@repo/types/windows'
 import type { TranslatedIssue } from '@/lib/window-weight'
 import { dividerNames, formatDimensionMm, sectionLetter, type WindowPart } from '@/lib/window-geometry'
 import { Button } from '@/components/ui/button'
-import { NumberField } from '@/components/workspace/window-part-panel'
-import { partOutlinePath } from '@/components/workspace/window-shapes'
-import { loopToSvgPath } from '@/lib/light-graph'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { FieldLabel } from '@/components/workspace/field-label'
+import { PartShapeIcon } from '@/components/workspace/part-shape-icon'
 import { cn } from '@/lib/utils'
 
-/**
- * A row's own shape, exactly as the drawing has it (Mario, 2026-10-06:
- * "if a transom is curved show me a curve next to its name") — a
- * divider's band, a light's outline, a panel's frame outline. Scaled
- * into a square at its real proportions, so slants and bows read at
- * their true angle; a divider is filled, so it reads as a bar.
- */
-function PartShapeIcon({ part }: { part: WindowPart | undefined }) {
-  if (!part) return <span className="size-3.5 shrink-0" aria-hidden="true" />
-  const r = part.rectMm
-  const side = Math.max(r.width, r.height, 1)
-  const pad = side * 0.06
-  const x = r.x + r.width / 2 - side / 2 - pad
-  const y = r.y + r.height / 2 - side / 2 - pad
-  const divider = part.kind === 'divider'
-  const d = divider
-    ? part.band
-      ? loopToSvgPath(part.band)
-      : `M ${r.x} ${r.y} h ${r.width} v ${r.height} h ${-r.width} Z`
-    : partOutlinePath(part)
-  return (
-    <svg className="size-3.5 shrink-0 opacity-70" viewBox={`${x} ${y} ${side + 2 * pad} ${side + 2 * pad}`} aria-hidden="true">
-      <path d={d} fill={divider ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.25} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-    </svg>
-  )
+// An empty box means "clear it" (null). Not trimmed while typing — that
+// ate the space between two words on every keystroke (bug-097); the
+// schema's `optionalText` trims on save.
+function blankToNull(value: string): string | null {
+  return value.trim() === '' ? null : value
 }
 
 /**
  * The window editor's left column (docs/window_editor_redesign_planing.md
- * §2): back + project/window name + quantity on top, the assembly's
+ * §2): back + project/window name on top, then the window's own fields —
+ * name, quantity, location, notes (moved out of the inspector,
+ * docs/inspector_redesign_planing.md §2, so the inspector only edits
+ * what's drawn), the assembly's
  * panels and their sections as a tree, the total glass area underneath.
  * The tree is a second way to select what the drawing already selects —
  * a panel row picks that panel's frame, a section row picks that
@@ -57,6 +41,13 @@ export function WindowStructurePanel({
   quantity,
   onQuantityChange,
   quantityError,
+  name,
+  onNameChange,
+  nameError,
+  location,
+  onLocationChange,
+  notes,
+  onNotesChange,
   panels,
   parts,
   outerMm,
@@ -72,6 +63,14 @@ export function WindowStructurePanel({
   quantity: number
   onQuantityChange: (value: number) => void
   quantityError?: string
+  name: string
+  onNameChange: (value: string) => void
+  /** Already-translated; passed only once `showValidation` is on. */
+  nameError?: string
+  location: string | null
+  onLocationChange: (value: string | null) => void
+  notes: string | null
+  onNotesChange: (value: string | null) => void
   panels: WindowPanelInput[]
   parts: WindowPart[]
   outerMm: { width: number; height: number }
@@ -162,13 +161,62 @@ export function WindowStructurePanel({
             <h1 className="truncate font-heading text-sm font-semibold">{title}</h1>
           </div>
         </div>
-        <NumberField
-          id="window-quantity"
-          label={t('fields.quantity')}
-          value={quantity}
-          onChange={onQuantityChange}
-          error={quantityError}
-        />
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel htmlFor="window-name" required>
+            {t('fields.windowName')}
+          </FieldLabel>
+          <Input
+            id="window-name"
+            className="h-8 text-[13px]"
+            aria-invalid={!!nameError}
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+          />
+          {nameError && <p className="text-xs text-destructive">{nameError}</p>}
+        </div>
+        {/* Labels on one row, inputs on the next: "Location in site
+            (optional)" wraps in this narrow column, and the inputs must
+            still line up. */}
+        <div className="grid grid-cols-[5rem_1fr] items-end gap-x-2 gap-y-1.5">
+          <FieldLabel htmlFor="window-quantity" required>
+            {t('fields.quantity')}
+          </FieldLabel>
+          <FieldLabel htmlFor="window-location" optional>
+            {t('fields.location')}
+          </FieldLabel>
+          <Input
+            id="window-quantity"
+            className="h-8 font-mono text-[13px]"
+            type="number"
+            min={1}
+            dir="ltr"
+            aria-invalid={!!quantityError}
+            value={Number.isFinite(quantity) ? quantity : ''}
+            onChange={(e) => {
+              const parsed = Number(e.target.value)
+              if (Number.isFinite(parsed)) onQuantityChange(parsed)
+            }}
+          />
+          <Input
+            id="window-location"
+            className="h-8 min-w-0 text-[13px]"
+            value={location ?? ''}
+            onChange={(e) => onLocationChange(blankToNull(e.target.value))}
+          />
+        </div>
+        {quantityError && <p className="-mt-1.5 text-xs text-destructive">{quantityError}</p>}
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel htmlFor="window-notes" optional>
+            {t('fields.notes')}
+          </FieldLabel>
+          <Textarea
+            id="window-notes"
+            className="min-h-24 resize-y text-[13px]"
+            rows={4}
+            value={notes ?? ''}
+            onChange={(e) => onNotesChange(blankToNull(e.target.value))}
+          />
+        </div>
       </div>
 
       <nav

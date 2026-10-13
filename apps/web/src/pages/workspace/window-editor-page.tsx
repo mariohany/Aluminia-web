@@ -18,12 +18,9 @@ import {
 } from '@repo/types/windows'
 import { ProfileType, SystemType } from '@repo/types/lookups'
 import {
-  SlidingDirectionSource,
-  SlidingOpeningType,
   defaultSlidingLayout,
   remapSlidingRails,
   resolveSlidingLayout,
-  suggestSlidingOpeningType,
   type SlidingLayoutInput,
 } from '@repo/types/sliding'
 import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
@@ -39,13 +36,14 @@ import { useProjectQuery, useUpdateProjectMutation } from '@/lib/projects-querie
 import { useCreateWindowMutation, useUpdateWindowMutation, useWindowQuery } from '@/lib/windows-queries'
 import { Button } from '@/components/ui/button'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
-import { FieldLabel } from '@/components/workspace/field-label'
 import { WindowDrawing } from '@/components/workspace/window-drawing'
 import { WindowIssuesPanel } from '@/components/workspace/window-issues-panel'
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/bilingual'
+import { isDoorOpeningType } from '@/components/workspace/inspector/opening-types'
+import { SlidingSashBlock } from '@/components/workspace/inspector/sliding-sash-block'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { WindowStructurePanel } from '@/components/workspace/window-structure-panel'
-import { ProfileSearchPicker } from '@/components/workspace/profile-search-picker'
 import { panelIssueLights, slidingSectionArgs, useResolvedPanels, type PanelRender, type SectionRender } from '@/lib/window-render'
 import { useEditHistory } from '@/lib/use-edit-history'
 import { WindowPartPanel } from '@/components/workspace/window-part-panel'
@@ -1175,12 +1173,12 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
     }, 'changeSectionType')
   }
 
-  // The sliding layout editor's one write path (planing §7): every
-  // control in `sliding-layout-editor.tsx` — and any future context
-  // menu or keyboard shortcut — lands here, already re-derived, so an
+  // The sliding layout's one write path (planing §7): the inspector's
+  // Sliding group (`inspector/sliding-layout-group.tsx`) and the sash
+  // context menu both land here, already re-derived, so an
   // `auto` sash can never be stored disagreeing with its rails.
-  // A layout landing on a FIXED sliding section (its tiles double as
-  // the fixed/opening choice, 2026-09-20) flips that section to
+  // A layout landing on a FIXED sliding section (a layout pick doubles
+  // as the way back to opening) flips that section to
   // opening in the same write — the `onSectionKindChange(OPENING)`
   // reset, minus the layout it would restore, since this IS the layout.
   const setSlidingLayoutOf = (panelIndex: number, sectionIndex: number, layout: SlidingLayoutInput, label: EditLabel) => {
@@ -1246,6 +1244,8 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // is up. The trigger is disabled unless the pointer is over a sliding
   // sash, so a right-click anywhere else is the browser's own menu.
   const [menuSashPartId, setMenuSashPartId] = useState<string | null>(null)
+  // Where the right-click happened — the sash popover's anchor.
+  const [menuSashPoint, setMenuSashPoint] = useState<{ x: number; y: number } | null>(null)
   const hoveredSlidingSash = slidingSashOf(hoveredPartId)
   const menuSashEntry = slidingSashOf(menuSashPartId)
   const menuSash = menuSashEntry?.sash ? { ...menuSashEntry, sash: menuSashEntry.sash } : null
@@ -1308,12 +1308,27 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
       }, 'changeOpening')
       return
     }
-    updateActiveSection({
+    const changes: Partial<WindowSectionInput> = {
       kind: SectionKind.OPENING,
       sashProfile: activeSection.kind === SectionKind.OPENING ? activeSection.sashProfile : ('' as ScopedRef),
       beadProfile: null,
       openingType: value,
-    }, 'changeOpening')
+    }
+    // A door type turns the panel's Door on in the SAME step, so one undo
+    // reverses both (docs/inspector_redesign_planing.md §6). A window
+    // type never turns it off (Mario, 2026-10-12: "door stays on").
+    if (isDoorOpeningType(value) && activeInfo.showDoor && !activePanel.isDoor) {
+      commitPanels(
+        panels.map((panel, i) =>
+          i === activePanelIndex
+            ? { ...panel, isDoor: true, sections: panel.sections.map((s, j) => (j === activeSectionIndex ? { ...s, ...changes } : s)) }
+            : panel,
+        ),
+        'changeOpening',
+      )
+      return
+    }
+    updateActiveSection(changes, 'changeOpening')
   }
 
   // ---- Per-panel render descriptors --------------------------------------
@@ -1972,6 +1987,13 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               quantity={quantity}
               onQuantityChange={(value) => commitField('quantity', value)}
               quantityError={showValidation && errors.quantity ? t('fields.quantityRequired') : undefined}
+              name={watch('name')}
+              onNameChange={(value) => commitField('name', value)}
+              nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
+              location={watch('location') ?? null}
+              onLocationChange={(value) => commitField('location', value)}
+              notes={watch('notes') ?? null}
+              onNotesChange={(value) => commitField('notes', value)}
               panels={panels}
               parts={drawingLayout.parts}
               outerMm={drawingLayout.outerMm}
@@ -1989,22 +2011,29 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               <ContextMenu
                 onOpenChange={(open) => {
                   if (!open) {
-                    setMenuSashPartId(null)
                     setMenuDivider(null)
                     return
                   }
-                  // Opening also selects the sash, like a left-click —
-                  // so the part panel below shows the row being acted on.
-                  if (hoveredSlidingSash) {
-                    setMenuSashPartId(hoveredSlidingSash.partId)
-                    onSelectPart(hoveredSlidingSash.partId, false)
-                  } else if (hoveredDivider) {
-                    openDividerMenu(hoveredDivider.panelIndex, hoveredDivider.dividerId)
-                  }
+                  if (hoveredDivider) openDividerMenu(hoveredDivider.panelIndex, hoveredDivider.dividerId)
                 }}
               >
-              <ContextMenuTrigger asChild disabled={!hoveredSlidingSash && !hoveredDivider}>
-              <div className="min-h-0 flex-1" onPointerDownCapture={onCanvasPointerDown}>
+              {/* The divider menu only. A sliding sash's right-click opens the
+                  sash popover instead (below): its handler runs first and
+                  prevents the default, which also keeps the browser's menu away. */}
+              <ContextMenuTrigger asChild disabled={!hoveredDivider || !!hoveredSlidingSash}>
+              <div
+                className="min-h-0 flex-1"
+                onPointerDownCapture={onCanvasPointerDown}
+                onContextMenu={(event) => {
+                  if (!hoveredSlidingSash) return
+                  event.preventDefault()
+                  // Opening also selects the sash, like a left-click, so the
+                  // inspector shows the section being acted on.
+                  setMenuSashPoint({ x: event.clientX, y: event.clientY })
+                  setMenuSashPartId(hoveredSlidingSash.partId)
+                  onSelectPart(hoveredSlidingSash.partId, false)
+                }}
+              >
                 <WindowDrawing
                   layout={drawingLayout}
                   panels={panelRenders}
@@ -2052,58 +2081,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                 />
               </div>
               </ContextMenuTrigger>
-              {menuSash && (
-                <ContextMenuContent>
-                  <ContextMenuItem
-                    disabled={menuSash.sash.rail === 0}
-                    onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { rail: menuSash.sash.rail - 1 }, 'moveSash')}
-                  >
-                    {t('fields.sliding.moveBack')}
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    disabled={menuSash.sash.rail >= menuSash.rails - 1}
-                    onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { rail: menuSash.sash.rail + 1 }, 'moveSash')}
-                  >
-                    {t('fields.sliding.moveForward')}
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  {(
-                    [SlidingOpeningType.LEFT, SlidingOpeningType.FREE, SlidingOpeningType.RIGHT] as const
-                  ).map((type) => {
-                    const suggested = suggestSlidingOpeningType(
-                      menuSash.layout.sashes.map((x) => x.rail),
-                      menuSash.index,
-                    )
-                    const current = menuSash.sash.openingType === type
-                    return (
-                      <ContextMenuItem
-                        key={type}
-                        onSelect={() =>
-                          updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { openingType: type, directionSource: SlidingDirectionSource.MANUAL }, 'changeSlidingDirection')
-                        }
-                      >
-                        <span className="w-4 text-center">{current ? '✓' : ''}</span>
-                        {t(`fields.sliding.types.${type}`)}
-                        {suggested === type && <span className="ms-auto text-xs text-muted-foreground">{t('fields.sliding.suggested')}</span>}
-                      </ContextMenuItem>
-                    )
-                  })}
-                  {menuSash.sash.directionSource === SlidingDirectionSource.MANUAL && (
-                    <ContextMenuItem
-                      onSelect={() => updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, { directionSource: SlidingDirectionSource.AUTO }, 'changeSlidingDirection')}
-                    >
-                      <span className="w-4" />
-                      {t('fields.sliding.resetAuto')}
-                    </ContextMenuItem>
-                  )}
-                  <ContextMenuSeparator />
-                  {/* Acts on the ACTIVE section — opening the menu selected this
-                      sash, so that is its own section by the time this fires. */}
-                  <ContextMenuItem onSelect={() => onSectionKindChange(SectionKind.FIXED)}>
-                    {t('fields.sliding.wholeFrameFixed')}
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              )}
               {menuDivider && (
                 <ContextMenuContent>
                   {menuDivider.rows.map((row) => (
@@ -2121,6 +2098,39 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                 </ContextMenuContent>
               )}
               </ContextMenu>
+              {/* The sash popover (docs/inspector_redesign_planing.md §8): the
+                  old side-panel sash block, anchored where the right-click
+                  happened. It stays open across edits; Esc or a click
+                  outside closes it. */}
+              <Popover
+                open={menuSash !== null && menuSashPoint !== null}
+                onOpenChange={(open) => {
+                  if (open) return
+                  setMenuSashPartId(null)
+                  setMenuSashPoint(null)
+                }}
+              >
+                <PopoverAnchor
+                  virtualRef={{
+                    current: {
+                      getBoundingClientRect: () => DOMRect.fromRect({ x: menuSashPoint?.x ?? 0, y: menuSashPoint?.y ?? 0, width: 0, height: 0 }),
+                    },
+                  }}
+                />
+                {menuSash && (
+                  <PopoverContent side="bottom" align={document.documentElement.dir === 'rtl' ? 'end' : 'start'} className="w-56 p-2">
+                    <SlidingSashBlock
+                      index={menuSash.index}
+                      sash={menuSash.sash}
+                      sashRails={menuSash.layout.sashes.map((x) => x.rail)}
+                      rails={menuSash.rails}
+                      onChange={({ changes, label }) =>
+                        updateSlidingSash(menuSash.panelIndex, menuSash.sectionIndex, menuSash.index, changes, label)
+                      }
+                    />
+                  </PopoverContent>
+                )}
+              </Popover>
               {/* Fixed-height and always present, so messages coming and
                   going never resize the drawing (see the component). The
                   "illustration only" caption rides along as an info row —
@@ -2149,28 +2159,9 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               onFocusCapture={onFieldFocus}
               onBlurCapture={onFieldBlur}
             >
-            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 pt-3 pb-4">
-              {/* Frame profile — search + favourite + Browse
-                  (docs/window_editor_redesign_planing.md §4), replacing
-                  the old always-open left-column tree. */}
-              <div className="mb-4 flex flex-col gap-1.5">
-                <FieldLabel htmlFor="window-frame" required>
-                  {t('fields.frameProfile')}
-                </FieldLabel>
-                <ProfileSearchPicker
-                  id="window-frame"
-                  profileType={ProfileType.FRAME}
-                  value={activePanel.frameProfile || null}
-                  onChange={onFrameChange}
-                  favoriteRef={project?.favoriteFrameProfile}
-                  onSetFavorite={project ? onSetFavorite : undefined}
-                  preferredCatalogRef={isEdit ? undefined : project?.defaultSystemCatalog}
-                  preferredBrandRef={isEdit ? undefined : project?.defaultSystemBrand}
-                />
-                {showValidation && errors.panels && (
-                  <p className="text-xs text-destructive">{t('fields.frameProfileRequired')}</p>
-                )}
-              </div>
+            {/* The body scrolls; each inspector level pads itself
+                (docs/inspector_redesign_planing.md §1). */}
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
               {activeInfo && (
                 <WindowPartPanel
                   layout={{
@@ -2186,9 +2177,6 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   panelCount={panels.length}
                   onDeletePanel={canDeletePanel ? onDeletePanel : undefined}
                   deleteDisabledReason={canDeletePanel ? undefined : t('windowDialog.design.deletePanelBlocked')}
-                  name={watch('name')}
-                  onNameChange={(value) => commitField('name', value)}
-                  nameError={showValidation && errors.name ? t('fields.windowNameRequired') : undefined}
                   widthMm={activeRaw?.widthMm ?? NaN}
                   heightMm={activeRaw?.heightMm ?? NaN}
                   onWidthChange={(mm) => onPanelSizeChange(mm, activeRaw?.heightMm ?? mm)}
@@ -2291,10 +2279,25 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                     beadMaxGlassThickness: activeSectionInfo?.beadMaxGlassThickness ?? null,
                   }}
                   selectedDivider={selectedDivider}
-                  location={watch('location') ?? null}
-                  onLocationChange={(value) => commitField('location', value)}
-                  notes={watch('notes') ?? null}
-                  onNotesChange={(value) => commitField('notes', value)}
+                  frame={{
+                    value: activePanel.frameProfile || null,
+                    profileNo: activeInfo.frame?.profileNo,
+                    catalogName: activeInfo.frame?.catalogName ?? undefined,
+                    systemName: activeInfo.frameCatalog
+                      ? [activeInfo.frameCatalog.name, activeInfo.frameCatalog.brandName].filter(Boolean).join(' · ')
+                      : undefined,
+                    onChange: onFrameChange,
+                    favoriteRef: project?.favoriteFrameProfile,
+                    onSetFavorite: project ? onSetFavorite : undefined,
+                    preferredCatalogRef: isEdit ? undefined : project?.defaultSystemCatalog,
+                    preferredBrandRef: isEdit ? undefined : project?.defaultSystemBrand,
+                    error: showValidation && errors.panels ? t('fields.frameProfileRequired') : undefined,
+                  }}
+                  systemType={activeInfo.systemType}
+                  dividerProfileNo={activeInfo.dividerProfile?.profileNo}
+                  dividerCount={activePanel.dividers.length}
+                  sections={activePanel.sections}
+                  onSelectPart={(partId) => onSelectPart(partId, false)}
                 />
               )}
             </div>

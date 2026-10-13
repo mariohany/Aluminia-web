@@ -229,8 +229,6 @@
       "railOutside": "Outside",
       "railInside": "Inside",
       "railN": "Rail {{n}}",
-      "moveBack": "Move back (toward the outside)",
-      "moveForward": "Move forward (toward the inside)",
       "direction": "Slides",
       "types": {
         "sliding_left": "Slides left",
@@ -241,7 +239,6 @@
       "auto": "Auto",
       "manual": "Manual",
       "resetAuto": "Back to auto",
-      "wholeFrameFixed": "Whole frame → fixed glass",
       "railsShrunkToast_one": "Sash {{sashes}} moved to the front rail.",
       "railsShrunkToast_other": "Sashes {{sashes}} moved to the front rail.",
       "presets": {
@@ -285,10 +282,8 @@
     "headShapeDisabledHint": "An arched head isn't available for this panel's opening type.",
     "headShapeRoundTooWideHint": "A true semicircle needs more height than this panel has — try Segmental instead, or make the panel taller.",
     "headRiseMm": "Rise (mm)",
-    "interiorColor": "Interior colour",
-    "exteriorColor": "Exterior colour",
     "colorPlaceholder": "No colour",
-    "location": "Location in site"
+    "location": "Location"
   },
   "actions": {
     "cancel": "Cancel",
@@ -427,7 +422,6 @@
       },
       "untitled": "Untitled window",
       "computedSize": "{{width}} × {{height}} mm (indicative)",
-      "sashWeight": "Estimated weight: {{weight}} kg (catalogue limit {{max}} kg)",
       "sections": {
         "frame": "Frame",
         "sash": "Sash",
@@ -447,7 +441,6 @@
         },
         "archLightFixed": "Lights inside the arch are always fixed."
       },
-      "dividerLength": "Length: {{length}} mm (indicative)",
       "removeDivider": "Remove divider",
       "dividerTool": {
         "members": {
@@ -496,7 +489,6 @@
         "lightTooSmall": "A light here is too small to glaze. Move a divider to give it more room.",
         "archLightOpening": "Lights inside the arch can only be fixed. Switch this light to fixed."
       },
-      "panelOf": "Panel {{index}} of {{count}}",
       "deletePanel": "Remove this panel",
       "deletePanelBlocked": "This panel can't be removed — an assembly needs at least one panel, and removing this one would leave the rest disconnected.",
       "addPanel": {
@@ -541,12 +533,99 @@
         "confirm": "Make flat"
       },
       "dividerInspector": {
-        "profile": "Profile",
-        "panelDefault": "Panel default: {{profile}}",
         "useDefault": "Use the panel default",
-        "fromLeft": "Position from left (mm)",
-        "fromSill": "Position up from the bottom (mm)",
         "end": "On {{host}} · cut {{cut}}"
+      }
+    },
+    "inspector": {
+      "moreActions": "More actions",
+      "chips": {
+        "noIssues": "No issues",
+        "warnings_one": "{{count}} warning",
+        "warnings_other": "{{count}} warnings",
+        "errors_one": "{{count}} error",
+        "errors_other": "{{count}} errors",
+        "bent": "Bent"
+      },
+      "groups": {
+        "frame": "Frame",
+        "sizeShape": "Size & shape",
+        "finish": "Finish",
+        "dividers": "Dividers",
+        "lights": "Lights",
+        "light": "Light",
+        "opening": "Opening",
+        "glazing": "Glazing",
+        "glass": "Glass",
+        "sliding": "Sliding",
+        "fromPanel": "From Panel {{n}}",
+        "profile": "Profile",
+        "position": "Position",
+        "bend": "Bend",
+        "ends": "Ends"
+      },
+      "rows": {
+        "profile": "Profile",
+        "system": "System",
+        "width": "Width",
+        "height": "Height",
+        "head": "Head",
+        "rise": "Rise",
+        "door": "Door",
+        "interior": "Interior",
+        "exterior": "Exterior",
+        "defaultDivider": "Default",
+        "kind": "Kind",
+        "type": "Type",
+        "sash": "Sash",
+        "bead": "Bead",
+        "flyScreen": "Fly screen",
+        "weight": "Weight",
+        "glass": "Glass",
+        "thickness": "Thickness",
+        "layout": "Layout",
+        "sashes": "Sashes",
+        "rails": "Rails",
+        "frame": "Frame",
+        "colours": "Colours",
+        "fromLeft": "From left",
+        "fromSill": "From sill",
+        "length": "Length",
+        "radius": "Radius",
+        "top": "Top",
+        "bottom": "Bottom",
+        "left": "Left",
+        "right": "Right"
+      },
+      "crumbs": {
+        "window": "Window"
+      },
+      "light": "Light",
+      "editOnPanel": "Edit on Panel {{n}}",
+      "maxThickness": "max {{max}} mm",
+      "weightValue": "{{weight}} kg · max {{max}}",
+      "opening": {
+        "search": "Search opening types",
+        "windows": "Windows",
+        "doors": "Doors",
+        "doorNote": "Picking a door type turns on Door for Panel {{n}}."
+      },
+      "search": {
+        "profiles": "Search profiles",
+        "glass": "Search glass",
+        "noMatches": "Nothing matches that search."
+      },
+      "panelDefault": "panel default",
+      "nudge": "Move {{mm}} mm",
+      "sliding": {
+        "sashesN_one": "{{count}} sash",
+        "sashesN_other": "{{count}} sashes",
+        "search": "Search layouts",
+        "customHint": "Right-click a sash on the drawing to change its rail or which way it slides.",
+        "fewer": "One sash fewer",
+        "more": "One sash more",
+        "fromFrame": "from the frame profile",
+        "rail": "Rail"
       }
     }
   },

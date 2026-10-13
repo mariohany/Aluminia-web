@@ -53,6 +53,7 @@ import {
   slidingHiddenEdges,
   slidingPaintOrder,
   slidingStrokeScale,
+  SECTION_LETTER_FILL,
 } from '@/components/workspace/window-shapes'
 import { insetHeadOutline, type PointMm } from '@/lib/arch-geometry'
 import type { TranslatedIssue } from '@/lib/window-weight'
@@ -921,11 +922,9 @@ export function WindowDrawing({
               key={`dim-${panelIndex}`}
               panelRect={panelRects[panelIndex]}
               outerMm={outerMm}
-              parts={parts.filter((p) => p.panelIndex === panelIndex)}
               chainOffset={innerChainOffset}
               tickLen={tickLen}
               fontSize={scale * 0.02}
-              letterFontSize={scale * 0.026}
               chain={chains[panelIndex]}
               columnSide={chains[panelIndex].cols.length > 1 ? widthSideFor(panelIndex) : null}
               rowSide={chains[panelIndex].rows.length > 1 ? heightSideFor(panelIndex) : null}
@@ -975,6 +974,14 @@ export function WindowDrawing({
               setDividerDragId(dividerId)
             }}
           />
+        ))}
+
+        {/* Section letters AFTER the panels, so the frame and glass don't
+            paint over them. Every panel with more than one light gets
+            them — also one split only by slanted or bent arch dividers,
+            which have no dimension chain. */}
+        {panels.map((_, panelIndex) => (
+          <SectionLetters key={`letters-${panelIndex}`} parts={parts.filter((p) => p.panelIndex === panelIndex)} fontSize={scale * 0.026} />
         ))}
 
         {/* Angles between members, every one but 90° (Q9) — always
@@ -1914,11 +1921,9 @@ function PanelDimensionCallouts({
   chain,
   panelRect,
   outerMm,
-  parts,
   chainOffset,
   tickLen,
   fontSize,
-  letterFontSize,
   columnSide,
   rowSide,
   columnGap,
@@ -1927,11 +1932,9 @@ function PanelDimensionCallouts({
   chain: { cols: number[]; rows: number[] }
   panelRect: RectMm
   outerMm: { width: number; height: number }
-  parts: WindowPart[]
   chainOffset: number
   tickLen: number
   fontSize: number
-  letterFontSize: number
   columnSide: 'top' | 'bottom' | null
   rowSide: 'left' | 'right' | null
   columnGap?: number
@@ -1939,7 +1942,6 @@ function PanelDimensionCallouts({
 }) {
   const { cols, rows } = chain
   if (cols.length <= 1 && rows.length <= 1) return null
-  const sectionIndices = [...new Set(parts.map((p) => p.sectionIndex).filter((i): i is number => i !== null))]
 
   return (
     <>
@@ -1974,6 +1976,18 @@ function PanelDimensionCallouts({
           />
         )}
 
+    </>
+  )
+}
+
+/** A letter in each light of a gridded panel (A, B, C…), in the fixed
+ * dark ink — it sits on the glass. */
+function SectionLetters({ parts, fontSize }: { parts: WindowPart[]; fontSize: number }) {
+  const sectionIndices = [...new Set(parts.map((p) => p.sectionIndex).filter((i): i is number => i !== null))]
+  // A single light needs no name — nothing to tell it apart from.
+  if (sectionIndices.length <= 1) return null
+  return (
+    <g pointerEvents="none">
         {sectionIndices.map((sectionIndex) => {
           // `parts`' own `rectMm` is already in ASSEMBLY space (see
           // `buildAssemblyLayout`'s own offsetting) — no further
@@ -1994,15 +2008,15 @@ function PanelDimensionCallouts({
               x={inner ? inner.point.x : rect.x + rect.width / 2}
               y={inner ? inner.point.y + inner.radius * 0.6 : rect.y + rect.height * 0.92}
               textAnchor="middle"
-              fontSize={letterFontSize}
+              fontSize={fontSize}
               fontWeight={600}
-              fill="var(--foreground)"
+              fill={SECTION_LETTER_FILL}
             >
               {sectionLetter(sectionIndex)}
             </text>
           )
         })}
-    </>
+    </g>
   )
 }
 

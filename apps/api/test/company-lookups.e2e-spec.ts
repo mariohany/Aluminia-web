@@ -19,6 +19,11 @@ import type {
 } from '@repo/types/lookups';
 import { AppModule } from './../src/app.module';
 import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provisioning.service';
+import {
+  dropPlatformCatalogue,
+  seedPlatformCatalogue,
+  type PlatformCatalogue,
+} from './fixtures/platform-catalogue';
 import { PasswordService } from './../src/modules/auth/password.service';
 
 /**
@@ -35,6 +40,7 @@ describe('Company lookups (e2e)', () => {
   let controlPlane: DataSource;
 
   const companyOneName = 'E2E CL Alpha Aluminium';
+  const CATALOGUE_PREFIX = 'E2E CL';
   const companyTwoName = 'E2E CL Beta Glazing';
   const adminEmail = 'e2e-cl-admin@test.local';
   const userEmail = 'e2e-cl-user@test.local';
@@ -47,6 +53,7 @@ describe('Company lookups (e2e)', () => {
   let tokenBeta: string;
   let tokenSuper: string;
 
+  let catalogue: PlatformCatalogue;
   let platformGlassId: string;
   let platformGlassName: string;
   let platformColorId: string;
@@ -104,22 +111,17 @@ describe('Company lookups (e2e)', () => {
     tokenBeta = await loginAs(adminTwoEmail);
     tokenSuper = await loginAs(superAdminEmail);
 
-    // Real platform rows this whole file collides against / references —
-    // seeded by AddLookupTables' own data, not fixtures this file owns.
-    const [glass]: { id: string; name: string }[] = await controlPlane.query(
-      `SELECT id, name FROM glass ORDER BY name ASC LIMIT 1`,
-    );
-    platformGlassId = glass.id;
-    platformGlassName = glass.name;
-    const [color]: { id: string; code: string }[] = await controlPlane.query(
-      `SELECT id, code FROM color ORDER BY code ASC LIMIT 1`,
-    );
-    platformColorId = color.id;
-    platformColorCode = color.code;
+    // The platform rows this whole file collides against / references.
+    catalogue = await seedPlatformCatalogue(controlPlane, CATALOGUE_PREFIX);
+    platformGlassId = catalogue.glassId;
+    platformGlassName = catalogue.glassName;
+    platformColorId = catalogue.colorId;
+    platformColorCode = catalogue.colorCode;
   });
 
   afterAll(async () => {
     await dropCompanies(controlPlane, [companyOneName, companyTwoName]);
+    await dropPlatformCatalogue(controlPlane, CATALOGUE_PREFIX);
     // The super admin writes audit rows (the profile-rails case below
     // creates/updates platform profiles as them) — those reference the
     // user, so they go first or the user delete trips the FK.
@@ -408,15 +410,9 @@ describe('Company lookups (e2e)', () => {
       acceptsFlyScreen: false,
     };
 
-    beforeAll(async () => {
-      const [sliding]: { id: string }[] = await controlPlane.query(
-        `SELECT id FROM system_catalog WHERE system_type = 'sliding' ORDER BY name ASC LIMIT 1`,
-      );
-      const [hinged]: { id: string }[] = await controlPlane.query(
-        `SELECT id FROM system_catalog WHERE system_type = 'hinged' ORDER BY name ASC LIMIT 1`,
-      );
-      slidingCatalogId = sliding.id;
-      hingedCatalogId = hinged.id;
+    beforeAll(() => {
+      slidingCatalogId = catalogue.slidingCatalogId;
+      hingedCatalogId = catalogue.hingedCatalogId;
     });
 
     it('platform: a sliding frame defaults to 2, keeps an explicit 3, and nulls when retyped or moved', async () => {

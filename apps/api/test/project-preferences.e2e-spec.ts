@@ -10,6 +10,10 @@ import type { ProjectDetail } from '@repo/types/projects';
 import type { CompanySystemBrandSummary } from '@repo/types/company-lookups';
 import { AppModule } from './../src/app.module';
 import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provisioning.service';
+import {
+  dropPlatformCatalogue,
+  seedPlatformCatalogue,
+} from './fixtures/platform-catalogue';
 
 /**
  * docs/project_preferences_planing.md §2/§4 — project creation's new,
@@ -23,6 +27,7 @@ describe('Project preferences (e2e)', () => {
   let controlPlane: DataSource;
 
   const companyName = 'E2E PP Aluminium';
+  const CATALOGUE_PREFIX = 'E2E PP';
   const adminEmail = 'e2e-pp-admin@test.local';
   const password = 'TestPassword123!';
 
@@ -50,10 +55,9 @@ describe('Project preferences (e2e)', () => {
 
     token = await loginAs(adminEmail);
 
-    const [brand]: { id: string }[] = await controlPlane.query(
-      `SELECT id FROM system_brand ORDER BY name ASC LIMIT 1`,
-    );
-    platformBrandId = brand.id;
+    platformBrandId = (
+      await seedPlatformCatalogue(controlPlane, CATALOGUE_PREFIX)
+    ).brandId;
 
     const client = await request(app.getHttpServer())
       .post('/clients')
@@ -70,6 +74,7 @@ describe('Project preferences (e2e)', () => {
       .send({ confirmName: 'Preferences Client' })
       .expect(204);
     await dropCompanies(controlPlane, [companyName]);
+    await dropPlatformCatalogue(controlPlane, CATALOGUE_PREFIX);
     await app.close();
   });
 

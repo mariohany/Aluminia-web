@@ -1168,6 +1168,11 @@ export function slidingHiddenEdges(sashes: WindowPart[], face: DrawingFace, rail
  * the muted grey — "leave hinged as is". */
 export const SYMBOL_STROKE_BLUE = '#2563eb'
 
+/** The section letters (A, B, C…) sit on the glass, a fixed material
+ * colour, so they are a fixed dark ink too — the theme's foreground is
+ * near-white in dark mode and vanished against the pale glass. */
+export const SECTION_LETTER_FILL = '#1f2933'
+
 export function renderFixedSymbols(glasses: WindowPart[]): React.ReactNode {
   if (glasses.length === 0) return null
   return (

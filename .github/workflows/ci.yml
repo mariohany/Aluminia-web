@@ -1,0 +1,82 @@
+# Stability S8: every push and PR to dev/main is checked before it ships.
+# Render (autoDeployTrigger: checksPass) and Vercel wait for this to pass,
+# so a red commit never reaches the test deploy or runs its migrations.
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # Same images as docker-compose.yml.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aluminia
+          POSTGRES_PASSWORD: aluminia
+          POSTGRES_DB: aluminia
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U aluminia"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      NODE_ENV: test
+      LOG_LEVEL: warn
+      DATABASE_URL: postgresql://aluminia:aluminia@localhost:5432/aluminia
+      REDIS_URL: redis://localhost:6379
+      CORS_ORIGIN: http://localhost:5173
+      # Throwaway: signs tokens for this job's own database only.
+      JWT_ACCESS_SECRET: ci-only-access-secret-not-used-anywhere-else
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same major as Render (render.yaml NODE_VERSION).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run check-types
+
+      # Builds both apps: the web build is what Vercel runs, the API build
+      # is what the migrations below and Render run.
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm run test
+
+      # The e2e suites expect a migrated database, as on a dev machine.
+      - name: Migrate
+        run: npm run migrate:all --workspace=apps/api
+
+      # One suite at a time: the suites share one database, and in
+      # parallel an intermittent HTTP "Parse Error" still shows up
+      # locally (~1 in 8 runs). Serial is ~25 s and has been stable.
+      - name: E2E tests
+        run: npm run test:e2e --workspace=apps/api -- --runInBand

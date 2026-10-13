@@ -1,5 +1,10 @@
-import type { MigrationInterface } from 'typeorm';
-import { migrationName, pendingTenantMigrations } from './migration-check';
+import type { DataSource, MigrationInterface } from 'typeorm';
+import {
+  findPendingMigrations,
+  migrationName,
+  pendingTenantMigrations,
+} from './migration-check';
+import { tenantMigrations } from './tenant/migrations';
 
 // The boot gate's comparison, isolated from the queries that feed it —
 // the half that decides whether the API refuses to start.
@@ -70,5 +75,84 @@ describe('migrationName', () => {
 
   it('falls back to the class name when it does not', () => {
     expect(migrationName(Undeclared2000)).toBe('Undeclared2000');
+  });
+});
+
+// The queries around that comparison, against a fake control plane that
+// answers by SQL text. Only the tenant track is exercised: no
+// control-plane migrations are registered and all of them have run.
+describe('findPendingMigrations', () => {
+  const allTenantMigrations = tenantMigrations.map(migrationName);
+  const undefinedTable = Object.assign(new Error('relation does not exist'), {
+    code: '42P01',
+  });
+
+  // `unionResults` is consumed one per UNION read, so a test can make the
+  // first read hit a schema dropped since the table check.
+  function fakeControlPlane(
+    tablesBySchemaCheck: string[][],
+    unionResults: Array<Error | string[]>,
+  ) {
+    const query = jest.fn((sql: string) => {
+      if (sql.includes("table_name = 'migrations'"))
+        return Promise.resolve([{ table_name: 'migrations' }]);
+      if (sql.startsWith('SELECT name FROM migrations'))
+        return Promise.resolve([]);
+      if (sql.includes('FROM companies'))
+        return Promise.resolve([
+          { schema_name: 'tenant_kept' },
+          { schema_name: 'tenant_dropped' },
+        ]);
+      if (sql.includes('information_schema.tables')) {
+        const schemas = tablesBySchemaCheck.shift() ?? [];
+        return Promise.resolve(
+          schemas.map((table_schema) => ({ table_schema })),
+        );
+      }
+      const next = unionResults.shift();
+      if (next instanceof Error) return Promise.reject(next);
+      return Promise.resolve(
+        (next ?? []).flatMap((schema) =>
+          allTenantMigrations.map((name) => ({ schema_name: schema, name })),
+        ),
+      );
+    });
+    return { migrations: [], query } as unknown as DataSource;
+  }
+
+  it('asks again when a schema is dropped between the table check and the read', async () => {
+    const controlPlane = fakeControlPlane(
+      [['tenant_kept', 'tenant_dropped'], ['tenant_kept']],
+      [undefinedTable, ['tenant_kept']],
+    );
+
+    const pending = await findPendingMigrations(controlPlane);
+
+    expect(
+      pending.tenantSchemas.find((t) => t.schemaName === 'tenant_kept'),
+    ).toBeUndefined();
+  });
+
+  it('gives up after three reads that keep hitting a dropped table', async () => {
+    const controlPlane = fakeControlPlane(
+      [['tenant_kept'], ['tenant_kept'], ['tenant_kept']],
+      [undefinedTable, undefinedTable, undefinedTable],
+    );
+
+    await expect(findPendingMigrations(controlPlane)).rejects.toBe(
+      undefinedTable,
+    );
+  });
+
+  it('does not retry any other database error', async () => {
+    const otherError = Object.assign(new Error('permission denied'), {
+      code: '42501',
+    });
+    const controlPlane = fakeControlPlane(
+      [['tenant_kept'], ['tenant_kept']],
+      [otherError, ['tenant_kept']],
+    );
+
+    await expect(findPendingMigrations(controlPlane)).rejects.toBe(otherError);
   });
 });

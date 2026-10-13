@@ -66,8 +66,12 @@ describe('Admin leads (e2e)', () => {
     superToken = await loginAs(superAdminEmail);
   });
 
+  // Only this suite's own leads: the public leads suite runs in parallel
+  // against the same table.
   afterEach(async () => {
-    await controlPlane.query(`DELETE FROM leads`);
+    await controlPlane.query(`DELETE FROM leads WHERE company_name LIKE $1`, [
+      'E2E AL %',
+    ]);
   });
 
   afterAll(async () => {
@@ -157,7 +161,11 @@ describe('Admin leads (e2e)', () => {
     const body = list.body as LeadSummary[];
     const ids = body.map((lead) => lead.id);
     expect(ids.indexOf(secondId)).toBeLessThan(ids.indexOf(firstId));
-    expect(body.every((lead) => lead.contactedAt === null)).toBe(true);
+    expect(
+      body
+        .filter((lead) => lead.id === firstId || lead.id === secondId)
+        .every((lead) => lead.contactedAt === null),
+    ).toBe(true);
 
     const contacted = await request(app.getHttpServer())
       .post(`/admin/leads/${firstId}/contacted`)
@@ -225,13 +233,16 @@ describe('Admin leads (e2e)', () => {
 
     expect((res.body as DeleteLeadsResponse).deletedCount).toBe(2);
 
-    const remaining: Array<{ id: string }> =
-      await controlPlane.query(`SELECT id FROM leads`);
+    const remaining: Array<{ id: string }> = await controlPlane.query(
+      `SELECT id FROM leads WHERE id = ANY($1)`,
+      [[keepId, deleteOneId, deleteTwoId]],
+    );
     expect(remaining.map((row) => row.id)).toEqual([keepId]);
 
     const auditRows: Array<{ metadata: { count: number; ids: string[] } }> =
       await controlPlane.query(
-        `SELECT metadata FROM admin_audit_log WHERE action = 'lead.deleted_bulk' ORDER BY created_at DESC LIMIT 1`,
+        `SELECT metadata FROM admin_audit_log WHERE action = 'lead.deleted_bulk' AND metadata->'ids' @> $1::jsonb`,
+        [JSON.stringify([deleteOneId])],
       );
     expect(auditRows[0]?.metadata.count).toBe(2);
     expect(auditRows[0]?.metadata.ids.sort()).toEqual(

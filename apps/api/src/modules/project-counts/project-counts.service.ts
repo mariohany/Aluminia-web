@@ -56,18 +56,27 @@ export class ProjectCountsService {
       select: { id: true, schemaName: true },
     });
     const counts = await Promise.all(
-      activeCompanies.map(
-        async (company) =>
-          [
+      activeCompanies.map(async (company) => {
+        try {
+          return [
             company.id,
             await this.tenantConnection.runInSchema(
               company.schemaName,
               (manager) => manager.count(Project),
             ),
-          ] as const,
-      ),
+          ] as const;
+        } catch (error) {
+          // undefined_table: the company was deleted (its schema dropped)
+          // after the list above was read. It's gone, so it's left out
+          // rather than turning the whole dashboard into a 500.
+          if ((error as { code?: string } | undefined)?.code === '42P01') {
+            return null;
+          }
+          throw error;
+        }
+      }),
     );
-    const byCompany = new Map(counts);
+    const byCompany = new Map(counts.filter((entry) => entry !== null));
 
     try {
       await this.redis.set(

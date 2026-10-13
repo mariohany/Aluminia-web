@@ -64,6 +64,30 @@ describe('ProjectCountsService', () => {
     expect(tenantConnection.runInSchema).not.toHaveBeenCalled();
   });
 
+  it('leaves out a company whose schema was dropped mid-count', async () => {
+    const { service, tenantConnection } = makeService(null);
+    const undefinedTable = Object.assign(new Error('relation does not exist'), {
+      code: '42P01',
+    });
+    tenantConnection.runInSchema.mockImplementationOnce(() =>
+      Promise.reject(undefinedTable),
+    );
+
+    expect(Object.fromEntries(await service.byCompany())).toEqual({ c2: 5 });
+  });
+
+  it('still fails on any other database error', async () => {
+    const { service, tenantConnection } = makeService(null);
+    const otherError = Object.assign(new Error('permission denied'), {
+      code: '42501',
+    });
+    tenantConnection.runInSchema.mockImplementationOnce(() =>
+      Promise.reject(otherError),
+    );
+
+    await expect(service.byCompany()).rejects.toBe(otherError);
+  });
+
   it('totals the per-company counts', async () => {
     const { service } = makeService(null);
     expect(await service.total()).toBe(8);

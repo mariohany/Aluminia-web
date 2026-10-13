@@ -10,6 +10,9 @@ services:
     plan: free
     region: frankfurt
     branch: dev
+    # Deploy a push only once GitHub's checks (.github/workflows/ci.yml)
+    # pass, so a red commit never runs its migrations on Neon.
+    autoDeployTrigger: checksPass
     # --include=dev: NODE_ENV=production would otherwise skip the Nest CLI
     # and TypeScript the build needs.
     buildCommand: npm ci --include=dev && npm run build --workspace=apps/api

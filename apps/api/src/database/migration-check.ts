@@ -149,6 +149,25 @@ async function appliedTenantMigrations(
   controlPlane: DataSource,
   schemaNames: string[],
 ): Promise<Map<string, Set<string>>> {
+  // The table check and the UNION are two queries, so a schema dropped
+  // between them (a company deleted while another instance boots, or a
+  // parallel e2e suite's cleanup) fails the read with undefined_table.
+  // Asking again re-checks which tables exist; a dropped company is then
+  // simply not there, and its row in `companies` is gone with it.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await readAppliedTenantMigrations(controlPlane, schemaNames);
+    } catch (error) {
+      const code = (error as { code?: string } | undefined)?.code;
+      if (code !== '42P01' || attempt === 3) throw error;
+    }
+  }
+}
+
+async function readAppliedTenantMigrations(
+  controlPlane: DataSource,
+  schemaNames: string[],
+): Promise<Map<string, Set<string>>> {
   const applied = new Map<string, Set<string>>();
   if (schemaNames.length === 0) return applied;
 

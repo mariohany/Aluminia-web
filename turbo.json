@@ -20,6 +20,15 @@
       "cache": false,
       "persistent": true
     },
-    "test": {}
+    "test": {
+      "env": [
+        "NODE_ENV",
+        "LOG_LEVEL",
+        "DATABASE_URL",
+        "REDIS_URL",
+        "CORS_ORIGIN",
+        "JWT_ACCESS_SECRET"
+      ]
+    }
   }
 }

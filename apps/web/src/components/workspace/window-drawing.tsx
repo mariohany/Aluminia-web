@@ -977,14 +977,12 @@ export function WindowDrawing({
         ))}
 
         {/* Section letters AFTER the panels, so the frame and glass don't
-            paint over them (they were drawn with the dimension chains,
-            which sit under the window). */}
-        {anyPanelGridded &&
-          panels.map((_, panelIndex) =>
-            chains[panelIndex].cols.length > 1 || chains[panelIndex].rows.length > 1 ? (
-              <SectionLetters key={`letters-${panelIndex}`} parts={parts.filter((p) => p.panelIndex === panelIndex)} fontSize={scale * 0.026} />
-            ) : null,
-          )}
+            paint over them. Every panel with more than one light gets
+            them — also one split only by slanted or bent arch dividers,
+            which have no dimension chain. */}
+        {panels.map((_, panelIndex) => (
+          <SectionLetters key={`letters-${panelIndex}`} parts={parts.filter((p) => p.panelIndex === panelIndex)} fontSize={scale * 0.026} />
+        ))}
 
         {/* Angles between members, every one but 90° (Q9) — always
             shown, not only while selected. Just the number, no arc mark
@@ -1986,6 +1984,8 @@ function PanelDimensionCallouts({
  * dark ink — it sits on the glass. */
 function SectionLetters({ parts, fontSize }: { parts: WindowPart[]; fontSize: number }) {
   const sectionIndices = [...new Set(parts.map((p) => p.sectionIndex).filter((i): i is number => i !== null))]
+  // A single light needs no name — nothing to tell it apart from.
+  if (sectionIndices.length <= 1) return null
   return (
     <g pointerEvents="none">
         {sectionIndices.map((sectionIndex) => {

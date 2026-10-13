@@ -40,7 +40,9 @@ yarn-error.log*
 # Claude
 .claude
 docs
-.github
+# Only CI workflows are shared (stability S8); the rest of .github stays local.
+.github/*
+!.github/workflows/
 .mcp.json
 CLAUDE.md
 .wolf

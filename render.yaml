@@ -1,0 +1,50 @@
+# Render blueprint for the test deployment: the API (free web service,
+# sleeps after ~15 min idle) and Redis (free Key Value). Postgres is Neon,
+# not Render — Render's free Postgres is deleted after 30 days — so
+# DATABASE_URL is entered by hand. The web app is on Vercel
+# (apps/web/vercel.json), which forwards /api/* here.
+services:
+  - type: web
+    name: aluminia-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: dev
+    # --include=dev: NODE_ENV=production would otherwise skip the Nest CLI
+    # and TypeScript the build needs.
+    buildCommand: npm ci --include=dev && npm run build --workspace=apps/api
+    # Free plan has no pre-deploy step, so migrations run before start.
+    # The API refuses to boot with pending migrations anyway.
+    startCommand: npm run migrate:all --workspace=apps/api && npm run start:prod --workspace=apps/api
+    healthCheckPath: /health
+    envVars:
+      # Same major as local: the API requires @repo/types' .ts files at
+      # runtime and relies on Node's built-in type stripping.
+      - key: NODE_VERSION
+        value: '26'
+      - key: NODE_ENV
+        value: production
+      # Neon's direct (non-pooled) connection string, ?sslmode=require.
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: aluminia-redis
+          property: connectionString
+      # The Vercel URL, e.g. https://aluminia.vercel.app
+      - key: CORS_ORIGIN
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      # Vercel overwrites X-Forwarded-For with the real client IP.
+      - key: TRUST_PROXY
+        value: 'true'
+
+  - type: keyvalue
+    name: aluminia-redis
+    plan: free
+    region: frankfurt
+    maxmemoryPolicy: noeviction
+    # Internal connections only.
+    ipAllowList: []

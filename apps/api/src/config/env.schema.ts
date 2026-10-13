@@ -17,6 +17,17 @@ export const envSchema = z.object({
   // product is single-domain per CLAUDE.md, not multi-tenant-subdomain.
   CORS_ORIGIN: z.url(),
 
+  // Express `trust proxy`, for when a reverse proxy sits in front of the
+  // API. Unset (local) = req.ip is the socket address. Without it behind
+  // a proxy every user shares the proxy's IP, so the per-IP throttle and
+  // failed-login limit would lock everyone out together. "true" takes the
+  // leftmost X-Forwarded-For entry — right only when the outermost proxy
+  // overwrites that header, as Vercel's /api rewrite does; a number trusts
+  // that many hops from the right.
+  TRUST_PROXY: z
+    .union([z.literal('true'), z.coerce.number().int().min(0)])
+    .optional(),
+
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),

@@ -283,7 +283,7 @@
     "headShapeRoundTooWideHint": "A true semicircle needs more height than this panel has — try Segmental instead, or make the panel taller.",
     "headRiseMm": "Rise (mm)",
     "colorPlaceholder": "No colour",
-    "location": "Location in site"
+    "location": "Location"
   },
   "actions": {
     "cancel": "Cancel",

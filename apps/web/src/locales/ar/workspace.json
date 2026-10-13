@@ -307,7 +307,7 @@
     "headShapeRoundTooWideHint": "نصف الدائرة الحقيقي يحتاج ارتفاعاً أكبر مما تسمح به هذه اللوحة — جرّب القطاعي، أو اجعل اللوحة أطول.",
     "headRiseMm": "الارتفاع (مم)",
     "colorPlaceholder": "بدون لون",
-    "location": "الموضع في الموقع"
+    "location": "الموقع"
   },
   "actions": {
     "cancel": "إلغاء",

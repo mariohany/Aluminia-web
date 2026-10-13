@@ -78,5 +78,8 @@ jobs:
       # One suite at a time: the suites share one database, and in
       # parallel an intermittent HTTP "Parse Error" still shows up
       # locally (~1 in 8 runs). Serial is ~25 s and has been stable.
+      # A suite whose teardown fails can leave the app open and hang Jest;
+      # fail in minutes rather than hold deploys for the whole job timeout.
       - name: E2E tests
+        timeout-minutes: 10
         run: npm run test:e2e --workspace=apps/api -- --runInBand

@@ -64,14 +64,25 @@
     "unitCount_other": "{{count}} وحدة",
     "searchPlaceholder": "دور على شباك",
     "noMatches": "مفيش شبابيك مطابقة للبحث.",
-    "windowActions": "إجراءات الشباك",
     "sort": {
       "label": "ترتيب حسب",
       "created": "تاريخ الإنشاء",
       "name": "الاسم",
       "size": "المقاس",
       "quantity": "الكمية"
-    }
+    },
+    "duplicateMany": "تكرار {{windows}}",
+    "deleteMany": "حذف {{windows}}…",
+    "duplicateSomeFailed": "تعذّر تكرار {{failed}} من أصل {{total}}.",
+    "selectedCount": "المحدد: {{count}}",
+    "copyTo": "نسخ إلى",
+    "moveTo": "نقل إلى",
+    "copied": "تم نسخ {{windows}} إلى {{project}}.",
+    "moved": "تم نقل {{windows}} إلى {{project}}.",
+    "renamedNote": "أُعيدت تسمية {{count}} لأن الاسم مستخدم هناك.",
+    "copySomeFailed": "تعذّر نسخ {{failed}} من أصل {{total}}.",
+    "copyError": "تعذّر نسخ الشبابيك. حاول مرة أخرى.",
+    "moveError": "تعذّر نقل الشبابيك. حاول مرة أخرى."
   },
   "dataPage": {
     "title": "البيانات",
@@ -706,7 +717,11 @@
     "title": "حذف الشباك",
     "warning": "سيؤدي هذا إلى حذف {{name}} نهائياً. لا يمكن التراجع عن ذلك.",
     "success": "تم حذف {{name}}.",
-    "error": "تعذّر حذف الشباك."
+    "error": "تعذّر حذف الشباك.",
+    "titleMany": "حذف {{windows}}",
+    "warningMany": "سيؤدي هذا إلى حذف {{windows}} نهائياً. لا يمكن التراجع عن ذلك.",
+    "successMany": "تم حذف {{windows}}.",
+    "someFailed": "تعذّر حذف {{failed}} من أصل {{total}}."
   },
   "properties": {
     "collapse": "طيّ الخصائص",

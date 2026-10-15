@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { apiErrorMessage } from '@/lib/api-client'
 import { useClientQuery, useDeleteClientMutation } from '@/lib/clients-queries'
 import { useDeleteProjectMutation } from '@/lib/projects-queries'
-import { useDeleteWindowMutation } from '@/lib/windows-queries'
+import { useDeleteWindowsMutation } from '@/lib/windows-queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -184,30 +184,35 @@ export function DeleteProjectDialog({
 /**
  * Plain confirmation, no typed name — unlike `DeleteClientDialog` and
  * `DeleteProjectDialog` above, a window design has no further cascade
- * under it worth that friction.
+ * under it worth that friction. Takes a list: the board's multi-select
+ * deletes several at once; one window keeps its by-name wording.
  */
 export function DeleteWindowDialog({
-  windowId,
-  windowName,
+  windows,
   projectId,
   open,
   onOpenChange,
   onDeleted,
 }: {
-  windowId: string
-  windowName: string
+  windows: { id: string; name: string }[]
   projectId: string
   open: boolean
   onOpenChange: (open: boolean) => void
   onDeleted?: () => void
 }) {
   const { t } = useTranslation('workspace')
-  const mutation = useDeleteWindowMutation(windowId, projectId)
+  const mutation = useDeleteWindowsMutation(projectId)
+  const single = windows.length === 1 ? windows[0] : undefined
+  const count = t('canvas.windowCount', { count: windows.length })
 
   const handleDelete = async () => {
     try {
-      await mutation.mutateAsync()
-      toast.success(t('deleteWindow.success', { name: windowName }))
+      const { failed } = await mutation.mutateAsync(windows.map((w) => w.id))
+      if (failed > 0) {
+        toast.error(t('deleteWindow.someFailed', { failed, total: windows.length }))
+      } else {
+        toast.success(single ? t('deleteWindow.success', { name: single.name }) : t('deleteWindow.successMany', { windows: count }))
+      }
       onOpenChange(false)
       onDeleted?.()
     } catch (err) {
@@ -219,8 +224,12 @@ export function DeleteWindowDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t('deleteWindow.title')}</DialogTitle>
-          <DialogDescription>{t('deleteWindow.warning', { name: windowName })}</DialogDescription>
+          <DialogTitle>{single ? t('deleteWindow.title') : t('deleteWindow.titleMany', { windows: count })}</DialogTitle>
+          <DialogDescription>
+            {single
+              ? t('deleteWindow.warning', { name: single.name })
+              : t('deleteWindow.warningMany', { windows: count })}
+          </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

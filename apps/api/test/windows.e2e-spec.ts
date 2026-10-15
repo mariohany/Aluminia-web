@@ -7,7 +7,11 @@ import { App } from 'supertest/types';
 import type { LoginResponse } from '@repo/types/auth';
 import type { ClientDetail } from '@repo/types/clients';
 import type { ProjectDetail } from '@repo/types/projects';
-import type { WindowDetail, WindowSummary } from '@repo/types/windows';
+import type {
+  MoveWindowsResult,
+  WindowDetail,
+  WindowSummary,
+} from '@repo/types/windows';
 import type { CompanySystemProfileSummary } from '@repo/types/company-lookups';
 import { AppModule } from './../src/app.module';
 import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provisioning.service';
@@ -609,6 +613,100 @@ describe('Windows (e2e)', () => {
       projectId: otherProjectId,
       name: 'W-shared-name',
     }).expect(201);
+  });
+
+  // ---- Move (POST /windows/move, the board's "Move to") ----
+
+  async function newProject(enName: string): Promise<string> {
+    const res = await request(app.getHttpServer())
+      .post('/projects')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ clientId, enName })
+      .expect(201);
+    return (res.body as ProjectDetail).id;
+  }
+
+  function moveWindows(body: Record<string, unknown>, as = token) {
+    return request(app.getHttpServer())
+      .post('/windows/move')
+      .set('Authorization', `Bearer ${as}`)
+      .send(body);
+  }
+
+  async function namesIn(project: string): Promise<string[]> {
+    const res = await request(app.getHttpServer())
+      .get('/windows')
+      .query({ projectId: project })
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    return (res.body as WindowSummary[]).map((w) => w.name);
+  }
+
+  it('moves windows to another project, renaming a taken name case-insensitively', async () => {
+    const target = await newProject('Move Target');
+    await createWindow({ projectId: target, name: 'w-move-a' }).expect(201);
+
+    const a = await createWindow({ name: 'W-move-A' }).expect(201);
+    const b = await createWindow({ name: 'W-move-B' }).expect(201);
+    const ids = [a, b].map((r) => (r.body as WindowDetail).id);
+
+    const res = await moveWindows({ windowIds: ids, projectId: target }).expect(
+      200,
+    );
+    expect(res.body as MoveWindowsResult).toEqual({ moved: 2, renamed: 1 });
+
+    expect((await namesIn(target)).sort()).toEqual(
+      ['W-move-A (2)', 'W-move-B', 'w-move-a'].sort(),
+    );
+    const source = await namesIn(projectId);
+    expect(source).not.toContain('W-move-A');
+    expect(source).not.toContain('W-move-B');
+
+    // Same id, panels intact — a real move, not a copy.
+    const moved = await request(app.getHttpServer())
+      .get(`/windows/${ids[0]}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect((moved.body as WindowDetail).projectId).toBe(target);
+    expect((moved.body as WindowDetail).panels).toHaveLength(1);
+  });
+
+  it('leaves a window already in the target project alone', async () => {
+    const w = await createWindow({ name: 'W-move-same' }).expect(201);
+    const res = await moveWindows({
+      windowIds: [(w.body as WindowDetail).id],
+      projectId,
+    }).expect(200);
+    expect(res.body as MoveWindowsResult).toEqual({ moved: 0, renamed: 0 });
+    expect(await namesIn(projectId)).toContain('W-move-same');
+  });
+
+  it('moves nothing when one id is unknown (404), and 400s an unknown project', async () => {
+    const target = await newProject('Move Target Atomic');
+    const w = await createWindow({ name: 'W-move-atomic' }).expect(201);
+    const id = (w.body as WindowDetail).id;
+
+    await moveWindows({
+      windowIds: [id, '00000000-0000-4000-8000-000000000000'],
+      projectId: target,
+    }).expect(404);
+    await moveWindows({
+      windowIds: [id],
+      projectId: '00000000-0000-4000-8000-000000000000',
+    }).expect(400);
+    await moveWindows({ windowIds: [], projectId: target }).expect(400);
+
+    expect(await namesIn(projectId)).toContain('W-move-atomic');
+    expect(await namesIn(target)).toEqual([]);
+  });
+
+  it("refuses company B moving company A's window, with 404", async () => {
+    const w = await createWindow({ name: 'W-move-isolation' }).expect(201);
+    await moveWindows(
+      { windowIds: [(w.body as WindowDetail).id], projectId },
+      otherToken,
+    ).expect(404);
+    expect(await namesIn(projectId)).toContain('W-move-isolation');
   });
 
   it('rejects quantity 0', async () => {

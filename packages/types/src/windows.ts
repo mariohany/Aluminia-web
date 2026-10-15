@@ -341,11 +341,11 @@ export const windowPanelSchema = z
   })
 export type WindowPanelInput = z.infer<typeof windowPanelSchema>
 
-// `projectId` is create-only, deliberately — a window cannot be moved
-// between projects once it exists, for the same reason a project can't
-// be moved between clients (createProjectSchema's own comment): window
-// designs and paperwork hang off it and would silently travel with it.
-// It is absent from `updateWindowSchema` below, not merely ignored.
+// `projectId` is absent from `updateWindowSchema` below, not merely
+// ignored: a PATCH never moves a window. Moving is its own explicit
+// action, `POST /windows/move` (`moveWindowsSchema`, Mario 2026-10-15:
+// the board's right-click "Move to"), so a window only changes project
+// when someone asked for exactly that.
 //
 // There is no `widthMm`/`heightMm` here: an assembly's overall size is
 // DERIVED from its panels' bounding box, server-side. Accepting one
@@ -377,6 +377,39 @@ export const updateWindowSchema = z.object({
   notes: optionalText,
 })
 export type UpdateWindowInput = z.infer<typeof updateWindowSchema>
+
+// The board's "Move to" (multi-select). One request, one transaction:
+// every window moves or none does. A name already taken in the target
+// project is renamed with `freeWindowName`, never refused.
+export const moveWindowsSchema = z.object({
+  windowIds: z.array(z.uuid()).min(1).max(500),
+  projectId: z.uuid(),
+})
+export type MoveWindowsInput = z.infer<typeof moveWindowsSchema>
+
+export interface MoveWindowsResult {
+  moved: number
+  /** How many had to take a numbered name, e.g. "W1 (2)". */
+  renamed: number
+}
+
+const WINDOW_NAME_MAX = 255
+
+/**
+ * `name` if it's free in a project, else the first free "name (2)",
+ * "name (3)"… `taken` holds that project's names LOWER-CASED, because
+ * the unique index is on `(project_id, lower(name))`. Used by both the
+ * API's move and the web's "Copy to", so both rename the same way. The
+ * caller adds the result to `taken` before naming the next window.
+ */
+export function freeWindowName(name: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(name.toLowerCase())) return name
+  for (let n = 2; ; n++) {
+    const suffix = ` (${n})`
+    const candidate = `${name.slice(0, WINDOW_NAME_MAX - suffix.length).trimEnd()}${suffix}`
+    if (!taken.has(candidate.toLowerCase())) return candidate
+  }
+}
 
 /**
  * One section as read back — the input shape plus nothing, since every

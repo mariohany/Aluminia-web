@@ -11,7 +11,11 @@ import {
   Query,
 } from '@nestjs/common';
 import { UserRole } from '@repo/types/auth';
-import type { WindowDetail, WindowSummary } from '@repo/types/windows';
+import type {
+  MoveWindowsResult,
+  WindowDetail,
+  WindowSummary,
+} from '@repo/types/windows';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -19,6 +23,7 @@ import type { AuthenticatedRequestUser } from '../auth/jwt-payload';
 import { WindowsService } from './windows.service';
 import { CreateWindowDto } from './dto/create-window.dto';
 import { UpdateWindowDto } from './dto/update-window.dto';
+import { MoveWindowsDto } from './dto/move-windows.dto';
 
 /**
  * `GET /windows` requires `projectId` — the canvas's card list is the
@@ -51,6 +56,12 @@ export class WindowsController {
   ): Promise<WindowDetail> {
     // The author comes from the verified JWT, never from the body.
     return this.windows.create(dto, actor.id);
+  }
+
+  @Post('move')
+  @HttpCode(200)
+  move(@Body() dto: MoveWindowsDto): Promise<MoveWindowsResult> {
+    return this.windows.move(dto);
   }
 
   @Patch(':id')

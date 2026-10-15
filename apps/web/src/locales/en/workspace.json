@@ -52,14 +52,27 @@
     "unitCount_other": "{{count}} units",
     "searchPlaceholder": "Search windows",
     "noMatches": "No windows match that search.",
-    "windowActions": "Window actions",
     "sort": {
       "label": "Sort by",
       "created": "Created",
       "name": "Name",
       "size": "Size",
       "quantity": "Quantity"
-    }
+    },
+    "selectedCount_one": "{{count}} selected",
+    "selectedCount_other": "{{count}} selected",
+    "duplicateMany": "Duplicate {{windows}}",
+    "deleteMany": "Delete {{windows}}…",
+    "duplicateSomeFailed": "{{failed}} of {{total}} windows couldn't be duplicated.",
+    "copyTo": "Copy to",
+    "moveTo": "Move to",
+    "copied": "Copied {{windows}} to {{project}}.",
+    "moved": "Moved {{windows}} to {{project}}.",
+    "renamedNote_one": "{{count}} renamed because the name was already taken there.",
+    "renamedNote_other": "{{count}} renamed because the names were already taken there.",
+    "copySomeFailed": "{{failed}} of {{total}} windows couldn't be copied.",
+    "copyError": "Couldn't copy the windows. Try again.",
+    "moveError": "Couldn't move the windows. Try again."
   },
   "dataPage": {
     "title": "Data",
@@ -650,7 +663,11 @@
     "title": "Delete window",
     "warning": "This permanently deletes {{name}}. This cannot be undone.",
     "success": "Deleted {{name}}.",
-    "error": "Couldn't delete the window."
+    "error": "Couldn't delete the window.",
+    "titleMany": "Delete {{windows}}",
+    "warningMany": "This permanently deletes {{windows}}. This cannot be undone.",
+    "successMany": "Deleted {{windows}}.",
+    "someFailed": "{{failed}} of {{total}} windows couldn't be deleted."
   },
   "properties": {
     "collapse": "Collapse properties",

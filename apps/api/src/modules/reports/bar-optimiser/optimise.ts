@@ -143,6 +143,16 @@ function solve<T>(
   const caps = lengths.map((l) => l - 2 * settings.endTrimMm);
   if (types[0].size > Math.max(...caps)) return null;
 
+  // Proof without the solver, when the easy answer is already the best
+  // possible: no packing can use less metal than the cheapest stock mix
+  // with room for every piece (+ kerf). If best-fit fills such a mix,
+  // that is the proven optimum. Profiles of many short, different
+  // lengths make the arc-flow model explode (47 k nodes for 16 bead
+  // lengths, which HiGHS never finished — bug-110) yet are exactly the
+  // ones this settles at once.
+  const proven = packAtLowerBound(types, lengths, caps);
+  if (proven) return toPlan(proven, settings);
+
   const arcs = buildArcs(types, caps);
   const lp = toLpFormat(arcs, types, lengths);
   // The objective counts metal in units of the lengths' gcd, so it is
@@ -156,6 +166,94 @@ function solve<T>(
   );
   const bars = decode(arcs, flows, types, lengths);
   return toPlan(bars, settings);
+}
+
+/** Best-fit decreasing into each cheapest stock mix that could hold the
+ * pieces at all; the bars if one fits, else `null` (the solver decides).
+ * A mix is skipped when its total room is short, or when the pieces too
+ * long for its smaller bars don't fit its longer ones alone. */
+function packAtLowerBound<T>(
+  types: PieceType<T>[],
+  lengths: number[],
+  caps: number[],
+): { stockMm: number; pieces: { lengthMm: number; ref: T }[] }[] | null {
+  const items = types.flatMap((type) =>
+    type.refs.map((ref) => ({ size: type.size, lengthMm: type.lengthMm, ref })),
+  );
+  const need = items.reduce((sum, it) => sum + it.size, 0);
+  const maxBars = Math.ceil(need / Math.min(...caps)) + 1;
+
+  // Branch and bound on metal: only mixes no dearer than the cheapest
+  // found so far are explored, so many stock lengths stay cheap.
+  let cheapest = Infinity;
+  let mixes: { counts: number[]; metal: number }[] = [];
+  const counts = lengths.map(() => 0);
+  const walk = (i: number, metal: number, room: number) => {
+    if (metal > cheapest) return;
+    if (i === lengths.length) {
+      if (room >= need && longPiecesFit(counts, caps, items)) {
+        if (metal < cheapest) {
+          cheapest = metal;
+          mixes = [];
+        }
+        mixes.push({ counts: [...counts], metal });
+      }
+      return;
+    }
+    for (let n = 0; n <= maxBars && metal + n * lengths[i] <= cheapest; n++) {
+      counts[i] = n;
+      walk(i + 1, metal + n * lengths[i], room + n * caps[i]);
+    }
+    counts[i] = 0;
+  };
+  walk(0, 0, 0);
+  if (!mixes.length) return null;
+
+  for (const mix of mixes) {
+    const bars = mix.counts.flatMap((n, i) =>
+      Array.from({ length: n }, () => ({
+        stockMm: lengths[i],
+        free: caps[i],
+        pieces: [] as { lengthMm: number; ref: T }[],
+      })),
+    );
+    let fits = true;
+    for (const item of items) {
+      let pick: (typeof bars)[number] | null = null;
+      for (const bar of bars) {
+        if (bar.free >= item.size && (!pick || bar.free < pick.free))
+          pick = bar;
+      }
+      if (!pick) {
+        fits = false;
+        break;
+      }
+      pick.free -= item.size;
+      pick.pieces.push({ lengthMm: item.lengthMm, ref: item.ref });
+    }
+    if (fits) return bars.filter((bar) => bar.pieces.length);
+  }
+  return null;
+}
+
+/** Pieces longer than a bar's room can only go into longer bars, so
+ * those alone must hold them. */
+function longPiecesFit(
+  counts: number[],
+  caps: number[],
+  items: { size: number }[],
+): boolean {
+  return caps.every((threshold) => {
+    const need = items.reduce(
+      (sum, it) => (it.size > threshold ? sum + it.size : sum),
+      0,
+    );
+    const room = caps.reduce(
+      (sum, cap, j) => (cap > threshold ? sum + counts[j] * cap : sum),
+      0,
+    );
+    return need <= room;
+  });
 }
 
 /** One graph per stock length; node `s:pos:lvl` is `pos` mm into the

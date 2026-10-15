@@ -104,6 +104,36 @@ describe('optimiseProfile', () => {
     expect(best!.wasteMm).toBe(0);
   });
 
+  // bug-110: 22 bead pieces in 16 different short lengths made the
+  // arc-flow model 47 k nodes / 285 k arcs and HiGHS never finished. The
+  // lower-bound proof settles it at once: they fit the cheapest mix that
+  // could hold them at all.
+  it('proves a many-short-lengths profile at the lower bound, instantly', async () => {
+    const input = pieces({
+      332: 1,
+      334: 1,
+      357: 1,
+      359: 1,
+      424: 1,
+      427: 1,
+      429: 2,
+      430: 2,
+      436: 2,
+      439: 2,
+      452: 1,
+      456: 1,
+      661: 1,
+      664: 1,
+      678: 2,
+      703: 2,
+    });
+    const started = Date.now();
+    const { best } = await optimiseProfile(input, SHOP);
+    expectValid(best, input, SHOP);
+    expect(best!.mix).toEqual({ 6000: 2 });
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
   it('lists a piece too long for any bar instead of failing', async () => {
     const input = pieces({ 6600: 1, 2000: 2 });
     const { best, tooLong } = await optimiseProfile(input, SHOP);

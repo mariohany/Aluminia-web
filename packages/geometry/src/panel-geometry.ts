@@ -40,8 +40,15 @@ export function resolvePanelGeometry<T extends WindowPanelInput>(given: T, syste
 /** `buildAssemblyLayout`'s input for one stored panel — the same fields
  * the canvas thumbnail feeds it. */
 export function panelLayoutInput(given: WindowPanelInput, facts: PanelFrameFacts): AssemblyPanelInput {
+  return resolvePanelLayout(given, facts).input
+}
+
+/** Both halves at once: the aligned panel (whose `sections[i]` is light
+ * `i`, so a part's `sectionIndex` finds its profiles) and the layout
+ * input built from it. */
+export function resolvePanelLayout<T extends WindowPanelInput>(given: T, facts: PanelFrameFacts): { panel: T; input: AssemblyPanelInput } {
   const { panel, metrics } = resolvePanelGeometry(given, facts.systemType)
-  return {
+  const input: AssemblyPanelInput = {
     xMm: panel.xMm,
     yMm: panel.yMm,
     widthMm: panel.widthMm,
@@ -62,4 +69,5 @@ export function panelLayoutInput(given: WindowPanelInput, facts: PanelFrameFacts
       sliding: section.sliding ?? null,
     })),
   }
+  return { panel, input }
 }

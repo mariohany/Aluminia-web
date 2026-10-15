@@ -20,8 +20,8 @@ import {
 /**
  * docs/reports_planing.md §7 — the bar optimiser report API: cutting
  * settings, status, the background Generate job (in-process under
- * ts-jest, BarOptimiserRunner), staleness, isolation. The PDF itself
- * arrives in Step 6, so `/pdf` is 404 here.
+ * ts-jest, BarOptimiserRunner), staleness, isolation, and the PDF —
+ * rendered by real headless Chrome through render-pdf.mjs.
  */
 const SINGLE_LIGHT = 'left|right|sill|top';
 
@@ -311,8 +311,7 @@ describe('Reports (e2e)', () => {
     expect(done.job).toBeNull();
     expect(done.state).toBe('fresh');
     expect(done.generatedAt).not.toBeNull();
-    // No PDF until Step 6.
-    expect(done.hasPdf).toBe(false);
+    expect(done.hasPdf).toBe(true);
 
     const summary = done.summary!;
     expect(summary.windowCount).toBe(2);
@@ -340,14 +339,38 @@ describe('Reports (e2e)', () => {
     expect((res.body as ReportStatus).state).toBe('fresh');
   });
 
-  it('has no PDF to download yet', async () => {
-    await api()
+  it('downloads the PDF as an attachment', async () => {
+    const res = await api()
       .get(`/projects/${projectId}/reports/bar-optimiser/pdf?lang=en`)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(res.headers['content-disposition']).toBe(
+      'attachment; filename="reports-project-bar-optimiser-en.pdf"',
+    );
+    const body = res.body as Buffer;
+    expect(body.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(body.length).toBeGreaterThan(10_000);
+  });
+
+  it('a language with no report yet has no PDF', async () => {
+    await api()
+      .get(`/projects/${projectId}/reports/bar-optimiser/pdf?lang=ar`)
       .expect(404);
   });
 
-  it('caches per language', async () => {
+  it('caches per language, and renders Arabic too', async () => {
     expect((await status('ar')).state).toBe('none');
+    await api().post(generatePath('ar')).expect(202);
+    const ar = await settled('ar');
+    expect(ar).toMatchObject({ state: 'fresh', hasPdf: true, job: null });
+    // English is untouched by the Arabic run.
+    expect((await status('en')).state).toBe('fresh');
   });
 
   it('turns stale after a window edit and counts the window', async () => {

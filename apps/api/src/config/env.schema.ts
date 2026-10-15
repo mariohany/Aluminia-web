@@ -40,6 +40,12 @@ export const envSchema = z.object({
   // Sliding, not absolute: every refresh pushes it out again, so a user
   // who opens the app at all within a month never sees the login screen.
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
+
+  // The Chrome the bar optimiser report prints its PDF with
+  // (docs/reports_planing.md §8). Optional: Puppeteer finds the Chrome it
+  // downloaded (`npx puppeteer browsers install chrome`) by itself; set
+  // this only to use another binary.
+  PUPPETEER_EXECUTABLE_PATH: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

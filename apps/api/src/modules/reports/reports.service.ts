@@ -87,7 +87,7 @@ export class ReportsService {
     language: ReportLanguage,
     userId: string,
   ): Promise<ReportStatus> {
-    const { schemaName } = this.tenantContext.tenant;
+    const { schemaName, companyName } = this.tenantContext.tenant;
     let job: ReportJob | null = null;
 
     const status = await this.tenantContext.run(async (manager) => {
@@ -127,6 +127,7 @@ export class ReportsService {
         startedAt,
         userId,
         language,
+        companyName,
         fingerprint,
         windowStamps: windowStampsOf(inputs),
         inputs,

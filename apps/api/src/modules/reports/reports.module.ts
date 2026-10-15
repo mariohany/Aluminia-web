@@ -4,6 +4,7 @@ import { SystemCatalog } from '../../database/control-plane/entities/system-cata
 import { SystemProfile } from '../../database/control-plane/entities/system-profile.entity';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { BarOptimiserRunner } from './bar-optimiser/runner';
+import { PdfRenderer } from './pdf/pdf-renderer.service';
 import { ReportJobService } from './report-job.service';
 import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
@@ -20,6 +21,11 @@ import { ReportsService } from './reports.service';
     TypeOrmModule.forFeature([SystemProfile, SystemCatalog]),
   ],
   controllers: [ReportsController],
-  providers: [ReportsService, ReportJobService, BarOptimiserRunner],
+  providers: [
+    ReportsService,
+    ReportJobService,
+    BarOptimiserRunner,
+    PdfRenderer,
+  ],
 })
 export class ReportsModule {}

@@ -4,6 +4,8 @@ import { ReportCache } from '../../database/tenant/entities/report-cache.entity'
 import { TenantConnectionService } from '../tenancy/tenant-connection.service';
 import { MEMBER_ORDER, profileQueue } from './bar-optimiser/project';
 import { BarOptimiserRunner } from './bar-optimiser/runner';
+import { PdfRenderer } from './pdf/pdf-renderer.service';
+import { footerTemplate, renderBarOptimiserHtml } from './pdf/template';
 import {
   profileNoOf,
   summaryOf,
@@ -30,6 +32,8 @@ export interface ReportJob {
   startedAt: Date;
   userId: string;
   language: ReportLanguage;
+  /** For the PDF header (the request's resolved tenant). */
+  companyName: string;
   fingerprint: string;
   windowStamps: Record<string, string>;
   inputs: ReportInputs;
@@ -62,6 +66,7 @@ export class ReportJobService {
   constructor(
     private readonly connection: TenantConnectionService,
     private readonly runner: BarOptimiserRunner,
+    private readonly pdfRenderer: PdfRenderer,
   ) {}
 
   /** Fire and forget: failures land on the row as `job_state = failed`. */
@@ -110,8 +115,30 @@ export class ReportJobService {
         },
       );
       const summary = summaryOf(job.inputs, job.pieces, result);
-      // The PDF is rendered here from `result` (Step 6); none until then.
-      const pdf: Buffer | null = null;
+      const generatedAt = new Date();
+      const { project } = job.inputs;
+      const arabic = job.language === 'ar';
+      const pdf = await this.pdfRenderer.render(
+        renderBarOptimiserHtml({
+          language: job.language,
+          companyName: job.companyName,
+          projectName: (arabic && project.arName) || project.enName,
+          clientName:
+            (arabic && project.client?.arName) || project.client?.enName || '',
+          generatedAt,
+          summary,
+          plans: result.profiles.map((p) => ({
+            profile: p.profile,
+            profileNo: profileNoOf(job.inputs, p.profile),
+            member: p.member,
+            best: p.best,
+          })),
+          panelCounts: Object.fromEntries(
+            job.inputs.windows.map((w) => [w.id, w.panels.length]),
+          ),
+        }),
+        footerTemplate(),
+      );
       clearInterval(heartbeat);
       await writes;
       await this.update(job, {
@@ -119,7 +146,7 @@ export class ReportJobService {
         windowStamps: job.windowStamps,
         summary,
         pdf,
-        generatedAt: new Date(),
+        generatedAt,
         generatedByUserId: job.userId,
         jobState: null,
         jobFingerprint: null,

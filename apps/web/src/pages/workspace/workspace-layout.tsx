@@ -208,7 +208,7 @@ export function WorkspaceLayout() {
   const [projectDialogInitialStep, setProjectDialogInitialStep] = useState<1 | 2>(1)
   const [deletingClient, setDeletingClient] = useState<ClientWithProjects | undefined>()
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
-  const [deletingWindow, setDeletingWindow] = useState<{ id: string; name: string } | undefined>()
+  const [deletingWindows, setDeletingWindows] = useState<{ id: string; name: string }[] | undefined>()
 
   // A selected client or project can be deleted with the keyboard, not
   // only via the tree's right-click menu / properties panel button —
@@ -218,6 +218,9 @@ export function WorkspaceLayout() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Delete' && event.key !== 'Backspace') return
+      // The board's own window selection took the key first (it listens
+      // in the capture phase) — selected windows win over the project.
+      if (event.defaultPrevented) return
 
       // Don't hijack the key while the user is typing — a search term,
       // a dialog's confirm-name field, anything editable.
@@ -230,7 +233,7 @@ export function WorkspaceLayout() {
       // open. The window editor no longer needs a guard here — it's a
       // separate route now, not a modal sharing this component's
       // keydown listener.
-      if (clientDialogOpen || projectDialogOpen || deletingClient || deleteProjectOpen) return
+      if (clientDialogOpen || projectDialogOpen || deletingClient || deleteProjectOpen || deletingWindows) return
 
       if (selectedProjectId && projectQuery.data) {
         event.preventDefault()
@@ -258,6 +261,7 @@ export function WorkspaceLayout() {
     projectDialogOpen,
     deletingClient,
     deleteProjectOpen,
+    deletingWindows,
   ])
 
   // The Sheet primitive only understands physical sides, so this one
@@ -311,8 +315,8 @@ export function WorkspaceLayout() {
     void navigate(`/workspace/projects/${selectedProjectId}/windows/${id}`)
   }
 
-  const openDeleteWindow = (id: string, name: string) => {
-    setDeletingWindow({ id, name })
+  const openDeleteWindows = (windows: { id: string; name: string }[]) => {
+    if (windows.length > 0) setDeletingWindows(windows)
   }
 
   // Shared by the tree's right-click menu, the properties panel's
@@ -409,7 +413,7 @@ export function WorkspaceLayout() {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex min-h-0 flex-1">
           <main className="relative min-w-0 flex-1 overflow-y-auto">
-            <Outlet context={{ openNewWindow, openEditWindow, openDeleteWindow }} />
+            <Outlet context={{ openNewWindow, openEditWindow, openDeleteWindows }} />
           </main>
 
           {!outsideProjectsSection && (
@@ -494,13 +498,12 @@ export function WorkspaceLayout() {
         />
       )}
 
-      {deletingWindow && selectedProjectId && (
+      {deletingWindows && selectedProjectId && (
         <DeleteWindowDialog
-          windowId={deletingWindow.id}
-          windowName={deletingWindow.name}
+          windows={deletingWindows}
           projectId={selectedProjectId}
-          open={!!deletingWindow}
-          onOpenChange={(open) => !open && setDeletingWindow(undefined)}
+          open={!!deletingWindows}
+          onOpenChange={(open) => !open && setDeletingWindows(undefined)}
         />
       )}
     </div>

@@ -1,5 +1,7 @@
 import type {
   CreateWindowInput,
+  MoveWindowsInput,
+  MoveWindowsResult,
   UpdateWindowInput,
   WindowDetail,
   WindowSummary,
@@ -25,4 +27,8 @@ export function updateWindow(id: string, input: UpdateWindowInput): Promise<Wind
 
 export function deleteWindow(id: string): Promise<void> {
   return apiFetch<void>(`/windows/${id}`, { method: 'DELETE' })
+}
+
+export function moveWindows(input: MoveWindowsInput): Promise<MoveWindowsResult> {
+  return apiFetch<MoveWindowsResult>('/windows/move', { method: 'POST', body: input })
 }

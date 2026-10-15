@@ -4,11 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { EntityManager } from 'typeorm';
+import { In, type EntityManager } from 'typeorm';
 import {
   GlassKind,
   HeadShape,
+  freeWindowName,
   type CreateWindowInput,
+  type MoveWindowsInput,
+  type MoveWindowsResult,
   type UpdateWindowInput,
   type WindowDetail,
   type WindowPanelInput,
@@ -155,6 +158,60 @@ export class WindowsService {
       }
 
       return toDetail(window);
+    });
+  }
+
+  /**
+   * Moves windows into another project (the board's "Move to"), in one
+   * transaction: all of them or none. Windows are looked up first, so a
+   * window the caller can't see is a 404 whatever the target. One
+   * already in the target is left alone. A name the target already has
+   * is renamed "name (2)"… (`freeWindowName`, case-insensitive like
+   * UQ_windows_project_name), in request order. Saving moves
+   * `updated_at`, so anything cached per window sees the change.
+   */
+  move(input: MoveWindowsInput): Promise<MoveWindowsResult> {
+    return this.tenantContext.run(async (manager) => {
+      const ids = [...new Set(input.windowIds)];
+      const found = await manager.find(Window, { where: { id: In(ids) } });
+      if (found.length !== ids.length) {
+        throw new NotFoundException('Window not found.');
+      }
+
+      const projectExists = await manager.exists(Project, {
+        where: { id: input.projectId },
+      });
+      if (!projectExists) {
+        throw new BadRequestException('That project does not exist.');
+      }
+
+      const byId = new Map(found.map((w) => [w.id, w]));
+      const incoming = ids
+        .map((id) => byId.get(id)!)
+        .filter((w) => w.projectId !== input.projectId);
+      if (incoming.length === 0) return { moved: 0, renamed: 0 };
+
+      const existing = await manager.find(Window, {
+        where: { projectId: input.projectId },
+        select: { id: true, name: true },
+      });
+      const taken = new Set(existing.map((w) => w.name.toLowerCase()));
+
+      let renamed = 0;
+      for (const window of incoming) {
+        const name = freeWindowName(window.name, taken);
+        if (name !== window.name) renamed++;
+        taken.add(name.toLowerCase());
+        window.name = name;
+        window.projectId = input.projectId;
+      }
+
+      try {
+        await manager.save(incoming);
+      } catch (error) {
+        this.translateWriteError(error);
+      }
+      return { moved: incoming.length, renamed };
     });
   }
 

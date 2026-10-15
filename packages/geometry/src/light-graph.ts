@@ -1,4 +1,4 @@
-import type { HeadOutline, PointMm } from '@/lib/arch-geometry'
+import type { HeadOutline, PointMm } from './arch-geometry.ts'
 import {
   angleDiff,
   carrierOf,
@@ -20,9 +20,9 @@ import {
   type Carrier,
   type Path,
   type Seg,
-} from '@/lib/curves'
-import { allMembers, resolveDividers, type DividerLike, type FrameGeometry, type Member } from '@/lib/dividers'
-import type { RectMm } from '@/lib/window-geometry'
+} from './curves.ts'
+import { allMembers, resolveDividers, type DividerLike, type FrameGeometry, type Member } from './dividers.ts'
+import type { RectMm } from './window-geometry.ts'
 
 // Lights: the closed areas the frame and its dividers make —
 // docs/free_dividers_planing.md §4. Pure. Built as a planar graph of

@@ -1,5 +1,5 @@
 import { HeadShape } from '@repo/types/windows'
-import { headCircles, headPointAt, insetHeadOutline, normalizeHeadRise, type HeadOutline, type PointMm } from '@/lib/arch-geometry'
+import { headCircles, headPointAt, insetHeadOutline, normalizeHeadRise, type HeadOutline, type PointMm } from './arch-geometry.ts'
 import {
   angleDiff,
   carrierOf,
@@ -15,7 +15,7 @@ import {
   segProject,
   type Path,
   type Seg,
-} from '@/lib/curves'
+} from './curves.ts'
 
 // Dividers drawn freely inside a frame — docs/free_dividers_planing.md §3.
 // Pure: no React, no lookups, no API. Every divider end names the member

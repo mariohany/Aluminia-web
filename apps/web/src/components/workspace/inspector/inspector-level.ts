@@ -1,4 +1,4 @@
-import type { WindowPartKind } from '@/lib/window-geometry'
+import type { WindowPartKind } from '@repo/geometry/window-geometry'
 
 export type InspectorLevel = 'panel' | 'section' | 'divider'
 

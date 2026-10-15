@@ -1,8 +1,8 @@
 import { SystemType } from '@repo/types/lookups'
 import { type WindowPanelDetail } from '@repo/types/windows'
-import { buildAssemblyLayout, type AssemblyPanelInput, type WindowPart } from '@/lib/window-geometry'
+import { buildAssemblyLayout, type AssemblyPanelInput, type WindowPart } from '@repo/geometry/window-geometry'
 import { sectionRenderFor, useResolvedPanels } from '@/lib/window-render'
-import { insetHeadOutline } from '@/lib/arch-geometry'
+import { insetHeadOutline } from '@repo/geometry/arch-geometry'
 import {
   DEFAULT_FRAME_FILL,
   DEFAULT_GLASS_FILL,

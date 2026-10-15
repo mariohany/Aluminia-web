@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import type { PanelSide } from '@/lib/window-geometry'
+import type { PanelSide } from '@repo/geometry/window-geometry'
 
 export interface AddPanelRequest {
   side: PanelSide

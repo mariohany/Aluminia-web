@@ -1,5 +1,5 @@
-import type { WindowPart } from '@/lib/window-geometry'
-import { loopToSvgPath } from '@/lib/light-graph'
+import type { WindowPart } from '@repo/geometry/window-geometry'
+import { loopToSvgPath } from '@repo/geometry/light-graph'
 import { partOutlinePath } from '@/components/workspace/window-shapes'
 import { cn } from '@/lib/utils'
 

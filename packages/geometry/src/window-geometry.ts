@@ -1,11 +1,11 @@
 import { SystemType } from '@repo/types/lookups'
 import { HingedOpeningType, HeadShape, SectionKind } from '@repo/types/windows'
 import type { SlidingLayoutInput, SlidingOpeningType } from '@repo/types/sliding'
-import { insetHeadOutline, normalizeHeadRise, type HeadOutline } from '@/lib/arch-geometry'
-import { samplePath, type Seg } from '@/lib/curves'
-import { frameGeometry, resolveDividers, type DividerLike, type MemberAxis } from '@/lib/dividers'
-import { buildLightGraph, insetLoop } from '@/lib/light-graph'
-import type { ProfileMetrics } from '@/lib/profile-metrics'
+import { insetHeadOutline, normalizeHeadRise, type HeadOutline } from './arch-geometry.ts'
+import { samplePath, type Seg } from './curves.ts'
+import { frameGeometry, resolveDividers, type DividerLike, type MemberAxis } from './dividers.ts'
+import { buildLightGraph, insetLoop } from './light-graph.ts'
+import type { ProfileMetrics } from './profile-metrics.ts'
 
 // Every band width (frame face, sash face, bead, bars, dividers) comes
 // in through `ProfileMetrics` (profile-metrics.ts) — resolved once per

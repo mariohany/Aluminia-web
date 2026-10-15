@@ -1,5 +1,5 @@
-import { dist, pathPointAt, pathProject } from '@/lib/curves'
-import type { PointMm } from '@/lib/arch-geometry'
+import { dist, pathPointAt, pathProject } from '@repo/geometry/curves'
+import type { PointMm } from '@repo/geometry/arch-geometry'
 import {
   aimFrom,
   allMembers,
@@ -13,7 +13,7 @@ import {
   type FrameGeometry,
   type RayHit,
   type SnapHit,
-} from '@/lib/dividers'
+} from '@repo/geometry/dividers'
 
 // The Divider tool's maths (docs/free_dividers_planing.md §6), pure so
 // the drawing layer only turns pointer pixels into panel mm and paints.

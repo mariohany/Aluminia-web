@@ -140,6 +140,12 @@ export class WindowsService {
         window.heightMm = outer.heightMm;
       }
 
+      // Set explicitly: when only `panels` changed, the window row's own
+      // columns are unchanged and TypeORM would skip the UPDATE, leaving
+      // `updated_at` behind. The bar optimiser's cache keys on it
+      // (docs/reports_planing.md §6), so every edit must move it.
+      window.updatedAt = new Date();
+
       try {
         await manager.save(window);
         if (replacement) {

@@ -835,6 +835,26 @@ describe('Windows (e2e)', () => {
     expect(body.heightMm).toBe(800);
   });
 
+  // The bar optimiser report's cache keys on windows.updated_at
+  // (docs/reports_planing.md §6): an edit that only changes panels must
+  // still move it, even when the window row's own columns don't change.
+  it('PATCHing only panels (same size) still moves updatedAt', async () => {
+    const created = await createWindow({ name: 'W-stamp' }).expect(201);
+    const before = created.body as WindowDetail;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const patched = await patchWindow(before.id, {
+      panels: [panel({ sections: [section({ hasFlyScreen: true })] })],
+    }).expect(200);
+    const after = patched.body as WindowDetail;
+
+    expect(after.widthMm).toBe(before.widthMm);
+    expect(after.heightMm).toBe(before.heightMm);
+    expect(Date.parse(after.updatedAt)).toBeGreaterThan(
+      Date.parse(before.updatedAt),
+    );
+  });
+
   it('deleting a window cascades its panel rows away', async () => {
     const created = await createWindow({
       name: 'W-panel-cascade',

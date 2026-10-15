@@ -71,24 +71,7 @@ export async function optimiseProject<T>(
   settings: OptimiserSettings,
   hooks: ProgressHooks = {},
 ): Promise<ProjectOptimisation<T>> {
-  const byProfile = new Map<string, ProjectPiece<T>[]>();
-  for (const piece of pieces) {
-    const list = byProfile.get(piece.profile) ?? [];
-    list.push(piece);
-    byProfile.set(piece.profile, list);
-  }
-
-  const queue = [...byProfile.entries()]
-    .map(([profile, list]) => ({
-      profile,
-      list,
-      member: majorityMember(list),
-    }))
-    .sort(
-      (a, b) =>
-        MEMBER_ORDER.indexOf(a.member) - MEMBER_ORDER.indexOf(b.member) ||
-        a.profile.localeCompare(b.profile),
-    );
+  const queue = profileQueue(pieces);
 
   const profiles: ProfileResult<T>[] = [];
   for (const [index, { profile, list, member }] of queue.entries()) {
@@ -135,6 +118,31 @@ export async function optimiseProject<T>(
       pieceCount: profiles.reduce((n, p) => n + p.pieceCount, 0),
     },
   };
+}
+
+/** The profiles in the order they are optimised, each with the member
+ * group it counts under — known before any solving, so the report job
+ * can lay out its progress card up front. */
+export function profileQueue<T>(
+  pieces: ProjectPiece<T>[],
+): { profile: string; member: CutMember; list: ProjectPiece<T>[] }[] {
+  const byProfile = new Map<string, ProjectPiece<T>[]>();
+  for (const piece of pieces) {
+    const list = byProfile.get(piece.profile) ?? [];
+    list.push(piece);
+    byProfile.set(piece.profile, list);
+  }
+  return [...byProfile.entries()]
+    .map(([profile, list]) => ({
+      profile,
+      list,
+      member: majorityMember(list),
+    }))
+    .sort(
+      (a, b) =>
+        MEMBER_ORDER.indexOf(a.member) - MEMBER_ORDER.indexOf(b.member) ||
+        a.profile.localeCompare(b.profile),
+    );
 }
 
 function majorityMember<T>(list: ProjectPiece<T>[]): CutMember {

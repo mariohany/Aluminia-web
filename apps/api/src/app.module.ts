@@ -23,6 +23,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { WindowsModule } from './modules/windows/windows.module';
 import { CompanyModule } from './modules/company/company.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { LeadsModule } from './modules/leads/leads.module';
     WindowsModule,
     CompanyModule,
     LeadsModule,
+    ReportsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

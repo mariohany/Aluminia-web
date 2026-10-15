@@ -64,3 +64,97 @@ export interface CuttingSettings extends CuttingSettingsInput {
 export function stockLengthsOf(settings: Pick<CuttingSettingsInput, 'extraLengthsMm'>): number[] {
   return [...new Set([...DEFAULT_STOCK_LENGTHS_MM, ...settings.extraLengthsMm])].sort((a, b) => b - a)
 }
+
+// ---- Bar optimiser: status + summary (docs/reports_planing.md §7) ----------
+
+/** The four member groups, in report order (frames first). */
+export const ReportMember = {
+  FRAME: 'frame',
+  SASH: 'sash',
+  DIVIDER: 'divider',
+  BEAD: 'bead',
+} as const
+export type ReportMember = (typeof ReportMember)[keyof typeof ReportMember]
+
+/** Where a piece sits on its window — @repo/geometry's `PieceAt`, kept
+ * here structurally so the API response doesn't depend on the geometry
+ * package. The PDF/screen turn it into words (D17). */
+export interface ReportPieceAt {
+  panelIndex: number
+  sectionIndex: number | null
+  sashIndex: number | null
+  position: 'top' | 'bottom' | 'left' | 'right' | 'head' | 'edge' | 'bar'
+  positionIndex?: number
+  divider?: { kind: 'mullion' | 'transom'; number: number }
+}
+
+export interface ReportPlanTotals {
+  barCount: number
+  boughtMm: number
+  wasteMm: number
+  wastePct: number
+}
+
+/** Bars per stock length; JSON keys are the length in mm. */
+export type StockMix = Record<string, number>
+
+export interface BarOptimiserSummary {
+  stockLengthsMm: number[]
+  kerfMm: number
+  endTrimMm: number
+  /** Window types in the project, and Σ quantity. */
+  windowCount: number
+  unitCount: number
+  total: ReportPlanTotals & { mix: StockMix; pieceCount: number }
+  members: {
+    member: ReportMember
+    pieceCount: number
+    /** Profile refs, in report order. */
+    profiles: string[]
+    /** Each stock length alone; `null` when a piece doesn't fit it. */
+    single: Record<string, ReportPlanTotals | null>
+    best: ReportPlanTotals & { mix: StockMix }
+  }[]
+  profiles: {
+    profile: string
+    profileNo: string | null
+    member: ReportMember
+    pieceCount: number
+    single: Record<string, ReportPlanTotals | null>
+    best: (ReportPlanTotals & { mix: StockMix }) | null
+    /** Pieces longer than the longest usable bar: not cut. */
+    tooLong: { lengthMm: number; count: number; windowName: string; at: ReportPieceAt }[]
+  }[]
+  /** Parts with no profile to cut them from (D16). */
+  skipped: { windowId: string; windowName: string; member: ReportMember; at: ReportPieceAt }[]
+  /** Sash/divider/bead lengths come from stand-in widths (D1). */
+  approximate: boolean
+}
+
+/** One member group's line on the progress card (D22). */
+export interface ReportProgressGroup {
+  member: ReportMember
+  state: 'waiting' | 'running' | 'done'
+  profilesDone: number
+  profilesTotal: number
+  /** Profile number being optimised, while running. */
+  currentProfile: string | null
+}
+
+export interface ReportJobStatus {
+  state: 'running' | 'failed'
+  startedAt: string
+  groups: ReportProgressGroup[]
+  error: string | null
+}
+
+export interface ReportStatus {
+  /** `none`: never generated; `stale`: inputs changed since (D14/D15). */
+  state: 'none' | 'fresh' | 'stale'
+  generatedAt: string | null
+  /** Windows added, removed or edited since the cached report. */
+  changedWindows: number
+  hasPdf: boolean
+  summary: BarOptimiserSummary | null
+  job: ReportJobStatus | null
+}

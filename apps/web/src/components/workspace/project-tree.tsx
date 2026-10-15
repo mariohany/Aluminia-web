@@ -14,24 +14,67 @@ import {
 import { cn } from '@/lib/utils'
 import { displayName } from '@/lib/bilingual'
 
+/** `NavLink`'s shape, as a button: the read-only tree's client row. */
+function ClientToggle({
+  to: _to,
+  ...props
+}: React.ComponentProps<'button'> & { to: string }) {
+  return <button type="button" {...props} />
+}
+
 interface ProjectTreeProps {
   clients: ClientWithProjects[]
   isLoading: boolean
   onNavigate?: () => void
+  /**
+   * Navigation only, for the Reports section (docs/reports_planing.md
+   * §9): no create buttons, no right-click menus, client rows only
+   * expand/collapse, and project rows link to `projectPath`. Selection
+   * comes from `selectedProjectId` rather than the Projects URLs.
+   */
+  readOnly?: boolean
+  projectPath?: (projectId: string) => string
+  selectedProjectId?: string
+  title?: string
   /** The header's two create buttons (docs/workspace_redesign_planing.md §1). */
-  onNewClient: () => void
-  onNewProject: () => void
-  onEditClient: (client: ClientWithProjects) => void
-  onDeleteClient: (client: ClientWithProjects) => void
+  onNewClient?: () => void
+  onNewProject?: () => void
+  onEditClient?: (client: ClientWithProjects) => void
+  onDeleteClient?: (client: ClientWithProjects) => void
   /**
    * Act on whichever project is currently selected — same as the
    * properties panel's edit/delete buttons. Safe to call right after a
    * right-click because the row's context menu selects the project (see
    * `ContextMenu`'s `onOpenChange` below) before either can fire.
    */
-  onEditProject: () => void
-  onEditProjectPreferences: () => void
-  onDeleteProject: () => void
+  onEditProject?: () => void
+  onEditProjectPreferences?: () => void
+  onDeleteProject?: () => void
+}
+
+/** The right-click menu around a row — or just the row, read-only. */
+function RowMenu({
+  readOnly,
+  onOpen,
+  menu,
+  children,
+}: {
+  readOnly: boolean
+  onOpen: () => void
+  menu: React.ReactNode
+  children: React.ReactElement
+}) {
+  if (readOnly) return children
+  return (
+    <ContextMenu
+      onOpenChange={(open) => {
+        if (open) onOpen()
+      }}
+    >
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent>{menu}</ContextMenuContent>
+    </ContextMenu>
+  )
 }
 
 /**
@@ -49,6 +92,10 @@ export function ProjectTree({
   clients,
   isLoading,
   onNavigate,
+  readOnly = false,
+  projectPath = (projectId) => `/workspace/projects/${projectId}`,
+  selectedProjectId: selectedProjectIdOverride,
+  title,
   onNewClient,
   onNewProject,
   onEditClient,
@@ -82,13 +129,15 @@ export function ProjectTree({
     const rows = Array.from(treeRef.current?.querySelectorAll<HTMLElement>('[data-tree-row]') ?? [])
     const next = rows[rows.indexOf(current) + delta]
     next?.focus()
-    next?.click()
+    // Read-only, a client row is a collapse toggle: landing on it must
+    // not click it.
+    if (!(readOnly && next?.dataset.clientRow)) next?.click()
   }
 
   const focusClientRow = (clientId: string) => {
     const row = treeRef.current?.querySelector<HTMLElement>(`[data-client-row="${clientId}"]`)
     row?.focus()
-    row?.click()
+    if (!readOnly) row?.click()
   }
 
   // Both read here rather than left to NavLink's own per-element
@@ -101,7 +150,7 @@ export function ProjectTree({
   const clientMatch = useMatch('/workspace/clients/:clientId')
   const selectedClientId = clientMatch?.params.clientId
   const projectMatch = useMatch('/workspace/projects/:projectId')
-  const selectedProjectId = projectMatch?.params.projectId
+  const selectedProjectId = readOnly ? selectedProjectIdOverride : projectMatch?.params.projectId
 
   // Filtered client-side against the already-loaded tree: the whole tree
   // arrives in one request, so a round trip per keystroke would buy
@@ -130,12 +179,18 @@ export function ProjectTree({
   // kept it in the list.
   const searching = search.trim().length > 0
 
+  // A client is a page of its own in Projects; in Reports it's only a
+  // folder, so its name toggles it instead.
+  const ClientLink = readOnly ? ClientToggle : NavLink
+
   return (
     <div className="flex h-full flex-col gap-2.5">
       <div className="flex items-center gap-2 px-1">
-        <h2 className="text-sm font-semibold text-foreground">{t('tree.clientsTitle')}</h2>
+        <h2 className="text-sm font-semibold text-foreground">{title ?? t('tree.clientsTitle')}</h2>
         {!isLoading && <span className="font-mono text-[11px] text-muted-foreground">{clients.length}</span>}
         <span className="flex-1" />
+        {!readOnly && (
+        <>
         <Button
           variant="outline"
           size="icon"
@@ -156,6 +211,8 @@ export function ProjectTree({
         >
           <Plus className="size-4" aria-hidden="true" />
         </Button>
+        </>
+        )}
       </div>
 
       <SearchInput
@@ -186,12 +243,20 @@ export function ProjectTree({
                     the menu also selects the row — same as a left-click
                     — so right-clicking a client you weren't already
                     looking at doesn't act on the wrong one. */}
-                <ContextMenu
-                  onOpenChange={(open) => {
-                    if (open) void navigate(`/workspace/clients/${client.id}`)
-                  }}
+                <RowMenu
+                  readOnly={readOnly}
+                  onOpen={() => void navigate(`/workspace/clients/${client.id}`)}
+                  menu={
+                    <>
+                      <ContextMenuItem onSelect={() => onEditClient?.(client)}>
+                        {t('actions.editClient')}
+                      </ContextMenuItem>
+                      <ContextMenuItem variant="destructive" onSelect={() => onDeleteClient?.(client)}>
+                        {t('actions.deleteClient')}
+                      </ContextMenuItem>
+                    </>
+                  }
                 >
-                  <ContextMenuTrigger asChild>
                     {/* The highlight lives on this row, not the NavLink
                         inside it, so a selected client's background
                         covers the chevron too — the same full-row
@@ -235,10 +300,10 @@ export function ProjectTree({
                         )}
                       </button>
 
-                      <NavLink
+                      <ClientLink
                         to={`/workspace/clients/${client.id}`}
-                        onClick={onNavigate}
-                        className="flex h-full min-w-0 flex-1 items-center gap-1.5 pe-2 text-[13px] font-medium"
+                        onClick={readOnly ? toggleCollapsed : onNavigate}
+                        className="flex h-full min-w-0 flex-1 items-center gap-1.5 pe-2 text-start text-[13px] font-medium"
                         data-tree-row
                         data-client-row={client.id}
                         onKeyDown={(event) => {
@@ -269,18 +334,9 @@ export function ProjectTree({
                           aria-hidden="true"
                         />
                         <span className="min-w-0 flex-1 truncate">{displayName(client, language)}</span>
-                      </NavLink>
+                      </ClientLink>
                     </div>
-                  </ContextMenuTrigger>
-                  <ContextMenuContent>
-                    <ContextMenuItem onSelect={() => onEditClient(client)}>
-                      {t('actions.editClient')}
-                    </ContextMenuItem>
-                    <ContextMenuItem variant="destructive" onSelect={() => onDeleteClient(client)}>
-                      {t('actions.deleteClient')}
-                    </ContextMenuItem>
-                  </ContextMenuContent>
-                </ContextMenu>
+                </RowMenu>
 
                 {!isCollapsed && (
                   <ul role="group">
@@ -293,14 +349,25 @@ export function ProjectTree({
                         const isProjectActive = project.id === selectedProjectId
                         return (
                           <li key={project.id} role="treeitem">
-                            <ContextMenu
-                              onOpenChange={(open) => {
-                                if (open) void navigate(`/workspace/projects/${project.id}`)
-                              }}
+                            <RowMenu
+                              readOnly={readOnly}
+                              onOpen={() => void navigate(`/workspace/projects/${project.id}`)}
+                              menu={
+                                <>
+                                  <ContextMenuItem onSelect={onEditProject}>
+                                    {t('actions.editProject')}
+                                  </ContextMenuItem>
+                                  <ContextMenuItem onSelect={onEditProjectPreferences}>
+                                    {t('actions.editPreferences')}
+                                  </ContextMenuItem>
+                                  <ContextMenuItem variant="destructive" onSelect={onDeleteProject}>
+                                    {t('actions.deleteProject')}
+                                  </ContextMenuItem>
+                                </>
+                              }
                             >
-                              <ContextMenuTrigger asChild>
                                 <NavLink
-                                  to={`/workspace/projects/${project.id}`}
+                                  to={projectPath(project.id)}
                                   onClick={onNavigate}
                                   className={cn(
                                     // ps-* is logical: indentation flips with
@@ -339,19 +406,7 @@ export function ProjectTree({
                                   />
                                   <span className="truncate">{displayName(project, language)}</span>
                                 </NavLink>
-                              </ContextMenuTrigger>
-                              <ContextMenuContent>
-                                <ContextMenuItem onSelect={onEditProject}>
-                                  {t('actions.editProject')}
-                                </ContextMenuItem>
-                                <ContextMenuItem onSelect={onEditProjectPreferences}>
-                                  {t('actions.editPreferences')}
-                                </ContextMenuItem>
-                                <ContextMenuItem variant="destructive" onSelect={onDeleteProject}>
-                                  {t('actions.deleteProject')}
-                                </ContextMenuItem>
-                              </ContextMenuContent>
-                            </ContextMenu>
+                            </RowMenu>
                           </li>
                         )
                       })

@@ -2,6 +2,7 @@
   "openMenu": "Open menu",
   "rail": {
     "projects": "Projects",
+    "reports": "Reports",
     "data": "Data",
     "manage": "Manage",
     "logout": "Log out",

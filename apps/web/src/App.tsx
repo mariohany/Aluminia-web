@@ -24,6 +24,7 @@ import { WorkspaceLayout } from '@/pages/workspace/workspace-layout'
 import { CanvasPage } from '@/pages/workspace/canvas-page'
 import { DataPage } from '@/pages/workspace/data-page'
 import { ManagePage } from '@/pages/workspace/manage-page'
+import { ReportsPage } from '@/pages/workspace/reports-page'
 import { WindowEditorPage } from '@/pages/workspace/window-editor-page'
 
 function App() {
@@ -112,6 +113,12 @@ function App() {
                   platform catalogue read-only in Phase 1 (see
                   docs/company_lookups_planing.md). */}
               <Route path="data" element={<DataPage />} />
+              {/* Reports (docs/reports_planing.md §9): the project and
+                  the open report live in the URL, like the canvas's
+                  selection, so both survive a refresh. */}
+              <Route path="reports" element={<ReportsPage />} />
+              <Route path="reports/projects/:projectId" element={<ReportsPage />} />
+              <Route path="reports/projects/:projectId/:report" element={<ReportsPage />} />
               <Route
                 path="manage"
                 element={

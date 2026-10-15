@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Database, LayoutGrid, LogOut, Menu, Users } from 'lucide-react'
+import { Database, FileChartColumn, LayoutGrid, LogOut, Menu, Users } from 'lucide-react'
 import { UserRole } from '@repo/types/auth'
 import { useAuth } from '@/lib/auth-context'
 import { useCompanyOverviewQuery } from '@/lib/company-queries'
@@ -59,13 +59,15 @@ export function WorkspaceRail({
   // claim you had left the section you were plainly still in — while
   // dropping `end` would light it up on the Data/Manage routes too,
   // since /workspace prefixes everything here. The rail has exactly
-  // three destinations, so state the active one directly rather than
+  // four destinations, so state the active one directly rather than
   // deriving three separate booleans.
   const section = pathname.startsWith('/workspace/manage')
     ? 'manage'
     : pathname.startsWith('/workspace/data')
       ? 'data'
-      : 'projects'
+      : pathname.startsWith('/workspace/reports')
+        ? 'reports'
+        : 'projects'
 
   // Fixed square footprint, not padding sized to the label — "Projects"
   // and "Data" are different lengths, and without a fixed size each
@@ -111,6 +113,17 @@ export function WorkspaceRail({
       >
         <LayoutGrid className="size-[19px]" aria-hidden="true" />
         {t('rail.projects')}
+      </Link>
+
+      {/* Every company user (docs/reports_planing.md D10). */}
+      <Link
+        to="/workspace/reports"
+        className={itemClass(section === 'reports')}
+        aria-current={section === 'reports' ? 'page' : undefined}
+        onClick={onNavigate}
+      >
+        <FileChartColumn className="size-[19px]" aria-hidden="true" />
+        {t('rail.reports')}
       </Link>
 
       <Link

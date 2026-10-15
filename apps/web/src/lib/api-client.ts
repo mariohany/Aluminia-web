@@ -83,6 +83,8 @@ interface RequestOptions {
   method?: string
   body?: unknown
   skipAuthRetry?: boolean
+  /** `blob` for a file download (the report PDF); JSON otherwise. */
+  responseType?: 'json' | 'blob'
 }
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -114,5 +116,6 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
 
   if (res.status === 204) return undefined as T
+  if (options.responseType === 'blob') return res.blob() as Promise<T>
   return res.json() as Promise<T>
 }

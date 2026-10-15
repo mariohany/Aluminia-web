@@ -1,0 +1,93 @@
+{
+  "tree": {
+    "title": "Projects"
+  },
+  "list": {
+    "title": "Reports",
+    "later": "Later",
+    "pickProject": "Pick a project to see its reports."
+  },
+  "kinds": {
+    "barOptimiser": { "name": "Bar optimiser", "description": "What to order with the least waste" },
+    "quotation": { "name": "Quotation", "description": "Priced offer for the client" },
+    "cuttingList": { "name": "Cutting list", "description": "Every piece, per profile, for the saw" },
+    "specSheet": { "name": "Spec sheet", "description": "Drawings and specs per window" },
+    "orders": { "name": "Glass & material orders", "description": "Glass sizes, hardware, accessories" }
+  },
+  "empty": {
+    "noProject": "Pick a project to see its reports.",
+    "noReport": "Pick a report from the list."
+  },
+  "status": {
+    "fresh": "Up to date · {{date}}",
+    "stale": "Out of date",
+    "staleWindows_one": "Out of date · {{count}} window changed",
+    "staleWindows_other": "Out of date · {{count}} windows changed",
+    "none": "Not generated yet",
+    "running": "Generating…",
+    "failed": "Generating failed — try again",
+    "interrupted": "Interrupted — generate again"
+  },
+  "settingsLine": "{{lengths}} mm · kerf {{kerf}} · trim {{trim}} per end",
+  "editSettings": "Edit",
+  "toolbar": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "page": "Page {{page}} / {{total}}",
+    "language": "PDF language",
+    "regenerate": "Regenerate",
+    "print": "Print",
+    "download": "Download PDF"
+  },
+  "none": {
+    "title": "No report yet",
+    "body": "Generate the bar optimiser for this project: it finds which stock lengths to order for the least waste.",
+    "generate": "Generate"
+  },
+  "progress": {
+    "title": "Generating the bar optimiser…",
+    "done_one": "{{count}} profile",
+    "done_other": "{{count}} profiles",
+    "running": "{{done}} of {{total}} · {{profile}}",
+    "waiting": "waiting",
+    "rendering": "Writing the PDF…",
+    "note": "You can leave this page. It keeps running."
+  },
+  "members": {
+    "frame": "Frames",
+    "sash": "Sashes / leaves",
+    "divider": "Transoms & mullions",
+    "bead": "Glazing beads"
+  },
+  "settings": {
+    "title": "Cutting settings",
+    "scope": "For every project in your company",
+    "lengths": "Stock lengths to try",
+    "default": "default",
+    "remove": "Remove {{length}} mm",
+    "newLength": "New stock length in mm",
+    "addPlaceholder": "e.g. 5800",
+    "add": "Add",
+    "hint": "The optimiser tries every length here and mixes them where that wastes less.",
+    "kerf": "Saw blade (kerf)",
+    "trim": "End trim",
+    "mm": "mm",
+    "mmPerEnd": "mm / end",
+    "cancel": "Cancel",
+    "save": "Save & regenerate",
+    "errors": {
+      "lengthRange": "Enter a whole number from 1000 to 12000 mm.",
+      "lengthDuplicate": "That length is already in the list.",
+      "tooMany": "Up to 10 extra lengths.",
+      "kerf": "0 to 10 mm, in 0.5 mm steps.",
+      "trim": "A whole number from 0 to 100 mm.",
+      "save": "Couldn't save the settings. Try again."
+    }
+  },
+  "errors": {
+    "status": "Couldn't load the report.",
+    "generate": "Couldn't start the report. Try again.",
+    "pdf": "Couldn't load the PDF.",
+    "print": "Couldn't open the print dialog."
+  }
+}

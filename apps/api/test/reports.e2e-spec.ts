@@ -11,6 +11,8 @@ import type { CuttingSettings, ReportStatus } from '@repo/types/reports';
 import type { WindowDetail } from '@repo/types/windows';
 import { AppModule } from './../src/app.module';
 import { PasswordService } from './../src/modules/auth/password.service';
+import { BarOptimiserRunner } from './../src/modules/reports/bar-optimiser/runner';
+import { ReportJobQueue } from './../src/modules/reports/report-job-queue';
 import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provisioning.service';
 import {
   dropPlatformCatalogue,
@@ -21,7 +23,8 @@ import {
  * docs/reports_planing.md §7 — the bar optimiser report API: cutting
  * settings, status, the background Generate job (in-process under
  * ts-jest, BarOptimiserRunner), staleness, isolation, and the PDF —
- * rendered by real headless Chrome through render-pdf.mjs.
+ * rendered by real headless Chrome through render-pdf.mjs. One job runs at
+ * a time here (docs/report_queue_planing.md), so the queue is exercised.
  */
 const SINGLE_LIGHT = 'left|right|sill|top';
 
@@ -55,7 +58,10 @@ describe('Reports (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(ReportJobQueue)
+      .useValue(new ReportJobQueue(1))
+      .compile();
     app = moduleFixture.createNestApplication();
     await app.init();
 
@@ -238,11 +244,11 @@ describe('Reports (e2e)', () => {
     return res.body as ReportStatus;
   }
 
-  /** Polls until no job is running (the in-process run is quick). */
+  /** Polls until no job is queued or running (the in-process run is quick). */
   async function settled(lang = 'en'): Promise<ReportStatus> {
     for (let i = 0; i < 120; i++) {
       const s = await status(lang);
-      if (s.job?.state !== 'running') return s;
+      if (s.job?.state !== 'running' && s.job?.state !== 'queued') return s;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     throw new Error('report job did not finish');
@@ -445,6 +451,64 @@ describe('Reports (e2e)', () => {
 
     await api().post(generatePath()).expect(202);
     expect((await settled()).job).toBeNull();
+  });
+
+  it('queues a job while the one slot is busy, then runs it', async () => {
+    // Hold the first job's solve until released, so the second must wait.
+    const runner = app.get(BarOptimiserRunner);
+    const run = runner.run.bind(runner) as BarOptimiserRunner['run'];
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const spy = jest
+      .spyOn(runner, 'run')
+      .mockImplementationOnce(async (...args) => {
+        await held;
+        return run(...args);
+      });
+
+    try {
+      // As the USER: Generate allows 6 a minute per user, and the admin
+      // has spent those by now.
+      const first = await api(userToken).post(generatePath('en')).expect(202);
+      expect((first.body as ReportStatus).job?.state).toBe('running');
+
+      const second = await api(userToken).post(generatePath('ar')).expect(202);
+      const queued = (second.body as ReportStatus).job;
+      expect(queued).toMatchObject({ state: 'queued', queuePosition: 0 });
+      expect(queued?.groups.every((g) => g.state === 'waiting')).toBe(true);
+
+      // Generate again while it waits: the same job, not a second one.
+      const again = await api(userToken).post(generatePath('ar')).expect(202);
+      expect((again.body as ReportStatus).job).toMatchObject({
+        state: 'queued',
+        startedAt: queued?.startedAt,
+      });
+      expect((await status('ar')).job).toMatchObject({
+        state: 'queued',
+        queuePosition: 0,
+      });
+    } finally {
+      release();
+      spy.mockRestore();
+    }
+
+    expect(await settled('en')).toMatchObject({ state: 'fresh', job: null });
+    expect(await settled('ar')).toMatchObject({ state: 'fresh', job: null });
+  });
+
+  it('reports a queued job whose server died as failed too', async () => {
+    await controlPlane.query(
+      `UPDATE "${schemaName}".report_cache
+          SET job_state = 'queued', job_started_at = now() - interval '5 minutes',
+              job_progress = '{"groups": []}', updated_at = now() - interval '5 minutes'
+        WHERE project_id = $1 AND language = 'en'`,
+      [projectId],
+    );
+    expect((await status()).job).toMatchObject({
+      state: 'failed',
+      error: 'interrupted',
+      queuePosition: null,
+    });
   });
 
   it('rejects an unknown language', async () => {

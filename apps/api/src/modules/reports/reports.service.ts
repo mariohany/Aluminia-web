@@ -24,6 +24,7 @@ import {
   windowStampsOf,
   type ReportInputs,
 } from './report-inputs';
+import { ReportJobQueue, jobQueueKey } from './report-job-queue';
 import {
   JOB_ORPHANED_AFTER_MS,
   ReportJobService,
@@ -46,6 +47,7 @@ export class ReportsService {
     @InjectRepository(SystemCatalog)
     private readonly platformCatalogs: Repository<SystemCatalog>,
     private readonly jobs: ReportJobService,
+    private readonly queue: ReportJobQueue,
   ) {}
 
   getSettings(): Promise<CuttingSettings> {
@@ -113,7 +115,9 @@ export class ReportsService {
       const pieces = buildProjectPieces(inputs);
       const fingerprint = fingerprintOf(inputs, language);
       const startedAt = new Date();
-      row.jobState = 'running';
+      // `running` when it will start at once, so an idle server never
+      // flashes "Queued"; toStatus trusts the queue over the row anyway.
+      row.jobState = this.queue.hasFreeSlot() ? 'running' : 'queued';
       row.jobFingerprint = fingerprint;
       row.jobProgress = { groups: initialProgress(pieces) };
       row.jobStartedAt = startedAt;
@@ -137,7 +141,17 @@ export class ReportsService {
     });
 
     // After the commit, so the job's first write finds its row reserved.
-    if (job) this.jobs.start(job);
+    // start() joins the line at once, so its place is known right here.
+    const started = job as ReportJob | null;
+    if (started) {
+      this.jobs.start(started);
+      const queuePosition = this.queue.positionOf(
+        jobQueueKey(started.cacheId, started.startedAt),
+      );
+      if (status.job && queuePosition !== null) {
+        status.job = { ...status.job, state: 'queued', queuePosition };
+      }
+    }
     return status;
   }
 
@@ -183,7 +197,10 @@ export class ReportsService {
     language: ReportLanguage,
   ): Promise<ReportStatus> {
     // A job whose server died never finishes: mark it failed (D22).
-    if (row?.jobState === 'running' && !isAlive(row)) {
+    if (
+      (row?.jobState === 'queued' || row?.jobState === 'running') &&
+      !isAlive(row)
+    ) {
       row.jobState = 'failed';
       row.jobError = 'interrupted';
       await manager.save(row);
@@ -205,6 +222,12 @@ export class ReportsService {
           )[0]?.has,
         )
       : false;
+    // While this instance holds the job in its line, it is queued,
+    // whatever the row says (C4, C6).
+    const queuePosition =
+      row?.jobStartedAt && row.jobState !== 'failed'
+        ? this.queue.positionOf(jobQueueKey(row.id, row.jobStartedAt))
+        : null;
     const progress = row?.jobProgress as {
       groups?: ReportProgressGroup[];
     } | null;
@@ -224,10 +247,10 @@ export class ReportsService {
       job:
         row?.jobState && row.jobStartedAt
           ? {
-              state: row.jobState,
+              state: queuePosition !== null ? 'queued' : row.jobState,
               startedAt: row.jobStartedAt.toISOString(),
               groups: progress?.groups ?? [],
-              queuePosition: null,
+              queuePosition,
               error: row.jobError,
             }
           : null,
@@ -245,10 +268,11 @@ function findRow(
   });
 }
 
-/** Running, and touched recently enough that its server is still alive. */
+/** Queued or running, and touched recently enough that its server is
+ * still alive (a waiting job heartbeats too). */
 function isAlive(row: ReportCache): boolean {
   return (
-    row.jobState === 'running' &&
+    (row.jobState === 'queued' || row.jobState === 'running') &&
     Date.now() - row.updatedAt.getTime() < JOB_ORPHANED_AFTER_MS
   );
 }

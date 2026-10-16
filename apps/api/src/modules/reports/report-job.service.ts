@@ -1,11 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { ReportLanguage, ReportProgressGroup } from '@repo/types/reports';
+import type { Env } from '../../config/env.schema';
 import { ReportCache } from '../../database/tenant/entities/report-cache.entity';
 import { TenantConnectionService } from '../tenancy/tenant-connection.service';
 import { MEMBER_ORDER, profileQueue } from './bar-optimiser/project';
 import { BarOptimiserRunner } from './bar-optimiser/runner';
 import { PdfRenderer } from './pdf/pdf-renderer.service';
 import { footerTemplate, renderBarOptimiserHtml } from './pdf/template';
+import { ReportJobQueue, jobQueueKey } from './report-job-queue';
 import {
   profileNoOf,
   summaryOf,
@@ -17,7 +20,9 @@ import {
 // request reserves the cache row and returns; this runs the optimiser
 // (off the event loop, BarOptimiserRunner) and writes progress, then the
 // result, back to that row through TenantConnectionService — the request
-// and its TenantContextService are long gone by then.
+// and its TenantContextService are long gone by then. A job waits in
+// ReportJobQueue for a free slot first (docs/report_queue_planing.md),
+// heartbeating all along so a waiting job isn't taken for a dead one.
 
 /** While a job runs its row is touched this often… */
 export const JOB_HEARTBEAT_MS = 15_000;
@@ -63,13 +68,21 @@ export function initialProgress(pieces: ProjectPieces): ReportProgressGroup[] {
 export class ReportJobService {
   private readonly logger = new Logger(ReportJobService.name);
 
+  private readonly solveTimeoutMs: number;
+
   constructor(
     private readonly connection: TenantConnectionService,
     private readonly runner: BarOptimiserRunner,
     private readonly pdfRenderer: PdfRenderer,
-  ) {}
+    private readonly queue: ReportJobQueue,
+    config: ConfigService<Env, true>,
+  ) {
+    this.solveTimeoutMs =
+      config.get('REPORT_SOLVE_TIMEOUT_MINUTES', { infer: true }) * 60_000;
+  }
 
-  /** Fire and forget: failures land on the row as `job_state = failed`. */
+  /** Fire and forget: the job waits for a slot, then runs; failures land
+   * on the row as `job_state = failed`. */
   start(job: ReportJob): void {
     void this.run(job);
   }
@@ -90,6 +103,23 @@ export class ReportJobService {
     const heartbeat = setInterval(() => persist({}), JOB_HEARTBEAT_MS);
     heartbeat.unref();
 
+    // Settles when the job's turn has come and gone.
+    await new Promise<void>((resolve) =>
+      this.queue.enqueue(jobQueueKey(job.cacheId, job.startedAt), () =>
+        this.work(job, groups, persist).finally(resolve),
+      ),
+    );
+    clearInterval(heartbeat);
+    await writes;
+  }
+
+  /** The job's turn: solve, print, store. Never throws. */
+  private async work(
+    job: ReportJob,
+    groups: ReturnType<typeof initialProgress>,
+    persist: (patch: Partial<ReportCache>) => void,
+  ): Promise<void> {
+    persist({ jobState: 'running' });
     try {
       const result = await this.runner.run(
         job.pieces.pieces,
@@ -113,6 +143,7 @@ export class ReportJobService {
           }
           persist({ jobProgress: { groups: groups.map((g) => ({ ...g })) } });
         },
+        this.solveTimeoutMs,
       );
       const summary = summaryOf(job.inputs, job.pieces, result);
       const generatedAt = new Date();
@@ -139,9 +170,7 @@ export class ReportJobService {
         }),
         footerTemplate(),
       );
-      clearInterval(heartbeat);
-      await writes;
-      await this.update(job, {
+      persist({
         fingerprint: job.fingerprint,
         windowStamps: job.windowStamps,
         summary,
@@ -156,16 +185,9 @@ export class ReportJobService {
         jobError: null,
       });
     } catch (error) {
-      clearInterval(heartbeat);
-      await writes;
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Bar optimiser report failed: ${message}`);
-      await this.update(job, { jobState: 'failed', jobError: message }).catch(
-        (writeError: unknown) =>
-          this.logger.error(
-            `Could not record the failed report job: ${String(writeError)}`,
-          ),
-      );
+      persist({ jobState: 'failed', jobError: message });
     }
   }
 

@@ -83,10 +83,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/puppeteer
-          key: puppeteer-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: puppeteer-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Chrome
-        run: npx --workspace=apps/api puppeteer browsers install chrome
+        run: npx --workspace=apps/api puppeteer browsers install chrome-headless-shell
 
       # One suite at a time: the suites share one database, and in
       # parallel an intermittent HTTP "Parse Error" still shows up

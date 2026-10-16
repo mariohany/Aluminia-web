@@ -11,7 +11,11 @@ import puppeteer from 'puppeteer';
 
 const [, , htmlPath, footerPath, outPath] = process.argv;
 
+// chrome-headless-shell in one process: the same PDF in less than half
+// the memory of full Chrome (583 → 267 MB on Linux;
+// docs/report_queue_planing.md §1, C9).
 const browser = await puppeteer.launch({
+  headless: 'shell',
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
   args: [
     '--no-sandbox',
@@ -19,6 +23,8 @@ const browser = await puppeteer.launch({
     '--disable-dev-shm-usage',
     '--disable-gpu',
     '--font-render-hinting=none',
+    '--single-process',
+    '--no-zygote',
   ],
 });
 try {

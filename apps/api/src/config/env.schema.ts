@@ -43,7 +43,7 @@ export const envSchema = z.object({
 
   // The Chrome the bar optimiser report prints its PDF with
   // (docs/reports_planing.md §8). Optional: Puppeteer finds the Chrome it
-  // downloaded (`npx puppeteer browsers install chrome`) by itself; set
+  // downloaded (`npx puppeteer browsers install chrome-headless-shell`) by itself; set
   // this only to use another binary.
   PUPPETEER_EXECUTABLE_PATH: z.string().min(1).optional(),
 });

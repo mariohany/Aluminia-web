@@ -19,7 +19,7 @@ services:
     # npm here doesn't run install scripts, so Puppeteer's download is
     # explicit, into PUPPETEER_CACHE_DIR below — inside the project, so it
     # is still there at runtime (Render keeps only the project folder).
-    buildCommand: npm ci --include=dev && npm run build --workspace=apps/api && npx --workspace=apps/api puppeteer browsers install chrome
+    buildCommand: npm ci --include=dev && npm run build --workspace=apps/api && npx --workspace=apps/api puppeteer browsers install chrome-headless-shell
     # Free plan has no pre-deploy step, so migrations run before start.
     # The API refuses to boot with pending migrations anyway.
     startCommand: npm run migrate:all --workspace=apps/api && npm run start:prod --workspace=apps/api

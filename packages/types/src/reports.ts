@@ -142,9 +142,15 @@ export interface ReportProgressGroup {
 }
 
 export interface ReportJobStatus {
-  state: 'running' | 'failed'
+  /** `queued`: waiting for a free slot (docs/report_queue_planing.md C1). */
+  state: 'queued' | 'running' | 'failed'
   startedAt: string
   groups: ReportProgressGroup[]
+  /** While queued: how many jobs are ahead of this one (0 = next). `null`
+   * when not queued, or when another API instance holds the job (C4, C6). */
+  queuePosition: number | null
+  /** `interrupted` (its server died), `timeout` (the solve ran past the
+   * safety cap, C5), or the failure's message. */
   error: string | null
 }
 

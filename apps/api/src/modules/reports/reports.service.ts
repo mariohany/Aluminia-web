@@ -227,6 +227,7 @@ export class ReportsService {
               state: row.jobState,
               startedAt: row.jobStartedAt.toISOString(),
               groups: progress?.groups ?? [],
+              queuePosition: null,
               error: row.jobError,
             }
           : null,

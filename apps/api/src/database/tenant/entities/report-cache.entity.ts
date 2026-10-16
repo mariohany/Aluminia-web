@@ -17,7 +17,7 @@ import { Project } from './project.entity';
  * stale (D14), and `windowStamps` (window id → updated_at) says how many
  * windows changed (D15). The background job building the next version
  * (D22) keeps its state on the same row, so the previous PDF stays
- * readable meanwhile: `jobState` running/failed, `jobFingerprint` the
+ * readable meanwhile: `jobState` queued/running/failed, `jobFingerprint` the
  * inputs it is building, `jobProgress` per member group.
  */
 @Entity('report_cache')
@@ -64,7 +64,7 @@ export class ReportCache {
   generatedByUserId: string | null;
 
   @Column({ name: 'job_state', type: 'varchar', length: 10, nullable: true })
-  jobState: 'running' | 'failed' | null;
+  jobState: 'queued' | 'running' | 'failed' | null;
 
   @Column({ name: 'job_fingerprint', type: 'char', length: 64, nullable: true })
   jobFingerprint: string | null;

@@ -51,6 +51,11 @@ services:
       # runtime. Must be under /opt/render/project to survive the build.
       - key: PUPPETEER_CACHE_DIR
         value: /opt/render/project/.cache/puppeteer
+      # One report job at a time (docs/report_queue_planing.md C1): the
+      # container may report the host's CPUs, so the auto count can't be
+      # trusted here. 512 MB can't reliably print the PDF anyway (C10).
+      - key: REPORT_MAX_CONCURRENT
+        value: '1'
 
   - type: keyvalue
     name: aluminia-redis

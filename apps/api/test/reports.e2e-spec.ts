@@ -496,6 +496,44 @@ describe('Reports (e2e)', () => {
     expect(await settled('ar')).toMatchObject({ state: 'fresh', job: null });
   });
 
+  it('cancels a queued job, but not one that has started', async () => {
+    const runner = app.get(BarOptimiserRunner);
+    const run = runner.run.bind(runner) as BarOptimiserRunner['run'];
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const spy = jest
+      .spyOn(runner, 'run')
+      .mockImplementationOnce(async (...args) => {
+        await held;
+        return run(...args);
+      });
+    const cancelPath = (lang: string) =>
+      `/projects/${projectId}/reports/bar-optimiser/cancel?lang=${lang}`;
+
+    try {
+      await api(userToken).post(generatePath('en')).expect(202);
+      const queued = await api(userToken).post(generatePath('ar')).expect(202);
+      expect((queued.body as ReportStatus).job?.state).toBe('queued');
+
+      const cancelled = await api().post(cancelPath('ar')).expect(200);
+      expect((cancelled.body as ReportStatus).job).toBeNull();
+      expect((await status('ar')).job).toBeNull();
+
+      // The running one runs to the end (D22).
+      await api().post(cancelPath('en')).expect(409);
+    } finally {
+      release();
+      spy.mockRestore();
+    }
+
+    expect(await settled('en')).toMatchObject({ state: 'fresh', job: null });
+    // Cancelled: nothing ran for Arabic, and nothing will.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect((await status('ar')).job).toBeNull();
+    // Nothing to cancel is not an error.
+    await api().post(cancelPath('ar')).expect(200);
+  });
+
   it('reports a queued job whose server died as failed too', async () => {
     await controlPlane.query(
       `UPDATE "${schemaName}".report_cache

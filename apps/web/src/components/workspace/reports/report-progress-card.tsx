@@ -1,14 +1,23 @@
 import { useTranslation } from 'react-i18next'
-import { Circle, CircleCheck, LoaderCircle } from 'lucide-react'
+import { Circle, CircleCheck, Hourglass, LoaderCircle } from 'lucide-react'
 import type { ReportProgressGroup } from '@repo/types/reports'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 /** The background run's progress, one line per member group
  * (docs/reports_planing.md D22). Once every group is done the job is
- * writing the PDF. */
-export function ReportProgressCard({ groups }: { groups: ReportProgressGroup[] }) {
+ * writing the PDF. While it waits for a slot (`queued`), the title says
+ * how many reports are ahead and it can be cancelled
+ * (docs/report_queue_planing.md C4, C8). */
+export function ReportProgressCard({
+  groups,
+  queued,
+}: {
+  groups: ReportProgressGroup[]
+  queued?: { position: number | null; onCancel: () => void; cancelling: boolean }
+}) {
   const { t } = useTranslation('reports')
-  const writingPdf = groups.length > 0 && groups.every((g) => g.state === 'done')
+  const writingPdf = !queued && groups.length > 0 && groups.every((g) => g.state === 'done')
 
   return (
     <div
@@ -16,7 +25,16 @@ export function ReportProgressCard({ groups }: { groups: ReportProgressGroup[] }
       aria-live="polite"
       className="flex w-[min(380px,calc(100%-2rem))] flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-lg"
     >
-      <p className="text-sm font-semibold">{t('progress.title')}</p>
+      {queued ? (
+        <p className="flex items-center gap-2 text-sm font-semibold">
+          <Hourglass className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          {queued.position
+            ? t('progress.queuedAhead', { count: queued.position })
+            : t('progress.queuedNext')}
+        </p>
+      ) : (
+        <p className="text-sm font-semibold">{t('progress.title')}</p>
+      )}
       <ul className="flex flex-col gap-2">
         {groups.map((group) => (
           <li key={group.member} className="flex items-center gap-2.5 text-[13px]">
@@ -50,7 +68,16 @@ export function ReportProgressCard({ groups }: { groups: ReportProgressGroup[] }
           {t('progress.rendering')}
         </p>
       )}
-      <p className="text-[11.5px] text-muted-foreground">{t('progress.note')}</p>
+      {queued ? (
+        <div className="flex items-center gap-3">
+          <p className="flex-1 text-[11.5px] text-muted-foreground">{t('progress.queuedNote')}</p>
+          <Button variant="outline" size="sm" className="h-7" disabled={queued.cancelling} onClick={queued.onCancel}>
+            {t('progress.cancel')}
+          </Button>
+        </div>
+      ) : (
+        <p className="text-[11.5px] text-muted-foreground">{t('progress.note')}</p>
+      )}
     </div>
   )
 }

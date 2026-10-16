@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { EntityManager, Repository } from 'typeorm';
 import {
@@ -153,6 +157,43 @@ export class ReportsService {
       }
     }
     return status;
+  }
+
+  /** Cancels a job still waiting for a slot (docs/report_queue_planing.md
+   * C8): out of the line, job fields cleared, so the previous report (if
+   * any) shows again. A started job can't be cancelled (D22): 409. No job
+   * at all is not an error. */
+  cancel(projectId: string, language: ReportLanguage): Promise<ReportStatus> {
+    return this.tenantContext.run(async (manager) => {
+      const inputs = await this.inputs(manager, projectId);
+      const row = await manager
+        .createQueryBuilder(ReportCache, 'r')
+        .setLock('pessimistic_write')
+        .where(
+          'r.project_id = :projectId AND r.report_kind = :kind AND r.language = :language',
+          { projectId, kind: KIND, language },
+        )
+        .getOne();
+
+      if (row?.jobStartedAt && isAlive(row)) {
+        const removed = this.queue.remove(
+          jobQueueKey(row.id, row.jobStartedAt),
+        );
+        if (!removed) {
+          throw new ConflictException(
+            'This report has already started and runs to the end.',
+          );
+        }
+        row.jobState = null;
+        row.jobFingerprint = null;
+        row.jobProgress = null;
+        row.jobStartedAt = null;
+        row.jobStartedByUserId = null;
+        row.jobError = null;
+        await manager.save(row);
+      }
+      return this.toStatus(manager, inputs, row, language);
+    });
   }
 
   pdf(

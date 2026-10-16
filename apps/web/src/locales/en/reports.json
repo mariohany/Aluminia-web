@@ -26,7 +26,9 @@
     "none": "Not generated yet",
     "running": "Generating…",
     "failed": "Generating failed — try again",
-    "interrupted": "Interrupted — generate again"
+    "interrupted": "Interrupted — generate again",
+    "queued": "Queued",
+    "timeout": "Took too long — try again"
   },
   "settingsLine": "{{lengths}} mm · kerf {{kerf}} · trim {{trim}} per end",
   "editSettings": "Edit",
@@ -51,7 +53,12 @@
     "running": "{{done}} of {{total}} · {{profile}}",
     "waiting": "waiting",
     "rendering": "Writing the PDF…",
-    "note": "You can leave this page. It keeps running."
+    "note": "You can leave this page. It keeps running.",
+    "queuedAhead_one": "Queued · {{count}} report ahead",
+    "queuedAhead_other": "Queued · {{count}} reports ahead",
+    "queuedNext": "Queued — starts when the server is free",
+    "queuedNote": "Starts automatically — you can leave this page.",
+    "cancel": "Cancel"
   },
   "members": {
     "frame": "Frames",
@@ -88,6 +95,8 @@
     "status": "Couldn't load the report.",
     "generate": "Couldn't start the report. Try again.",
     "pdf": "Couldn't load the PDF.",
-    "print": "Couldn't open the print dialog."
+    "print": "Couldn't open the print dialog.",
+    "cancel": "Couldn't cancel the report. Try again.",
+    "cancelStarted": "It has already started and will run to the end."
   }
 }

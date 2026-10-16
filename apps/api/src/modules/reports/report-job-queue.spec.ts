@@ -80,6 +80,31 @@ describe('ReportJobQueue', () => {
     expect(queue.hasFreeSlot()).toBe(false);
   });
 
+  it('removes a waiting job: it never runs, and the ones behind move up', async () => {
+    const queue = new ReportJobQueue(1);
+    const [a, b, c] = [gate(), gate(), gate()];
+    const removed = jest.fn();
+    queue.enqueue('a', a.task);
+    queue.enqueue('b', b.task, removed);
+    queue.enqueue('c', c.task);
+
+    expect(queue.remove('b')).toBe(true);
+    expect(removed).toHaveBeenCalledTimes(1);
+    expect(queue.positionOf('c')).toBe(0);
+
+    a.finish();
+    await tick();
+    expect(b.started).toBe(false);
+    expect(c.started).toBe(true);
+  });
+
+  it('cannot remove a job that has started or is unknown', () => {
+    const queue = new ReportJobQueue(1);
+    queue.enqueue('a', gate().task);
+    expect(queue.remove('a')).toBe(false);
+    expect(queue.remove('nope')).toBe(false);
+  });
+
   it('refuses fewer than one slot', () => {
     expect(() => new ReportJobQueue(0)).toThrow();
     expect(() => new ReportJobQueue(1.5)).toThrow();

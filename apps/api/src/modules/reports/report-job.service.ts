@@ -103,10 +103,13 @@ export class ReportJobService {
     const heartbeat = setInterval(() => persist({}), JOB_HEARTBEAT_MS);
     heartbeat.unref();
 
-    // Settles when the job's turn has come and gone.
+    // Settles when the job's turn has come and gone, or when it was
+    // cancelled while waiting (C8; the request clears the row).
     await new Promise<void>((resolve) =>
-      this.queue.enqueue(jobQueueKey(job.cacheId, job.startedAt), () =>
-        this.work(job, groups, persist).finally(resolve),
+      this.queue.enqueue(
+        jobQueueKey(job.cacheId, job.startedAt),
+        () => this.work(job, groups, persist).finally(resolve),
+        resolve,
       ),
     );
     clearInterval(heartbeat);

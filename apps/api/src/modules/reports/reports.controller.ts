@@ -66,6 +66,16 @@ export class ReportsController {
     return this.reports.generate(projectId, languageOf(lang), actor.id);
   }
 
+  /** Only a job still waiting for a slot (docs/report_queue_planing.md C8). */
+  @Post('projects/:projectId/reports/bar-optimiser/cancel')
+  @HttpCode(200)
+  cancel(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Query('lang') lang?: string,
+  ): Promise<ReportStatus> {
+    return this.reports.cancel(projectId, languageOf(lang));
+  }
+
   @Get('projects/:projectId/reports/bar-optimiser/pdf')
   async pdf(
     @Param('projectId', ParseUUIDPipe) projectId: string,

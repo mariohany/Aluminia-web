@@ -7,7 +7,11 @@ type Task = () => Promise<unknown>;
 
 export class ReportJobQueue {
   private running = 0;
-  private readonly waiting: { key: string; task: Task }[] = [];
+  private readonly waiting: {
+    key: string;
+    task: Task;
+    onRemoved?: () => void;
+  }[] = [];
 
   constructor(readonly slots: number) {
     if (!Number.isInteger(slots) || slots < 1) {
@@ -20,10 +24,21 @@ export class ReportJobQueue {
     return this.running < this.slots && this.waiting.length === 0;
   }
 
-  /** Runs `task` when a slot is free; a failing task still frees it. */
-  enqueue(key: string, task: Task): void {
-    this.waiting.push({ key, task });
+  /** Runs `task` when a slot is free; a failing task still frees it.
+   * `onRemoved` is called instead if the job is taken out of the line. */
+  enqueue(key: string, task: Task, onRemoved?: () => void): void {
+    this.waiting.push({ key, task, onRemoved });
     this.drain();
+  }
+
+  /** Takes a waiting job out of the line (cancel while queued, C8). False
+   * when it isn't waiting here: already started, finished, or elsewhere. */
+  remove(key: string): boolean {
+    const index = this.waiting.findIndex((w) => w.key === key);
+    if (index === -1) return false;
+    const [removed] = this.waiting.splice(index, 1);
+    removed.onRemoved?.();
+    return true;
   }
 
   /** Jobs ahead of `key` in the line (0 = next), or null if it isn't

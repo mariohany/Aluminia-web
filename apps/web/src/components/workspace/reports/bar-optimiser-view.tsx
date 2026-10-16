@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import {
   CircleCheck,
   Download,
+  Hourglass,
   LoaderCircle,
   Printer,
   RefreshCw,
@@ -13,12 +14,15 @@ import {
 } from 'lucide-react'
 import { ReportLanguage, type ReportStatus } from '@repo/types/reports'
 import { Button } from '@/components/ui/button'
+import { ApiError } from '@/lib/api-client'
 import { downloadPdf, printPdf } from '@/lib/pdf-file'
 import {
   useBarOptimiserPdfQuery,
   useBarOptimiserStatusQuery,
+  useCancelBarOptimiserMutation,
   useCuttingSettingsQuery,
   useGenerateBarOptimiserMutation,
+  isJobActive,
 } from '@/lib/reports-queries'
 import { cn } from '@/lib/utils'
 import { CuttingSettingsPopover } from './cutting-settings-popover'
@@ -34,7 +38,9 @@ const DEFAULT_ZOOM = 0.85
  * settings line and status above, a floating toolbar (zoom, page,
  * EN/عربي, regenerate, print, download), and the PDF itself, drawn by
  * pdf.js. Generating runs in the background (D22): the progress card
- * shows over the previous PDF, which stays visible, dimmed.
+ * shows over the previous PDF, which stays visible, dimmed. A job waiting
+ * for a slot shows the same card, queued, with Cancel
+ * (docs/report_queue_planing.md C4, C8).
  */
 export function BarOptimiserView({
   projectId,
@@ -55,14 +61,26 @@ export function BarOptimiserView({
   const statusQuery = useBarOptimiserStatusQuery(projectId, lang)
   const settingsQuery = useCuttingSettingsQuery()
   const generate = useGenerateBarOptimiserMutation(projectId, lang)
+  const cancel = useCancelBarOptimiserMutation(projectId, lang)
   const status = statusQuery.data
-  const running = status?.job?.state === 'running'
+  // Queued or running: either way a job is on its way.
+  const running = isJobActive(status)
+  const queued = status?.job?.state === 'queued'
   const pdfQuery = useBarOptimiserPdfQuery(projectId, lang, status?.generatedAt, !!status?.hasPdf)
   const pdf = pdfQuery.data
 
   const startGenerate = useCallback(() => {
     generate.mutate(undefined, { onError: () => toast.error(t('errors.generate')) })
   }, [generate, t])
+
+  const cancelQueued = useCallback(() => {
+    cancel.mutate(undefined, {
+      onError: (error) =>
+        toast.error(
+          error instanceof ApiError && error.status === 409 ? t('errors.cancelStarted') : t('errors.cancel'),
+        ),
+    })
+  }, [cancel, t])
 
   const onVisiblePage = useCallback((n: number) => setPage(n), [])
   const fileName = `${slug(projectName)}-bar-optimiser-${lang}.pdf`
@@ -214,7 +232,14 @@ export function BarOptimiserView({
 
             {running && status.job && (
               <div className="absolute inset-x-0 top-6 flex justify-center">
-                <ReportProgressCard groups={status.job.groups} />
+                <ReportProgressCard
+                  groups={status.job.groups}
+                  queued={
+                    queued
+                      ? { position: status.job.queuePosition, onCancel: cancelQueued, cancelling: cancel.isPending }
+                      : undefined
+                  }
+                />
               </div>
             )}
           </>
@@ -228,6 +253,14 @@ function StatusChip({ status }: { status: ReportStatus }) {
   const { t, i18n } = useTranslation('reports')
   const base = 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium'
 
+  if (status.job?.state === 'queued') {
+    return (
+      <span className={cn(base, 'bg-muted text-muted-foreground')}>
+        <Hourglass className="size-3.5" aria-hidden="true" />
+        {t('status.queued')}
+      </span>
+    )
+  }
   if (status.job?.state === 'running') {
     return (
       <span className={cn(base, 'bg-muted text-muted-foreground')}>
@@ -240,7 +273,11 @@ function StatusChip({ status }: { status: ReportStatus }) {
     return (
       <span className={cn(base, 'bg-destructive/10 text-destructive')}>
         <TriangleAlert className="size-3.5" aria-hidden="true" />
-        {status.job.error === 'interrupted' ? t('status.interrupted') : t('status.failed')}
+        {status.job.error === 'interrupted'
+          ? t('status.interrupted')
+          : status.job.error === 'timeout'
+            ? t('status.timeout')
+            : t('status.failed')}
       </span>
     )
   }

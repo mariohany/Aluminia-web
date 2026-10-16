@@ -27,6 +27,12 @@ export function generateBarOptimiser(projectId: string, lang: ReportLanguage): P
   return apiFetch<ReportStatus>(`${barOptimiserPath(projectId)}/generate?lang=${lang}`, { method: 'POST' })
 }
 
+/** Cancels a job still waiting for a slot; 409 once it has started
+ * (docs/report_queue_planing.md C8). */
+export function cancelBarOptimiser(projectId: string, lang: ReportLanguage): Promise<ReportStatus> {
+  return apiFetch<ReportStatus>(`${barOptimiserPath(projectId)}/cancel?lang=${lang}`, { method: 'POST' })
+}
+
 export function getBarOptimiserPdf(projectId: string, lang: ReportLanguage): Promise<Blob> {
   return apiFetch<Blob>(`${barOptimiserPath(projectId)}/pdf?lang=${lang}`, { responseType: 'blob' })
 }

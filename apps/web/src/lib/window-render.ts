@@ -21,13 +21,14 @@ import {
   type PanelPlacement,
   type WindowPart,
   type WindowSectionLayoutInput,
-} from '@/lib/window-geometry'
-import { resolveProfileMetrics, type ProfileMetrics } from '@/lib/profile-metrics'
+} from '@repo/geometry/window-geometry'
+import type { ProfileMetrics } from '@repo/geometry/profile-metrics'
+import { resolvePanelGeometry } from '@repo/geometry/panel-geometry'
 import { collectPanelIssues, collectWindowIssues, type WindowIssue } from '@/lib/window-weight'
-import { headBendRadiusMm } from '@/lib/arch-geometry'
-import { dividerProblems, resolveDividers } from '@/lib/dividers'
+import { headBendRadiusMm } from '@repo/geometry/arch-geometry'
+import { dividerProblems, resolveDividers } from '@repo/geometry/dividers'
 import { radiusFromSag } from '@/lib/divider-draw'
-import { isFixedOnlyLight, lightPitch, panelLights, withAlignedSections } from '@/lib/panel-lights'
+import { isFixedOnlyLight, lightPitch, panelLights } from '@repo/geometry/panel-lights'
 import type { IssueLight } from '@/lib/window-weight'
 
 /** The bead allowance subtracted from a sash's max glass thickness to
@@ -223,9 +224,7 @@ export function useResolvedPanels(
       ? profilesQuery.data?.find((p) => formatScopedRef(p.scope, p.id) === given.dividerProfile)
       : undefined
     const systemType = frameCatalog?.systemType ?? null
-    const showDoor = systemType === SystemType.HINGED
-    const metrics = resolveProfileMetrics(given.frameProfile)
-    const panel = withAlignedSections(null, given, { metrics, doorSill: given.isDoor && showDoor })
+    const { panel, metrics, showDoor } = resolvePanelGeometry(given, systemType)
     const flyScreenAllowed = frame?.acceptsFlyScreen ?? false
 
     const shown = face === 'interior' ? panel.interiorColor : panel.exteriorColor

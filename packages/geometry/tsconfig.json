@@ -1,0 +1,16 @@
+{
+  "extends": "@repo/typescript-config/base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    // Relative imports inside this package carry their `.ts` extension:
+    // the API loads these files at runtime through Node's type stripping,
+    // which needs the real file name (docs/reports_planing.md §5).
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    // Same checks the web app compiled this code under before the move.
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

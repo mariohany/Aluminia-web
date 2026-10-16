@@ -164,7 +164,9 @@ export function WorkspaceLayout() {
   const { pathname } = useLocation()
   const onManage = pathname.startsWith('/workspace/manage')
   const onData = pathname.startsWith('/workspace/data')
-  const outsideProjectsSection = onManage || onData
+  // Reports brings its own read-only tree and report list (reports-page.tsx).
+  const onReports = pathname.startsWith('/workspace/reports')
+  const outsideProjectsSection = onManage || onData || onReports
 
   // Loaded once here, at the shell, rather than per page: the tree is
   // permanent chrome, so a page-level fetch would refetch it on every

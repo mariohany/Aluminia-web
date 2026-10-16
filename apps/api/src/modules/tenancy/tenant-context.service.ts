@@ -45,6 +45,15 @@ export class TenantContextService {
   }
 
   /**
+   * This request's tenant. For handing the schema to work that outlives
+   * the request (the report job, docs/reports_planing.md §7), which then
+   * goes through `TenantConnectionService` directly.
+   */
+  get tenant(): ResolvedTenant {
+    return this.getResolvedTenant();
+  }
+
+  /**
    * Runs `work` inside this request's tenant schema.
    *
    * On the first call per request, also confirms the schema's own

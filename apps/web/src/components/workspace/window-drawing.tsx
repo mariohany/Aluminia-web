@@ -19,7 +19,7 @@ import {
   type PanelSide,
   type RectMm,
   type WindowPart,
-} from '@/lib/window-geometry'
+} from '@repo/geometry/window-geometry'
 import { sectionRenderFor, type PanelRender } from '@/lib/window-render'
 import { cn } from '@/lib/utils'
 import {
@@ -56,13 +56,13 @@ import {
   SECTION_LETTER_FILL,
   fixedSymbolCross,
 } from '@/components/workspace/window-shapes'
-import { insetHeadOutline, type PointMm } from '@/lib/arch-geometry'
+import { insetHeadOutline, type PointMm } from '@repo/geometry/arch-geometry'
 import type { TranslatedIssue } from '@/lib/window-weight'
 import type { WindowDividerInput } from '@repo/types/windows'
-import { distanceToEdge, distanceToSegment, interiorPoint, pathPointAt, sagFromPoint, pointInPolygon, samplePath } from '@/lib/curves'
-import { findCrossings, magnetPoints, resolveDividers, zoneOf, type Crossing } from '@/lib/dividers'
-import { panelLights } from '@/lib/panel-lights'
-import { loopToSvgPath, visibleAngles } from '@/lib/light-graph'
+import { distanceToEdge, distanceToSegment, interiorPoint, pathPointAt, sagFromPoint, pointInPolygon, samplePath } from '@repo/geometry/curves'
+import { findCrossings, magnetPoints, resolveDividers, zoneOf, type Crossing } from '@repo/geometry/dividers'
+import { panelLights } from '@repo/geometry/panel-lights'
+import { loopToSvgPath, visibleAngles } from '@repo/geometry/light-graph'
 import { DividerDrawLayer } from '@/components/workspace/divider-draw-layer'
 
 /** Real magnet radius (unlike the exact-mm-only edge-position guide,

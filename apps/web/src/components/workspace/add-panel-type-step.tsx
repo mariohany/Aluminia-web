@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { RectangleHorizontal, SeparatorHorizontal } from 'lucide-react'
-import type { PanelSide } from '@/lib/window-geometry'
+import type { PanelSide } from '@repo/geometry/window-geometry'
 import { useAddPanelCardPosition } from '@/lib/add-panel-popover'
 import { cn } from '@/lib/utils'
 

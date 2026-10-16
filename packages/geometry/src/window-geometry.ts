@@ -1,11 +1,11 @@
 import { SystemType } from '@repo/types/lookups'
 import { HingedOpeningType, HeadShape, SectionKind } from '@repo/types/windows'
 import type { SlidingLayoutInput, SlidingOpeningType } from '@repo/types/sliding'
-import { insetHeadOutline, normalizeHeadRise, type HeadOutline } from '@/lib/arch-geometry'
-import { samplePath, type Seg } from '@/lib/curves'
-import { frameGeometry, resolveDividers, type DividerLike, type MemberAxis } from '@/lib/dividers'
-import { buildLightGraph, insetLoop } from '@/lib/light-graph'
-import type { ProfileMetrics } from '@/lib/profile-metrics'
+import { insetHeadOutline, normalizeHeadRise, type HeadOutline } from './arch-geometry.ts'
+import { samplePath, type Seg } from './curves.ts'
+import { frameGeometry, resolveDividers, type DividerLike, type MemberAxis } from './dividers.ts'
+import { buildLightGraph, insetLoop } from './light-graph.ts'
+import type { ProfileMetrics } from './profile-metrics.ts'
 
 // Every band width (frame face, sash face, bead, bars, dividers) comes
 // in through `ProfileMetrics` (profile-metrics.ts) — resolved once per
@@ -72,6 +72,15 @@ export interface WindowPart {
   dividerAxis?: MemberAxis
   /** On a `divider` part: its cut length (light-graph.ts band). */
   cutLengthMm?: number
+  /** On a rectangular or arched `glass` part: the opening its glazing
+   * beads line — a fixed light's clear opening, or the rebate inside a
+   * sash (sash inset by `sashFace − beadFace`). A shaped arch light
+   * carries `clearOutline` instead. Read by the cut list (cut-list.ts),
+   * never drawn. */
+  beadOpening?: HeadOutline
+  /** With `beadOpening`: `false` when there is no bottom bead — a hinged
+   * door's fixed light runs to the floor with no sill. */
+  beadSill?: boolean
 }
 
 /** One grid cell's worth of layout input — everything `buildWindowLayout`
@@ -359,6 +368,7 @@ function buildSectionParts(
     // A fixed-mullion type still splits the light with its bar — the
     // bar is between the lights, sash or no sash.
     const glassRects = mullionAxis ? splitRectWithMullion(opening, mullionAxis, metrics.sashBarFace) : [opening]
+    const beadOpening: HeadOutline = archOutline ?? { rect: clearRect, shape: HeadShape.FLAT, riseMm: 0 }
     glassRects.forEach((glassRect, lightIndex) => {
       parts.push({
         id: `s${sectionIndex}:glass-0-${lightIndex}`,
@@ -368,6 +378,8 @@ function buildSectionParts(
         sectionIndex,
         rectMm: glassRect,
         head: glassOutline ? { shape: glassOutline.shape, riseMm: glassOutline.riseMm } : undefined,
+        beadOpening,
+        beadSill: !skipBottomInset,
       })
     })
     return
@@ -413,6 +425,11 @@ function buildSectionParts(
     // which already gets two real sashes above) keeps the usual one
     // light per sash.
     const glassRects = mullionAxis ? splitRectWithMullion(opening, mullionAxis, metrics.sashBarFace) : [opening]
+    // The sash face includes the bead strip, so the beads line the sash
+    // inset by everything but the bead.
+    const rebate = Math.max(metrics.sashFace - metrics.beadFace, 0)
+    const beadOpening: HeadOutline =
+      useArch && sashOutline ? insetHeadOutline(sashOutline, rebate) : { rect: insetRect(rect, rebate), shape: HeadShape.FLAT, riseMm: 0 }
     glassRects.forEach((glassRect, lightIndex) => {
       parts.push({
         id: `s${sectionIndex}:glass-${index}-${lightIndex}`,
@@ -422,6 +439,8 @@ function buildSectionParts(
         sectionIndex,
         rectMm: glassRect,
         head: useArch && glassOutline ? { shape: glassOutline.shape, riseMm: glassOutline.riseMm } : undefined,
+        beadOpening,
+        beadSill: true,
       })
     })
   })

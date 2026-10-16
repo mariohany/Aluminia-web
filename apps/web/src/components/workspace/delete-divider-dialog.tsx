@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { PointMm } from '@/lib/arch-geometry'
+import type { PointMm } from '@repo/geometry/arch-geometry'
 import {
   AlertDialog,
   AlertDialogAction,

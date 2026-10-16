@@ -54,22 +54,7 @@ export class WindowsService {
 
   list(projectId: string): Promise<WindowSummary[]> {
     return this.tenantContext.run(async (manager) => {
-      const windows = await manager.find(Window, {
-        where: { projectId },
-        // TypeORM does not cascade a nested relation just because the
-        // parent one is requested — `panels: true` alone loads every
-        // panel with `sections: undefined`, not `[]`, so `panels:
-        // { sections: true }` is required here too.
-        relations: { panels: { sections: true, dividers: true } },
-        order: {
-          name: 'ASC',
-          panels: {
-            position: 'ASC',
-            sections: { position: 'ASC' },
-            dividers: { position: 'ASC' },
-          },
-        },
-      });
+      const windows = await findProjectWindows(manager, projectId);
       return windows.map(toSummary);
     });
   }
@@ -142,6 +127,12 @@ export class WindowsService {
         window.widthMm = outer.widthMm;
         window.heightMm = outer.heightMm;
       }
+
+      // Set explicitly: when only `panels` changed, the window row's own
+      // columns are unchanged and TypeORM would skip the UPDATE, leaving
+      // `updated_at` behind. The bar optimiser's cache keys on it
+      // (docs/reports_planing.md §6), so every edit must move it.
+      window.updatedAt = new Date();
 
       try {
         await manager.save(window);
@@ -620,6 +611,40 @@ function orderedSections(panel: WindowPanel): WindowSection[] {
 
 function orderedDividers(panel: WindowPanel): WindowDivider[] {
   return [...(panel.dividers ?? [])].sort((a, b) => a.position - b.position);
+}
+
+/** Every window of a project with its panels, sections and dividers,
+ * in name order (panels/sections/dividers by position). */
+function findProjectWindows(
+  manager: EntityManager,
+  projectId: string,
+): Promise<Window[]> {
+  return manager.find(Window, {
+    where: { projectId },
+    // TypeORM does not cascade a nested relation just because the
+    // parent one is requested — `panels: true` alone loads every
+    // panel with `sections: undefined`, not `[]`, so `panels:
+    // { sections: true }` is required here too.
+    relations: { panels: { sections: true, dividers: true } },
+    order: {
+      name: 'ASC',
+      panels: {
+        position: 'ASC',
+        sections: { position: 'ASC' },
+        dividers: { position: 'ASC' },
+      },
+    },
+  });
+}
+
+/** A project's windows as details, inside the caller's tenant
+ * transaction — the bar optimiser report reads them alongside its own
+ * tables in one `run()` (docs/reports_planing.md §7). */
+export async function loadProjectWindows(
+  manager: EntityManager,
+  projectId: string,
+): Promise<WindowDetail[]> {
+  return (await findProjectWindows(manager, projectId)).map(toDetail);
 }
 
 function toSummary(window: Window): WindowSummary {

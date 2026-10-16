@@ -73,10 +73,10 @@ import {
   type AssemblyPanelInput,
   type PanelPlacement,
   type PanelSide,
-} from '@/lib/window-geometry'
-import { headBendRadiusMm, minGothicRiseMm, normalizeHeadRise, type PointMm } from '@/lib/arch-geometry'
-import { allMembers, anchorOn, bendDivider, dividerProblems, isFrameMember, moveEnd, planDelete, moveStraight, magnetPoints, resolveDividers, findCrossings, swapCrossing, zoneOf, type Crossing } from '@/lib/dividers'
-import { dist, pathProject } from '@/lib/curves'
+} from '@repo/geometry/window-geometry'
+import { headBendRadiusMm, minGothicRiseMm, normalizeHeadRise, type PointMm } from '@repo/geometry/arch-geometry'
+import { allMembers, anchorOn, bendDivider, dividerProblems, isFrameMember, moveEnd, planDelete, moveStraight, magnetPoints, resolveDividers, findCrossings, swapCrossing, zoneOf, type Crossing } from '@repo/geometry/dividers'
+import { dist, pathProject } from '@repo/geometry/curves'
 import { DeleteDividerDialog, type DeleteDividerRequest } from '@/components/workspace/delete-divider-dialog'
 import { defaultBowSign, radiusFromSag, sagFromRadius } from '@/lib/divider-draw'
 import {
@@ -95,8 +95,8 @@ import {
   withAlignedSections,
   withCuts,
   type PanelLightsContext,
-} from '@/lib/panel-lights'
-import { resolveProfileMetrics } from '@/lib/profile-metrics'
+} from '@repo/geometry/panel-lights'
+import { resolveProfileMetrics } from '@repo/geometry/profile-metrics'
 import { collectPanelIssues, collectWindowIssues, computeSashWeightKg, resolveGlassWeightPerSqm, type TranslatedIssue } from '@/lib/window-weight'
 import {
   AlertDialog,

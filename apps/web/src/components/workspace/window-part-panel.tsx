@@ -2,7 +2,7 @@ import { GlassKind, HeadShape, HingedOpeningType, SectionKind, type WindowSectio
 import type { SystemType } from '@repo/types/lookups'
 import type { SlidingLayoutInput } from '@repo/types/sliding'
 import type { ScopedRef } from '@repo/types/company-lookups'
-import type { WindowLayout } from '@/lib/window-geometry'
+import type { WindowLayout } from '@repo/geometry/window-geometry'
 import type { TranslatedIssue } from '@/lib/window-weight'
 import type { MergedSystemProfileSummary } from '@/lib/lookup-merge'
 import { PanelInspector } from '@/components/workspace/inspector/panel-inspector'

@@ -75,6 +75,19 @@ jobs:
       - name: Migrate
         run: npm run migrate:all --workspace=apps/api
 
+      # The reports e2e renders real PDFs with headless Chrome
+      # (docs/reports_planing.md §8, Q5). npm here doesn't run Puppeteer's
+      # install script, so the download is explicit — the same command
+      # render.yaml's build runs — and cached between runs.
+      - name: Cache Chrome
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chrome
+        run: npx --workspace=apps/api puppeteer browsers install chrome-headless-shell
+
       # One suite at a time: the suites share one database, and in
       # parallel an intermittent HTTP "Parse Error" still shows up
       # locally (~1 in 8 runs). Serial is ~25 s and has been stable.

@@ -1,4 +1,4 @@
-import type { PointMm } from '@/lib/arch-geometry'
+import type { PointMm } from './arch-geometry.ts'
 
 // Lines and circular arcs, and the paths made of them — the shared
 // maths under dividers.ts and light-graph.ts (docs/free_dividers_planing.md

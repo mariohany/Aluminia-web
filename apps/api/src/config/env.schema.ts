@@ -40,6 +40,20 @@ export const envSchema = z.object({
   // Sliding, not absolute: every refresh pushes it out again, so a user
   // who opens the app at all within a month never sees the login screen.
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
+
+  // The Chrome the bar optimiser report prints its PDF with
+  // (docs/reports_planing.md §8). Optional: Puppeteer finds the Chrome it
+  // downloaded (`npx puppeteer browsers install chrome-headless-shell`) by itself; set
+  // this only to use another binary.
+  PUPPETEER_EXECUTABLE_PATH: z.string().min(1).optional(),
+
+  // Report jobs run at once on this instance; more wait in line
+  // (docs/report_queue_planing.md C1). Unset = CPU count - 1, at least 1.
+  // Set it where the container may report the host's CPUs (Render: 1).
+  REPORT_MAX_CONCURRENT: z.coerce.number().int().positive().optional(),
+  // A solve still running after this many minutes is stopped and the job
+  // fails with `timeout` (C5).
+  REPORT_SOLVE_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(10),
 });
 
 export type Env = z.infer<typeof envSchema>;

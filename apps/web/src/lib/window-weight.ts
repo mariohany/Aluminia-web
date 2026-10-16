@@ -3,8 +3,8 @@ import { GlassKind, HeadShape, SectionKind } from '@repo/types/windows'
 import { formatScopedRef } from '@repo/types/company-lookups'
 import { checkSlidingBuildable, type SlidingLayoutInput } from '@repo/types/sliding'
 import type { MergedGlassSummary, MergedGlassCombinationSummary, MergedSystemProfileSummary } from '@/lib/lookup-merge'
-import { MIN_GLAZED_PITCH_MM, type RectMm } from '@/lib/window-geometry'
-import { outlinePerimeterMm, type HeadOutline } from '@/lib/arch-geometry'
+import { MIN_GLAZED_PITCH_MM, type RectMm } from '@repo/geometry/window-geometry'
+import { outlinePerimeterMm, type HeadOutline } from '@repo/geometry/arch-geometry'
 
 // A sheet whose glassId no longer resolves against the merged catalogue
 // (a deleted lookup) falls back to this per-mm-per-sqm estimate rather

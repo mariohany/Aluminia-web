@@ -1,10 +1,10 @@
 import { SystemType } from '@repo/types/lookups'
 import { HingedOpeningType, HeadShape } from '@repo/types/windows'
-import { DOUBLE_DOOR_OPENING_TYPES, type WindowPart } from '@/lib/window-geometry'
-import { headPointAt, insetHeadOutline, type HeadOutline } from '@/lib/arch-geometry'
-import { loopToSvgPath } from '@/lib/light-graph'
-import { interiorPoint, samplePath } from '@/lib/curves'
-import type { ProfileMetrics } from '@/lib/profile-metrics'
+import { DOUBLE_DOOR_OPENING_TYPES, type WindowPart } from '@repo/geometry/window-geometry'
+import { headPointAt, insetHeadOutline, type HeadOutline } from '@repo/geometry/arch-geometry'
+import { loopToSvgPath } from '@repo/geometry/light-graph'
+import { interiorPoint, samplePath } from '@repo/geometry/curves'
+import type { ProfileMetrics } from '@repo/geometry/profile-metrics'
 import { movesLeft, movesRight } from '@repo/types/sliding'
 
 /**

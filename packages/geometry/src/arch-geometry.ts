@@ -1,5 +1,5 @@
 import { HeadShape } from '@repo/types/windows'
-import type { RectMm } from '@/lib/window-geometry'
+import type { RectMm } from './window-geometry.ts'
 
 // Pure geometry for an arched panel head — no React, no lookups, no
 // API, same posture as window-geometry.ts. See

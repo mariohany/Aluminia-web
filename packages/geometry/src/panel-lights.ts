@@ -1,7 +1,7 @@
 import { GlassKind, HeadShape, SectionKind, type WindowDividerInput, type WindowPanelInput, type WindowSectionInput } from '@repo/types/windows'
 import type { ScopedRef } from '@repo/types/company-lookups'
-import type { PointMm } from '@/lib/arch-geometry'
-import { pointInPolygon } from '@/lib/curves'
+import type { PointMm } from './arch-geometry.ts'
+import { pointInPolygon } from './curves.ts'
 import {
   anchorOn,
   applyDelete,
@@ -11,10 +11,10 @@ import {
   sortDividers,
   stretchPanel,
   type FrameGeometry,
-} from '@/lib/dividers'
-import { buildLightGraph, sidesOf, type Light, type LightGraph } from '@/lib/light-graph'
-import type { PanelSide } from '@/lib/window-geometry'
-import type { ProfileMetrics } from '@/lib/profile-metrics'
+} from './dividers.ts'
+import { buildLightGraph, sidesOf, type Light, type LightGraph } from './light-graph.ts'
+import type { PanelSide } from './window-geometry.ts'
+import type { ProfileMetrics } from './profile-metrics.ts'
 
 // A panel's lights, kept in step with its stored sections —
 // docs/free_dividers_planing.md §5.3 and §8. Pure. Every divider edit in

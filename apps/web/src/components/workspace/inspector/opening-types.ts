@@ -1,5 +1,5 @@
 import { HingedOpeningType } from '@repo/types/windows'
-import { DOUBLE_DOOR_OPENING_TYPES } from '@/lib/window-geometry'
+import { DOUBLE_DOOR_OPENING_TYPES } from '@repo/geometry/window-geometry'
 
 /**
  * The opening-type popover's two lists — docs/inspector_redesign_planing.md

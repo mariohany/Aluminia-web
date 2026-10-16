@@ -15,6 +15,8 @@ import { AddPanelSlidingLayout1788600000000 } from './1788600000000-AddPanelSlid
 import { AddCompanyProfileSlidingRails1788700000001 } from './1788700000001-AddCompanyProfileSlidingRails';
 import { MoveSlidingLayoutToSections1788800000000 } from './1788800000000-MoveSlidingLayoutToSections';
 import { FreeDividers1788900000000 } from './1788900000000-FreeDividers';
+import { AddReports1789000000000 } from './1789000000000-AddReports';
+import { ReportJobQueued1789100000000 } from './1789100000000-ReportJobQueued';
 
 /**
  * The tenant migration track, explicitly ordered.
@@ -45,6 +47,8 @@ export const tenantMigrations: Array<new () => MigrationInterface> = [
   AddCompanyProfileSlidingRails1788700000001,
   MoveSlidingLayoutToSections1788800000000,
   FreeDividers1788900000000,
+  AddReports1789000000000,
+  ReportJobQueued1789100000000,
 ];
 
 /** TypeORM records applied migrations as `{timestamp}-{ClassName}`. */

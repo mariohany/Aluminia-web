@@ -86,10 +86,70 @@
       "users": {
         "title": "Users & seats",
         "description": "Add people, reset passwords, deactivate."
+      },
+      "company": {
+        "title": "Company profile",
+        "description": "Logo, names, address and registration printed on paperwork."
       }
     },
     "users": {
       "description": "Who can sign in to {{company}}. Each user takes one seat."
+    },
+    "company": {
+      "description": "Printed on every report, quote, spec sheet and work order.",
+      "rows": {
+        "logo": {
+          "title": "Logo",
+          "hint": "Shown at the top of every printed page."
+        },
+        "name": {
+          "title": "Name",
+          "hint": "Both are printed; Arabic pages use the Arabic name. Your account name in Aluminia doesn’t change."
+        },
+        "address": {
+          "title": "Address",
+          "hint": "Your factory or showroom."
+        },
+        "contact": {
+          "title": "Contact",
+          "hint": "Clients see these on the quote."
+        },
+        "registration": {
+          "title": "Registration",
+          "hint": "Needed on tax invoices."
+        },
+        "paper": {
+          "title": "On paper",
+          "hint": "How these fields look together."
+        }
+      },
+      "fields": {
+        "english": "English",
+        "arabic": "Arabic",
+        "phone": "Phone",
+        "email": "Email",
+        "website": "Website",
+        "taxId": "Tax ID",
+        "commercialRegister": "Commercial register",
+        "crShort": "CR"
+      },
+      "logo": {
+        "upload": "Upload",
+        "replace": "Replace",
+        "remove": "Remove",
+        "uploading": "Uploading…",
+        "rules": "PNG, JPEG or WebP, up to 1 MB. Square works best.",
+        "alt": "Company logo",
+        "wrongType": "Use a PNG, JPEG or WebP image.",
+        "tooBig": "The logo must be 1 MB or smaller.",
+        "uploadError": "Couldn’t upload the logo. Try again."
+      },
+      "previewCaption": "Preview — top of a report page",
+      "unsaved": "Unsaved changes",
+      "allSaved": "All changes saved",
+      "saved": "Company profile saved.",
+      "saveError": "Couldn’t save the company profile.",
+      "loadError": "Couldn’t load the company profile. Try again."
     }
   },
   "manage": {

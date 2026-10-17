@@ -25,6 +25,7 @@ import { CanvasPage } from '@/pages/workspace/canvas-page'
 import { DataPage } from '@/pages/workspace/data-page'
 import { ConfigPage } from '@/pages/workspace/config-page'
 import { ConfigUsersPage } from '@/pages/workspace/config-users-page'
+import { ConfigCompanyPage } from '@/pages/workspace/config-company-page'
 import { ReportsPage } from '@/pages/workspace/reports-page'
 import { WindowEditorPage } from '@/pages/workspace/window-editor-page'
 
@@ -136,6 +137,14 @@ function App() {
                 element={
                   <RoleRoute allow={[UserRole.COMPANY_ADMIN]}>
                     <ConfigUsersPage />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="config/company"
+                element={
+                  <RoleRoute allow={[UserRole.COMPANY_ADMIN]}>
+                    <ConfigCompanyPage />
                   </RoleRoute>
                 }
               />

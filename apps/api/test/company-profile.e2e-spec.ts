@@ -180,7 +180,7 @@ describe('Company profile (e2e)', () => {
     }
   });
 
-  it('saves only the fields sent, trimmed; an empty string clears one', async () => {
+  it('saves only the fields sent, trimmed; null clears one', async () => {
     const first = await patch(alphaToken, {
       enName: '  Alpha Printed  ',
       arName: 'ألفا',
@@ -194,7 +194,7 @@ describe('Company profile (e2e)', () => {
     expect(saved.updatedAt).not.toBeNull();
 
     const second = await patch(alphaToken, {
-      phone: '',
+      phone: null,
       website: 'alpha.test',
     }).expect(200);
     expect(second.body).toMatchObject({
@@ -223,6 +223,7 @@ describe('Company profile (e2e)', () => {
 
   it.each([
     ['an empty English name', { enName: '   ' }],
+    ['an empty string (the form sends null)', { arName: '' }],
     ['a bad email', { email: 'not-an-email' }],
     ['an unknown field', { logo: 'x' }],
     ['a name too long', { arName: 'a'.repeat(256) }],

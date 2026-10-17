@@ -15,15 +15,13 @@ export const COMPANY_PROFILE_LIMITS = {
   registration: 60,
 } as const
 
-/** Trimmed text; an empty string clears the field (null). */
+// `.nullable().optional()` with no transform, like clients.ts: a
+// transform gives the schema a different input type than output type,
+// which breaks `useForm`. An empty input becomes null at the form layer
+// (`optionalTextField`); the API then reads null as "clear it" and a
+// missing key as "leave it alone".
 const optionalText = (max: number) =>
-  z
-    .string()
-    .trim()
-    .max(max)
-    .transform((value) => (value === '' ? null : value))
-    .nullable()
-    .optional()
+  z.string().trim().min(1).max(max).nullable().optional()
 
 /** PATCH /company/profile: any subset of the fields. `logoFileId` is an
  * id from `POST /files` (purpose `logo`); null removes the logo. */
@@ -35,11 +33,7 @@ export const updateCompanyProfileSchema = z
     enAddress: optionalText(COMPANY_PROFILE_LIMITS.address),
     arAddress: optionalText(COMPANY_PROFILE_LIMITS.address),
     phone: optionalText(COMPANY_PROFILE_LIMITS.phone),
-    email: z
-      .union([z.literal(''), z.email().max(COMPANY_PROFILE_LIMITS.email)])
-      .transform((value) => (value === '' ? null : value))
-      .nullable()
-      .optional(),
+    email: z.email().max(COMPANY_PROFILE_LIMITS.email).nullable().optional(),
     website: optionalText(COMPANY_PROFILE_LIMITS.website),
     taxId: optionalText(COMPANY_PROFILE_LIMITS.registration),
     commercialRegister: optionalText(COMPANY_PROFILE_LIMITS.registration),

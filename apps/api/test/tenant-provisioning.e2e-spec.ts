@@ -107,6 +107,7 @@ describe('TenantProvisioning (e2e)', () => {
       'company_glass_combination_item',
       'company_paint_brand',
       'company_painting_price',
+      'company_profile',
       'company_system_brand',
       'company_system_catalog',
       'company_system_profile',

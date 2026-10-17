@@ -13,6 +13,7 @@ import { AppModule } from './../src/app.module';
 import { PasswordService } from './../src/modules/auth/password.service';
 import { BarOptimiserRunner } from './../src/modules/reports/bar-optimiser/runner';
 import { ReportJobQueue } from './../src/modules/reports/report-job-queue';
+import { clearUserRateLimits } from './fixtures/clear-rate-limits';
 import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provisioning.service';
 import {
   dropPlatformCatalogue,
@@ -42,6 +43,7 @@ describe('Reports (e2e)', () => {
   const password = 'TestPassword123!';
 
   let token: string;
+  let adminId: string;
   let userToken: string;
   let otherToken: string;
   let superToken: string;
@@ -75,6 +77,7 @@ describe('Reports (e2e)', () => {
       maxUsers: 5,
       admin: { email: adminEmail, password },
     });
+    adminId = company.admin.id;
     await provisioning.provision({
       name: otherCompanyName,
       plan: 'starter',
@@ -151,6 +154,10 @@ describe('Reports (e2e)', () => {
           [name],
         );
       for (const row of rows) {
+        await controlPlane.query(
+          `DELETE FROM stored_blobs WHERE starts_with(key, $1)`,
+          [`companies/${row.id}/`],
+        );
         await controlPlane.query(
           `DROP SCHEMA IF EXISTS "${row.schema_name}" CASCADE`,
         );
@@ -547,6 +554,42 @@ describe('Reports (e2e)', () => {
       error: 'interrupted',
       queuePosition: null,
     });
+  });
+
+  it('saving the company profile makes the report stale; it prints with the logo', async () => {
+    // A real 1 × 1 PNG, so Chrome draws it.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const upload = await request(app.getHttpServer())
+      .post('/files')
+      .set('Authorization', `Bearer ${token}`)
+      .field('purpose', 'logo')
+      .attach('file', png, { filename: 'logo.png', contentType: 'image/png' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .patch('/company/profile')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        arName: 'شركة التقارير',
+        logoFileId: (upload.body as { id: string }).id,
+      })
+      .expect(200);
+    expect((await status()).state).toBe('stale');
+    expect((await status('ar')).state).toBe('stale');
+
+    // One run, Arabic (name + logo). Last of the job tests, so no later
+    // test depends on the report's state. Generate is limited to 6 a
+    // minute per user and this suite spends more than that in under a
+    // minute, so the admin's own count is cleared first (bug-112).
+    await clearUserRateLimits(app, 'ReportsController.generate', adminId);
+    await api().post(generatePath('ar')).expect(202);
+    expect((await settled('ar')).state).toBe('fresh');
+    const pdf = await api()
+      .get(`/projects/${projectId}/reports/bar-optimiser/pdf?lang=ar`)
+      .expect(200);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
   });
 
   it('rejects an unknown language', async () => {

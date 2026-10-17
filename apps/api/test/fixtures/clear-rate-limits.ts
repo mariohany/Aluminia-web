@@ -35,3 +35,28 @@ export async function clearRateLimits(
     }
   }
 }
+
+/**
+ * Same, for routes limited per signed-in user (`user:<id>` tracker), e.g.
+ * `'ReportsController.generate'`. Only that user's count is cleared, so a
+ * suite running in parallel is never touched: user ids are its own.
+ */
+export async function clearUserRateLimits(
+  app: INestApplication,
+  route: string,
+  userId: string,
+): Promise<void> {
+  const redis = app.get<Redis>(REDIS_CLIENT);
+  let cursor = '0';
+  do {
+    const [next, keys] = await redis.scan(
+      cursor,
+      'MATCH',
+      `${THROTTLE_KEY_PREFIX}${route}:*:user:${userId}*`,
+      'COUNT',
+      500,
+    );
+    if (keys.length > 0) await redis.del(...keys);
+    cursor = next;
+  } while (cursor !== '0');
+}

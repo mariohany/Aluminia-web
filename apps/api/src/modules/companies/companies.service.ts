@@ -25,6 +25,7 @@ import { TenantProvisioningService } from '../tenancy/tenant-provisioning.servic
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ProjectCountsService } from '../project-counts/project-counts.service';
 import { AuthVersionService } from '../auth/auth-version.service';
+import { FilesService } from '../files/files.service';
 import { rollbackQuietly } from '../../database/rollback';
 
 @Injectable()
@@ -39,6 +40,7 @@ export class CompaniesService {
     private readonly auditLog: AuditLogService,
     private readonly projectCounts: ProjectCountsService,
     private readonly authVersions: AuthVersionService,
+    private readonly files: FilesService,
   ) {}
 
   async list(): Promise<CompanyListItem[]> {
@@ -353,6 +355,11 @@ export class CompaniesService {
 
       await queryRunner.commitTransaction();
       await this.authVersions.publishDeleted(deletedUserIds);
+      // The `files` rows cascaded with the company; the bytes are keyed by
+      // company and cleared now, after the commit. Best-effort and logged
+      // inside: a leftover blob is harmless, a failed delete must not undo
+      // the company delete.
+      await this.files.deleteCompanyFiles(company.id);
     } catch (error) {
       await rollbackQuietly(queryRunner);
       throw error;

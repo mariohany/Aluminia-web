@@ -24,6 +24,8 @@ import { WindowsModule } from './modules/windows/windows.module';
 import { CompanyModule } from './modules/company/company.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { StorageModule } from './storage/storage.module';
+import { FilesModule } from './modules/files/files.module';
 
 @Module({
   imports: [
@@ -32,6 +34,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     RedisModule,
     ControlPlaneDatabaseModule,
     TenantDatabaseModule,
+    StorageModule,
     HealthModule,
     AuthModule,
     // After AuthModule: its guard keys the limit on request.user.
@@ -50,6 +53,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     CompanyModule,
     LeadsModule,
     ReportsModule,
+    FilesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

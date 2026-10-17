@@ -4,7 +4,7 @@
     "projects": "Projects",
     "reports": "Reports",
     "data": "Data",
-    "manage": "Manage",
+    "config": "Config",
     "logout": "Log out",
     "account": "Account",
     "companyPlan": "{{company}} · {{plan}}"
@@ -79,8 +79,20 @@
     "subtitle": "The platform catalogue plus your own rows. Platform rows are read-only — copy one to make it yours.",
     "tablesLabel": "Tables"
   },
+  "config": {
+    "title": "Config",
+    "back": "Back to Config",
+    "sections": {
+      "users": {
+        "title": "Users & seats",
+        "description": "Add people, reset passwords, deactivate."
+      }
+    },
+    "users": {
+      "description": "Who can sign in to {{company}}. Each user takes one seat."
+    }
+  },
   "manage": {
-    "title": "Manage",
     "addUser": "Add user",
     "loadError": "Couldn't load the team. Try again.",
     "fields": {

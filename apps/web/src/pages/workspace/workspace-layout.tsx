@@ -36,7 +36,7 @@ function readStoredTreeWidth() {
 }
 
 // Selection lives in the URL (see the comment below), but the URL
-// itself is forgotten the moment the user navigates to Manage or lands
+// itself is forgotten the moment the user navigates to Config or lands
 // on the bare `/workspace` root — this is what lets a return trip put
 // them back where they were instead of an empty canvas.
 const LAST_SELECTION_STORAGE_KEY = 'aluminia.workspace.lastSelection'
@@ -157,16 +157,16 @@ export function WorkspaceLayout() {
   const selectedClientId = clientMatch?.params.clientId
 
   // The tree and properties panel both act on the Projects section —
-  // they create/edit/select clients and projects. `Manage` and `Data`
+  // they create/edit/select clients and projects. `Config` and `Data`
   // each replace the tree's CONTENT area entirely rather than sitting
   // beside it (see §3), so both are suppressed there. (The canvas's
   // floating pill lives in CanvasPage itself, so it goes with the route.)
   const { pathname } = useLocation()
-  const onManage = pathname.startsWith('/workspace/manage')
+  const onConfig = pathname.startsWith('/workspace/config')
   const onData = pathname.startsWith('/workspace/data')
   // Reports brings its own read-only tree and report list (reports-page.tsx).
   const onReports = pathname.startsWith('/workspace/reports')
-  const outsideProjectsSection = onManage || onData || onReports
+  const outsideProjectsSection = onConfig || onData || onReports
 
   // Loaded once here, at the shell, rather than per page: the tree is
   // permanent chrome, so a page-level fetch would refetch it on every
@@ -185,7 +185,7 @@ export function WorkspaceLayout() {
   }, [selectedProjectId, selectedClientId])
 
   // ...and restore it on the bare `/workspace` root — reached both by
-  // returning from Manage and by the rail's own "Projects" link, which
+  // returning from Config and by the rail's own "Projects" link, which
   // always points there rather than at whatever was last open. Checked
   // against the loaded tree first: a stale id (its client or project
   // got deleted elsewhere, or in another tab) must fall through to the
@@ -361,7 +361,7 @@ export function WorkspaceLayout() {
           border rather than floating as an inset card — matching the
           admin sidebar's own treatment (`admin-layout.tsx`). Width is
           user-resizable (drag handle below) rather than a fixed w-72.
-          Hidden on Manage and Data, both of which replace the tree's
+          Hidden on Config and Data, both of which replace the tree's
           content area entirely rather than sitting beside it (see the
           comment on `outsideProjectsSection` above). */}
       {!outsideProjectsSection && (

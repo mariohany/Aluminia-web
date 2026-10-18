@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { queryClient } from '@/lib/query-client'
@@ -23,7 +23,10 @@ import { LogsPage } from '@/pages/admin/logs-page'
 import { WorkspaceLayout } from '@/pages/workspace/workspace-layout'
 import { CanvasPage } from '@/pages/workspace/canvas-page'
 import { DataPage } from '@/pages/workspace/data-page'
-import { ManagePage } from '@/pages/workspace/manage-page'
+import { ConfigPage } from '@/pages/workspace/config-page'
+import { ConfigUsersPage } from '@/pages/workspace/config-users-page'
+import { ConfigCompanyPage } from '@/pages/workspace/config-company-page'
+import { ConfigProjectsPage } from '@/pages/workspace/config-projects-page'
 import { ReportsPage } from '@/pages/workspace/reports-page'
 import { WindowEditorPage } from '@/pages/workspace/window-editor-page'
 
@@ -119,14 +122,43 @@ function App() {
               <Route path="reports" element={<ReportsPage />} />
               <Route path="reports/projects/:projectId" element={<ReportsPage />} />
               <Route path="reports/projects/:projectId/:report" element={<ReportsPage />} />
+              {/* Config (was Manage): a home of section cards, each
+                  card its own page so a section survives a refresh.
+                  Company admins only. */}
               <Route
-                path="manage"
+                path="config"
                 element={
                   <RoleRoute allow={[UserRole.COMPANY_ADMIN]}>
-                    <ManagePage />
+                    <ConfigPage />
                   </RoleRoute>
                 }
               />
+              <Route
+                path="config/users"
+                element={
+                  <RoleRoute allow={[UserRole.COMPANY_ADMIN]}>
+                    <ConfigUsersPage />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="config/company"
+                element={
+                  <RoleRoute allow={[UserRole.COMPANY_ADMIN]}>
+                    <ConfigCompanyPage />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="config/projects"
+                element={
+                  <RoleRoute allow={[UserRole.COMPANY_ADMIN]}>
+                    <ConfigProjectsPage />
+                  </RoleRoute>
+                }
+              />
+              {/* Old bookmarks of the users page. */}
+              <Route path="manage" element={<Navigate to="/workspace/config/users" replace />} />
             </Route>
 
             {/* The window editor — a full-screen route, not a modal, so

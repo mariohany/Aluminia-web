@@ -3,6 +3,7 @@ import type {
   ProjectDetail,
   UpdateProjectInput,
 } from '@repo/types/projects'
+import type { ProjectStatusEvent } from '@repo/types/project-settings'
 import { apiFetch } from '@/lib/api-client'
 
 // No list endpoint: the tree comes from GET /clients with projects
@@ -21,4 +22,8 @@ export function updateProject(id: string, input: UpdateProjectInput): Promise<Pr
 
 export function deleteProject(id: string, confirmName: string): Promise<void> {
   return apiFetch<void>(`/projects/${id}`, { method: 'DELETE', body: { confirmName } })
+}
+
+export function getProjectStatusHistory(id: string): Promise<ProjectStatusEvent[]> {
+  return apiFetch<ProjectStatusEvent[]>(`/projects/${id}/status-history`)
 }

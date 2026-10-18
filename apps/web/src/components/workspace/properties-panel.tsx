@@ -20,6 +20,7 @@ import { parseScopedRef } from '@repo/types/company-lookups'
 import { useMergedSystemBrandsQuery, useMergedSystemCatalogsQuery } from '@/lib/lookup-merge'
 import { useWindowsQuery } from '@/lib/windows-queries'
 import { useWindowIssues } from '@/lib/window-render'
+import { ProjectStatusSections } from '@/components/workspace/project-status-sections'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -33,8 +34,8 @@ const STORAGE_KEY = 'aluminia.workspace.propertiesCollapsed'
 
 /**
  * The project inspector (docs/workspace_redesign_planing.md §3): the
- * selected project's Details, Preferences and the windows that have
- * errors. Collapsible, and it remembers — a panel that springs back
+ * selected project's Status + History (docs/project_settings_planing.md),
+ * Details, Preferences and the windows that have errors. Collapsible, and it remembers — a panel that springs back
  * open on every navigation is worse than no panel, so the state
  * persists in localStorage.
  *
@@ -150,6 +151,7 @@ export function PropertiesPanel({
       {project && (
         <>
           <div className="min-h-0 flex-1 overflow-y-auto">
+            <ProjectStatusSections project={project} />
             <Section title={t('properties.details')} onEdit={onEdit}>
               <AddressField project={project} />
               <Field icon={Phone} label={t('fields.phone')} value={project.phone} dir="ltr" mono />

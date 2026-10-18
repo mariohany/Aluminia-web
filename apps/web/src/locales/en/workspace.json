@@ -4,7 +4,7 @@
     "projects": "Projects",
     "reports": "Reports",
     "data": "Data",
-    "manage": "Manage",
+    "config": "Config",
     "logout": "Log out",
     "account": "Account",
     "companyPlan": "{{company}} · {{plan}}"
@@ -79,8 +79,152 @@
     "subtitle": "The platform catalogue plus your own rows. Platform rows are read-only — copy one to make it yours.",
     "tablesLabel": "Tables"
   },
+  "config": {
+    "title": "Config",
+    "back": "Back to Config",
+    "sections": {
+      "users": {
+        "title": "Users & seats",
+        "description": "Add people, reset passwords, deactivate."
+      },
+      "company": {
+        "title": "Company profile",
+        "description": "Logo, names, address and registration printed on paperwork."
+      },
+      "projects": {
+        "title": "Project settings",
+        "description": "Defaults for new projects, and the steps a project goes through."
+      }
+    },
+    "users": {
+      "description": "Who can sign in to {{company}}. Each user takes one seat."
+    },
+    "company": {
+      "description": "Printed on every report, quote, spec sheet and work order.",
+      "rows": {
+        "logo": {
+          "title": "Logo",
+          "hint": "Shown at the top of every printed page."
+        },
+        "name": {
+          "title": "Name",
+          "hint": "Both are printed; Arabic pages use the Arabic name. Your account name in Aluminia doesn’t change."
+        },
+        "address": {
+          "title": "Address",
+          "hint": "Your factory or showroom."
+        },
+        "contact": {
+          "title": "Contact",
+          "hint": "Clients see these on the quote."
+        },
+        "registration": {
+          "title": "Registration",
+          "hint": "Needed on tax invoices."
+        },
+        "paper": {
+          "title": "On paper",
+          "hint": "How these fields look together."
+        }
+      },
+      "fields": {
+        "english": "English",
+        "arabic": "Arabic",
+        "phone": "Phone",
+        "email": "Email",
+        "website": "Website",
+        "taxId": "Tax ID",
+        "commercialRegister": "Commercial register",
+        "crShort": "CR"
+      },
+      "logo": {
+        "upload": "Upload",
+        "replace": "Replace",
+        "remove": "Remove",
+        "uploading": "Uploading…",
+        "rules": "PNG, JPEG or WebP, up to 1 MB. Square works best.",
+        "alt": "Company logo",
+        "wrongType": "Use a PNG, JPEG or WebP image.",
+        "tooBig": "The logo must be 1 MB or smaller.",
+        "uploadError": "Couldn’t upload the logo. Try again."
+      },
+      "previewCaption": "Preview — top of a report page",
+      "saved": "Company profile saved.",
+      "saveError": "Couldn’t save the company profile.",
+      "loadError": "Couldn’t load the company profile. Try again."
+    },
+    "projects": {
+      "description": "How new projects start, and the statuses every project moves through.",
+      "defaults": {
+        "title": "New-project defaults",
+        "hint": "A new project starts with these. You can still change them per project, and editing them here never changes existing projects.",
+        "system": "System",
+        "systemHint": "Brand, then one of its catalogues.",
+        "currency": "Currency",
+        "currencyHint": "Prices and quotes use it.",
+        "saved": "Defaults saved.",
+        "saveError": "Couldn’t save the defaults."
+      },
+      "statuses": {
+        "title": "Project statuses",
+        "hint": "The steps a project moves through, in order. Drag to reorder.",
+        "needSomeone_one": "{{count}} needs someone",
+        "needSomeone_other": "{{count}} need someone",
+        "step": "Step",
+        "name": "Status",
+        "responsible": "Responsible",
+        "inUse": "Projects",
+        "projects_one": "{{count}} project",
+        "projects_other": "{{count}} projects",
+        "nobody": "No one responsible",
+        "nobodyHint": "Only the admin can move projects on.",
+        "add": "Add status",
+        "actions": "Status actions",
+        "edit": "Edit",
+        "delete": "Delete",
+        "deleteInUse_one": "In use by {{count}} project",
+        "deleteInUse_other": "In use by {{count}} projects",
+        "deleteLast": "The last status can’t be deleted",
+        "dragHandle": "Drag to reorder {{name}}",
+        "reorderError": "Couldn’t save the new order.",
+        "moved": "Moved {{name}} to step {{position}}."
+      },
+      "dialog": {
+        "addTitle": "Add status",
+        "editTitle": "Edit status",
+        "enName": "Name (English)",
+        "arName": "Name (Arabic)",
+        "color": "Colour",
+        "responsible": "Responsible users",
+        "responsibleHint": "They handle a project while it’s in this status.",
+        "noUsers": "No active users.",
+        "colorNames": {
+          "grey": "Grey",
+          "blue": "Blue",
+          "amber": "Amber",
+          "green": "Green",
+          "violet": "Violet",
+          "sky": "Sky",
+          "emerald": "Emerald",
+          "red": "Red"
+        },
+        "added": "Status added.",
+        "saved": "Status saved.",
+        "saveError": "Couldn’t save the status."
+      },
+      "deleteDialog": {
+        "title": "Delete “{{name}}”?",
+        "description": "No project is in this status. Old history keeps its name.",
+        "confirm": "Delete",
+        "deleted": "Status deleted.",
+        "error": "Couldn’t delete the status."
+      },
+      "loadError": "Couldn’t load the project settings. Try again."
+    },
+    "unsaved": "Unsaved changes",
+    "allSaved": "All changes saved"
+  },
   "manage": {
-    "title": "Manage",
     "addUser": "Add user",
     "loadError": "Couldn't load the team. Try again.",
     "fields": {
@@ -681,6 +825,20 @@
     "projectActions": "Project actions",
     "openWindow": "Open this window",
     "moreIssues_one": "(+{{count}} more)",
-    "moreIssues_other": "(+{{count}} more)"
+    "moreIssues_other": "(+{{count}} more)",
+    "status": {
+      "title": "Status",
+      "step": "Step {{position}} of {{count}} · since {{since}}",
+      "responsible": "responsible",
+      "nobody": "No one is responsible for {{name}}",
+      "nobodyAdmin": "Assign someone in Config › Project settings.",
+      "nobodyUser": "Only the admin can move it on. Ask them to assign someone.",
+      "history": "History",
+      "created": "created",
+      "showAll": "Show all ({{count}})",
+      "showLess": "Show less",
+      "loadError": "Couldn’t load the status.",
+      "historyError": "Couldn’t load the history."
+    }
   }
 }

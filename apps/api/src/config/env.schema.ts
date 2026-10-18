@@ -54,6 +54,11 @@ export const envSchema = z.object({
   // A solve still running after this many minutes is stopped and the job
   // fails with `timeout` (C5).
   REPORT_SOLVE_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(10),
+
+  // Where uploaded files' bytes live (docs/company_profile_planing.md §3a).
+  // Only `postgres` exists today; `s3` (DO Spaces) joins the enum with its
+  // driver, so a value with no driver behind it fails here at boot.
+  FILE_STORAGE: z.enum(['postgres']).default('postgres'),
 });
 
 export type Env = z.infer<typeof envSchema>;

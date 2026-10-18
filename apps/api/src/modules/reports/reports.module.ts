@@ -6,6 +6,7 @@ import type { Env } from '../../config/env.schema';
 import { SystemCatalog } from '../../database/control-plane/entities/system-catalog.entity';
 import { SystemProfile } from '../../database/control-plane/entities/system-profile.entity';
 import { TenancyModule } from '../tenancy/tenancy.module';
+import { FilesModule } from '../files/files.module';
 import { BarOptimiserRunner } from './bar-optimiser/runner';
 import { PdfRenderer } from './pdf/pdf-renderer.service';
 import { ReportJobQueue } from './report-job-queue';
@@ -22,6 +23,7 @@ import { ReportsService } from './reports.service';
 @Module({
   imports: [
     TenancyModule,
+    FilesModule,
     TypeOrmModule.forFeature([SystemProfile, SystemCatalog]),
   ],
   controllers: [ReportsController],

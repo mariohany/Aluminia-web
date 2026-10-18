@@ -3,21 +3,30 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { EntityManager } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import type { EntityManager, Repository } from 'typeorm';
 import type {
   CreateProjectInput,
   ProjectDetail,
   UpdateProjectInput,
 } from '@repo/types/projects';
-import {
-  LookupScope,
-  formatScopedRef,
-  type ScopedRef,
-} from '@repo/types/company-lookups';
+import type {
+  ProjectStatusColor,
+  ProjectStatusEvent,
+} from '@repo/types/project-settings';
 import { Client } from '../../database/tenant/entities/client.entity';
 import { Project } from '../../database/tenant/entities/project.entity';
+import { ProjectStatusEventRow } from '../../database/tenant/entities/project-status-event.entity';
+import { User } from '../../database/control-plane/entities/user.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
-import { resolveScopedRef } from '../company-lookups/scoped-ref.util';
+import {
+  firstProjectStatus,
+  recordProjectCreated,
+} from '../project-settings/project-status.util';
+import {
+  resolveScopedRefPair,
+  toScopedRef,
+} from '../company-lookups/scoped-ref.util';
 
 /**
  * Projects — manufacturing jobs — inside one manufacturer's schema.
@@ -33,18 +42,39 @@ import { resolveScopedRef } from '../company-lookups/scoped-ref.util';
  */
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly tenantContext: TenantContextService) {}
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    @InjectRepository(User) private readonly users: Repository<User>,
+  ) {}
 
   detail(id: string): Promise<ProjectDetail> {
     return this.tenantContext.run(async (manager) =>
-      toDetail(await this.findOrFail(manager, id)),
+      withStatus(manager, await this.findOrFail(manager, id)),
     );
   }
 
-  create(
+  /** The project's status history, newest first (project settings S10). */
+  statusHistory(id: string): Promise<ProjectStatusEvent[]> {
+    return this.tenantContext.run(async (manager) => {
+      await this.findOrFail(manager, id);
+      const events = await manager.find(ProjectStatusEventRow, {
+        where: { projectId: id },
+        order: { at: 'DESC', id: 'DESC' },
+      });
+      return events.map(toEvent);
+    });
+  }
+
+  async create(
     input: CreateProjectInput,
     createdByUserId: string,
   ): Promise<ProjectDetail> {
+    // Snapshot for the "created" history event; users live in the
+    // control plane, so this is read before the tenant run.
+    const creator = await this.users.findOne({
+      where: { id: createdByUserId },
+      select: { id: true, email: true },
+    });
     return this.tenantContext.run(async (manager) => {
       // Checked inside the SAME run() as the insert, so it shares one
       // transaction with it. A lookup in a separate run() would be a
@@ -63,6 +93,8 @@ export class ProjectsService {
       const brandPair = resolveScopedRefPair(input.defaultSystemBrand);
       const catalogPair = resolveScopedRefPair(input.defaultSystemCatalog);
       const favoritePair = resolveScopedRefPair(input.favoriteFrameProfile);
+      // A new project starts at the first status (project settings S13).
+      const status = await firstProjectStatus(manager);
 
       const project = manager.create(Project, {
         clientId: input.clientId,
@@ -83,9 +115,15 @@ export class ProjectsService {
         discountRate: input.discountRate ?? null,
         favoritePlatformProfileId: favoritePair.platformId,
         favoriteCompanyProfileId: favoritePair.companyId,
+        statusId: status.id,
       });
 
-      return toDetail(await manager.save(project));
+      const saved = await manager.save(project);
+      await recordProjectCreated(manager, saved.id, status, {
+        id: createdByUserId,
+        email: creator?.email ?? null,
+      });
+      return withStatus(manager, saved);
     });
   }
 
@@ -142,7 +180,7 @@ export class ProjectsService {
         project.favoriteCompanyProfileId = favoritePair.companyId;
       }
 
-      return toDetail(await manager.save(project));
+      return withStatus(manager, await manager.save(project));
     });
   }
 
@@ -181,30 +219,34 @@ export class ProjectsService {
   }
 }
 
-// `undefined` (absent from the request) leaves both columns of the pair
-// alone; `null` (explicitly cleared) or a real `ScopedRef` resolves to
-// the platform/company pair — same nullable-pair shape
-// `company-lookups` already uses for a cross-scope parent, reused here
-// via the same `resolveScopedRef` helper. See project.entity.ts's doc
-// comment for why this pair carries no CHECK/FK, unlike that reuse.
-function resolveScopedRefPair(ref: ScopedRef | null | undefined): {
-  platformId: string | null;
-  companyId: string | null;
-} {
-  if (!ref) return { platformId: null, companyId: null };
-  return resolveScopedRef(ref);
+async function withStatus(
+  manager: EntityManager,
+  project: Project,
+): Promise<ProjectDetail> {
+  const latest = await manager.findOne(ProjectStatusEventRow, {
+    where: { projectId: project.id },
+    order: { at: 'DESC', id: 'DESC' },
+    select: { id: true, at: true },
+  });
+  // Every project has its "created" event; the fallback only covers a
+  // row someone deleted by hand.
+  return toDetail(project, latest?.at ?? project.createdAt);
 }
 
-function toScopedRef(
-  platformId: string | null,
-  companyId: string | null,
-): ScopedRef | null {
-  if (platformId) return formatScopedRef(LookupScope.PLATFORM, platformId);
-  if (companyId) return formatScopedRef(LookupScope.COMPANY, companyId);
-  return null;
+function toEvent(row: ProjectStatusEventRow): ProjectStatusEvent {
+  return {
+    id: row.id,
+    fromStatusId: row.fromStatusId,
+    toStatusId: row.toStatusId,
+    enName: row.toEnName,
+    arName: row.toArName,
+    color: row.toColor as ProjectStatusColor,
+    byUserEmail: row.byUserEmail,
+    at: row.at.toISOString(),
+  };
 }
 
-function toDetail(project: Project): ProjectDetail {
+function toDetail(project: Project, statusSince: Date): ProjectDetail {
   return {
     id: project.id,
     clientId: project.clientId,
@@ -233,5 +275,7 @@ function toDetail(project: Project): ProjectDetail {
       project.favoritePlatformProfileId,
       project.favoriteCompanyProfileId,
     ),
+    statusId: project.statusId,
+    statusSince: statusSince.toISOString(),
   };
 }

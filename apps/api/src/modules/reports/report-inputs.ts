@@ -17,6 +17,7 @@ import type { SystemProfile } from '../../database/control-plane/entities/system
 import { CompanySystemCatalog } from '../../database/tenant/entities/company-system-catalog.entity';
 import { CompanySystemProfile } from '../../database/tenant/entities/company-system-profile.entity';
 import { CuttingSettingsRow } from '../../database/tenant/entities/cutting-settings.entity';
+import { CompanyProfileRow } from '../../database/tenant/entities/company-profile.entity';
 import { Project } from '../../database/tenant/entities/project.entity';
 import { loadProjectWindows } from '../windows/windows.service';
 import type { CutPlan } from './bar-optimiser/optimise';
@@ -31,8 +32,9 @@ import type {
 // D14), the pieces handed to the optimiser, and the stored summary.
 
 /** Bump when the cut-list rules, the optimiser or the PDF change in a way
- * that should make every cached report stale. */
-export const REPORT_VERSION = 1;
+ * that should make every cached report stale. 2: the header prints the
+ * company profile (docs/company_profile_planing.md §5). */
+export const REPORT_VERSION = 2;
 
 export interface PieceRef {
   windowId: string;
@@ -61,6 +63,15 @@ export interface ReportInputs {
   };
   /** Every profile ref the windows use. Absent = the row is gone. */
   profiles: Map<string, ProfileFacts>;
+  /** The company profile's printed names + logo for the header
+   * (docs/company_profile_planing.md §5). Null names = not saved yet:
+   * the header falls back to the account name. */
+  letterhead: {
+    enName: string | null;
+    arName: string | null;
+    logoFileId: string | null;
+    updatedAt: Date | null;
+  };
 }
 
 export interface PlatformRepos {
@@ -90,12 +101,21 @@ export async function loadReportInputs(
     stockLengthsMm: stockLengthsOf(base),
     updatedAt: row?.updatedAt ?? null,
   };
+  const profile = await manager.findOne(CompanyProfileRow, {
+    where: { id: 1 },
+  });
 
   return {
     project,
     windows,
     settings,
     profiles: await loadProfiles(manager, platform, profileRefsOf(windows)),
+    letterhead: {
+      enName: profile?.enName ?? null,
+      arName: profile?.arName ?? null,
+      logoFileId: profile?.logoFileId ?? null,
+      updatedAt: profile?.updatedAt ?? null,
+    },
   };
 }
 
@@ -191,7 +211,8 @@ async function loadProfiles(
 
 /** sha-256 over everything the report is made from (D14): the windows,
  * the project and its client, the settings, every profile used and its
- * catalogue, the language, and `REPORT_VERSION`. */
+ * catalogue, the company profile (letterhead), the language, and
+ * `REPORT_VERSION`. */
 export function fingerprintOf(
   inputs: ReportInputs,
   language: ReportLanguage,
@@ -202,6 +223,7 @@ export function fingerprintOf(
     project: inputs.project.updatedAt.toISOString(),
     client: inputs.project.client?.updatedAt.toISOString() ?? null,
     settings: inputs.settings.updatedAt?.toISOString() ?? 'default',
+    letterhead: inputs.letterhead.updatedAt?.toISOString() ?? 'default',
     windows: Object.entries(windowStampsOf(inputs)).sort(([a], [b]) =>
       a.localeCompare(b),
     ),

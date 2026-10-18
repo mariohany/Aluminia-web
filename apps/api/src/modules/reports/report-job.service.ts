@@ -8,6 +8,7 @@ import { MEMBER_ORDER, profileQueue } from './bar-optimiser/project';
 import { BarOptimiserRunner } from './bar-optimiser/runner';
 import { PdfRenderer } from './pdf/pdf-renderer.service';
 import { footerTemplate, renderBarOptimiserHtml } from './pdf/template';
+import { FilesService } from '../files/files.service';
 import { ReportJobQueue, jobQueueKey } from './report-job-queue';
 import {
   profileNoOf,
@@ -37,7 +38,10 @@ export interface ReportJob {
   startedAt: Date;
   userId: string;
   language: ReportLanguage;
-  /** For the PDF header (the request's resolved tenant). */
+  /** Owner of the logo file (the request's resolved tenant). */
+  companyId: string;
+  /** The account name: the header's name until the company profile is
+   * saved (docs/company_profile_planing.md P1). */
   companyName: string;
   fingerprint: string;
   windowStamps: Record<string, string>;
@@ -75,6 +79,7 @@ export class ReportJobService {
     private readonly runner: BarOptimiserRunner,
     private readonly pdfRenderer: PdfRenderer,
     private readonly queue: ReportJobQueue,
+    private readonly files: FilesService,
     config: ConfigService<Env, true>,
   ) {
     this.solveTimeoutMs =
@@ -152,10 +157,15 @@ export class ReportJobService {
       const generatedAt = new Date();
       const { project } = job.inputs;
       const arabic = job.language === 'ar';
+      const { letterhead } = job.inputs;
       const pdf = await this.pdfRenderer.render(
         renderBarOptimiserHtml({
           language: job.language,
-          companyName: job.companyName,
+          companyName:
+            (arabic && letterhead.arName) ||
+            letterhead.enName ||
+            job.companyName,
+          logoDataUri: await this.logoDataUri(job),
           projectName: (arabic && project.arName) || project.enName,
           clientName:
             (arabic && project.client?.arName) || project.client?.enName || '',
@@ -191,6 +201,23 @@ export class ReportJobService {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Bar optimiser report failed: ${message}`);
       persist({ jobState: 'failed', jobError: message });
+    }
+  }
+
+  /** The company logo as a data URI for the PDF, or null. A logo that
+   * can't be read (deleted meanwhile) prints the "A" mark rather than
+   * failing the report. */
+  private async logoDataUri(job: ReportJob): Promise<string | null> {
+    const id = job.inputs.letterhead.logoFileId;
+    if (!id) return null;
+    try {
+      const file = await this.files.read(job.companyId, id);
+      return `data:${file.contentType};base64,${file.body.toString('base64')}`;
+    } catch (error) {
+      this.logger.warn(
+        `Report logo ${id} unreadable, printing without it: ${(error as Error).message}`,
+      );
+      return null;
     }
   }
 

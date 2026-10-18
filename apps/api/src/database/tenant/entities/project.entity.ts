@@ -17,9 +17,9 @@ import { decimalTransformer } from '../../control-plane/entities/decimal.transfo
  * Expected to grow — window designs and paperwork attach here in later
  * phases. What matters now are the relationships, not the column list.
  *
- * No lifecycle status column: a project is either here or deleted.
- * Archiving was considered and dropped — see docs/projects_planing.md's
- * decisions table.
+ * Every project sits in one of the company's `project_statuses`
+ * (docs/project_settings_planing.md). Archiving was considered and
+ * dropped — see docs/projects_planing.md's decisions table.
  */
 @Entity('projects')
 export class Project {
@@ -154,6 +154,12 @@ export class Project {
 
   @Column({ name: 'favorite_company_profile_id', type: 'uuid', nullable: true })
   favoriteCompanyProfileId: string | null;
+
+  // Set to the first status on create (S13); RESTRICT keeps a status in
+  // use from being deleted. Moving between statuses is a later plan.
+  @Index()
+  @Column({ name: 'status_id', type: 'uuid' })
+  statusId: string;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@repo/types/auth';
 import type { ProjectDetail } from '@repo/types/projects';
+import type { ProjectStatusEvent } from '@repo/types/project-settings';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -24,8 +25,9 @@ import { DeleteProjectDto } from './dto/delete-project.dto';
  * No `GET /projects` — the workspace tree is served by `GET /clients`
  * with projects nested, so a flat list has no caller.
  *
- * No archive route either: a project has no lifecycle status. It exists
- * or it is deleted. See docs/projects_planing.md's decisions table.
+ * No archive route either: a project exists or it is deleted (see
+ * docs/projects_planing.md). Its status comes from Config › Project
+ * settings; moving between statuses is a later plan.
  */
 @Roles(UserRole.COMPANY_ADMIN, UserRole.USER)
 @TenantScoped()
@@ -36,6 +38,13 @@ export class ProjectsController {
   @Get(':id')
   detail(@Param('id', ParseUUIDPipe) id: string): Promise<ProjectDetail> {
     return this.projects.detail(id);
+  }
+
+  @Get(':id/status-history')
+  statusHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ProjectStatusEvent[]> {
+    return this.projects.statusHistory(id);
   }
 
   @Post()

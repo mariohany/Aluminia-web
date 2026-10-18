@@ -18,7 +18,11 @@ import { stringsFor, type PdfStrings } from './strings';
 
 export interface BarOptimiserPdfData {
   language: ReportLanguage;
+  /** The printed name in the PDF's language (company profile, else the
+   * account name). */
   companyName: string;
+  /** The company logo (`data:` URI), shown instead of the "A" mark. */
+  logoDataUri?: string | null;
   projectName: string;
   clientName: string;
   generatedAt: Date;
@@ -73,6 +77,7 @@ html, body { margin: 0; }
 body { font-family: ${family}; font-size: 10.5px; color: ${C.ink}; line-height: 1.45; }
 .num { font-family: 'Geist Mono', monospace; direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; }
 header { display: flex; align-items: flex-start; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid ${C.ink}; }
+.logo { width: 40px; height: 40px; object-fit: contain; flex-shrink: 0; }
 .mark { width: 30px; height: 30px; border-radius: 7px; background: ${C.accent}; color: #fff; display: flex; align-items: center; justify-content: center; font: 700 15px 'Geist', sans-serif; flex-shrink: 0; }
 .head-text { flex: 1; display: flex; flex-direction: column; gap: 1px; }
 .company { font-size: 9.5px; color: ${C.mute}; }
@@ -146,8 +151,11 @@ function header(
   subtitle: string,
   date: string,
 ): string {
+  const mark = data.logoDataUri
+    ? `<img class="logo" src="${esc(data.logoDataUri)}" alt="">`
+    : `<div class="mark">A</div>`;
   return `<header>
-  <div class="mark">A</div>
+  ${mark}
   <div class="head-text">
     <span class="company">${esc(data.companyName)}</span>
     <h1>${esc(title)}</h1>

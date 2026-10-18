@@ -5,6 +5,13 @@ import { clientTreeKey } from '@/lib/clients-queries'
 
 export const projectKey = (id: string) => ['projects', id] as const
 
+/** Under the project's key, so invalidating a project refreshes it too. */
+export const projectStatusHistoryKey = (id: string) => ['projects', id, 'status-history'] as const
+
+export function useProjectStatusHistoryQuery(id: string) {
+  return useQuery({ queryKey: projectStatusHistoryKey(id), queryFn: () => projectsApi.getProjectStatusHistory(id) })
+}
+
 export function useProjectQuery(id: string | undefined) {
   return useQuery({
     queryKey: projectKey(id ?? ''),

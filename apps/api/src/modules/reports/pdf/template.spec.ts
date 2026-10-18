@@ -105,6 +105,20 @@ describe('bar optimiser PDF template', () => {
     expect(html).toContain('W-01 · fr T');
   });
 
+  it('prints the "A" mark without a logo, and the logo instead of it with one', async () => {
+    const plain = renderBarOptimiserHtml(await data('en'));
+    expect(plain).toContain('<div class="mark">A</div>');
+    expect(plain).not.toContain('class="logo"');
+
+    const logo = 'data:image/png;base64,iVBORw0KGgo=';
+    const branded = renderBarOptimiserHtml({
+      ...(await data('en')),
+      logoDataUri: logo,
+    });
+    expect(branded).toContain(`<img class="logo" src="${logo}" alt="">`);
+    expect(branded).not.toContain('<div class="mark">A</div>');
+  });
+
   it('Arabic: rtl, Arabic headings, Latin digits, numbers isolated ltr', async () => {
     const html = renderBarOptimiserHtml(await data('ar'));
     expect(html).toContain('<html lang="ar" dir="rtl">');

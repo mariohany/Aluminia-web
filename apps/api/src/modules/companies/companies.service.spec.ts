@@ -101,6 +101,12 @@ function makeService(company: Company | null, userCount = 0) {
     }),
   };
   const auditLog = { record: jest.fn(() => Promise.resolve()) };
+  const files = {
+    deleteCompanyFiles: jest.fn((id: string) => {
+      events.push(`delete-files:${id}`);
+      return Promise.resolve();
+    }),
+  };
 
   const service = new CompaniesService(
     dataSource as never,
@@ -111,8 +117,9 @@ function makeService(company: Company | null, userCount = 0) {
     auditLog,
     {} as never,
     authVersions as never,
+    files as never,
   );
-  return { service, events, manager, authVersions };
+  return { service, events, manager, authVersions, files };
 }
 
 describe('CompaniesService.remove: guards before DROP SCHEMA', () => {
@@ -146,7 +153,7 @@ describe('CompaniesService.remove: guards before DROP SCHEMA', () => {
   // The schema name is interpolated into DDL, so a corrupted row must
   // fail validation rather than run (and the deletes roll back with it).
   it('never runs DROP SCHEMA with an invalid schema name', async () => {
-    const { service, events, authVersions } = makeService(
+    const { service, events, authVersions, files } = makeService(
       makeCompany({ schemaName: 'tenant_acme"; DROP SCHEMA public; --' }),
       2,
     );
@@ -154,9 +161,10 @@ describe('CompaniesService.remove: guards before DROP SCHEMA', () => {
     expect(events.some((event) => event.startsWith('DROP SCHEMA'))).toBe(false);
     expect(events.at(-1)).toBe('rollback');
     expect(authVersions.publishDeleted).not.toHaveBeenCalled();
+    expect(files.deleteCompanyFiles).not.toHaveBeenCalled();
   });
 
-  it('deletes users, the company and its schema in one transaction, then marks the users deleted', async () => {
+  it('deletes users, the company and its schema in one transaction, then marks the users deleted and clears its files', async () => {
     const { service, events } = makeService(makeCompany(), 2);
     await service.remove('company-a', 'Acme', ACTOR);
     expect(events).toEqual([
@@ -165,6 +173,7 @@ describe('CompaniesService.remove: guards before DROP SCHEMA', () => {
       'DROP SCHEMA "tenant_acme" CASCADE',
       'commit',
       'publish-deleted:2',
+      'delete-files:company-a',
     ]);
   });
 });

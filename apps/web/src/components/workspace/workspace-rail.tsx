@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Database, FileChartColumn, LayoutGrid, LogOut, Menu, Users } from 'lucide-react'
+import { Database, FileChartColumn, LayoutGrid, LogOut, Menu, Settings } from 'lucide-react'
 import { UserRole } from '@repo/types/auth'
 import { useAuth } from '@/lib/auth-context'
 import { useCompanyOverviewQuery } from '@/lib/company-queries'
@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils'
 
 /**
  * The workspace's top-level navigation: an icon rail, not a sidebar.
- * `Manage` replaces the tree and canvas entirely rather than sitting
+ * `Config` replaces the tree and canvas entirely rather than sitting
  * beside them, so these are destinations, not filters.
  *
  * Always visible, at every breakpoint — there is no separate top bar.
@@ -57,12 +57,12 @@ export function WorkspaceRail({
   // Not NavLink's own `isActive`, deliberately. `end` would switch the
   // Projects item off as soon as a project is selected — the rail would
   // claim you had left the section you were plainly still in — while
-  // dropping `end` would light it up on the Data/Manage routes too,
+  // dropping `end` would light it up on the Data/Config routes too,
   // since /workspace prefixes everything here. The rail has exactly
   // four destinations, so state the active one directly rather than
   // deriving three separate booleans.
-  const section = pathname.startsWith('/workspace/manage')
-    ? 'manage'
+  const section = pathname.startsWith('/workspace/config')
+    ? 'config'
     : pathname.startsWith('/workspace/data')
       ? 'data'
       : pathname.startsWith('/workspace/reports')
@@ -142,13 +142,13 @@ export function WorkspaceRail({
           than no link. */}
       {user?.role === UserRole.COMPANY_ADMIN && (
         <Link
-          to="/workspace/manage"
-          className={itemClass(section === 'manage')}
-          aria-current={section === 'manage' ? 'page' : undefined}
+          to="/workspace/config"
+          className={itemClass(section === 'config')}
+          aria-current={section === 'config' ? 'page' : undefined}
           onClick={onNavigate}
         >
-          <Users className="size-[19px]" aria-hidden="true" />
-          {t('rail.manage')}
+          <Settings className="size-[19px]" aria-hidden="true" />
+          {t('rail.config')}
         </Link>
       )}
 

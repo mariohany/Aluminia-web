@@ -20,6 +20,7 @@ import { LookupsModule } from './modules/lookups/lookups.module';
 import { CompanyLookupsModule } from './modules/company-lookups/company-lookups.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { ProjectSettingsModule } from './modules/project-settings/project-settings.module';
 import { WindowsModule } from './modules/windows/windows.module';
 import { CompanyModule } from './modules/company/company.module';
 import { LeadsModule } from './modules/leads/leads.module';
@@ -49,6 +50,7 @@ import { FilesModule } from './modules/files/files.module';
     CompanyLookupsModule,
     ClientsModule,
     ProjectsModule,
+    ProjectSettingsModule,
     WindowsModule,
     CompanyModule,
     LeadsModule,

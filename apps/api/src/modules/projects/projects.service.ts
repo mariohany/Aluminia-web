@@ -10,8 +10,13 @@ import type {
   ProjectDetail,
   UpdateProjectInput,
 } from '@repo/types/projects';
+import type {
+  ProjectStatusColor,
+  ProjectStatusEvent,
+} from '@repo/types/project-settings';
 import { Client } from '../../database/tenant/entities/client.entity';
 import { Project } from '../../database/tenant/entities/project.entity';
+import { ProjectStatusEventRow } from '../../database/tenant/entities/project-status-event.entity';
 import { User } from '../../database/control-plane/entities/user.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
 import {
@@ -44,8 +49,20 @@ export class ProjectsService {
 
   detail(id: string): Promise<ProjectDetail> {
     return this.tenantContext.run(async (manager) =>
-      toDetail(await this.findOrFail(manager, id)),
+      withStatus(manager, await this.findOrFail(manager, id)),
     );
+  }
+
+  /** The project's status history, newest first (project settings S10). */
+  statusHistory(id: string): Promise<ProjectStatusEvent[]> {
+    return this.tenantContext.run(async (manager) => {
+      await this.findOrFail(manager, id);
+      const events = await manager.find(ProjectStatusEventRow, {
+        where: { projectId: id },
+        order: { at: 'DESC', id: 'DESC' },
+      });
+      return events.map(toEvent);
+    });
   }
 
   async create(
@@ -106,7 +123,7 @@ export class ProjectsService {
         id: createdByUserId,
         email: creator?.email ?? null,
       });
-      return toDetail(saved);
+      return withStatus(manager, saved);
     });
   }
 
@@ -163,7 +180,7 @@ export class ProjectsService {
         project.favoriteCompanyProfileId = favoritePair.companyId;
       }
 
-      return toDetail(await manager.save(project));
+      return withStatus(manager, await manager.save(project));
     });
   }
 
@@ -202,7 +219,34 @@ export class ProjectsService {
   }
 }
 
-function toDetail(project: Project): ProjectDetail {
+async function withStatus(
+  manager: EntityManager,
+  project: Project,
+): Promise<ProjectDetail> {
+  const latest = await manager.findOne(ProjectStatusEventRow, {
+    where: { projectId: project.id },
+    order: { at: 'DESC', id: 'DESC' },
+    select: { id: true, at: true },
+  });
+  // Every project has its "created" event; the fallback only covers a
+  // row someone deleted by hand.
+  return toDetail(project, latest?.at ?? project.createdAt);
+}
+
+function toEvent(row: ProjectStatusEventRow): ProjectStatusEvent {
+  return {
+    id: row.id,
+    fromStatusId: row.fromStatusId,
+    toStatusId: row.toStatusId,
+    enName: row.toEnName,
+    arName: row.toArName,
+    color: row.toColor as ProjectStatusColor,
+    byUserEmail: row.byUserEmail,
+    at: row.at.toISOString(),
+  };
+}
+
+function toDetail(project: Project, statusSince: Date): ProjectDetail {
   return {
     id: project.id,
     clientId: project.clientId,
@@ -231,5 +275,7 @@ function toDetail(project: Project): ProjectDetail {
       project.favoritePlatformProfileId,
       project.favoriteCompanyProfileId,
     ),
+    statusId: project.statusId,
+    statusSince: statusSince.toISOString(),
   };
 }

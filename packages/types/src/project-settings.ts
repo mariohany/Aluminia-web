@@ -89,3 +89,17 @@ export interface ProjectStatus {
   responsible: ProjectStatusUser[]
   projectCount: number
 }
+
+/** GET /projects/:id/status-history, newest first. Name, colour and email
+ * are what they were when it happened; the status ids go null once that
+ * status is deleted. `fromStatusId` null = the project was created. */
+export interface ProjectStatusEvent {
+  id: string
+  fromStatusId: string | null
+  toStatusId: string | null
+  enName: string
+  arName: string | null
+  color: ProjectStatusColor
+  byUserEmail: string | null
+  at: string
+}

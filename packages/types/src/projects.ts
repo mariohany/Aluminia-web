@@ -134,4 +134,11 @@ export interface ProjectDetail extends ProjectSummary {
   vatRate: number | null
   discountRate: number | null
   favoriteFrameProfile: string | null
+  // The project's status (docs/project_settings_planing.md). Only the id:
+  // name, colour, step and responsible users come from
+  // `GET /project-statuses`, which the panel already holds, so a Config
+  // edit shows up without refetching every project.
+  statusId: string
+  /** When the project reached its current status (its latest history event). */
+  statusSince: string
 }

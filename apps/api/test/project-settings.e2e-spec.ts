@@ -9,6 +9,7 @@ import type { LoginResponse } from '@repo/types/auth';
 import type {
   ProjectSettings,
   ProjectStatus,
+  ProjectStatusEvent,
 } from '@repo/types/project-settings';
 import type { ProjectDetail } from '@repo/types/projects';
 import { AppModule } from './../src/app.module';
@@ -462,6 +463,69 @@ describe('Project settings (e2e)', () => {
         .delete(`/project-statuses/${last.id}`)
         .set(auth(betaToken))
         .expect(409);
+    });
+  });
+
+  describe("a project's status", () => {
+    it('detail carries the status id and since when; a user reads the history', async () => {
+      const created = await newProject(alphaUserToken);
+      const [first] = await statuses();
+      expect(created.statusId).toBe(first.id);
+
+      const detail = await server()
+        .get(`/projects/${created.id}`)
+        .set(auth(alphaUserToken))
+        .expect(200);
+      const body = detail.body as ProjectDetail;
+      expect(body.statusId).toBe(first.id);
+      expect(body.statusSince).toBe(created.statusSince);
+
+      const history = await server()
+        .get(`/projects/${created.id}/status-history`)
+        .set(auth(alphaUserToken))
+        .expect(200);
+      const events = history.body as ProjectStatusEvent[];
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        fromStatusId: null,
+        toStatusId: first.id,
+        enName: 'New',
+        arName: 'جديد',
+        color: 'grey',
+        byUserEmail: alphaUser,
+        at: body.statusSince,
+      });
+    });
+
+    it('history keeps the name it had when the status is renamed later', async () => {
+      const created = await newProject();
+      const [first] = await statuses();
+      await server()
+        .patch(`/project-statuses/${first.id}`)
+        .set(auth(alphaToken))
+        .send({ enName: 'Lead' })
+        .expect(200);
+      try {
+        const history = await server()
+          .get(`/projects/${created.id}/status-history`)
+          .set(auth(alphaToken))
+          .expect(200);
+        expect((history.body as ProjectStatusEvent[])[0].enName).toBe('New');
+      } finally {
+        await server()
+          .patch(`/project-statuses/${first.id}`)
+          .set(auth(alphaToken))
+          .send({ enName: 'New' })
+          .expect(200);
+      }
+    });
+
+    it("another company's project history is a 404", async () => {
+      const created = await newProject();
+      await server()
+        .get(`/projects/${created.id}/status-history`)
+        .set(auth(betaToken))
+        .expect(404);
     });
   });
 });

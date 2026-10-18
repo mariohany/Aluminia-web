@@ -196,8 +196,8 @@
         "arName": "Name (Arabic)",
         "color": "Colour",
         "responsible": "Responsible users",
-        "responsibleHint": "They handle a project while it’s in this status.",
-        "noUsers": "No active users.",
+        "responsibleHint": "They handle a project while it’s in this status. Admins can always move projects, so they aren’t listed.",
+        "noUsers": "No active users yet. Add one in Users & seats.",
         "colorNames": {
           "grey": "Grey",
           "blue": "Blue",

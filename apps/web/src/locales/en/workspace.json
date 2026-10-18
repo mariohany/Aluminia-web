@@ -825,6 +825,20 @@
     "projectActions": "Project actions",
     "openWindow": "Open this window",
     "moreIssues_one": "(+{{count}} more)",
-    "moreIssues_other": "(+{{count}} more)"
+    "moreIssues_other": "(+{{count}} more)",
+    "status": {
+      "title": "Status",
+      "step": "Step {{position}} of {{count}} · since {{since}}",
+      "responsible": "responsible",
+      "nobody": "No one is responsible for {{name}}",
+      "nobodyAdmin": "Assign someone in Config › Project settings.",
+      "nobodyUser": "Only the admin can move it on. Ask them to assign someone.",
+      "history": "History",
+      "created": "created",
+      "showAll": "Show all ({{count}})",
+      "showLess": "Show less",
+      "loadError": "Couldn’t load the status.",
+      "historyError": "Couldn’t load the history."
+    }
   }
 }

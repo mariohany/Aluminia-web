@@ -895,6 +895,20 @@
     "moreIssues_two": "(+مشكلتان)",
     "moreIssues_few": "(+{{count}} مشاكل)",
     "moreIssues_many": "(+{{count}} مشكلة)",
-    "moreIssues_other": "(+{{count}} مشكلة)"
+    "moreIssues_other": "(+{{count}} مشكلة)",
+    "status": {
+      "title": "الحالة",
+      "step": "المرحلة {{position}} من {{count}} · من {{since}}",
+      "responsible": "مسؤولين",
+      "nobody": "مفيش مسؤول عن {{name}}",
+      "nobodyAdmin": "عيّن حد من الإعدادات › إعدادات المشاريع.",
+      "nobodyUser": "الأدمن بس يقدر ينقله للمرحلة اللي بعدها. اطلب منه يعيّن حد.",
+      "history": "السجل",
+      "created": "اتعمل",
+      "showAll": "اعرض الكل ({{count}})",
+      "showLess": "اعرض أقل",
+      "loadError": "مقدرناش نحمّل الحالة.",
+      "historyError": "مقدرناش نحمّل السجل."
+    }
   }
 }

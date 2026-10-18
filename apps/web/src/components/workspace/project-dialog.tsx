@@ -11,6 +11,8 @@ import { optionalTextField } from '@/lib/form-fields'
 import { displayName } from '@/lib/bilingual'
 import { cn } from '@/lib/utils'
 import { useCreateProjectMutation, useUpdateProjectMutation } from '@/lib/projects-queries'
+import { useProjectSettingsQuery } from '@/lib/project-settings-queries'
+import type { ProjectSettings } from '@repo/types/project-settings'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FieldLabel } from '@/components/workspace/field-label'
@@ -85,6 +87,10 @@ export function ProjectDialog({
 
   const createMutation = useCreateProjectMutation()
   const updateMutation = useUpdateProjectMutation(project?.id ?? '')
+  // Config › Project settings' new-project defaults. The dialog is mounted
+  // with the workspace, so they are normally cached before it first opens.
+  const settingsQuery = useProjectSettingsQuery()
+  const settings = settingsQuery.data
 
   const {
     register,
@@ -93,10 +99,11 @@ export function ProjectDialog({
     setValue,
     watch,
     trigger,
+    getFieldState,
     formState: { errors, isSubmitting },
   } = useForm<CreateProjectInput>({
     resolver: zodResolver(createProjectSchema),
-    defaultValues: emptyProject(defaultClientId),
+    defaultValues: emptyProject(defaultClientId, settings),
   })
 
   useEffect(() => {
@@ -119,9 +126,26 @@ export function ProjectDialog({
             vatRate: project.vatRate,
             discountRate: project.discountRate,
           }
-        : emptyProject(defaultClientId),
+        : emptyProject(defaultClientId, settings),
     )
+    // Only on open: a later settings refetch must not wipe what's typed
+    // (the effect below fills the defaults in if they arrive late).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, project, reset, defaultClientId, initialStep])
+
+  // Defaults that load after the dialog opened (a slow first fetch): fill
+  // in only the preference fields the user hasn't touched.
+  useEffect(() => {
+    if (!open || isEdit || !settings) return
+    const fields = [
+      ['defaultSystemBrand', settings.defaultSystemBrand],
+      ['defaultSystemCatalog', settings.defaultSystemCatalog],
+      ['currency', settings.currency],
+    ] as const
+    for (const [field, value] of fields) {
+      if (!getFieldState(field).isDirty) setValue(field, value)
+    }
+  }, [open, isEdit, settings, getFieldState, setValue])
 
   const clientId = watch('clientId')
 
@@ -268,7 +292,7 @@ export function ProjectDialog({
                   {t('actions.next')}
                 </Button>
               )}
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting || (!isEdit && settingsQuery.isLoading)}>
                 {isEdit ? t('actions.save') : t('actions.create')}
               </Button>
             </DialogFooter>
@@ -287,7 +311,7 @@ export function ProjectDialog({
   )
 }
 
-function emptyProject(defaultClientId?: string): CreateProjectInput {
+function emptyProject(defaultClientId?: string, settings?: ProjectSettings): CreateProjectInput {
   return {
     clientId: defaultClientId ?? '',
     enName: '',
@@ -297,14 +321,13 @@ function emptyProject(defaultClientId?: string): CreateProjectInput {
     notes: null,
     phone: null,
     email: null,
-    defaultSystemBrand: null,
-    defaultSystemCatalog: null,
-    // Defaults to EGP rather than "no default" — this product quotes
-    // almost exclusively in EGP, and a picker that starts empty just
-    // means everyone re-picks the same value on every project. Still
-    // overridable, and on EDIT the project's own (possibly null) value
-    // is used instead — see the `reset()` call above.
-    currency: 'EGP',
+    // Config › Project settings' new-project defaults, copied in (S3): the
+    // user can still change them here, and editing Config later never
+    // touches this project. Before they load (or if they can't), EGP as
+    // before — this product quotes almost exclusively in EGP.
+    defaultSystemBrand: settings?.defaultSystemBrand ?? null,
+    defaultSystemCatalog: settings?.defaultSystemCatalog ?? null,
+    currency: settings ? settings.currency : 'EGP',
     vatRate: null,
     discountRate: null,
   }

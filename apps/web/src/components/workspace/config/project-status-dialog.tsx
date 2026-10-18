@@ -3,6 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Check } from 'lucide-react'
+import { UserRole } from '@repo/types/auth'
 import {
   PROJECT_STATUS_COLORS,
   createProjectStatusSchema,
@@ -32,7 +33,8 @@ import { STATUS_DOT_CLASS } from '@/lib/project-status-colors'
 /**
  * Add or edit one project status (board `cfg-ps-status-edit`): English
  * and Arabic name, one of the 8 colours, and the responsible users (the
- * company's active users, shown by email). `status` null = add.
+ * company's active plain users, shown by email; never admins, who can
+ * always act). `status` null = add.
  */
 export function ProjectStatusDialog({
   open,
@@ -98,7 +100,11 @@ function StatusForm({
   const color = useWatch({ control, name: 'color' })
   const responsible = useWatch({ control, name: 'responsibleUserIds' })
 
-  const activeUsers = (users.data ?? []).filter((user) => user.status === 'active')
+  // Admins can always act on any status, so they are never listed (the
+  // API refuses them too).
+  const activeUsers = (users.data ?? []).filter(
+    (user) => user.status === 'active' && user.role !== UserRole.COMPANY_ADMIN,
+  )
 
   const toggleUser = (id: string, checked: boolean) =>
     setValue('responsibleUserIds', checked ? [...responsible, id] : responsible.filter((userId) => userId !== id), {

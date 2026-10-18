@@ -84,8 +84,9 @@ export interface ProjectStatus {
   enName: string
   arName: string | null
   color: ProjectStatusColor
-  /** Active users of this company only; anyone removed, moved or
-   * deactivated is dropped on read. Empty = no one responsible (S7). */
+  /** Active plain users of this company only (admins can always act, so
+   * they are never listed); anyone removed, moved, deactivated or made an
+   * admin is dropped on read. Empty = no one responsible (S7). */
   responsible: ProjectStatusUser[]
   projectCount: number
 }

@@ -15,6 +15,7 @@ import {
 } from '@repo/types/project-settings';
 import {
   User,
+  UserRole,
   UserStatus,
 } from '../../database/control-plane/entities/user.entity';
 import { ProjectStatusRow } from '../../database/tenant/entities/project-status.entity';
@@ -31,9 +32,11 @@ const DUPLICATE_NAME = 'Another status already has that name.';
  * gaps: every write locks the whole list first (`lockAll`), so two admins
  * adding, deleting or reordering at once queue instead of colliding.
  *
- * Responsible users are control-plane users. Writes accept only active
- * users of this company (400 otherwise); reads drop anyone who has since
- * left, moved or been deactivated.
+ * Responsible users are control-plane users, and only plain users: a
+ * company admin can always act on any status, so admins are never listed
+ * (Mario 2026-10-19). Writes accept only active non-admin users of this
+ * company (400 otherwise); reads drop anyone who has since left, moved,
+ * been deactivated or become an admin.
  */
 @Injectable()
 export class ProjectStatusesService {
@@ -92,7 +95,7 @@ export class ProjectStatusesService {
         if (input.enName !== undefined) row.enName = input.enName;
         if (input.arName !== undefined) row.arName = input.arName;
         if (input.color !== undefined) row.color = input.color;
-        // Saving also drops ids that have stopped being active users.
+        // Saving also drops ids that can no longer be responsible.
         row.responsibleUserIds =
           responsibleUserIds ??
           row.responsibleUserIds.filter((userId) => active.has(userId));
@@ -154,12 +157,14 @@ export class ProjectStatusesService {
     });
   }
 
-  /** id → email of every active user of the request's company. */
+  /** id → email of everyone who can be responsible: the request's
+   * company's active plain users (not admins). */
   private async activeUsers(): Promise<Map<string, string>> {
     const users = await this.users.find({
       where: {
         companyId: this.tenantContext.tenant.companyId,
         status: UserStatus.ACTIVE,
+        role: UserRole.USER,
       },
       select: { id: true, email: true },
     });
@@ -167,8 +172,8 @@ export class ProjectStatusesService {
   }
 }
 
-/** Every responsible id must be an active user of this company. Repeats
- * are dropped, order kept. */
+/** Every responsible id must be an active non-admin user of this
+ * company. Repeats are dropped, order kept. */
 function checkResponsible(
   ids: string[],
   active: ReadonlyMap<string, string>,
@@ -176,7 +181,7 @@ function checkResponsible(
   const unique = [...new Set(ids)];
   if (unique.some((id) => !active.has(id))) {
     throw new BadRequestException(
-      'Responsible users must be active users of this company.',
+      'Responsible users must be active users of this company, not admins.',
     );
   }
   return unique;

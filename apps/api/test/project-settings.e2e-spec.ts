@@ -313,29 +313,37 @@ describe('Project settings (e2e)', () => {
         .expect(204);
     });
 
-    it('responsible users: this company only, inactive ones drop out', async () => {
+    it('responsible users: active plain users of this company only', async () => {
       const [, measuring] = await statuses();
-      await server()
-        .patch(`/project-statuses/${measuring.id}`)
-        .set(auth(alphaToken))
-        .send({ responsibleUserIds: [betaAdminId] })
-        .expect(400);
-      await server()
-        .patch(`/project-statuses/${measuring.id}`)
-        .set(auth(alphaToken))
-        .send({ responsibleUserIds: [randomUUID()] })
-        .expect(400);
+      for (const id of [betaAdminId, randomUUID(), alphaAdminId]) {
+        // Another company's user, an unknown id, and an admin (admins can
+        // always act on any status, so they are never responsible).
+        await server()
+          .patch(`/project-statuses/${measuring.id}`)
+          .set(auth(alphaToken))
+          .send({ responsibleUserIds: [id] })
+          .expect(400);
+      }
 
       const res = await server()
         .patch(`/project-statuses/${measuring.id}`)
         .set(auth(alphaToken))
-        .send({
-          responsibleUserIds: [alphaUserId, alphaAdminId, alphaUserId],
-        })
+        .send({ responsibleUserIds: [alphaUserId, alphaUserId] })
         .expect(200);
       expect((res.body as ProjectStatus).responsible).toEqual([
         { id: alphaUserId, email: alphaUser },
-        { id: alphaAdminId, email: alphaAdmin },
+      ]);
+
+      // An admin id saved before this rule (or a user later made admin)
+      // is dropped on read.
+      await controlPlane.query(
+        `UPDATE "${alphaSchema}".project_statuses
+            SET responsible_user_ids = ARRAY[$1, $2]::uuid[] WHERE id = $3`,
+        [alphaAdminId, alphaUserId, measuring.id],
+      );
+      const withAdmin = (await statuses()).find((s) => s.id === measuring.id);
+      expect(withAdmin?.responsible).toEqual([
+        { id: alphaUserId, email: alphaUser },
       ]);
 
       await controlPlane.query(
@@ -344,9 +352,7 @@ describe('Project settings (e2e)', () => {
       );
       try {
         const after = (await statuses()).find((s) => s.id === measuring.id);
-        expect(after?.responsible).toEqual([
-          { id: alphaAdminId, email: alphaAdmin },
-        ]);
+        expect(after?.responsible).toEqual([]);
         // Can't be assigned while inactive either.
         await server()
           .patch(`/project-statuses/${measuring.id}`)

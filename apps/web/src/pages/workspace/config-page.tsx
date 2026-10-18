@@ -1,18 +1,19 @@
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Building2, ChevronRight, Users, type LucideIcon } from 'lucide-react'
+import { Building2, ChevronRight, ListChecks, Users, type LucideIcon } from 'lucide-react'
 import { useCompanyOverviewQuery } from '@/lib/company-queries'
 
 /**
  * The Config home (was Manage): one card per section, each opening its
  * own page under /workspace/config/<section>. Cards carry a title and a
  * description only — no live details (Mario, 2026-10-17). Company admins
- * only (the route's RoleRoute). Project settings is planned next and
- * joins this list when it is built.
+ * only (the route's RoleRoute). Add a section = an entry here + a route
+ * + `config.sections.<key>` en/ar keys.
  */
 const SECTIONS: { key: string; to: string; icon: LucideIcon }[] = [
   { key: 'users', to: '/workspace/config/users', icon: Users },
   { key: 'company', to: '/workspace/config/company', icon: Building2 },
+  { key: 'projects', to: '/workspace/config/projects', icon: ListChecks },
 ]
 
 export function ConfigPage() {

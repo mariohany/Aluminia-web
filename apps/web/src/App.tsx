@@ -26,6 +26,7 @@ import { DataPage } from '@/pages/workspace/data-page'
 import { ConfigPage } from '@/pages/workspace/config-page'
 import { ConfigUsersPage } from '@/pages/workspace/config-users-page'
 import { ConfigCompanyPage } from '@/pages/workspace/config-company-page'
+import { ConfigProjectsPage } from '@/pages/workspace/config-projects-page'
 import { ReportsPage } from '@/pages/workspace/reports-page'
 import { WindowEditorPage } from '@/pages/workspace/window-editor-page'
 
@@ -145,6 +146,14 @@ function App() {
                 element={
                   <RoleRoute allow={[UserRole.COMPANY_ADMIN]}>
                     <ConfigCompanyPage />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="config/projects"
+                element={
+                  <RoleRoute allow={[UserRole.COMPANY_ADMIN]}>
+                    <ConfigProjectsPage />
                   </RoleRoute>
                 }
               />

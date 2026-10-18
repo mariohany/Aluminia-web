@@ -4,7 +4,7 @@ import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { Building2, Check, Trash2, Upload } from 'lucide-react'
+import { Building2, Trash2, Upload } from 'lucide-react'
 import { updateCompanyProfileSchema, type CompanyProfile } from '@repo/types/company-profile'
 import { FILE_PURPOSE_LIMITS, FilePurpose } from '@repo/types/files'
 import { apiErrorMessage } from '@/lib/api-client'
@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { FieldLabel } from '@/components/workspace/field-label'
 import { ConfigSectionHeader } from '@/components/workspace/config/config-section-header'
 import { LetterheadPreview } from '@/components/workspace/config/letterhead-preview'
+import { ConfigGrid2, ConfigRow, ConfigSaveBar } from '@/components/workspace/config/config-row'
 
 // The text fields; the logo is held apart (below) because it is a file id,
 // not something typed.
@@ -186,7 +187,7 @@ export function ConfigCompanyPage() {
         {profile && (
           <>
             <div className="flex flex-col">
-              <Row title={t('config.company.rows.logo.title')} hint={t('config.company.rows.logo.hint')}>
+              <ConfigRow title={t('config.company.rows.logo.title')} hint={t('config.company.rows.logo.hint')}>
                 <div className="flex flex-wrap items-center gap-3.5">
                   <span className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
                     {logoUrl ? (
@@ -231,44 +232,44 @@ export function ConfigCompanyPage() {
                     }}
                   />
                 </div>
-              </Row>
+              </ConfigRow>
 
-              <Row title={t('config.company.rows.name.title')} hint={t('config.company.rows.name.hint')}>
-                <Grid2>
+              <ConfigRow title={t('config.company.rows.name.title')} hint={t('config.company.rows.name.hint')}>
+                <ConfigGrid2>
                   {field('enName', t('config.company.fields.english'), { dir: 'ltr', optional: false })}
                   {field('arName', t('config.company.fields.arabic'), { dir: 'rtl' })}
-                </Grid2>
-              </Row>
+                </ConfigGrid2>
+              </ConfigRow>
 
-              <Row title={t('config.company.rows.address.title')} hint={t('config.company.rows.address.hint')}>
-                <Grid2>
+              <ConfigRow title={t('config.company.rows.address.title')} hint={t('config.company.rows.address.hint')}>
+                <ConfigGrid2>
                   {field('enAddress', t('config.company.fields.english'), { dir: 'ltr' })}
                   {field('arAddress', t('config.company.fields.arabic'), { dir: 'rtl' })}
-                </Grid2>
-              </Row>
+                </ConfigGrid2>
+              </ConfigRow>
 
-              <Row title={t('config.company.rows.contact.title')} hint={t('config.company.rows.contact.hint')}>
-                <Grid2>
+              <ConfigRow title={t('config.company.rows.contact.title')} hint={t('config.company.rows.contact.hint')}>
+                <ConfigGrid2>
                   {field('phone', t('config.company.fields.phone'), { dir: 'ltr', mono: true, type: 'tel' })}
                   {field('email', t('config.company.fields.email'), { dir: 'ltr', type: 'email' })}
                   {field('website', t('config.company.fields.website'), { dir: 'ltr' })}
-                </Grid2>
-              </Row>
+                </ConfigGrid2>
+              </ConfigRow>
 
-              <Row
+              <ConfigRow
                 title={t('config.company.rows.registration.title')}
                 hint={t('config.company.rows.registration.hint')}
               >
-                <Grid2>
+                <ConfigGrid2>
                   {field('taxId', t('config.company.fields.taxId'), { dir: 'ltr', mono: true })}
                   {field('commercialRegister', t('config.company.fields.commercialRegister'), {
                     dir: 'ltr',
                     mono: true,
                   })}
-                </Grid2>
-              </Row>
+                </ConfigGrid2>
+              </ConfigRow>
 
-              <Row title={t('config.company.rows.paper.title')} hint={t('config.company.rows.paper.hint')}>
+              <ConfigRow title={t('config.company.rows.paper.title')} hint={t('config.company.rows.paper.hint')}>
                 <LetterheadPreview
                   logoUrl={logoUrl}
                   enName={values.enName?.trim() || profile.enName}
@@ -279,47 +280,13 @@ export function ConfigCompanyPage() {
                   taxId={values.taxId?.trim() || null}
                   commercialRegister={values.commercialRegister?.trim() || null}
                 />
-              </Row>
+              </ConfigRow>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-              {dirty ? (
-                <span className="inline-flex items-center gap-2 text-[12.5px] text-amber-700 dark:text-amber-400">
-                  <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />
-                  {t('config.company.unsaved')}
-                </span>
-              ) : (
-                <span className="text-[12.5px] text-muted-foreground">{t('config.company.allSaved')}</span>
-              )}
-              <span className="flex-1" />
-              <Button type="button" variant="outline" disabled={!dirty || isSubmitting} onClick={discard}>
-                {t('actions.discard')}
-              </Button>
-              <Button type="submit" disabled={!dirty || isSubmitting || uploading}>
-                <Check className="size-4" aria-hidden="true" />
-                {t('actions.save')}
-              </Button>
-            </div>
+            <ConfigSaveBar dirty={dirty} busy={isSubmitting} saveDisabled={uploading} onDiscard={discard} />
           </>
         )}
       </form>
     </div>
   )
-}
-
-/** One label · fields row of the card (board D). */
-function Row({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-3 border-t border-border py-4 md:grid-cols-[260px_minmax(0,1fr)] md:gap-7">
-      <div className="flex flex-col gap-1">
-        <span className="text-[13.5px] font-semibold text-foreground">{title}</span>
-        <span className="text-[12.5px] leading-snug text-muted-foreground">{hint}</span>
-      </div>
-      <div className="flex min-w-0 flex-col justify-center gap-2.5">{children}</div>
-    </div>
-  )
-}
-
-function Grid2({ children }: { children: React.ReactNode }) {
-  return <div className="grid gap-3 sm:grid-cols-2">{children}</div>
 }

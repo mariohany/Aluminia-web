@@ -90,6 +90,10 @@
       "company": {
         "title": "Company profile",
         "description": "Logo, names, address and registration printed on paperwork."
+      },
+      "projects": {
+        "title": "Project settings",
+        "description": "Defaults for new projects, and the steps a project goes through."
       }
     },
     "users": {
@@ -145,12 +149,80 @@
         "uploadError": "Couldn’t upload the logo. Try again."
       },
       "previewCaption": "Preview — top of a report page",
-      "unsaved": "Unsaved changes",
-      "allSaved": "All changes saved",
       "saved": "Company profile saved.",
       "saveError": "Couldn’t save the company profile.",
       "loadError": "Couldn’t load the company profile. Try again."
-    }
+    },
+    "projects": {
+      "description": "How new projects start, and the statuses every project moves through.",
+      "defaults": {
+        "title": "New-project defaults",
+        "hint": "A new project starts with these. You can still change them per project, and editing them here never changes existing projects.",
+        "system": "System",
+        "systemHint": "Brand, then one of its catalogues.",
+        "currency": "Currency",
+        "currencyHint": "Prices and quotes use it.",
+        "saved": "Defaults saved.",
+        "saveError": "Couldn’t save the defaults."
+      },
+      "statuses": {
+        "title": "Project statuses",
+        "hint": "The steps a project moves through, in order. Drag to reorder.",
+        "needSomeone_one": "{{count}} needs someone",
+        "needSomeone_other": "{{count}} need someone",
+        "step": "Step",
+        "name": "Status",
+        "responsible": "Responsible",
+        "inUse": "Projects",
+        "projects_one": "{{count}} project",
+        "projects_other": "{{count}} projects",
+        "nobody": "No one responsible",
+        "nobodyHint": "Only the admin can move projects on.",
+        "add": "Add status",
+        "actions": "Status actions",
+        "edit": "Edit",
+        "delete": "Delete",
+        "deleteInUse_one": "In use by {{count}} project",
+        "deleteInUse_other": "In use by {{count}} projects",
+        "deleteLast": "The last status can’t be deleted",
+        "dragHandle": "Drag to reorder {{name}}",
+        "reorderError": "Couldn’t save the new order.",
+        "moved": "Moved {{name}} to step {{position}}."
+      },
+      "dialog": {
+        "addTitle": "Add status",
+        "editTitle": "Edit status",
+        "enName": "Name (English)",
+        "arName": "Name (Arabic)",
+        "color": "Colour",
+        "responsible": "Responsible users",
+        "responsibleHint": "They handle a project while it’s in this status.",
+        "noUsers": "No active users.",
+        "colorNames": {
+          "grey": "Grey",
+          "blue": "Blue",
+          "amber": "Amber",
+          "green": "Green",
+          "violet": "Violet",
+          "sky": "Sky",
+          "emerald": "Emerald",
+          "red": "Red"
+        },
+        "added": "Status added.",
+        "saved": "Status saved.",
+        "saveError": "Couldn’t save the status."
+      },
+      "deleteDialog": {
+        "title": "Delete “{{name}}”?",
+        "description": "No project is in this status. Old history keeps its name.",
+        "confirm": "Delete",
+        "deleted": "Status deleted.",
+        "error": "Couldn’t delete the status."
+      },
+      "loadError": "Couldn’t load the project settings. Try again."
+    },
+    "unsaved": "Unsaved changes",
+    "allSaved": "All changes saved"
   },
   "manage": {
     "addUser": "Add user",

@@ -46,6 +46,14 @@
     --color-foreground: var(--foreground);
     --color-background: var(--background);
     --color-shell: var(--shell);
+    --color-status-grey: var(--status-grey);
+    --color-status-blue: var(--status-blue);
+    --color-status-amber: var(--status-amber);
+    --color-status-green: var(--status-green);
+    --color-status-violet: var(--status-violet);
+    --color-status-sky: var(--status-sky);
+    --color-status-emerald: var(--status-emerald);
+    --color-status-red: var(--status-red);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -112,6 +120,16 @@
     --board: #e8eaed;
     --board-grid-major: rgba(0, 0, 0, 0.12);
     --board-grid-minor: rgba(0, 0, 0, 0.05);
+    /* Project status colours (Config › Project settings, 8 fixed keys =
+       PROJECT_STATUS_COLORS). Chrome, so themed: each has a dark twin. */
+    --status-grey: #7d848d;
+    --status-blue: #2f6fe0;
+    --status-amber: #d68a00;
+    --status-green: #2c9a4f;
+    --status-violet: #7c4fd8;
+    --status-sky: #0b93c9;
+    --status-emerald: #0f9a74;
+    --status-red: #d93f3a;
 }
 
 /*
@@ -160,6 +178,14 @@
     --board: #141618;
     --board-grid-major: rgba(255, 255, 255, 0.07);
     --board-grid-minor: rgba(255, 255, 255, 0.025);
+    --status-grey: #9aa1aa;
+    --status-blue: #5b93f5;
+    --status-amber: #f2b13c;
+    --status-green: #4cc06f;
+    --status-violet: #a07cf0;
+    --status-sky: #3db8e8;
+    --status-emerald: #34c39a;
+    --status-red: #f2706b;
     color-scheme: dark;
 }
 

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CreateCompanyUserInput } from '@repo/types/users'
 import * as companyUsersApi from '@/lib/company-users-api'
 import { invalidateCompanyOverview } from '@/lib/company-queries'
+import { projectStatusesKey } from '@/lib/project-settings-queries'
 
 const companyUsersKey = ['company-users'] as const
 
@@ -11,6 +12,8 @@ export function useCompanyUsersQuery() {
 
 function invalidateCompanyUsers(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: companyUsersKey })
+  // A status's responsible users drop out when they stop being active.
+  void queryClient.invalidateQueries({ queryKey: projectStatusesKey })
 }
 
 export function useCreateCompanyUserMutation() {

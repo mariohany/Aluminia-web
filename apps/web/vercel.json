@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
-    "deploymentEnabled": { "*": false, "dev": true }
+    "deploymentEnabled": { "**": false, "dev": true }
   },
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://aluminia-api.onrender.com/:path*" },

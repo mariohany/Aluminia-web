@@ -3,7 +3,7 @@ import {
   type CutPlan,
   type OptimiserPiece,
   type OptimiserSettings,
-} from './optimise';
+} from '@repo/bar-optimiser/optimise';
 
 const NO_LOSS: OptimiserSettings = {
   lengths: [6000],

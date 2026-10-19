@@ -5,7 +5,7 @@ import type {
   ReportPlanTotals,
   StockMix,
 } from '@repo/types/reports';
-import type { CutBar, CutPlan } from '../bar-optimiser/optimise';
+import type { CutBar, CutPlan } from '@repo/bar-optimiser/optimise';
 import type { PieceRef } from '../report-inputs';
 import { fontCss } from './fonts';
 import { stringsFor, type PdfStrings } from './strings';

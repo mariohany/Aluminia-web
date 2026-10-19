@@ -1,6 +1,9 @@
 import { parentPort, workerData } from 'node:worker_threads';
-import type { OptimiserSettings } from './optimise';
-import { optimiseProject, type ProjectPiece } from './project';
+import type { OptimiserSettings } from '@repo/bar-optimiser/optimise';
+import {
+  optimiseProject,
+  type ProjectPiece,
+} from '@repo/bar-optimiser/project';
 
 // Runs one project's optimisation off the API's event loop
 // (docs/reports_planing.md §7, D22): a long solve must never stall other

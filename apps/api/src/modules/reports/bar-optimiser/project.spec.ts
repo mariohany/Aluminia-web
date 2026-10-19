@@ -1,5 +1,8 @@
 import type { CutMember } from '@repo/geometry/cut-list';
-import { optimiseProject, type ProjectPiece } from './project';
+import {
+  optimiseProject,
+  type ProjectPiece,
+} from '@repo/bar-optimiser/project';
 
 const SETTINGS = { lengths: [6000, 6500], kerfMm: 4, endTrimMm: 10 };
 

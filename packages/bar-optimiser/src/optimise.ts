@@ -71,9 +71,20 @@ export interface ProfileOptimisation<T> {
 }
 
 let solver: Promise<Highs> | null = null;
+let locateWasm: ((file: string) => string) | undefined;
+
+/** Where HiGHS finds its `.wasm`. Node finds it next to the module; a
+ * browser bundle passes the URL its bundler gave the file
+ * (docs/browser_solve_planing.md §4.1). Call before the first solve. */
+export function configureSolver(options: {
+  locateFile?: (file: string) => string;
+}): void {
+  locateWasm = options.locateFile;
+}
+
 /** HiGHS is a ~4 MB WebAssembly module: loaded once, on first use. */
 function getSolver(): Promise<Highs> {
-  solver ??= highsLoader();
+  solver ??= highsLoader(locateWasm ? { locateFile: locateWasm } : undefined);
   return solver;
 }
 

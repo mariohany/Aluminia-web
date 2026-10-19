@@ -1,7 +1,9 @@
 import { BarOptimiserRunner, SOLVE_TIMEOUT_ERROR } from './runner';
-import { optimiseProject } from './project';
+import { optimiseProject } from '@repo/bar-optimiser/project';
 
-jest.mock('./project', () => ({ optimiseProject: jest.fn() }));
+jest.mock('@repo/bar-optimiser/project', () => ({
+  optimiseProject: jest.fn(),
+}));
 
 const settings = { lengths: [6000], kerfMm: 4, endTrimMm: 10 };
 

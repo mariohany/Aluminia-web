@@ -5,7 +5,7 @@ import {
   type OptimiserPiece,
   type OptimiserSettings,
   type ProfileOptimisation,
-} from './optimise';
+} from './optimise.ts';
 
 // A whole project through the optimiser: one run per profile (D4: the
 // grouping key is the profile; colour can join it later), rolled up into

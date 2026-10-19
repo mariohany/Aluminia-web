@@ -1,5 +1,8 @@
 import type { BarOptimiserSummary } from '@repo/types/reports';
-import { optimiseProject, type ProjectPiece } from '../bar-optimiser/project';
+import {
+  optimiseProject,
+  type ProjectPiece,
+} from '@repo/bar-optimiser/project';
 import type { PieceRef } from '../report-inputs';
 import {
   mixText,

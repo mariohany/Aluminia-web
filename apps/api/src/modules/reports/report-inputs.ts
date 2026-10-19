@@ -20,11 +20,11 @@ import { CuttingSettingsRow } from '../../database/tenant/entities/cutting-setti
 import { CompanyProfileRow } from '../../database/tenant/entities/company-profile.entity';
 import { Project } from '../../database/tenant/entities/project.entity';
 import { loadProjectWindows } from '../windows/windows.service';
-import type { CutPlan } from './bar-optimiser/optimise';
+import type { CutPlan } from '@repo/bar-optimiser/optimise';
 import type {
   ProjectOptimisation,
   ProjectPiece,
-} from './bar-optimiser/project';
+} from '@repo/bar-optimiser/project';
 
 // Everything a bar optimiser report is made from, read in one tenant
 // transaction, and what follows from it: the fingerprint that says

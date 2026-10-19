@@ -2,13 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
-import type { OptimiserSettings } from './optimise';
+import type { OptimiserSettings } from '@repo/bar-optimiser/optimise';
 import {
   optimiseProject,
   type ProgressStep,
   type ProjectOptimisation,
   type ProjectPiece,
-} from './project';
+} from '@repo/bar-optimiser/project';
 
 export type ProgressEvent = { type: 'start' | 'done'; step: ProgressStep };
 

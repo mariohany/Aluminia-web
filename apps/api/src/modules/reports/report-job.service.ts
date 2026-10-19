@@ -4,7 +4,7 @@ import type { ReportLanguage, ReportProgressGroup } from '@repo/types/reports';
 import type { Env } from '../../config/env.schema';
 import { ReportCache } from '../../database/tenant/entities/report-cache.entity';
 import { TenantConnectionService } from '../tenancy/tenant-connection.service';
-import { MEMBER_ORDER, profileQueue } from './bar-optimiser/project';
+import { MEMBER_ORDER, profileQueue } from '@repo/bar-optimiser/project';
 import { BarOptimiserRunner } from './bar-optimiser/runner';
 import { PdfRenderer } from './pdf/pdf-renderer.service';
 import { footerTemplate, renderBarOptimiserHtml } from './pdf/template';

@@ -99,9 +99,7 @@ export async function optimiseProfile<T>(
   pieces: OptimiserPiece<T>[],
   settings: OptimiserSettings,
 ): Promise<ProfileOptimisation<T>> {
-  const lengths = [...new Set(settings.lengths)]
-    .filter((l) => l > 2 * settings.endTrimMm)
-    .sort((a, b) => b - a);
+  const lengths = usableLengths(settings);
   const maxCap = lengths.length ? lengths[0] - 2 * settings.endTrimMm : 0;
 
   const byLength = new Map<number, PieceType<T>>();
@@ -133,6 +131,14 @@ export async function optimiseProfile<T>(
       ? solve(highs, types, lengths, settings)
       : (single[lengths[0]] ?? null);
   return { best, single, tooLong };
+}
+
+/** The stock lengths a plan may use: distinct, longer than both end
+ * trims, longest first. */
+export function usableLengths(settings: OptimiserSettings): number[] {
+  return [...new Set(settings.lengths)]
+    .filter((l) => l > 2 * settings.endTrimMm)
+    .sort((a, b) => b - a);
 }
 
 interface Arc {
@@ -391,7 +397,9 @@ function decode<T>(
   return bars;
 }
 
-function toPlan<T>(
+/** Bars into a plan with its totals: pieces longest first, bars longest
+ * stock first, then fullest first. */
+export function toPlan<T>(
   raw: { stockMm: number; pieces: { lengthMm: number; ref: T }[] }[],
   settings: OptimiserSettings,
 ): CutPlan<T> {

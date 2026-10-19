@@ -86,7 +86,17 @@ export async function optimiseProject<T>(
     });
     hooks.onProfileDone?.(step);
   }
+  return assembleProject(profiles, settings);
+}
 
+/** Every profile's result rolled up into the member groups and the
+ * project total. Shared by a whole-project run and by the API, which
+ * rebuilds a browser's plans after checking them
+ * (docs/browser_solve_planing.md §5). */
+export function assembleProject<T>(
+  profiles: ProfileResult<T>[],
+  settings: OptimiserSettings,
+): ProjectOptimisation<T> {
   const lengths = [...new Set(settings.lengths)].sort((a, b) => b - a);
   const members = MEMBER_ORDER.flatMap((member) => {
     const own = profiles.filter((p) => p.member === member);

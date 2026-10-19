@@ -93,7 +93,7 @@ table { width: 100%; border-collapse: collapse; }
 th { padding: 5px 6px; font-size: 8.5px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: ${C.mute}; text-align: start; border-bottom: 1.5px solid ${C.ink}; white-space: nowrap; }
 td { padding: 5px 6px; font-size: 10px; border-bottom: 1px solid ${C.line}; white-space: nowrap; }
 th.r, td.r { text-align: end; }
-td.best { background: ${C.accentSoft}; color: ${C.accent}; font-weight: 700; }
+td.best { background: ${C.accentSoft}; color: ${C.accent}; font-weight: 700; white-space: normal; }
 td .pct { font-size: 8.5px; color: ${C.mute}; }
 td.best .pct { color: ${C.accent}; }
 tr.total td { font-weight: 700; border-bottom: 0; }
@@ -238,15 +238,20 @@ function ordersTable(
 <tbody>${rows || `<tr><td colspan="${5 + lengths.length}">${esc(s.noPieces)}</td></tr>`}</tbody></table>`;
 }
 
-/** "bars · waste%", or the mix ("4×6500 + 7×6000 · 2.6%") when given. */
+/** "bars · waste%", or the mix ("4×6500 + 7×6000 · 2.6%") when given.
+ * A long mix (many stock lengths) is wider than its column: the best
+ * cell wraps, but only after a "+", so "6×7000 +" stays whole and the
+ * order is never cut off at the page edge (bug-119). */
 function planCell(
   plan: ReportPlanTotals | null,
   mix?: StockMix,
   best = false,
 ): string {
   if (!plan) return `<td class="r num">—</td>`;
-  const what = mix ? mixText(mix) : String(plan.barCount);
-  return `<td class="r num${best ? ' best' : ''}">${what} <span class="pct">· ${plan.wastePct.toFixed(1)}%</span></td>`;
+  const what = mix
+    ? mixText(mix).replace(/ \+ /g, '&nbsp;+ ')
+    : String(plan.barCount);
+  return `<td class="r num${best ? ' best' : ''}">${what} <span class="pct">·&nbsp;${plan.wastePct.toFixed(1)}%</span></td>`;
 }
 
 export function mixText(mix: StockMix): string {

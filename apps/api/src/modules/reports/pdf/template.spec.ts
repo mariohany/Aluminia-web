@@ -91,6 +91,22 @@ describe('bar optimiser PDF template', () => {
     );
   });
 
+  it('a long stock mix wraps inside its cell, only after a "+" (bug-119)', async () => {
+    const html = renderBarOptimiserHtml(await data('en'));
+    // The best cells may wrap; every other cell stays on one line.
+    expect(html).toMatch(/td\.best \{[^}]*white-space: normal/);
+    const best = [...html.matchAll(/<td class="r num best">(.*?)<\/td>/g)].map(
+      (m) => m[1],
+    );
+    expect(best.length).toBeGreaterThan(0);
+    for (const cell of best) {
+      // "6×7000&nbsp;+ 17×6500": a term never splits from its "+", and
+      // the waste % never starts a line on its own "·".
+      expect(cell).not.toMatch(/ \+ /);
+      expect(cell).toContain('·&nbsp;');
+    }
+  });
+
   it('English: ltr, both pages, every member and the approximate note', async () => {
     const html = renderBarOptimiserHtml(await data('en'));
     expect(html).toContain('<html lang="en" dir="ltr">');

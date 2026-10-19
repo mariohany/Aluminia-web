@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -8,17 +7,14 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
-  Query,
-  StreamableFile,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { UserRole } from '@repo/types/auth';
-import {
-  ReportLanguage,
-  reportLanguageSchema,
-  type CuttingSettings,
-  type ReportStatus,
-  type SolveStart,
+import type {
+  BarOptimiserReportResponse,
+  CuttingSettings,
+  ReportStatus,
+  SolveStart,
 } from '@repo/types/reports';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
@@ -34,9 +30,10 @@ import {
 import { ReportsService } from './reports.service';
 
 /**
- * The Reports section's API (docs/reports_planing.md §7). Every company
- * user may use it and change the cutting settings (D10). `lang` picks
- * the PDF's language (D13); English when omitted.
+ * The Reports section's API (docs/reports_planing.md §7,
+ * docs/browser_pdf_planing.md §7). Every company user may use it and
+ * change the cutting settings (D10). The browser solves and draws the PDF
+ * (in either language); the server only checks and stores.
  */
 @Roles(UserRole.COMPANY_ADMIN, UserRole.USER)
 @TenantScoped()
@@ -58,9 +55,26 @@ export class ReportsController {
   status(
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @CurrentUser() actor: AuthenticatedRequestUser,
-    @Query('lang') lang?: string,
   ): Promise<ReportStatus> {
-    return this.reports.status(projectId, languageOf(lang), actor.id);
+    return this.reports.status(projectId, actor.id);
+  }
+
+  /** The snapshot to draw the PDF from + today's company details. */
+  @Get('projects/:projectId/reports/bar-optimiser/report')
+  report(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+  ): Promise<BarOptimiserReportResponse> {
+    return this.reports.report(projectId);
+  }
+
+  /** Only the project or client was renamed: refresh the names (P8). */
+  @Post('projects/:projectId/reports/bar-optimiser/refresh')
+  @HttpCode(200)
+  refresh(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<ReportStatus> {
+    return this.reports.refresh(projectId, actor.id);
   }
 
   /** Starts a solve in this browser (docs/browser_solve_planing.md §7). */
@@ -71,14 +85,8 @@ export class ReportsController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Body() dto: StartSolveDto,
-    @Query('lang') lang?: string,
   ): Promise<SolveStart> {
-    return this.reports.startSolve(
-      projectId,
-      languageOf(lang),
-      actor.id,
-      dto.optimiserVersion,
-    );
+    return this.reports.startSolve(projectId, actor.id, dto.optimiserVersion);
   }
 
   /** The solving browser's progress and heartbeat (B5). */
@@ -91,17 +99,15 @@ export class ReportsController {
     return this.reports.progress(projectId, dto);
   }
 
-  /** The finished solve: checked, stored, and this language queued to
-   * print (§5, B7). */
+  /** The finished solve: checked and saved with the report snapshot. */
   @Post('projects/:projectId/reports/bar-optimiser/solve/result')
-  @HttpCode(202)
+  @HttpCode(200)
   solveResult(
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Body() dto: SolveResultDto,
-    @Query('lang') lang?: string,
   ): Promise<ReportStatus> {
-    return this.reports.solveResult(projectId, languageOf(lang), actor.id, dto);
+    return this.reports.solveResult(projectId, actor.id, dto);
   }
 
   /** Stop (B6), or the browser giving up (B11). */
@@ -111,45 +117,7 @@ export class ReportsController {
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Body() dto: StopSolveDto,
-    @Query('lang') lang?: string,
   ): Promise<ReportStatus> {
-    return this.reports.stopSolve(projectId, languageOf(lang), actor.id, dto);
+    return this.reports.stopSolve(projectId, actor.id, dto);
   }
-
-  /** Prints this language from the stored solve (B4, B8). */
-  @Post('projects/:projectId/reports/bar-optimiser/print')
-  @HttpCode(202)
-  @Throttle({ default: { limit: 12, ttl: 60_000 } })
-  print(
-    @Param('projectId', ParseUUIDPipe) projectId: string,
-    @CurrentUser() actor: AuthenticatedRequestUser,
-    @Query('lang') lang?: string,
-  ): Promise<ReportStatus> {
-    return this.reports.print(projectId, languageOf(lang), actor.id);
-  }
-
-  @Get('projects/:projectId/reports/bar-optimiser/pdf')
-  async pdf(
-    @Param('projectId', ParseUUIDPipe) projectId: string,
-    @Query('lang') lang?: string,
-  ): Promise<StreamableFile> {
-    const { pdf, fileName } = await this.reports.pdf(
-      projectId,
-      languageOf(lang),
-    );
-    return new StreamableFile(pdf, {
-      type: 'application/pdf',
-      disposition: `attachment; filename="${fileName}"`,
-      length: pdf.length,
-    });
-  }
-}
-
-function languageOf(lang: string | undefined): ReportLanguage {
-  if (lang === undefined) return ReportLanguage.EN;
-  const parsed = reportLanguageSchema.safeParse(lang);
-  if (!parsed.success) {
-    throw new BadRequestException('lang must be "en" or "ar".');
-  }
-  return parsed.data;
 }

@@ -1,7 +1,7 @@
 import type {
+  BarOptimiserReportResponse,
   CuttingSettings,
   CuttingSettingsInput,
-  ReportLanguage,
   ReportProgressGroup,
   ReportStatus,
   SolveResultInput,
@@ -11,7 +11,7 @@ import type {
 import { apiFetch } from '@/lib/api-client'
 
 // The Reports section's API (docs/reports_planing.md §7,
-// docs/browser_solve_planing.md §7).
+// docs/browser_solve_planing.md §7, docs/browser_pdf_planing.md §7).
 
 export function getCuttingSettings(): Promise<CuttingSettings> {
   return apiFetch<CuttingSettings>('/reports/cutting-settings')
@@ -23,18 +23,26 @@ export function saveCuttingSettings(input: CuttingSettingsInput): Promise<Cuttin
 
 const barOptimiserPath = (projectId: string) => `/projects/${projectId}/reports/bar-optimiser`
 
-export function getBarOptimiserStatus(projectId: string, lang: ReportLanguage): Promise<ReportStatus> {
-  return apiFetch<ReportStatus>(`${barOptimiserPath(projectId)}?lang=${lang}`)
+export function getBarOptimiserStatus(projectId: string): Promise<ReportStatus> {
+  return apiFetch<ReportStatus>(barOptimiserPath(projectId))
+}
+
+/** The snapshot to draw the PDF from, with today's company details
+ * (docs/browser_pdf_planing.md §7). 404 before the first Generate. */
+export function getBarOptimiserReport(projectId: string): Promise<BarOptimiserReportResponse> {
+  return apiFetch<BarOptimiserReportResponse>(`${barOptimiserPath(projectId)}/report`)
+}
+
+/** Only the project or client was renamed: refresh the names, no solve
+ * (P8). 409 `no_solve` when the plan itself is out of date. */
+export function refreshBarOptimiser(projectId: string): Promise<ReportStatus> {
+  return apiFetch<ReportStatus>(`${barOptimiserPath(projectId)}/refresh`, { method: 'POST' })
 }
 
 /** Starts a solve in this browser: the piece lines and the token only it
  * may write with. 409 `solving_elsewhere` / `outdated_client`. */
-export function startBarOptimiserSolve(
-  projectId: string,
-  lang: ReportLanguage,
-  optimiserVersion: number,
-): Promise<SolveStart> {
-  return apiFetch<SolveStart>(`${barOptimiserPath(projectId)}/solve?lang=${lang}`, {
+export function startBarOptimiserSolve(projectId: string, optimiserVersion: number): Promise<SolveStart> {
+  return apiFetch<SolveStart>(`${barOptimiserPath(projectId)}/solve`, {
     method: 'POST',
     body: { optimiserVersion },
   })
@@ -48,30 +56,17 @@ export function sendSolveProgress(projectId: string, token: string, groups: Repo
   })
 }
 
-/** The finished plans; the API checks them and queues the print. */
-export function sendSolveResult(
-  projectId: string,
-  lang: ReportLanguage,
-  result: SolveResultInput,
-): Promise<ReportStatus> {
-  return apiFetch<ReportStatus>(`${barOptimiserPath(projectId)}/solve/result?lang=${lang}`, {
+/** The finished plans; the API checks them and saves the report. */
+export function sendSolveResult(projectId: string, result: SolveResultInput): Promise<ReportStatus> {
+  return apiFetch<ReportStatus>(`${barOptimiserPath(projectId)}/solve/result`, {
     method: 'POST',
     body: result,
   })
 }
 
-export function stopSolve(projectId: string, lang: ReportLanguage, input: StopSolveInput): Promise<ReportStatus> {
-  return apiFetch<ReportStatus>(`${barOptimiserPath(projectId)}/solve/stop?lang=${lang}`, {
+export function stopSolve(projectId: string, input: StopSolveInput): Promise<ReportStatus> {
+  return apiFetch<ReportStatus>(`${barOptimiserPath(projectId)}/solve/stop`, {
     method: 'POST',
     body: input,
   })
-}
-
-/** Prints this language from the stored solve (B4, B8). */
-export function printBarOptimiser(projectId: string, lang: ReportLanguage): Promise<ReportStatus> {
-  return apiFetch<ReportStatus>(`${barOptimiserPath(projectId)}/print?lang=${lang}`, { method: 'POST' })
-}
-
-export function getBarOptimiserPdf(projectId: string, lang: ReportLanguage): Promise<Blob> {
-  return apiFetch<Blob>(`${barOptimiserPath(projectId)}/pdf?lang=${lang}`, { responseType: 'blob' })
 }

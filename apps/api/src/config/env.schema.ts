@@ -41,19 +41,6 @@ export const envSchema = z.object({
   // who opens the app at all within a month never sees the login screen.
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 
-  // The Chrome the bar optimiser report prints its PDF with
-  // (docs/reports_planing.md §8). Optional: Puppeteer finds the Chrome it
-  // downloaded (`npx puppeteer browsers install chrome-headless-shell`) by itself; set
-  // this only to use another binary.
-  PUPPETEER_EXECUTABLE_PATH: z.string().min(1).optional(),
-
-  // Report PDFs printed at once on this instance (one headless Chrome
-  // each); more wait in line (docs/report_queue_planing.md C1). The solve
-  // itself runs in the browser (docs/browser_solve_planing.md). Unset =
-  // CPU count - 1, at least 1. Set it where the container may report the
-  // host's CPUs (Render: 1).
-  REPORT_MAX_CONCURRENT: z.coerce.number().int().positive().optional(),
-
   // Where uploaded files' bytes live (docs/company_profile_planing.md §3a).
   // Only `postgres` exists today; `s3` (DO Spaces) joins the enum with its
   // driver, so a value with no driver behind it fails here at boot.

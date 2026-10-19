@@ -131,6 +131,58 @@ export interface BarOptimiserSummary {
   approximate: boolean
 }
 
+// ---- The report snapshot the browser draws (docs/browser_pdf_planing.md) --
+
+/** One piece on a drawn bar: its length and what it is (D17, D26). */
+export interface BarOptimiserReportPiece {
+  lengthMm: number
+  windowName: string
+  member: ReportMember
+  at: ReportPieceAt
+}
+
+/** One bar to scale: pieces in cutting order, the offcut, the waste. */
+export interface BarOptimiserReportBar {
+  stockMm: number
+  wasteMm: number
+  offcutMm: number
+  pieces: BarOptimiserReportPiece[]
+}
+
+/** One profile's least-waste plan, as the cutting-plan pages draw it. */
+export interface BarOptimiserReportPlan {
+  profile: string
+  profileNo: string | null
+  member: ReportMember
+  best: { mix: StockMix; wastePct: number; piecesMm: number; bars: BarOptimiserReportBar[] } | null
+}
+
+/** Everything frozen at Generate (P6): the numbers, the plans with their
+ * piece labels, and the project and client names in both languages. */
+export interface BarOptimiserReport {
+  generatedAt: string
+  project: { enName: string; arName: string | null }
+  client: { enName: string; arName: string | null } | null
+  summary: BarOptimiserSummary
+  plans: BarOptimiserReportPlan[]
+  /** Panels per window, for "panel 2 ·" in multi-panel labels. */
+  panelCounts: Record<string, number>
+}
+
+/** The company as printed today, always the latest (P7). `enName` is the
+ * company profile's, else the account name. */
+export interface ReportCompany {
+  enName: string
+  arName: string | null
+  logoFileId: string | null
+}
+
+/** GET …/bar-optimiser/report. */
+export interface BarOptimiserReportResponse {
+  report: BarOptimiserReport
+  company: ReportCompany
+}
+
 /** One member group's line on the progress card (D22). */
 export interface ReportProgressGroup {
   member: ReportMember
@@ -139,21 +191,6 @@ export interface ReportProgressGroup {
   profilesTotal: number
   /** Profile number being optimised, while running. */
   currentProfile: string | null
-}
-
-/** The print job making this language's PDF (docs/browser_solve_planing.md
- * B7). Printing waits for a free Chrome slot (report queue C1). */
-export interface ReportJobStatus {
-  /** `queued`: waiting for a free slot (docs/report_queue_planing.md C1). */
-  state: 'queued' | 'running' | 'failed'
-  startedAt: string
-  /** Always empty for a print; kept for the progress card's shape. */
-  groups: ReportProgressGroup[]
-  /** While queued: how many jobs are ahead of this one (0 = next). `null`
-   * when not queued, or when another API instance holds the job (C4, C6). */
-  queuePosition: number | null
-  /** `interrupted` (its server died) or the failure's message. */
-  error: string | null
 }
 
 /** Why a solve ended without a result (docs/browser_solve_planing.md). */
@@ -181,20 +218,21 @@ export interface ReportSolveStatus {
   error: SolveError | null
 }
 
+/** The project's report (docs/browser_pdf_planing.md §4). The PDF itself
+ * is drawn in the browser from GET …/report. */
 export interface ReportStatus {
-  /** This language's PDF. `none`: never printed; `stale`: inputs changed
-   * since (D14/D15). */
+  /** `none`: never generated; `stale`: inputs changed since (D14/D15). */
   state: 'none' | 'fresh' | 'stale'
+  /** Why it's stale: `solve` (windows, settings or profiles changed:
+   * Generate solves again) or `names` (only the project or client was
+   * renamed: Regenerate refreshes the names, no solve, P8). */
+  staleBecause: 'solve' | 'names' | null
+  /** When the snapshot was made. */
   generatedAt: string | null
-  /** Windows added, removed or edited since the project's last solve. */
+  /** Windows added, removed or edited since the last solve. */
   changedWindows: number
-  hasPdf: boolean
-  /** The project has a solve for today's inputs: this language can be
-   * printed without solving (B4, B8). */
-  hasSolve: boolean
   summary: BarOptimiserSummary | null
-  /** The print job. */
-  job: ReportJobStatus | null
+  /** A solve in someone's browser (B5). */
   solve: ReportSolveStatus | null
 }
 
@@ -210,7 +248,7 @@ export const SolveRefusal = {
   SOLVE_LOST: 'solve_lost',
   /** Windows changed while solving (Q1). */
   WINDOWS_CHANGED: 'windows_changed',
-  /** No current solve to print from. */
+  /** No solve for today's windows and settings: generate first. */
   NO_SOLVE: 'no_solve',
 } as const
 export type SolveRefusal = (typeof SolveRefusal)[keyof typeof SolveRefusal]

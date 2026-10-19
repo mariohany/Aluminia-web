@@ -21,14 +21,14 @@
   "status": {
     "fresh": "Up to date · {{date}}",
     "stale": "Out of date",
+    "staleNames": "Out of date · project or client renamed",
     "staleWindows_one": "Out of date · {{count}} window changed",
     "staleWindows_other": "Out of date · {{count}} windows changed",
     "none": "Not generated yet",
-    "running": "Generating…",
-    "failed": "Generating failed — try again",
-    "interrupted": "Interrupted — generate again",
-    "queued": "Queued"
+    "running": "Generating…"
   },
+  "drawing": "Drawing the report…",
+  "retry": "Try again",
   "settingsLine": "{{lengths}} mm · kerf {{kerf}} · trim {{trim}} per end",
   "editSettings": "Edit",
   "toolbar": {
@@ -49,11 +49,7 @@
     "done_one": "{{count}} profile",
     "done_other": "{{count}} profiles",
     "running": "{{done}} of {{total}} · {{profile}}",
-    "waiting": "waiting",
-    "note": "You can leave this page. It keeps running.",
-    "queuedAhead_one": "Queued · {{count}} report ahead",
-    "queuedAhead_other": "Queued · {{count}} reports ahead",
-    "queuedNext": "Queued — starts when the server is free"
+    "waiting": "waiting"
   },
   "solve": {
     "title": "Making the report on your computer…",
@@ -63,8 +59,6 @@
     "noteOther": "It shows here when it's done.",
     "stop": "Stop",
     "sending": "Checking the result…",
-    "printing": "Printing the PDF…",
-    "solved": "Solved on your computer",
     "generateAgain": "Generate again",
     "reload": "Reload",
     "dismiss": "Dismiss",
@@ -115,9 +109,9 @@
     }
   },
   "errors": {
+    "draw": "Couldn't draw the PDF.",
     "status": "Couldn't load the report.",
     "generate": "Couldn't start the report. Try again.",
-    "pdf": "Couldn't load the PDF.",
     "print": "Couldn't open the print dialog."
   }
 }

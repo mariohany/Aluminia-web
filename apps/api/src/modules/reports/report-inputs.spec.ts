@@ -1,14 +1,13 @@
-import { ReportLanguage } from '@repo/types/reports';
 import type { Project } from '../../database/tenant/entities/project.entity';
 import {
-  printFingerprintOf,
+  snapshotFingerprintOf,
   solveFingerprintOf,
   type ReportInputs,
 } from './report-inputs';
 
-// Two fingerprints (docs/browser_solve_planing.md §6): what changes the
-// cutting plan means solve again; what only changes the paper means
-// print again from the stored solve.
+// Two fingerprints (docs/browser_pdf_planing.md §4): what changes the
+// cutting plan means solve again; a project or client rename only means
+// refresh the snapshot's names; the company is never in either.
 
 const at = (iso: string) => new Date(iso);
 
@@ -41,31 +40,33 @@ function inputs(): ReportInputs {
 describe('report fingerprints', () => {
   const base = inputs();
   const solve = solveFingerprintOf(base);
-  const en = printFingerprintOf(base, ReportLanguage.EN);
 
-  it('a window or settings change means solve (and print) again', () => {
+  it('a window or settings change means solve again', () => {
     const edited = inputs();
     edited.windows[0].updatedAt = '2026-10-03T10:00:00.000Z';
     expect(solveFingerprintOf(edited)).not.toBe(solve);
-    expect(printFingerprintOf(edited, ReportLanguage.EN)).not.toBe(en);
 
     const saw = inputs();
     saw.settings.updatedAt = at('2026-10-03T10:00:00Z');
     expect(solveFingerprintOf(saw)).not.toBe(solve);
   });
 
-  it('the letterhead, the project, the client or the language only reprint', () => {
-    const logo = inputs();
-    logo.letterhead.updatedAt = at('2026-10-03T10:00:00Z');
+  it('a project or client rename only refreshes the snapshot; the letterhead never does (P6–P8)', () => {
+    const snapshot = snapshotFingerprintOf(base);
     const renamed = inputs();
     renamed.project.updatedAt = at('2026-10-03T10:00:00Z');
     const client = inputs();
     client.project.client.updatedAt = at('2026-10-03T10:00:00Z');
-
-    for (const changed of [logo, renamed, client]) {
+    for (const changed of [renamed, client]) {
       expect(solveFingerprintOf(changed)).toBe(solve);
-      expect(printFingerprintOf(changed, ReportLanguage.EN)).not.toBe(en);
+      expect(snapshotFingerprintOf(changed)).not.toBe(snapshot);
     }
-    expect(printFingerprintOf(base, ReportLanguage.AR)).not.toBe(en);
+    const logo = inputs();
+    logo.letterhead.updatedAt = at('2026-10-03T10:00:00Z');
+    expect(snapshotFingerprintOf(logo)).toBe(snapshot);
+
+    const edited = inputs();
+    edited.windows[0].updatedAt = '2026-10-03T10:00:00.000Z';
+    expect(snapshotFingerprintOf(edited)).not.toBe(snapshot);
   });
 });

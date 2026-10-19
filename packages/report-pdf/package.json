@@ -1,0 +1,31 @@
+{
+  "name": "@repo/report-pdf",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./strings": "./src/strings.ts",
+    "./fonts": "./src/fonts.mts",
+    "./bar-optimiser-document": "./src/bar-optimiser-document.mts",
+    "./fonts/*": "./fonts/*"
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit",
+    "test": "node --test --test-reporter=spec src/*.test.mts"
+  },
+  "dependencies": {
+    "@react-pdf/renderer": "4.9.0",
+    "@repo/types": "*",
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@react-pdf/types": "2.14.0",
+    "@repo/eslint-config": "*",
+    "@repo/typescript-config": "*",
+    "@types/node": "^22.15.3",
+    "@types/react": "^19.2.17",
+    "eslint": "^9.39.1",
+    "pdfjs-dist": "6.3.289",
+    "typescript": "6.0.3"
+  }
+}

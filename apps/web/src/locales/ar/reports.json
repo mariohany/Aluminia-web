@@ -21,6 +21,7 @@
   "status": {
     "fresh": "محدّث · {{date}}",
     "stale": "غير محدّث",
+    "staleNames": "غير محدّث · اسم المشروع أو العميل اتغيّر",
     "staleWindows_zero": "غير محدّث",
     "staleWindows_one": "غير محدّث · شباك واحد اتغيّر",
     "staleWindows_two": "غير محدّث · شباكين اتغيّروا",
@@ -28,11 +29,10 @@
     "staleWindows_many": "غير محدّث · {{count}} شباك اتغيّر",
     "staleWindows_other": "غير محدّث · {{count}} شباك اتغيّر",
     "none": "لم يُنشأ بعد",
-    "running": "جارٍ الإنشاء…",
-    "failed": "تعذّر الإنشاء — حاول مرة أخرى",
-    "interrupted": "اتقطع — أنشئه مرة أخرى",
-    "queued": "في الانتظار"
+    "running": "جارٍ الإنشاء…"
   },
+  "drawing": "جارٍ رسم التقرير…",
+  "retry": "حاول تاني",
   "settingsLine": "{{lengths}} مم · سلاح المنشار {{kerf}} · تنظيف الأطراف {{trim}} لكل طرف",
   "editSettings": "تعديل",
   "toolbar": {
@@ -57,15 +57,7 @@
     "done_many": "{{count}} بروفايل",
     "done_other": "{{count}} بروفايل",
     "running": "{{done}} من {{total}} · {{profile}}",
-    "waiting": "في الانتظار",
-    "note": "تقدر تسيب الصفحة. الإنشاء هيكمّل.",
-    "queuedAhead_zero": "في الانتظار",
-    "queuedAhead_one": "في الانتظار · قبله تقرير واحد",
-    "queuedAhead_two": "في الانتظار · قبله تقريرين",
-    "queuedAhead_few": "في الانتظار · قبله {{count}} تقارير",
-    "queuedAhead_many": "في الانتظار · قبله {{count}} تقرير",
-    "queuedAhead_other": "في الانتظار · قبله {{count}} تقرير",
-    "queuedNext": "في الانتظار — هيبدأ أول ما السيرفر يفضى"
+    "waiting": "في الانتظار"
   },
   "solve": {
     "title": "جارٍ إنشاء التقرير على جهازك…",
@@ -75,8 +67,6 @@
     "noteOther": "هيظهر هنا أول ما يخلص.",
     "stop": "إيقاف",
     "sending": "جارٍ مراجعة النتيجة…",
-    "printing": "جارٍ طباعة ملف الـ PDF…",
-    "solved": "اتحسب على جهازك",
     "generateAgain": "أنشئه تاني",
     "reload": "ريفريش",
     "dismiss": "إخفاء",
@@ -127,9 +117,9 @@
     }
   },
   "errors": {
+    "draw": "تعذّر رسم ملف الـ PDF.",
     "status": "تعذّر تحميل التقرير.",
     "generate": "تعذّر بدء التقرير. حاول مرة أخرى.",
-    "pdf": "تعذّر تحميل ملف الـ PDF.",
     "print": "تعذّر فتح نافذة الطباعة."
   }
 }

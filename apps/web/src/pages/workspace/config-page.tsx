@@ -34,12 +34,13 @@ export function ConfigPage() {
         )}
       </div>
 
-      <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {/* `auto-rows-fr` + `h-full`: every card the height of the tallest, so the grid reads as equal tiles whatever the description length. */}
+      <ul className="grid auto-rows-fr gap-4 md:grid-cols-2 xl:grid-cols-3">
         {SECTIONS.map(({ key, to, icon: Icon }) => (
           <li key={key}>
             <Link
               to={to}
-              className="flex items-center gap-3.5 rounded-[14px] border border-border bg-card p-5 shadow-xs transition-colors outline-none hover:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="flex h-full items-center gap-3.5 rounded-[14px] border border-border bg-card p-5 shadow-xs transition-colors outline-none hover:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
               <span className="flex size-11 shrink-0 items-center justify-center rounded-[10px] bg-primary/10 text-primary">
                 <Icon className="size-5" aria-hidden="true" />

@@ -4,6 +4,8 @@ import { Database, FileChartColumn, LayoutGrid, LogOut, Menu, Settings } from 'l
 import { UserRole } from '@repo/types/auth'
 import { useAuth } from '@/lib/auth-context'
 import { useCompanyOverviewQuery } from '@/lib/company-queries'
+import { useCompanyProfileQuery } from '@/lib/company-profile-queries'
+import { useFileObjectUrl } from '@/lib/files-queries'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -44,6 +46,10 @@ export function WorkspaceRail({
   // Open to plain users too (CompanyController) — the company's name and
   // plan belong in everyone's account menu.
   const { data: company } = useCompanyOverviewQuery()
+  // Readable by plain users too (CompanyProfileController); Save in
+  // Config replaces this cache, so a new logo shows here at once.
+  const { data: profile } = useCompanyProfileQuery()
+  const logoUrl = useFileObjectUrl(profile?.logoFileId)
   // Radix places by physical side and there is no DirectionProvider, so
   // "toward the canvas" is right in English and left in Arabic.
   const menuSide = document.documentElement.dir === 'rtl' ? 'left' : 'right'
@@ -85,13 +91,22 @@ export function WorkspaceRail({
 
   return (
     <nav className="flex h-full w-17 shrink-0 flex-col items-center gap-1.5 border-e border-border bg-card py-3.5">
-      {/* Same mark as the admin sidebar's brand block. */}
-      <span
-        aria-hidden="true"
-        className="mb-2.5 flex size-[34px] shrink-0 items-center justify-center rounded-[9px] bg-primary font-heading font-bold text-primary-foreground"
-      >
-        A
-      </span>
+      {/* The company profile's logo, in the same square as the nav items
+          below so every company's rail lines up whatever the logo's
+          shape: `object-contain` shows the whole logo, never cropped.
+          Without one, the admin sidebar's brand mark at that size. */}
+      {logoUrl ? (
+        <span className="mb-2.5 flex size-13 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-border bg-muted p-1">
+          <img src={logoUrl} alt={company?.name ?? ''} className="size-full object-contain" />
+        </span>
+      ) : (
+        <span
+          aria-hidden="true"
+          className="mb-2.5 flex size-13 shrink-0 items-center justify-center rounded-[10px] bg-primary font-heading text-xl font-bold text-primary-foreground"
+        >
+          A
+        </span>
+      )}
 
       {onOpenTree && (
         <Button

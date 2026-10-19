@@ -47,13 +47,12 @@ export const envSchema = z.object({
   // this only to use another binary.
   PUPPETEER_EXECUTABLE_PATH: z.string().min(1).optional(),
 
-  // Report jobs run at once on this instance; more wait in line
-  // (docs/report_queue_planing.md C1). Unset = CPU count - 1, at least 1.
-  // Set it where the container may report the host's CPUs (Render: 1).
+  // Report PDFs printed at once on this instance (one headless Chrome
+  // each); more wait in line (docs/report_queue_planing.md C1). The solve
+  // itself runs in the browser (docs/browser_solve_planing.md). Unset =
+  // CPU count - 1, at least 1. Set it where the container may report the
+  // host's CPUs (Render: 1).
   REPORT_MAX_CONCURRENT: z.coerce.number().int().positive().optional(),
-  // A solve still running after this many minutes is stopped and the job
-  // fails with `timeout` (C5).
-  REPORT_SOLVE_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(10),
 
   // Where uploaded files' bytes live (docs/company_profile_planing.md §3a).
   // Only `postgres` exists today; `s3` (DO Spaces) joins the enum with its

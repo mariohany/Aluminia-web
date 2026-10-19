@@ -7,11 +7,24 @@ import { App } from 'supertest/types';
 import { UserRole, type LoginResponse } from '@repo/types/auth';
 import type { ClientDetail } from '@repo/types/clients';
 import type { ProjectDetail } from '@repo/types/projects';
-import type { CuttingSettings, ReportStatus } from '@repo/types/reports';
+import {
+  SolveError,
+  SolveRefusal,
+  type CuttingSettings,
+  type ReportStatus,
+  type SolveStart,
+} from '@repo/types/reports';
+import { optimiseProject } from '@repo/bar-optimiser/project';
+import {
+  solveInput,
+  solvedProfileOf,
+  type SolveResult,
+} from '@repo/bar-optimiser/solve-result';
+import { OPTIMISER_VERSION } from '@repo/bar-optimiser/version';
 import type { WindowDetail } from '@repo/types/windows';
 import { AppModule } from './../src/app.module';
 import { PasswordService } from './../src/modules/auth/password.service';
-import { BarOptimiserRunner } from './../src/modules/reports/bar-optimiser/runner';
+import { PdfRenderer } from './../src/modules/reports/pdf/pdf-renderer.service';
 import { ReportJobQueue } from './../src/modules/reports/report-job-queue';
 import { clearUserRateLimits } from './fixtures/clear-rate-limits';
 import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provisioning.service';
@@ -21,11 +34,13 @@ import {
 } from './fixtures/platform-catalogue';
 
 /**
- * docs/reports_planing.md §7 — the bar optimiser report API: cutting
- * settings, status, the background Generate job (in-process under
- * ts-jest, BarOptimiserRunner), staleness, isolation, and the PDF —
- * rendered by real headless Chrome through render-pdf.mjs. One job runs at
- * a time here (docs/report_queue_planing.md), so the queue is exercised.
+ * docs/reports_planing.md §7, docs/browser_solve_planing.md §7 — the bar
+ * optimiser report API: cutting settings, status, the browser solve (this
+ * suite plays the browser: it runs the real optimiser on the lines the API
+ * hands out and posts the plans back), the checks on a result, the
+ * background print, staleness, isolation, and the PDF — rendered by real
+ * headless Chrome through render-pdf.mjs. One print runs at a time here
+ * (docs/report_queue_planing.md), so the queue is exercised.
  */
 const SINGLE_LIGHT = 'left|right|sill|top';
 
@@ -44,6 +59,7 @@ describe('Reports (e2e)', () => {
 
   let token: string;
   let adminId: string;
+  let userId: string;
   let userToken: string;
   let otherToken: string;
   let superToken: string;
@@ -97,6 +113,12 @@ describe('Reports (e2e)', () => {
       [superEmail, hash, UserRole.SUPER_ADMIN],
     );
 
+    userId = (
+      await controlPlane.query<{ id: string }[]>(
+        `SELECT id FROM users WHERE email = $1`,
+        [userEmail],
+      )
+    )[0].id;
     token = await loginAs(adminEmail);
     userToken = await loginAs(userEmail);
     otherToken = await loginAs(otherAdminEmail);
@@ -231,10 +253,11 @@ describe('Reports (e2e)', () => {
       request(app.getHttpServer())
         .get(path)
         .set('Authorization', `Bearer ${as}`),
-    post: (path: string) =>
+    post: (path: string, body: object = {}) =>
       request(app.getHttpServer())
         .post(path)
-        .set('Authorization', `Bearer ${as}`),
+        .set('Authorization', `Bearer ${as}`)
+        .send(body),
     put: (path: string, body: object) =>
       request(app.getHttpServer())
         .put(path)
@@ -243,22 +266,74 @@ describe('Reports (e2e)', () => {
   });
   const reportPath = (lang = 'en') =>
     `/projects/${projectId}/reports/bar-optimiser?lang=${lang}`;
-  const generatePath = (lang = 'en') =>
-    `/projects/${projectId}/reports/bar-optimiser/generate?lang=${lang}`;
+  const solvePath = (step = '', lang = 'en') =>
+    `/projects/${projectId}/reports/bar-optimiser/solve${step}?lang=${lang}`;
+  const printPath = (lang = 'en') =>
+    `/projects/${projectId}/reports/bar-optimiser/print?lang=${lang}`;
 
-  async function status(lang = 'en'): Promise<ReportStatus> {
-    const res = await api().get(reportPath(lang)).expect(200);
+  async function status(lang = 'en', as = token): Promise<ReportStatus> {
+    const res = await api(as).get(reportPath(lang)).expect(200);
     return res.body as ReportStatus;
   }
 
-  /** Polls until no job is queued or running (the in-process run is quick). */
+  /** Polls until no print is queued or running (Chrome takes a moment). */
   async function settled(lang = 'en'): Promise<ReportStatus> {
     for (let i = 0; i < 120; i++) {
       const s = await status(lang);
       if (s.job?.state !== 'running' && s.job?.state !== 'queued') return s;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    throw new Error('report job did not finish');
+    throw new Error('report print did not finish');
+  }
+
+  /** Starts a solve as `as`. The start is limited to 6 a minute per user,
+   * and this suite starts more than that, so the count is cleared first
+   * (bug-112). */
+  async function startSolve(as = token, lang = 'en'): Promise<SolveStart> {
+    await clearUserRateLimits(
+      app,
+      'ReportsController.startSolve',
+      as === userToken ? userId : adminId,
+    );
+    const res = await api(as)
+      .post(solvePath('', lang), { optimiserVersion: OPTIMISER_VERSION })
+      .expect(200);
+    return res.body as SolveStart;
+  }
+
+  /** What an honest browser does with a start: the real optimiser on the
+   * line numbers. */
+  async function browserSolve(start: SolveStart): Promise<SolveResult> {
+    const project = await optimiseProject(
+      solveInput(start.lines),
+      start.settings,
+    );
+    return {
+      profiles: project.profiles.map((p) => solvedProfileOf(p.profile, p)),
+    };
+  }
+
+  function sendResult(start: SolveStart, result: SolveResult, lang = 'en') {
+    return api().post(solvePath('/result', lang), {
+      token: start.token,
+      optimiserVersion: OPTIMISER_VERSION,
+      ...result,
+    });
+  }
+
+  /** Generate as the web will: start, solve, send, wait for the print. */
+  async function generate(lang = 'en'): Promise<ReportStatus> {
+    const start = await startSolve(token, lang);
+    await sendResult(start, await browserSolve(start), lang).expect(202);
+    return settled(lang);
+  }
+
+  async function solvedAt(): Promise<string> {
+    const rows = await controlPlane.query<{ solved_at: Date }[]>(
+      `SELECT solved_at FROM "${schemaName}".report_solve WHERE project_id = $1`,
+      [projectId],
+    );
+    return rows[0].solved_at.toISOString();
   }
 
   it('reads default cutting settings when the company never saved any', async () => {
@@ -305,27 +380,63 @@ describe('Reports (e2e)', () => {
       state: 'none',
       generatedAt: null,
       hasPdf: false,
+      hasSolve: false,
       summary: null,
       job: null,
+      solve: null,
     });
   });
 
-  it('generates in the background: running with per-member progress, then fresh', async () => {
-    const started = await api().post(generatePath()).expect(202);
-    const body = started.body as ReportStatus;
-    expect(body.job?.state).toBe('running');
-    expect(body.job?.groups.map((g) => g.member)).toEqual([
+  it('hands the browser the piece lines and a token, shows its progress, then prints its plans', async () => {
+    const start = await startSolve();
+    expect(start.settings).toEqual({
+      lengths: [6500, 6000],
+      kerfMm: 4,
+      endTrimMm: 10,
+    });
+    expect(new Set(start.lines.map((l) => l.member))).toEqual(
+      new Set(['frame', 'sash', 'bead']),
+    );
+    // 4 frame pieces per unit × 5 units.
+    expect(
+      start.lines
+        .filter((l) => l.member === 'frame')
+        .reduce((n, l) => n + l.count, 0),
+    ).toBe(20);
+    expect(Object.values(start.profileNos)).toContain('FRAME-01');
+    expect(start.status.solve).toMatchObject({
+      state: 'solving',
+      startedByMe: true,
+      startedByEmail: adminEmail,
+    });
+    expect(start.status.solve?.groups.map((g) => g.member)).toEqual([
       'frame',
       'sash',
       'bead',
     ]);
 
-    const done = await settled();
-    expect(done.job).toBeNull();
-    expect(done.state).toBe('fresh');
-    expect(done.generatedAt).not.toBeNull();
-    expect(done.hasPdf).toBe(true);
+    // Progress, which is also the heartbeat; another user sees it (B5).
+    const groups = start.status.solve!.groups.map((g, i) =>
+      i === 0 ? { ...g, state: 'done' as const, profilesDone: 1 } : g,
+    );
+    await api()
+      .put(solvePath('/progress'), { token: start.token, groups })
+      .expect(204);
+    expect((await status('en', userToken)).solve).toMatchObject({
+      state: 'solving',
+      startedByMe: false,
+      startedByEmail: adminEmail,
+      groups,
+    });
 
+    const sent = await sendResult(start, await browserSolve(start)).expect(202);
+    const body = sent.body as ReportStatus;
+    expect(body.solve).toBeNull();
+    expect(body.hasSolve).toBe(true);
+    expect(body.job?.state).toBe('running');
+
+    const done = await settled();
+    expect(done).toMatchObject({ state: 'fresh', hasPdf: true, job: null });
     const summary = done.summary!;
     expect(summary.windowCount).toBe(2);
     expect(summary.unitCount).toBe(5);
@@ -335,7 +446,6 @@ describe('Reports (e2e)', () => {
       'sash',
       'bead',
     ]);
-    // 4 frame pieces per unit × 5 units.
     expect(summary.members[0].pieceCount).toBe(20);
     expect(summary.total.boughtMm).toBe(
       Object.entries(summary.total.mix).reduce(
@@ -370,8 +480,7 @@ describe('Reports (e2e)', () => {
   });
 
   it('a USER can read the report too', async () => {
-    const res = await api(userToken).get(reportPath()).expect(200);
-    expect((res.body as ReportStatus).state).toBe('fresh');
+    expect((await status('en', userToken)).state).toBe('fresh');
   });
 
   it('downloads the PDF as an attachment', async () => {
@@ -399,47 +508,155 @@ describe('Reports (e2e)', () => {
       .expect(404);
   });
 
-  it('caches per language, and renders Arabic too', async () => {
-    expect((await status('ar')).state).toBe('none');
-    await api().post(generatePath('ar')).expect(202);
-    const ar = await settled('ar');
-    expect(ar).toMatchObject({ state: 'fresh', hasPdf: true, job: null });
-    // English is untouched by the Arabic run.
+  it('prints another language from the stored solve, without solving (B4, B8)', async () => {
+    const before = await solvedAt();
+    const ar = await status('ar');
+    expect(ar).toMatchObject({ state: 'none', hasSolve: true });
+
+    await api().post(printPath('ar')).expect(202);
+    expect(await settled('ar')).toMatchObject({
+      state: 'fresh',
+      hasPdf: true,
+      job: null,
+    });
+    expect((await status('ar')).summary?.unitCount).toBe(5);
+    expect(await solvedAt()).toBe(before);
     expect((await status('en')).state).toBe('fresh');
   });
 
-  it('turns stale after a window edit and counts the window', async () => {
+  it('refuses a second solve while one is alive, and takes over a silent one (B5)', async () => {
+    const first = await startSolve();
+    const busy = await api(userToken)
+      .post(solvePath(), { optimiserVersion: OPTIMISER_VERSION })
+      .expect(409);
+    expect((busy.body as { code: string }).code).toBe(
+      SolveRefusal.SOLVING_ELSEWHERE,
+    );
+
+    // The admin's tab closed: no heartbeat for over a minute.
+    await controlPlane.query(
+      `UPDATE "${schemaName}".report_solve SET updated_at = now() - interval '5 minutes' WHERE project_id = $1`,
+      [projectId],
+    );
+    expect((await status()).solve).toMatchObject({
+      state: 'failed',
+      error: SolveError.STOPPED,
+    });
+    // The last good solve is still there.
+    expect((await status()).hasSolve).toBe(true);
+
+    const second = await startSolve(userToken);
+    const lost = await api()
+      .put(solvePath('/progress'), { token: first.token, groups: [] })
+      .expect(409);
+    expect((lost.body as { code: string }).code).toBe(SolveRefusal.SOLVE_LOST);
+
+    await api(userToken)
+      .post(solvePath('/stop'), { token: second.token })
+      .expect(200);
+    expect((await status()).solve).toBeNull();
+  });
+
+  it('refuses a browser with another optimiser version (B12)', async () => {
+    const old = await api()
+      .post(solvePath(), { optimiserVersion: OPTIMISER_VERSION - 1 })
+      .expect(409);
+    expect(old.body).toMatchObject({
+      code: SolveRefusal.OUTDATED_CLIENT,
+      message: 'Aluminia was updated. Reload the page to make this report.',
+    });
+
+    // A deploy landing mid-solve is caught at the result too.
+    const start = await startSolve();
+    const late = await api()
+      .post(solvePath('/result'), {
+        token: start.token,
+        optimiserVersion: OPTIMISER_VERSION + 1,
+        ...(await browserSolve(start)),
+      })
+      .expect(409);
+    expect((late.body as { code: string }).code).toBe(
+      SolveRefusal.OUTDATED_CLIENT,
+    );
+    await api().post(solvePath('/stop'), { token: start.token }).expect(200);
+  });
+
+  it('refuses tampered plans with 422 and ends the solve (§5)', async () => {
+    const start = await startSolve();
+    const result = await browserSolve(start);
+    const bars = result.profiles[0].best!;
+    bars[0].pieces.pop(); // a piece goes missing
+    if (!bars[0].pieces.length) bars.shift();
+
+    const res = await sendResult(start, result).expect(422);
+    expect((res.body as { message: string }).message).toMatch(
+      /is cut \d+×, needs \d+×/,
+    );
+    expect((await status()).solve).toMatchObject({
+      state: 'failed',
+      error: SolveError.FAILED,
+    });
+    // The token is spent: sending again is refused.
+    await sendResult(start, await browserSolve(start)).expect(409);
+    // Badly shaped bodies never reach the check.
+    await api()
+      .post(solvePath('/result'), {
+        token: start.token,
+        optimiserVersion: OPTIMISER_VERSION,
+        profiles: [{ profile: 'x', best: [{ stockMm: 6000, pieces: [-1] }] }],
+      })
+      .expect(400);
+  });
+
+  it('refuses a result after a window changed, then Generate again works (Q1)', async () => {
+    const start = await startSolve();
     await request(app.getHttpServer())
       .patch(`/windows/${fixedWindowId}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ quantity: 4 })
       .expect(200);
+
+    const res = await sendResult(start, await browserSolve(start)).expect(409);
+    expect((res.body as { code: string }).code).toBe(
+      SolveRefusal.WINDOWS_CHANGED,
+    );
     const s = await status();
+    expect(s.solve).toMatchObject({
+      state: 'failed',
+      error: SolveError.WINDOWS_CHANGED,
+    });
     expect(s.state).toBe('stale');
     expect(s.changedWindows).toBe(1);
+    expect(s.hasSolve).toBe(false);
     // The previous numbers stay readable while stale (D15).
     expect(s.summary?.unitCount).toBe(5);
+    await api().post(printPath()).expect(409);
 
-    await api().post(generatePath()).expect(202);
-    const again = await settled();
+    const again = await generate();
     expect(again.state).toBe('fresh');
     expect(again.summary?.unitCount).toBe(7);
+    expect(again.solve).toBeNull();
   });
 
-  it('turns stale after a project rename', async () => {
+  it('a project rename only reprints: no solve needed', async () => {
+    const before = await solvedAt();
     await request(app.getHttpServer())
       .patch(`/projects/${projectId}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ enName: 'Reports Project 2' })
       .expect(200);
     const s = await status();
-    expect(s.state).toBe('stale');
-    expect(s.changedWindows).toBe(0);
-    await api().post(generatePath()).expect(202);
+    expect(s).toMatchObject({
+      state: 'stale',
+      changedWindows: 0,
+      hasSolve: true,
+    });
+    await api().post(printPath()).expect(202);
     expect((await settled()).state).toBe('fresh');
+    expect(await solvedAt()).toBe(before);
   });
 
-  it('saving settings makes the report stale; the next run uses them', async () => {
+  it('saving settings needs a new solve; the next one uses them', async () => {
     const saved = await api()
       .put('/reports/cutting-settings', {
         kerfMm: 4.5,
@@ -453,10 +670,11 @@ describe('Reports (e2e)', () => {
       extraLengthsMm: [7000],
       stockLengthsMm: [7000, 6500, 6000],
     });
-    expect((await status()).state).toBe('stale');
+    expect(await status()).toMatchObject({ state: 'stale', hasSolve: false });
+    const noSolve = await api().post(printPath()).expect(409);
+    expect((noSolve.body as { code: string }).code).toBe(SolveRefusal.NO_SOLVE);
 
-    await api().post(generatePath()).expect(202);
-    const s = await settled();
+    const s = await generate();
     expect(s.state).toBe('fresh');
     expect(s.summary).toMatchObject({
       kerfMm: 4.5,
@@ -465,11 +683,34 @@ describe('Reports (e2e)', () => {
     });
   });
 
-  it('reports a job whose server died as failed, and Generate can start over', async () => {
+  it('Stop ends the solve; a browser giving up says why (B6, B11)', async () => {
+    const stopped = await startSolve();
+    const body = await api()
+      .post(solvePath('/stop'), { token: stopped.token })
+      .expect(200);
+    expect((body.body as ReportStatus).solve).toBeNull();
+
+    const tooBig = await startSolve();
+    await api()
+      .post(solvePath('/stop'), {
+        token: tooBig.token,
+        error: SolveError.TOO_BIG,
+      })
+      .expect(200);
+    expect((await status()).solve).toMatchObject({
+      state: 'failed',
+      error: SolveError.TOO_BIG,
+    });
+    // Stopping a spent token changes nothing.
+    await api().post(solvePath('/stop'), { token: stopped.token }).expect(200);
+    expect((await status()).solve?.error).toBe(SolveError.TOO_BIG);
+  });
+
+  it('reports a print whose server died as failed, and Print can start over', async () => {
     await controlPlane.query(
       `UPDATE "${schemaName}".report_cache
           SET job_state = 'running', job_started_at = now() - interval '5 minutes',
-              job_progress = '{"groups": []}', updated_at = now() - interval '5 minutes'
+              updated_at = now() - interval '5 minutes'
         WHERE project_id = $1 AND language = 'en'`,
       [projectId],
     );
@@ -478,43 +719,36 @@ describe('Reports (e2e)', () => {
     // The finished report from before is still there.
     expect(s.state).toBe('fresh');
 
-    await api().post(generatePath()).expect(202);
+    await api().post(printPath()).expect(202);
     expect((await settled()).job).toBeNull();
   });
 
-  it('queues a job while the one slot is busy, then runs it', async () => {
-    // Hold the first job's solve until released, so the second must wait.
-    const runner = app.get(BarOptimiserRunner);
-    const run = runner.run.bind(runner) as BarOptimiserRunner['run'];
+  it('queues a print while the one slot is busy, then prints it', async () => {
+    // Hold the first print until released, so the second must wait.
+    const renderer = app.get(PdfRenderer);
+    const render = renderer.render.bind(renderer) as PdfRenderer['render'];
     let release!: () => void;
     const held = new Promise<void>((resolve) => (release = resolve));
     const spy = jest
-      .spyOn(runner, 'run')
+      .spyOn(renderer, 'render')
       .mockImplementationOnce(async (...args) => {
         await held;
-        return run(...args);
+        return render(...args);
       });
 
     try {
-      // As the USER: Generate allows 6 a minute per user, and the admin
-      // has spent those by now.
-      const first = await api(userToken).post(generatePath('en')).expect(202);
+      const first = await api(userToken).post(printPath('en')).expect(202);
       expect((first.body as ReportStatus).job?.state).toBe('running');
 
-      const second = await api(userToken).post(generatePath('ar')).expect(202);
+      const second = await api(userToken).post(printPath('ar')).expect(202);
       const queued = (second.body as ReportStatus).job;
       expect(queued).toMatchObject({ state: 'queued', queuePosition: 0 });
-      expect(queued?.groups.every((g) => g.state === 'waiting')).toBe(true);
 
-      // Generate again while it waits: the same job, not a second one.
-      const again = await api(userToken).post(generatePath('ar')).expect(202);
+      // Print again while it waits: the same job, not a second one.
+      const again = await api(userToken).post(printPath('ar')).expect(202);
       expect((again.body as ReportStatus).job).toMatchObject({
         state: 'queued',
         startedAt: queued?.startedAt,
-      });
-      expect((await status('ar')).job).toMatchObject({
-        state: 'queued',
-        queuePosition: 0,
       });
     } finally {
       release();
@@ -525,49 +759,11 @@ describe('Reports (e2e)', () => {
     expect(await settled('ar')).toMatchObject({ state: 'fresh', job: null });
   });
 
-  it('cancels a queued job, but not one that has started', async () => {
-    const runner = app.get(BarOptimiserRunner);
-    const run = runner.run.bind(runner) as BarOptimiserRunner['run'];
-    let release!: () => void;
-    const held = new Promise<void>((resolve) => (release = resolve));
-    const spy = jest
-      .spyOn(runner, 'run')
-      .mockImplementationOnce(async (...args) => {
-        await held;
-        return run(...args);
-      });
-    const cancelPath = (lang: string) =>
-      `/projects/${projectId}/reports/bar-optimiser/cancel?lang=${lang}`;
-
-    try {
-      await api(userToken).post(generatePath('en')).expect(202);
-      const queued = await api(userToken).post(generatePath('ar')).expect(202);
-      expect((queued.body as ReportStatus).job?.state).toBe('queued');
-
-      const cancelled = await api().post(cancelPath('ar')).expect(200);
-      expect((cancelled.body as ReportStatus).job).toBeNull();
-      expect((await status('ar')).job).toBeNull();
-
-      // The running one runs to the end (D22).
-      await api().post(cancelPath('en')).expect(409);
-    } finally {
-      release();
-      spy.mockRestore();
-    }
-
-    expect(await settled('en')).toMatchObject({ state: 'fresh', job: null });
-    // Cancelled: nothing ran for Arabic, and nothing will.
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect((await status('ar')).job).toBeNull();
-    // Nothing to cancel is not an error.
-    await api().post(cancelPath('ar')).expect(200);
-  });
-
-  it('reports a queued job whose server died as failed too', async () => {
+  it('reports a queued print whose server died as failed too', async () => {
     await controlPlane.query(
       `UPDATE "${schemaName}".report_cache
           SET job_state = 'queued', job_started_at = now() - interval '5 minutes',
-              job_progress = '{"groups": []}', updated_at = now() - interval '5 minutes'
+              updated_at = now() - interval '5 minutes'
         WHERE project_id = $1 AND language = 'en'`,
       [projectId],
     );
@@ -578,7 +774,7 @@ describe('Reports (e2e)', () => {
     });
   });
 
-  it('saving the company profile makes the report stale; it prints with the logo', async () => {
+  it('saving the company profile only reprints; it prints with the logo', async () => {
     // A real 1 × 1 PNG, so Chrome draws it.
     const png = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -598,15 +794,18 @@ describe('Reports (e2e)', () => {
         logoFileId: (upload.body as { id: string }).id,
       })
       .expect(200);
-    expect((await status()).state).toBe('stale');
-    expect((await status('ar')).state).toBe('stale');
+    expect(await status()).toMatchObject({ state: 'stale', hasSolve: true });
+    expect(await status('ar')).toMatchObject({
+      state: 'stale',
+      hasSolve: true,
+    });
 
-    // One run, Arabic (name + logo). Last of the job tests, so no later
-    // test depends on the report's state. Generate is limited to 6 a
-    // minute per user and this suite spends more than that in under a
-    // minute, so the admin's own count is cleared first (bug-112).
-    await clearUserRateLimits(app, 'ReportsController.generate', adminId);
-    await api().post(generatePath('ar')).expect(202);
+    // Arabic (name + logo), printed from the stored solve. Last of the
+    // print tests, so no later test depends on the report's state. Print
+    // is limited per user and this suite spends a lot, so the admin's
+    // count is cleared first (bug-112).
+    await clearUserRateLimits(app, 'ReportsController.print', adminId);
+    await api().post(printPath('ar')).expect(202);
     expect((await settled('ar')).state).toBe('fresh');
     const pdf = await api()
       .get(`/projects/${projectId}/reports/bar-optimiser/pdf?lang=ar`)
@@ -620,7 +819,10 @@ describe('Reports (e2e)', () => {
 
   it("refuses another company's project with 404", async () => {
     await api(otherToken).get(reportPath()).expect(404);
-    await api(otherToken).post(generatePath()).expect(404);
+    await api(otherToken)
+      .post(solvePath(), { optimiserVersion: OPTIMISER_VERSION })
+      .expect(404);
+    await api(otherToken).post(printPath()).expect(404);
   });
 
   it('refuses a super admin (no company)', async () => {

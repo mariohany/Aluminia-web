@@ -48,6 +48,10 @@ async function bootstrap() {
     app.set('trust proxy', trustProxy === 'true' ? true : trustProxy);
   }
 
+  // A browser-made bar optimiser result lists every piece of a project
+  // (docs/browser_solve_planing.md §5): a big building can pass Express's
+  // 100 KB default. Authenticated and throttled like every other body.
+  app.useBodyParser('json', { limit: '2mb' });
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({

@@ -14,7 +14,7 @@ export function ReportProgressCard({
   queued,
 }: {
   groups: ReportProgressGroup[]
-  queued?: { position: number | null; onCancel: () => void; cancelling: boolean }
+  queued?: { position: number | null; onCancel?: () => void; cancelling?: boolean }
 }) {
   const { t } = useTranslation('reports')
   const writingPdf = !queued && groups.length > 0 && groups.every((g) => g.state === 'done')
@@ -71,9 +71,11 @@ export function ReportProgressCard({
       {queued ? (
         <div className="flex items-center gap-3">
           <p className="flex-1 text-[11.5px] text-muted-foreground">{t('progress.queuedNote')}</p>
-          <Button variant="outline" size="sm" className="h-7" disabled={queued.cancelling} onClick={queued.onCancel}>
-            {t('progress.cancel')}
-          </Button>
+          {queued.onCancel && (
+            <Button variant="outline" size="sm" className="h-7" disabled={queued.cancelling} onClick={queued.onCancel}>
+              {t('progress.cancel')}
+            </Button>
+          )}
         </div>
       ) : (
         <p className="text-[11.5px] text-muted-foreground">{t('progress.note')}</p>

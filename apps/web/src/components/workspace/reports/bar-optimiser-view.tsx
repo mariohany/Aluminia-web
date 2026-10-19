@@ -14,16 +14,15 @@ import {
 } from 'lucide-react'
 import { ReportLanguage, type ReportStatus } from '@repo/types/reports'
 import { Button } from '@/components/ui/button'
-import { ApiError } from '@/lib/api-client'
 import { downloadPdf, printPdf } from '@/lib/pdf-file'
 import {
   useBarOptimiserPdfQuery,
   useBarOptimiserStatusQuery,
-  useCancelBarOptimiserMutation,
   useCuttingSettingsQuery,
-  useGenerateBarOptimiserMutation,
+  usePrintBarOptimiserMutation,
   isJobActive,
 } from '@/lib/reports-queries'
+import { startSolve, useLocalSolve } from '@/lib/solve/solve-manager'
 import { cn } from '@/lib/utils'
 import { CuttingSettingsPopover } from './cutting-settings-popover'
 import { ReportProgressCard } from './report-progress-card'
@@ -37,10 +36,11 @@ const DEFAULT_ZOOM = 0.85
  * The bar optimiser report (docs/reports_planing.md §9, D18): the
  * settings line and status above, a floating toolbar (zoom, page,
  * EN/عربي, regenerate, print, download), and the PDF itself, drawn by
- * pdf.js. Generating runs in the background (D22): the progress card
- * shows over the previous PDF, which stays visible, dimmed. A job waiting
- * for a slot shows the same card, queued, with Cancel
- * (docs/report_queue_planing.md C4, C8).
+ * pdf.js. Generating solves in this browser (docs/browser_solve_planing.md,
+ * lib/solve/solve-manager.ts) and the server prints: the progress card
+ * shows over the previous PDF, which stays visible, dimmed. A print
+ * waiting for a slot shows the same card, queued
+ * (docs/report_queue_planing.md C4).
  */
 export function BarOptimiserView({
   projectId,
@@ -60,27 +60,26 @@ export function BarOptimiserView({
 
   const statusQuery = useBarOptimiserStatusQuery(projectId, lang)
   const settingsQuery = useCuttingSettingsQuery()
-  const generate = useGenerateBarOptimiserMutation(projectId, lang)
-  const cancel = useCancelBarOptimiserMutation(projectId, lang)
+  const print = usePrintBarOptimiserMutation(projectId, lang)
+  const localSolve = useLocalSolve(projectId)
+  const solvingHere = !!localSolve && localSolve.state !== 'failed'
   const status = statusQuery.data
-  // Queued or running: either way a job is on its way.
-  const running = isJobActive(status)
-  const queued = status?.job?.state === 'queued'
+  // A solve (here or in another browser) or a print is on its way.
+  const running = solvingHere || isJobActive(status)
+  const queued = !solvingHere && status?.job?.state === 'queued'
+  const pending = print.isPending || localSolve?.state === 'starting'
   const pdfQuery = useBarOptimiserPdfQuery(projectId, lang, status?.generatedAt, !!status?.hasPdf)
   const pdf = pdfQuery.data
 
+  // A solve for today's inputs exists: only the paper changed, so print
+  // it again without solving (B4); otherwise solve in this browser.
   const startGenerate = useCallback(() => {
-    generate.mutate(undefined, { onError: () => toast.error(t('errors.generate')) })
-  }, [generate, t])
-
-  const cancelQueued = useCallback(() => {
-    cancel.mutate(undefined, {
-      onError: (error) =>
-        toast.error(
-          error instanceof ApiError && error.status === 409 ? t('errors.cancelStarted') : t('errors.cancel'),
-        ),
-    })
-  }, [cancel, t])
+    if (status?.hasSolve) {
+      print.mutate(undefined, { onError: () => toast.error(t('errors.generate')) })
+    } else {
+      void startSolve(projectId, lang)
+    }
+  }, [status?.hasSolve, print, projectId, lang, t])
 
   const onVisiblePage = useCallback((n: number) => setPage(n), [])
   const fileName = `${slug(projectName)}-bar-optimiser-${lang}.pdf`
@@ -164,10 +163,10 @@ export function BarOptimiserView({
             variant={status?.state === 'stale' && !running ? 'default' : 'ghost'}
             size="sm"
             className="h-8"
-            disabled={!status || running || generate.isPending}
+            disabled={!status || running || pending}
             onClick={startGenerate}
           >
-            <RefreshCw className={cn('size-4', (running || generate.isPending) && 'animate-spin')} aria-hidden="true" />
+            <RefreshCw className={cn('size-4', (running || pending) && 'animate-spin')} aria-hidden="true" />
             <span className="sr-only sm:not-sr-only">{t('toolbar.regenerate')}</span>
           </Button>
           <Button
@@ -223,22 +222,18 @@ export function BarOptimiserView({
                 <div className="flex max-w-sm flex-col items-center gap-3 rounded-xl border border-border bg-card p-6 text-center shadow-sm">
                   <p className="text-sm font-semibold">{t('none.title')}</p>
                   <p className="text-[13px] text-muted-foreground">{t('none.body')}</p>
-                  <Button onClick={startGenerate} disabled={generate.isPending}>
+                  <Button onClick={startGenerate} disabled={pending}>
                     {t('none.generate')}
                   </Button>
                 </div>
               </Centered>
             ) : null}
 
-            {running && status.job && (
+            {running && (
               <div className="absolute inset-x-0 top-6 flex justify-center">
                 <ReportProgressCard
-                  groups={status.job.groups}
-                  queued={
-                    queued
-                      ? { position: status.job.queuePosition, onCancel: cancelQueued, cancelling: cancel.isPending }
-                      : undefined
-                  }
+                  groups={localSolve?.groups ?? status.solve?.groups ?? []}
+                  queued={queued ? { position: status.job?.queuePosition ?? null } : undefined}
                 />
               </div>
             )}

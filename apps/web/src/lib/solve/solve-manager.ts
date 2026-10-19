@@ -3,11 +3,11 @@ import type { CutMember } from '@repo/geometry/cut-list'
 import { profileQueue } from '@repo/bar-optimiser/project'
 import { solveInput, type SolvedProfile } from '@repo/bar-optimiser/solve-result'
 import { OPTIMISER_VERSION } from '@repo/bar-optimiser/version'
-import type { ReportLanguage, ReportProgressGroup, SolveStart } from '@repo/types/reports'
+import type { ReportProgressGroup, SolveStart } from '@repo/types/reports'
 import { ApiError } from '@/lib/api-client'
 import { queryClient } from '@/lib/query-client'
 import * as reportsApi from '@/lib/reports-api'
-import { barOptimiserStatusKey, reportsKey } from '@/lib/reports-queries'
+import { barOptimiserStatusKey } from '@/lib/reports-queries'
 import { solvePool } from './solve-pool'
 import type { SolveFailure } from './solve-messages'
 
@@ -31,7 +31,6 @@ export interface LocalSolve {
   projectId: string
   /** For the rail and the floating notice. */
   projectName: string
-  lang: ReportLanguage
   /** `done`: sent and accepted; shown briefly, then removed. */
   state: 'starting' | 'solving' | 'sending' | 'done' | 'failed'
   /** Date.now() when it started, for the elapsed timer. */
@@ -88,20 +87,20 @@ export function isBusy(solve: LocalSolve | undefined): boolean {
 
 /** Generate (docs/browser_solve_planing.md §3). Does nothing while this
  * tab is already making the project's report. */
-export async function startSolve(projectId: string, projectName: string, lang: ReportLanguage): Promise<void> {
+export async function startSolve(projectId: string, projectName: string): Promise<void> {
   if (isBusy(solves.get(projectId))) return
   watchUnload()
-  set(projectId, { projectId, projectName, lang, state: 'starting', startedAt: Date.now(), groups: [], error: null })
+  set(projectId, { projectId, projectName, state: 'starting', startedAt: Date.now(), groups: [], error: null })
 
   let start: SolveStart
   try {
-    start = await reportsApi.startBarOptimiserSolve(projectId, lang, OPTIMISER_VERSION)
+    start = await reportsApi.startBarOptimiserSolve(projectId, OPTIMISER_VERSION)
   } catch (error) {
     patch(projectId, { state: 'failed', error: codeOf(error) })
     refresh(projectId)
     return
   }
-  queryClient.setQueryData(barOptimiserStatusKey(projectId, lang), start.status)
+  queryClient.setQueryData(barOptimiserStatusKey(projectId), start.status)
   patch(projectId, { state: 'solving', groups: start.status.solve?.groups ?? [] })
 
   const queue = profileQueue(
@@ -115,7 +114,7 @@ export async function startSolve(projectId: string, projectName: string, lang: R
     active: new Map(),
   }
   running.set(projectId, run)
-  if (!queue.length) return void finish(projectId, lang, [])
+  if (!queue.length) return void finish(projectId, [])
 
   solvePool.submit(
     projectId,
@@ -148,12 +147,11 @@ export async function startSolve(projectId: string, projectName: string, lang: R
         if (results.size === queue.length) {
           void finish(
             projectId,
-            lang,
             queue.map((q) => results.get(q.profile)!),
           )
         }
       },
-      onError: (error) => void fail(projectId, lang, error),
+      onError: (error) => void fail(projectId, error),
     })),
   )
 }
@@ -164,7 +162,7 @@ export async function stopSolve(projectId: string): Promise<void> {
   const run = end(projectId)
   set(projectId, null)
   if (solve && run) {
-    await reportsApi.stopSolve(projectId, solve.lang, { token: run.token }).catch(() => undefined)
+    await reportsApi.stopSolve(projectId, { token: run.token }).catch(() => undefined)
   }
   refresh(projectId)
 }
@@ -214,14 +212,14 @@ async function sendProgress(projectId: string): Promise<void> {
   }
 }
 
-async function finish(projectId: string, lang: ReportLanguage, profiles: SolvedProfile[]): Promise<void> {
+async function finish(projectId: string, profiles: SolvedProfile[]): Promise<void> {
   const run = running.get(projectId)
   if (!run) return
   if (run.progressTimer) clearTimeout(run.progressTimer)
   run.progressTimer = null
   patch(projectId, { state: 'sending' })
   try {
-    const status = await reportsApi.sendSolveResult(projectId, lang, {
+    const status = await reportsApi.sendSolveResult(projectId, {
       token: run.token,
       optimiserVersion: OPTIMISER_VERSION,
       profiles,
@@ -231,7 +229,7 @@ async function finish(projectId: string, lang: ReportLanguage, profiles: SolvedP
     setTimeout(() => {
       if (solves.get(projectId)?.state === 'done') set(projectId, null)
     }, DONE_NOTICE_MS)
-    queryClient.setQueryData(barOptimiserStatusKey(projectId, lang), status)
+    queryClient.setQueryData(barOptimiserStatusKey(projectId), status)
   } catch (error) {
     end(projectId)
     patch(projectId, { state: 'failed', error: codeOf(error) })
@@ -241,11 +239,11 @@ async function finish(projectId: string, lang: ReportLanguage, profiles: SolvedP
 
 /** A worker gave up (B11): the whole report fails, and the server is told
  * why so everyone sees it. */
-async function fail(projectId: string, lang: ReportLanguage, error: SolveFailure): Promise<void> {
+async function fail(projectId: string, error: SolveFailure): Promise<void> {
   const run = end(projectId)
   if (!run) return
   patch(projectId, { state: 'failed', error })
-  await reportsApi.stopSolve(projectId, lang, { token: run.token, error }).catch(() => undefined)
+  await reportsApi.stopSolve(projectId, { token: run.token, error }).catch(() => undefined)
   refresh(projectId)
 }
 
@@ -261,7 +259,7 @@ function end(projectId: string): Running | undefined {
 }
 
 function refresh(projectId: string): void {
-  void queryClient.invalidateQueries({ queryKey: [...reportsKey, 'bar-optimiser', projectId] })
+  void queryClient.invalidateQueries({ queryKey: barOptimiserStatusKey(projectId) })
 }
 
 /** The API's `code` (a SolveRefusal), else `failed`. */

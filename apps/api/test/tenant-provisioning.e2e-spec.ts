@@ -116,7 +116,6 @@ describe('TenantProvisioning (e2e)', () => {
       'project_status_events',
       'project_statuses',
       'projects',
-      'report_cache',
       'report_solve',
       'tenant_info',
       'tenant_migrations',

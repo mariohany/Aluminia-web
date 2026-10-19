@@ -21,6 +21,7 @@ import { AddCompanyProfile1792252000000 } from './1792252000000-AddCompanyProfil
 import { AddProjectSettings1792280000000 } from './1792280000000-AddProjectSettings';
 import { AddReportSolve1792420000000 } from './1792420000000-AddReportSolve';
 import { AddReportSnapshot1792440000000 } from './1792440000000-AddReportSnapshot';
+import { DropReportCache1792450000000 } from './1792450000000-DropReportCache';
 
 /**
  * The tenant migration track, explicitly ordered.
@@ -57,6 +58,7 @@ export const tenantMigrations: Array<new () => MigrationInterface> = [
   AddProjectSettings1792280000000,
   AddReportSolve1792420000000,
   AddReportSnapshot1792440000000,
+  DropReportCache1792450000000,
 ];
 
 /** TypeORM records applied migrations as `{timestamp}-{ClassName}`. */

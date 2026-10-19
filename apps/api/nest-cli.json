@@ -3,12 +3,6 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
-    "deleteOutDir": true,
-    "assets": [
-      {
-        "include": "modules/reports/pdf/*.mjs",
-        "outDir": "dist/src"
-      }
-    ]
+    "deleteOutDir": true
   }
 }

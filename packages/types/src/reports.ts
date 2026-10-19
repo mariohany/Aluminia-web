@@ -193,21 +193,6 @@ export interface ReportProgressGroup {
   currentProfile: string | null
 }
 
-/** The print job making this language's PDF (docs/browser_solve_planing.md
- * B7). Printing waits for a free Chrome slot (report queue C1). */
-export interface ReportJobStatus {
-  /** `queued`: waiting for a free slot (docs/report_queue_planing.md C1). */
-  state: 'queued' | 'running' | 'failed'
-  startedAt: string
-  /** Always empty for a print; kept for the progress card's shape. */
-  groups: ReportProgressGroup[]
-  /** While queued: how many jobs are ahead of this one (0 = next). `null`
-   * when not queued, or when another API instance holds the job (C4, C6). */
-  queuePosition: number | null
-  /** `interrupted` (its server died) or the failure's message. */
-  error: string | null
-}
-
 /** Why a solve ended without a result (docs/browser_solve_planing.md). */
 export const SolveError = {
   /** Its browser stopped sending progress (tab closed, B5). */
@@ -233,20 +218,21 @@ export interface ReportSolveStatus {
   error: SolveError | null
 }
 
+/** The project's report (docs/browser_pdf_planing.md §4). The PDF itself
+ * is drawn in the browser from GET …/report. */
 export interface ReportStatus {
-  /** This language's PDF. `none`: never printed; `stale`: inputs changed
-   * since (D14/D15). */
+  /** `none`: never generated; `stale`: inputs changed since (D14/D15). */
   state: 'none' | 'fresh' | 'stale'
+  /** Why it's stale: `solve` (windows, settings or profiles changed:
+   * Generate solves again) or `names` (only the project or client was
+   * renamed: Regenerate refreshes the names, no solve, P8). */
+  staleBecause: 'solve' | 'names' | null
+  /** When the snapshot was made. */
   generatedAt: string | null
-  /** Windows added, removed or edited since the project's last solve. */
+  /** Windows added, removed or edited since the last solve. */
   changedWindows: number
-  hasPdf: boolean
-  /** The project has a solve for today's inputs: this language can be
-   * printed without solving (B4, B8). */
-  hasSolve: boolean
   summary: BarOptimiserSummary | null
-  /** The print job. */
-  job: ReportJobStatus | null
+  /** A solve in someone's browser (B5). */
   solve: ReportSolveStatus | null
 }
 
@@ -262,7 +248,7 @@ export const SolveRefusal = {
   SOLVE_LOST: 'solve_lost',
   /** Windows changed while solving (Q1). */
   WINDOWS_CHANGED: 'windows_changed',
-  /** No current solve to print from. */
+  /** No solve for today's windows and settings: generate first. */
   NO_SOLVE: 'no_solve',
 } as const
 export type SolveRefusal = (typeof SolveRefusal)[keyof typeof SolveRefusal]

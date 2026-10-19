@@ -7,9 +7,9 @@ import {
   stockLengthsOf,
   type BarOptimiserReport,
   type BarOptimiserSummary,
-  type ReportLanguage,
   type ReportPieceAt,
   type ReportPlanTotals,
+  type ReportProgressGroup,
 } from '@repo/types/reports';
 import type { WindowDetail } from '@repo/types/windows';
 import { buildCutList, type CutMember } from '@repo/geometry/cut-list';
@@ -23,9 +23,11 @@ import { CompanyProfileRow } from '../../database/tenant/entities/company-profil
 import { Project } from '../../database/tenant/entities/project.entity';
 import { loadProjectWindows } from '../windows/windows.service';
 import type { CutPlan } from '@repo/bar-optimiser/optimise';
-import type {
-  ProjectOptimisation,
-  ProjectPiece,
+import {
+  MEMBER_ORDER,
+  profileQueue,
+  type ProjectOptimisation,
+  type ProjectPiece,
 } from '@repo/bar-optimiser/project';
 
 // Everything a bar optimiser report is made from, read in one tenant
@@ -229,23 +231,6 @@ export function solveFingerprintOf(inputs: ReportInputs): string {
     profiles: [...profileRefsOf(inputs.windows)]
       .sort()
       .map((ref) => [ref, inputs.profiles.get(ref)?.stamp ?? 'missing']),
-  });
-}
-
-/** sha-256 over everything one language's PDF is printed from: the solve
- * fingerprint plus the language, the project and its client, and the
- * company profile (letterhead). A change only here means print again
- * from the stored solve, without solving. */
-export function printFingerprintOf(
-  inputs: ReportInputs,
-  language: ReportLanguage,
-): string {
-  return sha256({
-    solve: solveFingerprintOf(inputs),
-    language,
-    project: inputs.project.updatedAt.toISOString(),
-    client: inputs.project.client?.updatedAt.toISOString() ?? null,
-    letterhead: inputs.letterhead.updatedAt?.toISOString() ?? 'default',
   });
 }
 
@@ -454,4 +439,24 @@ export function summaryOf(
     skipped: pieces.skipped,
     approximate: true,
   };
+}
+
+/** One line per member group that has pieces, all waiting: a new solve's
+ * progress (docs/browser_solve_planing.md B5). */
+export function initialProgress(pieces: ProjectPieces): ReportProgressGroup[] {
+  const queue = profileQueue(pieces.pieces);
+  return MEMBER_ORDER.flatMap((member) => {
+    const total = queue.filter((q) => q.member === member).length;
+    return total
+      ? [
+          {
+            member,
+            state: 'waiting' as const,
+            profilesDone: 0,
+            profilesTotal: total,
+            currentProfile: null,
+          },
+        ]
+      : [];
+  });
 }

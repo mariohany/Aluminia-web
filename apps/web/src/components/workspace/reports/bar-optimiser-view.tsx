@@ -1,10 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
   CircleCheck,
   Download,
-  Hourglass,
   LoaderCircle,
   Printer,
   RefreshCw,
@@ -16,11 +15,10 @@ import { ReportLanguage, type ReportStatus } from '@repo/types/reports'
 import { Button } from '@/components/ui/button'
 import { downloadPdf, printPdf } from '@/lib/pdf-file'
 import {
-  useBarOptimiserPdfQuery,
   useBarOptimiserStatusQuery,
   useCuttingSettingsQuery,
-  usePrintBarOptimiserMutation,
-  isJobActive,
+  useRefreshBarOptimiserMutation,
+  isSolving,
 } from '@/lib/reports-queries'
 import { dismissSolve, isBusy, solveErrorKey, startSolve, stopSolve, useLocalSolve } from '@/lib/solve/solve-manager'
 import { cn } from '@/lib/utils'
@@ -58,45 +56,32 @@ export function BarOptimiserView({
   const [pageCount, setPageCount] = useState(0)
   const [page, setPage] = useState(1)
 
-  const statusQuery = useBarOptimiserStatusQuery(projectId, lang)
+  const statusQuery = useBarOptimiserStatusQuery(projectId)
   const settingsQuery = useCuttingSettingsQuery()
-  const print = usePrintBarOptimiserMutation(projectId, lang)
+  const refresh = useRefreshBarOptimiserMutation(projectId)
   const localSolve = useLocalSolve(projectId)
   const solvingHere = isBusy(localSolve)
   const status = statusQuery.data
-  // A solve (here or in another browser) or a print is on its way.
-  const running = solvingHere || isJobActive(status)
-  const pending = print.isPending || localSolve?.state === 'starting'
+  // A solve is on its way, here or in another browser.
+  const running = solvingHere || isSolving(status)
+  const pending = refresh.isPending || localSolve?.state === 'starting'
   const progress = progressOf()
   const failure = failureOf()
   // A server-side failure stays on the row until the next start; the user
   // can hide it here (keyed by when that attempt started).
   const [hiddenFailure, setHiddenFailure] = useState<string | null>(null)
-  const pdfQuery = useBarOptimiserPdfQuery(projectId, lang, status?.generatedAt, !!status?.hasPdf)
-  const pdf = pdfQuery.data
+  const pdf: Blob | undefined = undefined // browser-pdf step 6: draw the PDF here
 
-  // A solve for today's inputs exists: only the paper changed, so print
-  // it again without solving (B4); otherwise solve in this browser.
+  // Only the project or client was renamed: refresh the names, no solve
+  // (docs/browser_pdf_planing.md P8); otherwise solve in this browser.
   const startGenerate = useCallback(() => {
     dismissSolve(projectId)
-    if (status?.hasSolve) {
-      print.mutate(undefined, { onError: () => toast.error(t('errors.generate')) })
+    if (status?.staleBecause === 'names') {
+      refresh.mutate(undefined, { onError: () => toast.error(t('errors.generate')) })
     } else {
-      void startSolve(projectId, projectName, lang)
+      void startSolve(projectId, projectName)
     }
-  }, [status?.hasSolve, print, projectId, projectName, lang, t])
-
-  // The other language opened with no PDF yet: print it from the stored
-  // solve at once (B8). Once per project + language per visit, so a
-  // failed print isn't retried in a loop.
-  const autoPrinted = useRef(new Set<string>())
-  useEffect(() => {
-    if (!status || status.state !== 'none' || !status.hasSolve || status.job || running || print.isPending) return
-    const key = `${projectId}:${lang}`
-    if (autoPrinted.current.has(key)) return
-    autoPrinted.current.add(key)
-    print.mutate(undefined, { onError: () => toast.error(t('errors.generate')) })
-  }, [status, running, print, projectId, lang, t])
+  }, [status?.staleBecause, refresh, projectId, projectName, t])
 
   function progressOf(): ReportProgress | null {
     if (solvingHere && localSolve) {
@@ -110,13 +95,6 @@ export function BarOptimiserView({
     }
     if (status?.solve?.state === 'solving') {
       return { kind: 'watching', groups: status.solve.groups, email: status.solve.startedByEmail }
-    }
-    if (status?.job?.state === 'queued' || status?.job?.state === 'running') {
-      return {
-        kind: 'printing',
-        queuePosition: status.job.state === 'queued' ? (status.job.queuePosition ?? 0) : null,
-        solvedHere: localSolve?.state === 'done',
-      }
     }
     return null
   }
@@ -265,10 +243,6 @@ export function BarOptimiserView({
                   <PdfViewer blob={pdf} zoom={zoom} onPageCount={setPageCount} onVisiblePage={onVisiblePage} />
                 </Suspense>
               </div>
-            ) : status.hasPdf && pdfQuery.isError ? (
-              <Centered>
-                <p className="text-sm text-destructive">{t('errors.pdf')}</p>
-              </Centered>
             ) : status.state === 'none' && !running ? (
               <Centered>
                 <div className="flex max-w-sm flex-col items-center gap-3 rounded-xl border border-border bg-card p-6 text-center shadow-sm">
@@ -309,27 +283,11 @@ function StatusChip({ status }: { status: ReportStatus }) {
   const { t, i18n } = useTranslation('reports')
   const base = 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium'
 
-  if (status.job?.state === 'queued') {
-    return (
-      <span className={cn(base, 'bg-muted text-muted-foreground')}>
-        <Hourglass className="size-3.5" aria-hidden="true" />
-        {t('status.queued')}
-      </span>
-    )
-  }
-  if (status.job?.state === 'running' || status.solve?.state === 'solving') {
+  if (status.solve?.state === 'solving') {
     return (
       <span className={cn(base, 'bg-muted text-muted-foreground')}>
         <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
         {t('status.running')}
-      </span>
-    )
-  }
-  if (status.job?.state === 'failed') {
-    return (
-      <span className={cn(base, 'bg-destructive/10 text-destructive')}>
-        <TriangleAlert className="size-3.5" aria-hidden="true" />
-        {status.job.error === 'interrupted' ? t('status.interrupted') : t('status.failed')}
       </span>
     )
   }

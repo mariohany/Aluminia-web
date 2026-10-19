@@ -15,11 +15,9 @@ services:
     autoDeployTrigger: checksPass
     # --include=dev: NODE_ENV=production would otherwise skip the Nest CLI
     # and TypeScript the build needs.
-    # Chrome for the bar optimiser PDF (docs/reports_planing.md §8):
-    # npm here doesn't run install scripts, so Puppeteer's download is
-    # explicit, into PUPPETEER_CACHE_DIR below — inside the project, so it
-    # is still there at runtime (Render keeps only the project folder).
-    buildCommand: npm ci --include=dev && npm run build --workspace=apps/api && npx --workspace=apps/api puppeteer browsers install chrome-headless-shell
+    # No Chrome: the browser solves and draws the PDF
+    # (docs/browser_pdf_planing.md §8).
+    buildCommand: npm ci --include=dev && npm run build --workspace=apps/api
     # Free plan has no pre-deploy step, so migrations run before start.
     # The API refuses to boot with pending migrations anyway.
     startCommand: npm run migrate:all --workspace=apps/api && npm run start:prod --workspace=apps/api
@@ -47,15 +45,6 @@ services:
       # Vercel overwrites X-Forwarded-For with the real client IP.
       - key: TRUST_PROXY
         value: 'true'
-      # Where Puppeteer downloads Chrome at build time and finds it at
-      # runtime. Must be under /opt/render/project to survive the build.
-      - key: PUPPETEER_CACHE_DIR
-        value: /opt/render/project/.cache/puppeteer
-      # One PDF print at a time (docs/report_queue_planing.md C1): the
-      # container may report the host's CPUs, so the auto count can't be
-      # trusted here. 512 MB can't reliably print the PDF anyway (C10).
-      - key: REPORT_MAX_CONCURRENT
-        value: '1'
 
   - type: keyvalue
     name: aluminia-redis

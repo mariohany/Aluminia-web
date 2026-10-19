@@ -2,6 +2,7 @@ import { ReportLanguage } from '@repo/types/reports';
 import type { Project } from '../../database/tenant/entities/project.entity';
 import {
   printFingerprintOf,
+  snapshotFingerprintOf,
   solveFingerprintOf,
   type ReportInputs,
 } from './report-inputs';
@@ -67,5 +68,24 @@ describe('report fingerprints', () => {
       expect(printFingerprintOf(changed, ReportLanguage.EN)).not.toBe(en);
     }
     expect(printFingerprintOf(base, ReportLanguage.AR)).not.toBe(en);
+  });
+
+  it('a project or client rename only refreshes the snapshot; the letterhead never does (P6–P8)', () => {
+    const snapshot = snapshotFingerprintOf(base);
+    const renamed = inputs();
+    renamed.project.updatedAt = at('2026-10-03T10:00:00Z');
+    const client = inputs();
+    client.project.client.updatedAt = at('2026-10-03T10:00:00Z');
+    for (const changed of [renamed, client]) {
+      expect(solveFingerprintOf(changed)).toBe(solve);
+      expect(snapshotFingerprintOf(changed)).not.toBe(snapshot);
+    }
+    const logo = inputs();
+    logo.letterhead.updatedAt = at('2026-10-03T10:00:00Z');
+    expect(snapshotFingerprintOf(logo)).toBe(snapshot);
+
+    const edited = inputs();
+    edited.windows[0].updatedAt = '2026-10-03T10:00:00.000Z';
+    expect(snapshotFingerprintOf(edited)).not.toBe(snapshot);
   });
 });

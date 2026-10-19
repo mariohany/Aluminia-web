@@ -13,9 +13,10 @@ import { Project } from './project.entity';
 /**
  * One report's solve per project × report kind
  * (docs/browser_solve_planing.md §6): the plans every language's PDF is
- * printed from. `result` (a `SolveResult` of piece-line numbers),
- * `summary` and `windowStamps` were made from inputs hashing to
- * `solveFingerprint`; a different hash today means solve again. The solve
+ * printed from. `result` (a `SolveResult` of piece-line numbers) and
+ * `windowStamps` were made from inputs hashing to `solveFingerprint`; a
+ * different hash today means solve again. `report` is the snapshot the
+ * browser draws the PDF from (docs/browser_pdf_planing.md §6). The solve
  * being made keeps its state on the same row, so the last good one stays
  * printable meanwhile: `solveState` solving/failed, `solveToken` the
  * browser allowed to write, `solveProgress` per member group, and
@@ -53,8 +54,18 @@ export class ReportSolve {
   @Column({ type: 'jsonb', nullable: true })
   result: unknown;
 
+  /** The snapshot the browser draws (`BarOptimiserReport`, P6). */
   @Column({ type: 'jsonb', nullable: true })
-  summary: unknown;
+  report: unknown;
+
+  /** The solve fingerprint + project and client stamps (P8). */
+  @Column({
+    name: 'snapshot_fingerprint',
+    type: 'char',
+    length: 64,
+    nullable: true,
+  })
+  snapshotFingerprint: string | null;
 
   @Column({ name: 'solved_at', type: 'timestamptz', nullable: true })
   solvedAt: Date | null;

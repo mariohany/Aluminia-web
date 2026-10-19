@@ -5,6 +5,7 @@ import type { SystemType } from '@repo/types/lookups';
 import {
   DEFAULT_CUTTING_SETTINGS,
   stockLengthsOf,
+  type BarOptimiserReport,
   type BarOptimiserSummary,
   type ReportLanguage,
   type ReportPieceAt,
@@ -36,8 +37,9 @@ import type {
  * make every cached report stale (optimiser changes bump
  * `OPTIMISER_VERSION` instead). 2: the header prints the company profile
  * (docs/company_profile_planing.md §5). 3: one solve per project, printed
- * per language (docs/browser_solve_planing.md §6). */
-export const REPORT_VERSION = 3;
+ * per language (docs/browser_solve_planing.md §6). 4: the browser draws
+ * the PDF from a saved snapshot (docs/browser_pdf_planing.md §4). */
+export const REPORT_VERSION = 4;
 
 export interface PieceRef {
   windowId: string;
@@ -245,6 +247,77 @@ export function printFingerprintOf(
     client: inputs.project.client?.updatedAt.toISOString() ?? null,
     letterhead: inputs.letterhead.updatedAt?.toISOString() ?? 'default',
   });
+}
+
+/** sha-256 over what the saved snapshot freezes (P6): the solve
+ * fingerprint plus the project and the client. A change only in the
+ * project or client means refresh the names, no solve (P8). The company
+ * (letterhead) is not in it: it is always drawn as it is today (P7). */
+export function snapshotFingerprintOf(inputs: ReportInputs): string {
+  return sha256({
+    solve: solveFingerprintOf(inputs),
+    project: inputs.project.updatedAt.toISOString(),
+    client: inputs.project.client?.updatedAt.toISOString() ?? null,
+  });
+}
+
+/** The project and client names as the snapshot freezes them. */
+export function namesOf(
+  inputs: ReportInputs,
+): Pick<BarOptimiserReport, 'project' | 'client'> {
+  const { project } = inputs;
+  return {
+    project: { enName: project.enName, arName: project.arName ?? null },
+    client: project.client
+      ? {
+          enName: project.client.enName,
+          arName: project.client.arName ?? null,
+        }
+      : null,
+  };
+}
+
+/** What the browser draws the PDF from, frozen at Generate
+ * (docs/browser_pdf_planing.md §3, P6): the summary, every profile's
+ * least-waste bars with their pieces' labels, the project and client
+ * names, the date. */
+export function reportSnapshotOf(
+  inputs: ReportInputs,
+  pieces: ProjectPieces,
+  result: ProjectOptimisation<PieceRef>,
+  generatedAt: Date,
+): BarOptimiserReport {
+  return {
+    generatedAt: generatedAt.toISOString(),
+    ...namesOf(inputs),
+    summary: summaryOf(inputs, pieces, result),
+    plans: result.profiles.map((p) => ({
+      profile: p.profile,
+      profileNo: profileNoOf(inputs, p.profile),
+      member: p.member,
+      best: p.best
+        ? {
+            mix: { ...p.best.mix },
+            wastePct: p.best.wastePct,
+            piecesMm: p.best.piecesMm,
+            bars: p.best.bars.map((bar) => ({
+              stockMm: bar.stockMm,
+              wasteMm: bar.wasteMm,
+              offcutMm: bar.offcutMm,
+              pieces: bar.pieces.map((piece) => ({
+                lengthMm: piece.lengthMm,
+                windowName: piece.ref.windowName,
+                member: piece.ref.member,
+                at: piece.ref.at,
+              })),
+            })),
+          }
+        : null,
+    })),
+    panelCounts: Object.fromEntries(
+      inputs.windows.map((w) => [w.id, w.panels.length]),
+    ),
+  };
 }
 
 function sha256(body: unknown): string {

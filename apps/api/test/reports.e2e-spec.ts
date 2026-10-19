@@ -10,6 +10,7 @@ import type { ProjectDetail } from '@repo/types/projects';
 import {
   SolveError,
   SolveRefusal,
+  type BarOptimiserReport,
   type CuttingSettings,
   type ReportStatus,
   type SolveStart,
@@ -457,20 +458,29 @@ describe('Reports (e2e)', () => {
     expect(summary.approximate).toBe(true);
   });
 
-  it('stores the solve once per project, as piece-line plans (docs/browser_solve_planing.md §6)', async () => {
+  it('stores the solve once per project, as piece-line plans, with the snapshot the browser draws (docs/browser_pdf_planing.md §6)', async () => {
     const rows = await controlPlane.query<
       {
         solve_fingerprint: string;
+        snapshot_fingerprint: string;
         result: { profiles: { profile: string; best: unknown[] | null }[] };
-        summary: { windowCount: number };
+        report: BarOptimiserReport;
       }[]
     >(
-      `SELECT solve_fingerprint, result, summary FROM "${schemaName}".report_solve WHERE project_id = $1`,
+      `SELECT solve_fingerprint, snapshot_fingerprint, result, report FROM "${schemaName}".report_solve WHERE project_id = $1`,
       [projectId],
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].solve_fingerprint).toHaveLength(64);
-    expect(rows[0].summary.windowCount).toBe(2);
+    expect(rows[0].snapshot_fingerprint).toHaveLength(64);
+    const { report } = rows[0];
+    expect(report.summary.windowCount).toBe(2);
+    // Frozen at Generate (P6): the names and every piece's label.
+    expect(report.project.enName).toBe('Reports Project');
+    expect(report.client?.enName).toBe('Reports Client');
+    const piece = report.plans.find((p) => p.best)?.best?.bars[0].pieces[0];
+    expect(piece?.windowName).toMatch(/^W-(fixed|sash)$/);
+    expect(piece?.at).toHaveProperty('position');
     const bars = rows[0].result.profiles.flatMap((p) => p.best ?? []);
     expect(bars.length).toBeGreaterThan(0);
     expect(bars[0]).toEqual({

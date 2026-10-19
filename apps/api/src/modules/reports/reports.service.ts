@@ -19,6 +19,7 @@ import {
   SolveError,
   SolveRefusal,
   stockLengthsOf,
+  type BarOptimiserReport,
   type CuttingSettings,
   type CuttingSettingsInput,
   type ReportLanguage,
@@ -42,8 +43,9 @@ import {
   loadReportInputs,
   printFingerprintOf,
   profileNoOf,
+  reportSnapshotOf,
+  snapshotFingerprintOf,
   solveFingerprintOf,
-  summaryOf,
   windowStampsOf,
   type ReportInputs,
 } from './report-inputs';
@@ -236,11 +238,13 @@ export class ReportsService {
             },
             result,
           );
+          const solvedAt = new Date();
           solve.solveFingerprint = fingerprint;
+          solve.snapshotFingerprint = snapshotFingerprintOf(inputs);
           solve.windowStamps = windowStampsOf(inputs);
           solve.result = result;
-          solve.summary = summaryOf(inputs, pieces, checked);
-          solve.solvedAt = new Date();
+          solve.report = reportSnapshotOf(inputs, pieces, checked, solvedAt);
+          solve.solvedAt = solvedAt;
           solve.solvedByUserId = userId;
           endSolve(solve, null);
         } catch (error) {
@@ -508,7 +512,7 @@ export class ReportsService {
       summary:
         state === 'none'
           ? null
-          : ((solve?.summary as ReportStatus['summary']) ?? null),
+          : ((solve?.report as BarOptimiserReport | null)?.summary ?? null),
       job:
         row?.jobState && row.jobStartedAt
           ? {

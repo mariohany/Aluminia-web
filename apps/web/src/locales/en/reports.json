@@ -27,8 +27,7 @@
     "running": "Generating…",
     "failed": "Generating failed — try again",
     "interrupted": "Interrupted — generate again",
-    "queued": "Queued",
-    "timeout": "Took too long — try again"
+    "queued": "Queued"
   },
   "settingsLine": "{{lengths}} mm · kerf {{kerf}} · trim {{trim}} per end",
   "editSettings": "Edit",
@@ -47,18 +46,42 @@
     "generate": "Generate"
   },
   "progress": {
-    "title": "Generating the bar optimiser…",
     "done_one": "{{count}} profile",
     "done_other": "{{count}} profiles",
     "running": "{{done}} of {{total}} · {{profile}}",
     "waiting": "waiting",
-    "rendering": "Writing the PDF…",
     "note": "You can leave this page. It keeps running.",
     "queuedAhead_one": "Queued · {{count}} report ahead",
     "queuedAhead_other": "Queued · {{count}} reports ahead",
-    "queuedNext": "Queued — starts when the server is free",
-    "queuedNote": "Starts automatically — you can leave this page.",
-    "cancel": "Cancel"
+    "queuedNext": "Queued — starts when the server is free"
+  },
+  "solve": {
+    "title": "Making the report on your computer…",
+    "titleOther": "Being made by {{email}} on their computer",
+    "titleOtherUnknown": "Being made on another computer",
+    "note": "You can keep working in Aluminia. Closing this tab stops it.",
+    "noteOther": "It shows here when it's done.",
+    "stop": "Stop",
+    "sending": "Checking the result…",
+    "printing": "Printing the PDF…",
+    "solved": "Solved on your computer",
+    "generateAgain": "Generate again",
+    "reload": "Reload",
+    "dismiss": "Dismiss",
+    "errors": {
+      "too_big": "This project is too big for this device. Generate it from a computer.",
+      "windows_changed": "Windows changed while the report was being made.",
+      "outdated_client": "Aluminia was updated. Reload the page to make this report.",
+      "solving_elsewhere": "This report is being made on another computer.",
+      "solve_lost": "Someone else started this report again.",
+      "stopped": "The last attempt stopped: its tab was closed.",
+      "failed": "Making the report failed."
+    }
+  },
+  "notice": {
+    "ready": "Report ready",
+    "open": "Open",
+    "rail": "Making: {{projects}}"
   },
   "members": {
     "frame": "Frames",
@@ -95,8 +118,6 @@
     "status": "Couldn't load the report.",
     "generate": "Couldn't start the report. Try again.",
     "pdf": "Couldn't load the PDF.",
-    "print": "Couldn't open the print dialog.",
-    "cancel": "Couldn't cancel the report. Try again.",
-    "cancelStarted": "It has already started and will run to the end."
+    "print": "Couldn't open the print dialog."
   }
 }

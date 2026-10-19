@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -14,19 +14,18 @@ import {
 } from 'lucide-react'
 import { ReportLanguage, type ReportStatus } from '@repo/types/reports'
 import { Button } from '@/components/ui/button'
-import { ApiError } from '@/lib/api-client'
 import { downloadPdf, printPdf } from '@/lib/pdf-file'
 import {
   useBarOptimiserPdfQuery,
   useBarOptimiserStatusQuery,
-  useCancelBarOptimiserMutation,
   useCuttingSettingsQuery,
-  useGenerateBarOptimiserMutation,
+  usePrintBarOptimiserMutation,
   isJobActive,
 } from '@/lib/reports-queries'
+import { dismissSolve, isBusy, solveErrorKey, startSolve, stopSolve, useLocalSolve } from '@/lib/solve/solve-manager'
 import { cn } from '@/lib/utils'
 import { CuttingSettingsPopover } from './cutting-settings-popover'
-import { ReportProgressCard } from './report-progress-card'
+import { ReportProgressCard, type ReportProgress } from './report-progress-card'
 
 const PdfViewer = lazy(() => import('./pdf-viewer'))
 
@@ -37,10 +36,11 @@ const DEFAULT_ZOOM = 0.85
  * The bar optimiser report (docs/reports_planing.md §9, D18): the
  * settings line and status above, a floating toolbar (zoom, page,
  * EN/عربي, regenerate, print, download), and the PDF itself, drawn by
- * pdf.js. Generating runs in the background (D22): the progress card
- * shows over the previous PDF, which stays visible, dimmed. A job waiting
- * for a slot shows the same card, queued, with Cancel
- * (docs/report_queue_planing.md C4, C8).
+ * pdf.js. Generating solves in this browser (docs/browser_solve_planing.md,
+ * lib/solve/solve-manager.ts) and the server prints: the progress card
+ * shows over the previous PDF, which stays visible, dimmed. A print
+ * waiting for a slot shows the same card, queued
+ * (docs/report_queue_planing.md C4).
  */
 export function BarOptimiserView({
   projectId,
@@ -60,27 +60,78 @@ export function BarOptimiserView({
 
   const statusQuery = useBarOptimiserStatusQuery(projectId, lang)
   const settingsQuery = useCuttingSettingsQuery()
-  const generate = useGenerateBarOptimiserMutation(projectId, lang)
-  const cancel = useCancelBarOptimiserMutation(projectId, lang)
+  const print = usePrintBarOptimiserMutation(projectId, lang)
+  const localSolve = useLocalSolve(projectId)
+  const solvingHere = isBusy(localSolve)
   const status = statusQuery.data
-  // Queued or running: either way a job is on its way.
-  const running = isJobActive(status)
-  const queued = status?.job?.state === 'queued'
+  // A solve (here or in another browser) or a print is on its way.
+  const running = solvingHere || isJobActive(status)
+  const pending = print.isPending || localSolve?.state === 'starting'
+  const progress = progressOf()
+  const failure = failureOf()
+  // A server-side failure stays on the row until the next start; the user
+  // can hide it here (keyed by when that attempt started).
+  const [hiddenFailure, setHiddenFailure] = useState<string | null>(null)
   const pdfQuery = useBarOptimiserPdfQuery(projectId, lang, status?.generatedAt, !!status?.hasPdf)
   const pdf = pdfQuery.data
 
+  // A solve for today's inputs exists: only the paper changed, so print
+  // it again without solving (B4); otherwise solve in this browser.
   const startGenerate = useCallback(() => {
-    generate.mutate(undefined, { onError: () => toast.error(t('errors.generate')) })
-  }, [generate, t])
+    dismissSolve(projectId)
+    if (status?.hasSolve) {
+      print.mutate(undefined, { onError: () => toast.error(t('errors.generate')) })
+    } else {
+      void startSolve(projectId, projectName, lang)
+    }
+  }, [status?.hasSolve, print, projectId, projectName, lang, t])
 
-  const cancelQueued = useCallback(() => {
-    cancel.mutate(undefined, {
-      onError: (error) =>
-        toast.error(
-          error instanceof ApiError && error.status === 409 ? t('errors.cancelStarted') : t('errors.cancel'),
-        ),
-    })
-  }, [cancel, t])
+  // The other language opened with no PDF yet: print it from the stored
+  // solve at once (B8). Once per project + language per visit, so a
+  // failed print isn't retried in a loop.
+  const autoPrinted = useRef(new Set<string>())
+  useEffect(() => {
+    if (!status || status.state !== 'none' || !status.hasSolve || status.job || running || print.isPending) return
+    const key = `${projectId}:${lang}`
+    if (autoPrinted.current.has(key)) return
+    autoPrinted.current.add(key)
+    print.mutate(undefined, { onError: () => toast.error(t('errors.generate')) })
+  }, [status, running, print, projectId, lang, t])
+
+  function progressOf(): ReportProgress | null {
+    if (solvingHere && localSolve) {
+      return {
+        kind: 'solving',
+        groups: localSolve.groups,
+        startedAt: localSolve.startedAt,
+        sending: localSolve.state !== 'solving',
+        onStop: () => void stopSolve(projectId),
+      }
+    }
+    if (status?.solve?.state === 'solving') {
+      return { kind: 'watching', groups: status.solve.groups, email: status.solve.startedByEmail }
+    }
+    if (status?.job?.state === 'queued' || status?.job?.state === 'running') {
+      return {
+        kind: 'printing',
+        queuePosition: status.job.state === 'queued' ? (status.job.queuePosition ?? 0) : null,
+        solvedHere: localSolve?.state === 'done',
+      }
+    }
+    return null
+  }
+
+  /** Why the last solve ended without a report: this tab's own failure
+   * first, else the one recorded on the server (seen by everyone, B5). */
+  function failureOf(): { code: string; key: string } | null {
+    if (localSolve?.state === 'failed') {
+      return { code: localSolve.error ?? 'failed', key: `local:${localSolve.startedAt}` }
+    }
+    if (!solvingHere && status?.solve?.state === 'failed') {
+      return { code: status.solve.error ?? 'failed', key: status.solve.startedAt }
+    }
+    return null
+  }
 
   const onVisiblePage = useCallback((n: number) => setPage(n), [])
   const fileName = `${slug(projectName)}-bar-optimiser-${lang}.pdf`
@@ -164,10 +215,10 @@ export function BarOptimiserView({
             variant={status?.state === 'stale' && !running ? 'default' : 'ghost'}
             size="sm"
             className="h-8"
-            disabled={!status || running || generate.isPending}
+            disabled={!status || running || pending}
             onClick={startGenerate}
           >
-            <RefreshCw className={cn('size-4', (running || generate.isPending) && 'animate-spin')} aria-hidden="true" />
+            <RefreshCw className={cn('size-4', (running || pending) && 'animate-spin')} aria-hidden="true" />
             <span className="sr-only sm:not-sr-only">{t('toolbar.regenerate')}</span>
           </Button>
           <Button
@@ -223,25 +274,30 @@ export function BarOptimiserView({
                 <div className="flex max-w-sm flex-col items-center gap-3 rounded-xl border border-border bg-card p-6 text-center shadow-sm">
                   <p className="text-sm font-semibold">{t('none.title')}</p>
                   <p className="text-[13px] text-muted-foreground">{t('none.body')}</p>
-                  <Button onClick={startGenerate} disabled={generate.isPending}>
+                  <Button onClick={startGenerate} disabled={pending}>
                     {t('none.generate')}
                   </Button>
                 </div>
               </Centered>
             ) : null}
 
-            {running && status.job && (
+            {progress ? (
               <div className="absolute inset-x-0 top-6 flex justify-center">
-                <ReportProgressCard
-                  groups={status.job.groups}
-                  queued={
-                    queued
-                      ? { position: status.job.queuePosition, onCancel: cancelQueued, cancelling: cancel.isPending }
-                      : undefined
-                  }
+                <ReportProgressCard progress={progress} />
+              </div>
+            ) : failure && hiddenFailure !== failure.key ? (
+              <div className="absolute inset-x-0 top-6 flex justify-center">
+                <SolveFailureCard
+                  code={failure.code}
+                  onAgain={startGenerate}
+                  onDismiss={() => {
+                    // The server keeps the same failure; hide that too.
+                    dismissSolve(projectId)
+                    setHiddenFailure(status.solve?.startedAt ?? failure.key)
+                  }}
                 />
               </div>
-            )}
+            ) : null}
           </>
         )}
       </div>
@@ -261,7 +317,7 @@ function StatusChip({ status }: { status: ReportStatus }) {
       </span>
     )
   }
-  if (status.job?.state === 'running') {
+  if (status.job?.state === 'running' || status.solve?.state === 'solving') {
     return (
       <span className={cn(base, 'bg-muted text-muted-foreground')}>
         <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
@@ -273,11 +329,7 @@ function StatusChip({ status }: { status: ReportStatus }) {
     return (
       <span className={cn(base, 'bg-destructive/10 text-destructive')}>
         <TriangleAlert className="size-3.5" aria-hidden="true" />
-        {status.job.error === 'interrupted'
-          ? t('status.interrupted')
-          : status.job.error === 'timeout'
-            ? t('status.timeout')
-            : t('status.failed')}
+        {status.job.error === 'interrupted' ? t('status.interrupted') : t('status.failed')}
       </span>
     )
   }
@@ -320,5 +372,44 @@ function slug(name: string): string {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '') || 'project'
+  )
+}
+
+/** A solve that ended without a report (docs/browser_solve_planing.md §8):
+ * what happened and what to do next. */
+function SolveFailureCard({
+  code,
+  onAgain,
+  onDismiss,
+}: {
+  code: string
+  onAgain: () => void
+  onDismiss: () => void
+}) {
+  const { t } = useTranslation('reports')
+  return (
+    <div
+      role="alert"
+      className="flex w-[min(380px,calc(100%-2rem))] flex-col gap-3 rounded-xl border border-destructive/40 bg-card p-4 shadow-lg"
+    >
+      <p className="flex items-start gap-2 text-sm font-medium text-destructive">
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        {t(solveErrorKey(code))}
+      </p>
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" size="sm" className="h-7" onClick={onDismiss}>
+          {t('solve.dismiss')}
+        </Button>
+        {code === 'outdated_client' ? (
+          <Button size="sm" className="h-7" onClick={() => window.location.reload()}>
+            {t('solve.reload')}
+          </Button>
+        ) : code !== 'solving_elsewhere' ? (
+          <Button size="sm" className="h-7" onClick={onAgain}>
+            {t('solve.generateAgain')}
+          </Button>
+        ) : null}
+      </div>
+    </div>
   )
 }

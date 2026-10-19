@@ -141,26 +141,152 @@ export interface ReportProgressGroup {
   currentProfile: string | null
 }
 
+/** The print job making this language's PDF (docs/browser_solve_planing.md
+ * B7). Printing waits for a free Chrome slot (report queue C1). */
 export interface ReportJobStatus {
   /** `queued`: waiting for a free slot (docs/report_queue_planing.md C1). */
   state: 'queued' | 'running' | 'failed'
   startedAt: string
+  /** Always empty for a print; kept for the progress card's shape. */
   groups: ReportProgressGroup[]
   /** While queued: how many jobs are ahead of this one (0 = next). `null`
    * when not queued, or when another API instance holds the job (C4, C6). */
   queuePosition: number | null
-  /** `interrupted` (its server died), `timeout` (the solve ran past the
-   * safety cap, C5), or the failure's message. */
+  /** `interrupted` (its server died) or the failure's message. */
   error: string | null
 }
 
+/** Why a solve ended without a result (docs/browser_solve_planing.md). */
+export const SolveError = {
+  /** Its browser stopped sending progress (tab closed, B5). */
+  STOPPED: 'stopped',
+  /** The device ran out of memory (B11). */
+  TOO_BIG: 'too_big',
+  /** Windows changed while it ran: the result was refused (Q1). */
+  WINDOWS_CHANGED: 'windows_changed',
+  /** The solver failed in the browser. */
+  FAILED: 'failed',
+} as const
+export type SolveError = (typeof SolveError)[keyof typeof SolveError]
+
+/** The project's solve being made in someone's browser (B5). */
+export interface ReportSolveStatus {
+  state: 'solving' | 'failed'
+  startedAt: string
+  /** Who is solving, for "being made by … on their computer". */
+  startedByEmail: string | null
+  /** Started by the user asking (possibly in another tab). */
+  startedByMe: boolean
+  groups: ReportProgressGroup[]
+  error: SolveError | null
+}
+
 export interface ReportStatus {
-  /** `none`: never generated; `stale`: inputs changed since (D14/D15). */
+  /** This language's PDF. `none`: never printed; `stale`: inputs changed
+   * since (D14/D15). */
   state: 'none' | 'fresh' | 'stale'
   generatedAt: string | null
-  /** Windows added, removed or edited since the cached report. */
+  /** Windows added, removed or edited since the project's last solve. */
   changedWindows: number
   hasPdf: boolean
+  /** The project has a solve for today's inputs: this language can be
+   * printed without solving (B4, B8). */
+  hasSolve: boolean
   summary: BarOptimiserSummary | null
+  /** The print job. */
   job: ReportJobStatus | null
+  solve: ReportSolveStatus | null
 }
+
+// ---- Browser solve requests (docs/browser_solve_planing.md §7) -----------
+
+/** Machine-readable `code` on a refused solve request's error body. */
+export const SolveRefusal = {
+  /** The browser's optimiser is older or newer than the API's (B12). */
+  OUTDATED_CLIENT: 'outdated_client',
+  /** Someone else's browser is solving this project. */
+  SOLVING_ELSEWHERE: 'solving_elsewhere',
+  /** The token no longer holds the solve (stopped, taken over). */
+  SOLVE_LOST: 'solve_lost',
+  /** Windows changed while solving (Q1). */
+  WINDOWS_CHANGED: 'windows_changed',
+  /** No current solve to print from. */
+  NO_SOLVE: 'no_solve',
+} as const
+export type SolveRefusal = (typeof SolveRefusal)[keyof typeof SolveRefusal]
+
+export const startSolveSchema = z.object({ optimiserVersion: z.number().int() }).strict()
+export type StartSolveInput = z.infer<typeof startSolveSchema>
+
+/** One piece line: `count` pieces of one length of one profile. A line's
+ * number is its position in `lines`. */
+export interface SolveLine {
+  profile: string
+  member: ReportMember
+  lengthMm: number
+  count: number
+}
+
+export interface SolveStart {
+  token: string
+  settings: { lengths: number[]; kerfMm: number; endTrimMm: number }
+  lines: SolveLine[]
+  /** Profile ref → its number, for the progress card. */
+  profileNos: Record<string, string | null>
+  status: ReportStatus
+}
+
+const progressGroupSchema = z
+  .object({
+    member: z.enum([ReportMember.FRAME, ReportMember.SASH, ReportMember.DIVIDER, ReportMember.BEAD]),
+    state: z.enum(['waiting', 'running', 'done']),
+    profilesDone: z.number().int().min(0),
+    profilesTotal: z.number().int().min(0),
+    currentProfile: z.string().max(100).nullable(),
+  })
+  .strict()
+
+export const solveProgressSchema = z
+  .object({ token: z.uuid(), groups: z.array(progressGroupSchema).max(4) })
+  .strict()
+export type SolveProgressInput = z.infer<typeof solveProgressSchema>
+
+const solvedPlanSchema = z
+  .array(
+    z
+      .object({
+        stockMm: z.number().int().positive(),
+        pieces: z.array(z.number().int().min(0)).min(1),
+      })
+      .strict(),
+  )
+  .nullable()
+
+/** Bars as piece-line numbers (`@repo/bar-optimiser/solve-result`); the
+ * API checks them against its own lines. */
+export const solveResultSchema = z
+  .object({
+    token: z.uuid(),
+    optimiserVersion: z.number().int(),
+    profiles: z.array(
+      z
+        .object({
+          profile: z.string().min(1).max(200),
+          best: solvedPlanSchema,
+          single: z.record(z.string().regex(/^\d+$/), solvedPlanSchema),
+        })
+        .strict(),
+    ),
+  })
+  .strict()
+export type SolveResultInput = z.infer<typeof solveResultSchema>
+
+export const stopSolveSchema = z
+  .object({
+    token: z.uuid(),
+    /** Set when the browser gave up (out of memory, solver error); absent
+     * when the user pressed Stop. */
+    error: z.enum([SolveError.TOO_BIG, SolveError.FAILED]).optional(),
+  })
+  .strict()
+export type StopSolveInput = z.infer<typeof stopSolveSchema>

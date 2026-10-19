@@ -7,8 +7,8 @@ export const cuttingSettingsKey = [...reportsKey, 'cutting-settings'] as const
 export const barOptimiserStatusKey = (projectId: string, lang: ReportLanguage) =>
   [...reportsKey, 'bar-optimiser', projectId, lang] as const
 
-/** While a job waits or runs, poll it every second (D22,
- * docs/report_queue_planing.md C4). */
+/** While a print waits or runs, or a solve runs, poll every second (D22,
+ * docs/report_queue_planing.md C4, docs/browser_solve_planing.md B5). */
 const RUNNING_POLL_MS = 1000
 
 export function useCuttingSettingsQuery() {
@@ -39,33 +39,24 @@ export function useBarOptimiserStatusQuery(projectId: string | undefined, lang: 
   })
 }
 
-export function useGenerateBarOptimiserMutation(projectId: string, lang: ReportLanguage) {
+/** Prints this language from the project's stored solve (B4, B8). */
+export function usePrintBarOptimiserMutation(projectId: string, lang: ReportLanguage) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => reportsApi.generateBarOptimiser(projectId, lang),
+    mutationFn: () => reportsApi.printBarOptimiser(projectId, lang),
     onSuccess: (status: ReportStatus) => {
       queryClient.setQueryData(barOptimiserStatusKey(projectId, lang), status)
     },
-  })
-}
-
-export function useCancelBarOptimiserMutation(projectId: string, lang: ReportLanguage) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: () => reportsApi.cancelBarOptimiser(projectId, lang),
-    onSuccess: (status: ReportStatus) => {
-      queryClient.setQueryData(barOptimiserStatusKey(projectId, lang), status)
-    },
-    // A 409 means it started meanwhile: show what it's doing now.
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: barOptimiserStatusKey(projectId, lang) })
     },
   })
 }
 
-/** A job is waiting for a slot or running. */
+/** A print is waiting or running, or someone's browser is solving
+ * (others watch its progress, B5): keep polling. */
 export function isJobActive(status: ReportStatus | undefined): boolean {
-  return status?.job?.state === 'queued' || status?.job?.state === 'running'
+  return status?.job?.state === 'queued' || status?.job?.state === 'running' || status?.solve?.state === 'solving'
 }
 
 /** The cached PDF. Keyed by when it was generated, so a new run fetches

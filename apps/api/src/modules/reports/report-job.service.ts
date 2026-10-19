@@ -1,14 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import type { ReportLanguage, ReportProgressGroup } from '@repo/types/reports';
-import type { Env } from '../../config/env.schema';
+import { MEMBER_ORDER, profileQueue } from '@repo/bar-optimiser/project';
+import {
+  validateSolve,
+  type SolveResult,
+} from '@repo/bar-optimiser/solve-result';
 import { ReportCache } from '../../database/tenant/entities/report-cache.entity';
 import { TenantConnectionService } from '../tenancy/tenant-connection.service';
-import { MEMBER_ORDER, profileQueue } from './bar-optimiser/project';
-import { BarOptimiserRunner } from './bar-optimiser/runner';
+import { FilesService } from '../files/files.service';
 import { PdfRenderer } from './pdf/pdf-renderer.service';
 import { footerTemplate, renderBarOptimiserHtml } from './pdf/template';
-import { FilesService } from '../files/files.service';
 import { ReportJobQueue, jobQueueKey } from './report-job-queue';
 import {
   profileNoOf,
@@ -17,17 +18,19 @@ import {
   type ReportInputs,
 } from './report-inputs';
 
-// The background half of Generate (docs/reports_planing.md §7, D22). The
-// request reserves the cache row and returns; this runs the optimiser
-// (off the event loop, BarOptimiserRunner) and writes progress, then the
-// result, back to that row through TenantConnectionService — the request
-// and its TenantContextService are long gone by then. A job waits in
-// ReportJobQueue for a free slot first (docs/report_queue_planing.md),
+// The background print of one language's PDF
+// (docs/browser_solve_planing.md B7). The solve was made in a browser and
+// stored in `report_solve`; the request reserves the cache row and
+// returns, and this prints the PDF from that solve and writes it back
+// through TenantConnectionService — the request and its
+// TenantContextService are long gone by then. A print waits in
+// ReportJobQueue for a free Chrome slot first (docs/report_queue_planing.md),
 // heartbeating all along so a waiting job isn't taken for a dead one.
 
 /** While a job runs its row is touched this often… */
 export const JOB_HEARTBEAT_MS = 15_000;
-/** …so a `running` row silent for longer died with its server. */
+/** …so a `running` row silent for longer died with its server. The same
+ * limit marks a browser's solve as stopped (B5). */
 export const JOB_ORPHANED_AFTER_MS = 60_000;
 
 export interface ReportJob {
@@ -43,13 +46,16 @@ export interface ReportJob {
   /** The account name: the header's name until the company profile is
    * saved (docs/company_profile_planing.md P1). */
   companyName: string;
+  /** The print fingerprint of this language's PDF. */
   fingerprint: string;
-  windowStamps: Record<string, string>;
   inputs: ReportInputs;
   pieces: ProjectPieces;
+  /** The project's stored solve, made for these inputs. */
+  solve: SolveResult;
 }
 
-/** One line per member group that has pieces, all waiting. */
+/** One line per member group that has pieces, all waiting: a new solve's
+ * progress (B5). */
 export function initialProgress(pieces: ProjectPieces): ReportProgressGroup[] {
   const queue = profileQueue(pieces.pieces);
   return MEMBER_ORDER.flatMap((member) => {
@@ -72,48 +78,37 @@ export function initialProgress(pieces: ProjectPieces): ReportProgressGroup[] {
 export class ReportJobService {
   private readonly logger = new Logger(ReportJobService.name);
 
-  private readonly solveTimeoutMs: number;
-
   constructor(
     private readonly connection: TenantConnectionService,
-    private readonly runner: BarOptimiserRunner,
     private readonly pdfRenderer: PdfRenderer,
     private readonly queue: ReportJobQueue,
     private readonly files: FilesService,
-    config: ConfigService<Env, true>,
-  ) {
-    this.solveTimeoutMs =
-      config.get('REPORT_SOLVE_TIMEOUT_MINUTES', { infer: true }) * 60_000;
-  }
+  ) {}
 
-  /** Fire and forget: the job waits for a slot, then runs; failures land
-   * on the row as `job_state = failed`. */
+  /** Fire and forget: the job waits for a slot, then prints; failures
+   * land on the row as `job_state = failed`. */
   start(job: ReportJob): void {
     void this.run(job);
   }
 
   private async run(job: ReportJob): Promise<void> {
-    const groups = initialProgress(job.pieces);
     // Writes go out one after another, in order.
     let writes: Promise<unknown> = Promise.resolve();
     const persist = (patch: Partial<ReportCache>) => {
       writes = writes
         .then(() => this.update(job, patch))
         .catch((error: unknown) =>
-          this.logger.warn(
-            `Report job progress write failed: ${String(error)}`,
-          ),
+          this.logger.warn(`Report job write failed: ${String(error)}`),
         );
     };
     const heartbeat = setInterval(() => persist({}), JOB_HEARTBEAT_MS);
     heartbeat.unref();
 
-    // Settles when the job's turn has come and gone, or when it was
-    // cancelled while waiting (C8; the request clears the row).
+    // Settles when the job's turn has come and gone.
     await new Promise<void>((resolve) =>
       this.queue.enqueue(
         jobQueueKey(job.cacheId, job.startedAt),
-        () => this.work(job, groups, persist).finally(resolve),
+        () => this.work(job, persist).finally(resolve),
         resolve,
       ),
     );
@@ -121,43 +116,30 @@ export class ReportJobService {
     await writes;
   }
 
-  /** The job's turn: solve, print, store. Never throws. */
+  /** The job's turn: rebuild the plans from the solve, print, store.
+   * Never throws. */
   private async work(
     job: ReportJob,
-    groups: ReturnType<typeof initialProgress>,
     persist: (patch: Partial<ReportCache>) => void,
   ): Promise<void> {
     persist({ jobState: 'running' });
     try {
-      const result = await this.runner.run(
+      const { settings } = job.inputs;
+      // Checked when it was stored; checking again rebuilds the plans with
+      // their piece labels, and refuses a solve the inputs have outgrown.
+      const result = validateSolve(
         job.pieces.pieces,
         {
-          lengths: job.inputs.settings.stockLengthsMm,
-          kerfMm: job.inputs.settings.kerfMm,
-          endTrimMm: job.inputs.settings.endTrimMm,
+          lengths: settings.stockLengthsMm,
+          kerfMm: settings.kerfMm,
+          endTrimMm: settings.endTrimMm,
         },
-        ({ type, step }) => {
-          const group = groups.find((g) => g.member === step.member);
-          if (!group) return;
-          if (type === 'start') {
-            group.state = 'running';
-            group.currentProfile =
-              profileNoOf(job.inputs, step.profile) ?? step.profile;
-          } else {
-            group.profilesDone++;
-            group.currentProfile = null;
-            group.state =
-              group.profilesDone >= group.profilesTotal ? 'done' : 'running';
-          }
-          persist({ jobProgress: { groups: groups.map((g) => ({ ...g })) } });
-        },
-        this.solveTimeoutMs,
+        job.solve,
       );
       const summary = summaryOf(job.inputs, job.pieces, result);
       const generatedAt = new Date();
-      const { project } = job.inputs;
+      const { project, letterhead } = job.inputs;
       const arabic = job.language === 'ar';
-      const { letterhead } = job.inputs;
       const pdf = await this.pdfRenderer.render(
         renderBarOptimiserHtml({
           language: job.language,
@@ -185,8 +167,6 @@ export class ReportJobService {
       );
       persist({
         fingerprint: job.fingerprint,
-        windowStamps: job.windowStamps,
-        summary,
         pdf,
         generatedAt,
         generatedByUserId: job.userId,
@@ -199,7 +179,7 @@ export class ReportJobService {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Bar optimiser report failed: ${message}`);
+      this.logger.error(`Bar optimiser print failed: ${message}`);
       persist({ jobState: 'failed', jobError: message });
     }
   }

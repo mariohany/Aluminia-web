@@ -11,14 +11,14 @@ import {
 import { Project } from './project.entity';
 
 /**
- * One cached report: project × report kind × language
- * (docs/reports_planing.md §6). The PDF and on-screen `summary` were made
- * from inputs hashing to `fingerprint`; a different hash today means
- * stale (D14), and `windowStamps` (window id → updated_at) says how many
- * windows changed (D15). The background job building the next version
- * (D22) keeps its state on the same row, so the previous PDF stays
- * readable meanwhile: `jobState` queued/running/failed, `jobFingerprint` the
- * inputs it is building, `jobProgress` per member group.
+ * One printed report: project × report kind × language
+ * (docs/reports_planing.md §6). The PDF was printed from the project's
+ * solve (`report_solve`, docs/browser_solve_planing.md §6) with inputs
+ * hashing to `fingerprint`, the print fingerprint; a different hash today
+ * means stale (D14). The print job making the next PDF (B7) keeps its
+ * state on the same row, so the previous PDF stays readable meanwhile:
+ * `jobState` queued/running/failed, `jobFingerprint` the print it is
+ * making, `jobProgress` the solve's progress groups it shows.
  */
 @Entity('report_cache')
 @Index(
@@ -47,12 +47,6 @@ export class ReportCache {
 
   @Column({ type: 'char', length: 64, nullable: true })
   fingerprint: string | null;
-
-  @Column({ name: 'window_stamps', type: 'jsonb', nullable: true })
-  windowStamps: Record<string, string> | null;
-
-  @Column({ type: 'jsonb', nullable: true })
-  summary: unknown;
 
   @Column({ type: 'bytea', nullable: true, select: false })
   pdf: Buffer | null;

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { ClientWithProjects } from '@repo/types/clients'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { WorkspaceRail } from '@/components/workspace/workspace-rail'
+import { SolveNotices } from '@/components/workspace/solve-notices'
 import { ProjectTree } from '@/components/workspace/project-tree'
 import { PropertiesPanel } from '@/components/workspace/properties-panel'
 import { ClientDialog } from '@/components/workspace/client-dialog'
@@ -356,6 +357,8 @@ export function WorkspaceLayout() {
           breakpoint. Below `lg` it also carries the tree's only access
           point, via `onOpenTree`'s Sheet below. */}
       <WorkspaceRail onOpenTree={() => setMobileOpen(true)} />
+      {/* How this tab's background reports ended (docs/browser_solve_planing.md Q2). */}
+      <SolveNotices />
 
       {/* The tree panel: flush against the rail and canvas, divided by a
           border rather than floating as an inset card — matching the

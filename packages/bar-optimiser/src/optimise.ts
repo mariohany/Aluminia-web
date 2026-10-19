@@ -71,9 +71,20 @@ export interface ProfileOptimisation<T> {
 }
 
 let solver: Promise<Highs> | null = null;
+let locateWasm: ((file: string) => string) | undefined;
+
+/** Where HiGHS finds its `.wasm`. Node finds it next to the module; a
+ * browser bundle passes the URL its bundler gave the file
+ * (docs/browser_solve_planing.md §4.1). Call before the first solve. */
+export function configureSolver(options: {
+  locateFile?: (file: string) => string;
+}): void {
+  locateWasm = options.locateFile;
+}
+
 /** HiGHS is a ~4 MB WebAssembly module: loaded once, on first use. */
 function getSolver(): Promise<Highs> {
-  solver ??= highsLoader();
+  solver ??= highsLoader(locateWasm ? { locateFile: locateWasm } : undefined);
   return solver;
 }
 
@@ -88,9 +99,7 @@ export async function optimiseProfile<T>(
   pieces: OptimiserPiece<T>[],
   settings: OptimiserSettings,
 ): Promise<ProfileOptimisation<T>> {
-  const lengths = [...new Set(settings.lengths)]
-    .filter((l) => l > 2 * settings.endTrimMm)
-    .sort((a, b) => b - a);
+  const lengths = usableLengths(settings);
   const maxCap = lengths.length ? lengths[0] - 2 * settings.endTrimMm : 0;
 
   const byLength = new Map<number, PieceType<T>>();
@@ -122,6 +131,14 @@ export async function optimiseProfile<T>(
       ? solve(highs, types, lengths, settings)
       : (single[lengths[0]] ?? null);
   return { best, single, tooLong };
+}
+
+/** The stock lengths a plan may use: distinct, longer than both end
+ * trims, longest first. */
+export function usableLengths(settings: OptimiserSettings): number[] {
+  return [...new Set(settings.lengths)]
+    .filter((l) => l > 2 * settings.endTrimMm)
+    .sort((a, b) => b - a);
 }
 
 interface Arc {
@@ -380,7 +397,9 @@ function decode<T>(
   return bars;
 }
 
-function toPlan<T>(
+/** Bars into a plan with its totals: pieces longest first, bars longest
+ * stock first, then fullest first. */
+export function toPlan<T>(
   raw: { stockMm: number; pieces: { lengthMm: number; ref: T }[] }[],
   settings: OptimiserSettings,
 ): CutPlan<T> {

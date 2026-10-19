@@ -18,12 +18,19 @@ import {
   reportLanguageSchema,
   type CuttingSettings,
   type ReportStatus,
+  type SolveStart,
 } from '@repo/types/reports';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/jwt-payload';
 import { CuttingSettingsDto } from './dto/cutting-settings.dto';
+import {
+  SolveProgressDto,
+  SolveResultDto,
+  StartSolveDto,
+  StopSolveDto,
+} from './dto/solve.dto';
 import { ReportsService } from './reports.service';
 
 /**
@@ -50,30 +57,75 @@ export class ReportsController {
   @Get('projects/:projectId/reports/bar-optimiser')
   status(
     @Param('projectId', ParseUUIDPipe) projectId: string,
+    @CurrentUser() actor: AuthenticatedRequestUser,
     @Query('lang') lang?: string,
   ): Promise<ReportStatus> {
-    return this.reports.status(projectId, languageOf(lang));
+    return this.reports.status(projectId, languageOf(lang), actor.id);
   }
 
-  @Post('projects/:projectId/reports/bar-optimiser/generate')
-  @HttpCode(202)
+  /** Starts a solve in this browser (docs/browser_solve_planing.md §7). */
+  @Post('projects/:projectId/reports/bar-optimiser/solve')
+  @HttpCode(200)
   @Throttle({ default: { limit: 6, ttl: 60_000 } })
-  generate(
+  startSolve(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Body() dto: StartSolveDto,
+    @Query('lang') lang?: string,
+  ): Promise<SolveStart> {
+    return this.reports.startSolve(
+      projectId,
+      languageOf(lang),
+      actor.id,
+      dto.optimiserVersion,
+    );
+  }
+
+  /** The solving browser's progress and heartbeat (B5). */
+  @Put('projects/:projectId/reports/bar-optimiser/solve/progress')
+  @HttpCode(204)
+  progress(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body() dto: SolveProgressDto,
+  ): Promise<void> {
+    return this.reports.progress(projectId, dto);
+  }
+
+  /** The finished solve: checked, stored, and this language queued to
+   * print (§5, B7). */
+  @Post('projects/:projectId/reports/bar-optimiser/solve/result')
+  @HttpCode(202)
+  solveResult(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Body() dto: SolveResultDto,
+    @Query('lang') lang?: string,
+  ): Promise<ReportStatus> {
+    return this.reports.solveResult(projectId, languageOf(lang), actor.id, dto);
+  }
+
+  /** Stop (B6), or the browser giving up (B11). */
+  @Post('projects/:projectId/reports/bar-optimiser/solve/stop')
+  @HttpCode(200)
+  stopSolve(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Body() dto: StopSolveDto,
+    @Query('lang') lang?: string,
+  ): Promise<ReportStatus> {
+    return this.reports.stopSolve(projectId, languageOf(lang), actor.id, dto);
+  }
+
+  /** Prints this language from the stored solve (B4, B8). */
+  @Post('projects/:projectId/reports/bar-optimiser/print')
+  @HttpCode(202)
+  @Throttle({ default: { limit: 12, ttl: 60_000 } })
+  print(
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Query('lang') lang?: string,
   ): Promise<ReportStatus> {
-    return this.reports.generate(projectId, languageOf(lang), actor.id);
-  }
-
-  /** Only a job still waiting for a slot (docs/report_queue_planing.md C8). */
-  @Post('projects/:projectId/reports/bar-optimiser/cancel')
-  @HttpCode(200)
-  cancel(
-    @Param('projectId', ParseUUIDPipe) projectId: string,
-    @Query('lang') lang?: string,
-  ): Promise<ReportStatus> {
-    return this.reports.cancel(projectId, languageOf(lang));
+    return this.reports.print(projectId, languageOf(lang), actor.id);
   }
 
   @Get('projects/:projectId/reports/bar-optimiser/pdf')

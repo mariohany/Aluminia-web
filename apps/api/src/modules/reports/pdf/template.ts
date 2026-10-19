@@ -8,7 +8,7 @@ import type {
 import type { CutBar, CutPlan } from '@repo/bar-optimiser/optimise';
 import type { PieceRef } from '../report-inputs';
 import { fontCss } from './fonts';
-import { stringsFor, type PdfStrings } from './strings';
+import { stringsFor, type PdfStrings } from '@repo/report-pdf/strings';
 
 // The bar optimiser PDF as one HTML document, printed by Chrome
 // (docs/reports_planing.md §8, D19): page 1 = the mock-up's option A
@@ -251,7 +251,7 @@ function planCell(
   const what = mix
     ? mixText(mix).replace(/ \+ /g, '&nbsp;+ ')
     : String(plan.barCount);
-  return `<td class="r num${best ? ' best' : ''}">${what} <span class="pct">·&nbsp;${plan.wastePct.toFixed(1)}%</span></td>`;
+  return `<td class="r num${best ? ' best' : ''}">${what}&nbsp;<span class="pct">·&nbsp;${plan.wastePct.toFixed(1)}%</span></td>`;
 }
 
 export function mixText(mix: StockMix): string {

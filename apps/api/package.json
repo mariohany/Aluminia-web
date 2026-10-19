@@ -46,6 +46,7 @@
     "@nestjs/typeorm": "^11.0.3",
     "@repo/bar-optimiser": "*",
     "@repo/geometry": "*",
+    "@repo/report-pdf": "*",
     "@repo/types": "*",
     "argon2": "^0.45.1",
     "cookie-parser": "^1.4.7",

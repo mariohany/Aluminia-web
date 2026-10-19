@@ -131,6 +131,58 @@ export interface BarOptimiserSummary {
   approximate: boolean
 }
 
+// ---- The report snapshot the browser draws (docs/browser_pdf_planing.md) --
+
+/** One piece on a drawn bar: its length and what it is (D17, D26). */
+export interface BarOptimiserReportPiece {
+  lengthMm: number
+  windowName: string
+  member: ReportMember
+  at: ReportPieceAt
+}
+
+/** One bar to scale: pieces in cutting order, the offcut, the waste. */
+export interface BarOptimiserReportBar {
+  stockMm: number
+  wasteMm: number
+  offcutMm: number
+  pieces: BarOptimiserReportPiece[]
+}
+
+/** One profile's least-waste plan, as the cutting-plan pages draw it. */
+export interface BarOptimiserReportPlan {
+  profile: string
+  profileNo: string | null
+  member: ReportMember
+  best: { mix: StockMix; wastePct: number; piecesMm: number; bars: BarOptimiserReportBar[] } | null
+}
+
+/** Everything frozen at Generate (P6): the numbers, the plans with their
+ * piece labels, and the project and client names in both languages. */
+export interface BarOptimiserReport {
+  generatedAt: string
+  project: { enName: string; arName: string | null }
+  client: { enName: string; arName: string | null } | null
+  summary: BarOptimiserSummary
+  plans: BarOptimiserReportPlan[]
+  /** Panels per window, for "panel 2 ·" in multi-panel labels. */
+  panelCounts: Record<string, number>
+}
+
+/** The company as printed today, always the latest (P7). `enName` is the
+ * company profile's, else the account name. */
+export interface ReportCompany {
+  enName: string
+  arName: string | null
+  logoFileId: string | null
+}
+
+/** GET …/bar-optimiser/report. */
+export interface BarOptimiserReportResponse {
+  report: BarOptimiserReport
+  company: ReportCompany
+}
+
 /** One member group's line on the progress card (D22). */
 export interface ReportProgressGroup {
   member: ReportMember

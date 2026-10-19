@@ -1,0 +1,18 @@
+{
+  "extends": "@repo/typescript-config/base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    // Relative imports carry their extension (`.ts` / `.mts`): Node's type
+    // stripping and Vite load these files as they are. The React files are
+    // `.mts` because @react-pdf/renderer is ESM-only and this package has
+    // no "type": "module" (which would make ts-jest emit ESM for the API).
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "noUncheckedIndexedAccess": false,
+    // TS 6 empties `types` by default; the tests run on Node.
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,10 +1,22 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { ReportLanguage, ReportProgressGroup } from '@repo/types/reports';
+import {
+  ReportKind,
+  type BarOptimiserSummary,
+  type ReportLanguage,
+  type ReportProgressGroup,
+} from '@repo/types/reports';
 import type { Env } from '../../config/env.schema';
 import { ReportCache } from '../../database/tenant/entities/report-cache.entity';
+import { ReportSolve } from '../../database/tenant/entities/report-solve.entity';
 import { TenantConnectionService } from '../tenancy/tenant-connection.service';
 import { MEMBER_ORDER, profileQueue } from '@repo/bar-optimiser/project';
+import {
+  solveInput,
+  solvedProfileOf,
+  validateSolve,
+  type SolveResult,
+} from '@repo/bar-optimiser/solve-result';
 import { BarOptimiserRunner } from './bar-optimiser/runner';
 import { PdfRenderer } from './pdf/pdf-renderer.service';
 import { footerTemplate, renderBarOptimiserHtml } from './pdf/template';
@@ -43,7 +55,11 @@ export interface ReportJob {
   /** The account name: the header's name until the company profile is
    * saved (docs/company_profile_planing.md P1). */
   companyName: string;
+  projectId: string;
+  /** The print fingerprint of this language's PDF. */
   fingerprint: string;
+  /** The project's solve fingerprint (docs/browser_solve_planing.md §6). */
+  solveFingerprint: string;
   windowStamps: Record<string, string>;
   inputs: ReportInputs;
   pieces: ProjectPieces;
@@ -129,13 +145,16 @@ export class ReportJobService {
   ): Promise<void> {
     persist({ jobState: 'running' });
     try {
-      const result = await this.runner.run(
-        job.pieces.pieces,
-        {
-          lengths: job.inputs.settings.stockLengthsMm,
-          kerfMm: job.inputs.settings.kerfMm,
-          endTrimMm: job.inputs.settings.endTrimMm,
-        },
+      const settings = {
+        lengths: job.inputs.settings.stockLengthsMm,
+        kerfMm: job.inputs.settings.kerfMm,
+        endTrimMm: job.inputs.settings.endTrimMm,
+      };
+      // Solved on line numbers and rebuilt through the same check a
+      // browser's plans will get (docs/browser_solve_planing.md §5).
+      const solved = await this.runner.run(
+        solveInput(job.pieces.pieces),
+        settings,
         ({ type, step }) => {
           const group = groups.find((g) => g.member === step.member);
           if (!group) return;
@@ -153,8 +172,13 @@ export class ReportJobService {
         },
         this.solveTimeoutMs,
       );
+      const solveResult: SolveResult = {
+        profiles: solved.profiles.map((p) => solvedProfileOf(p.profile, p)),
+      };
+      const result = validateSolve(job.pieces.pieces, settings, solveResult);
       const summary = summaryOf(job.inputs, job.pieces, result);
       const generatedAt = new Date();
+      await this.storeSolve(job, solveResult, summary, generatedAt);
       const { project } = job.inputs;
       const arabic = job.language === 'ar';
       const { letterhead } = job.inputs;
@@ -185,8 +209,6 @@ export class ReportJobService {
       );
       persist({
         fingerprint: job.fingerprint,
-        windowStamps: job.windowStamps,
-        summary,
         pdf,
         generatedAt,
         generatedByUserId: job.userId,
@@ -202,6 +224,44 @@ export class ReportJobService {
       this.logger.error(`Bar optimiser report failed: ${message}`);
       persist({ jobState: 'failed', jobError: message });
     }
+  }
+
+  /** The project's solve, for every language's PDF (B4). */
+  private async storeSolve(
+    job: ReportJob,
+    result: SolveResult,
+    summary: BarOptimiserSummary,
+    solvedAt: Date,
+  ): Promise<void> {
+    await this.connection.runInSchema(job.schemaName, (manager) =>
+      manager
+        .createQueryBuilder()
+        .insert()
+        .into(ReportSolve)
+        .values({
+          projectId: job.projectId,
+          reportKind: ReportKind.BAR_OPTIMISER,
+          solveFingerprint: job.solveFingerprint,
+          windowStamps: job.windowStamps,
+          result,
+          summary,
+          solvedAt,
+          solvedByUserId: job.userId,
+        })
+        .orUpdate(
+          [
+            'solve_fingerprint',
+            'window_stamps',
+            'result',
+            'summary',
+            'solved_at',
+            'solved_by_user_id',
+            'updated_at',
+          ],
+          ['project_id', 'report_kind'],
+        )
+        .execute(),
+    );
   }
 
   /** The company logo as a data URI for the PDF, or null. A logo that

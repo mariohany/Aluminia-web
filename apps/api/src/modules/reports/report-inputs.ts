@@ -12,6 +12,7 @@ import {
 } from '@repo/types/reports';
 import type { WindowDetail } from '@repo/types/windows';
 import { buildCutList, type CutMember } from '@repo/geometry/cut-list';
+import { OPTIMISER_VERSION } from '@repo/bar-optimiser/version';
 import type { SystemCatalog } from '../../database/control-plane/entities/system-catalog.entity';
 import type { SystemProfile } from '../../database/control-plane/entities/system-profile.entity';
 import { CompanySystemCatalog } from '../../database/tenant/entities/company-system-catalog.entity';
@@ -31,10 +32,12 @@ import type {
 // whether a cached report is still current (docs/reports_planing.md §6,
 // D14), the pieces handed to the optimiser, and the stored summary.
 
-/** Bump when the cut-list rules, the optimiser or the PDF change in a way
- * that should make every cached report stale. 2: the header prints the
- * company profile (docs/company_profile_planing.md §5). */
-export const REPORT_VERSION = 2;
+/** Bump when the cut-list rules or the PDF change in a way that should
+ * make every cached report stale (optimiser changes bump
+ * `OPTIMISER_VERSION` instead). 2: the header prints the company profile
+ * (docs/company_profile_planing.md §5). 3: one solve per project, printed
+ * per language (docs/browser_solve_planing.md §6). */
+export const REPORT_VERSION = 3;
 
 export interface PieceRef {
   windowId: string;
@@ -209,28 +212,42 @@ async function loadProfiles(
   return facts;
 }
 
-/** sha-256 over everything the report is made from (D14): the windows,
- * the project and its client, the settings, every profile used and its
- * catalogue, the company profile (letterhead), the language, and
- * `REPORT_VERSION`. */
-export function fingerprintOf(
-  inputs: ReportInputs,
-  language: ReportLanguage,
-): string {
-  const body = {
+/** sha-256 over everything the cutting plan is made from (D14,
+ * docs/browser_solve_planing.md §6): the windows, the cutting settings,
+ * every profile used and its catalogue, `REPORT_VERSION` and
+ * `OPTIMISER_VERSION`. A change here means solve again. */
+export function solveFingerprintOf(inputs: ReportInputs): string {
+  return sha256({
     v: REPORT_VERSION,
-    language,
-    project: inputs.project.updatedAt.toISOString(),
-    client: inputs.project.client?.updatedAt.toISOString() ?? null,
+    optimiser: OPTIMISER_VERSION,
     settings: inputs.settings.updatedAt?.toISOString() ?? 'default',
-    letterhead: inputs.letterhead.updatedAt?.toISOString() ?? 'default',
     windows: Object.entries(windowStampsOf(inputs)).sort(([a], [b]) =>
       a.localeCompare(b),
     ),
     profiles: [...profileRefsOf(inputs.windows)]
       .sort()
       .map((ref) => [ref, inputs.profiles.get(ref)?.stamp ?? 'missing']),
-  };
+  });
+}
+
+/** sha-256 over everything one language's PDF is printed from: the solve
+ * fingerprint plus the language, the project and its client, and the
+ * company profile (letterhead). A change only here means print again
+ * from the stored solve, without solving. */
+export function printFingerprintOf(
+  inputs: ReportInputs,
+  language: ReportLanguage,
+): string {
+  return sha256({
+    solve: solveFingerprintOf(inputs),
+    language,
+    project: inputs.project.updatedAt.toISOString(),
+    client: inputs.project.client?.updatedAt.toISOString() ?? null,
+    letterhead: inputs.letterhead.updatedAt?.toISOString() ?? 'default',
+  });
+}
+
+function sha256(body: unknown): string {
   return createHash('sha256').update(JSON.stringify(body)).digest('hex');
 }
 

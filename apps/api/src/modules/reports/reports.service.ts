@@ -19,12 +19,14 @@ import { SystemCatalog } from '../../database/control-plane/entities/system-cata
 import { SystemProfile } from '../../database/control-plane/entities/system-profile.entity';
 import { CuttingSettingsRow } from '../../database/tenant/entities/cutting-settings.entity';
 import { ReportCache } from '../../database/tenant/entities/report-cache.entity';
+import { ReportSolve } from '../../database/tenant/entities/report-solve.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
 import {
   buildProjectPieces,
   changedWindowCount,
-  fingerprintOf,
   loadReportInputs,
+  printFingerprintOf,
+  solveFingerprintOf,
   windowStampsOf,
   type ReportInputs,
 } from './report-inputs';
@@ -117,7 +119,7 @@ export class ReportsService {
       if (isAlive(row)) return this.toStatus(manager, inputs, row, language);
 
       const pieces = buildProjectPieces(inputs);
-      const fingerprint = fingerprintOf(inputs, language);
+      const fingerprint = printFingerprintOf(inputs, language);
       const startedAt = new Date();
       // `running` when it will start at once, so an idle server never
       // flashes "Queued"; toStatus trusts the queue over the row anyway.
@@ -137,7 +139,9 @@ export class ReportsService {
         language,
         companyId,
         companyName,
+        projectId,
         fingerprint,
+        solveFingerprint: solveFingerprintOf(inputs),
         windowStamps: windowStampsOf(inputs),
         inputs,
         pieces,
@@ -248,7 +252,12 @@ export class ReportsService {
       await manager.save(row);
     }
     const stamps = windowStampsOf(inputs);
-    const fingerprint = fingerprintOf(inputs, language);
+    const fingerprint = printFingerprintOf(inputs, language);
+    // The numbers on screen and "N windows changed" come from the
+    // project's solve (docs/browser_solve_planing.md §6).
+    const solve = await manager.findOne(ReportSolve, {
+      where: { projectId: inputs.project.id, reportKind: KIND },
+    });
     const state = !row?.fingerprint
       ? 'none'
       : row.fingerprint === fingerprint
@@ -279,13 +288,13 @@ export class ReportsService {
       generatedAt: row?.generatedAt?.toISOString() ?? null,
       changedWindows:
         state === 'stale'
-          ? changedWindowCount(row?.windowStamps ?? null, stamps)
+          ? changedWindowCount(solve?.windowStamps ?? null, stamps)
           : 0,
       hasPdf,
       summary:
         state === 'none'
           ? null
-          : ((row?.summary as ReportStatus['summary']) ?? null),
+          : ((solve?.summary as ReportStatus['summary']) ?? null),
       job:
         row?.jobState && row.jobStartedAt
           ? {

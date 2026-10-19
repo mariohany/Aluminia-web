@@ -347,6 +347,28 @@ describe('Reports (e2e)', () => {
     expect(summary.approximate).toBe(true);
   });
 
+  it('stores the solve once per project, as piece-line plans (docs/browser_solve_planing.md §6)', async () => {
+    const rows = await controlPlane.query<
+      {
+        solve_fingerprint: string;
+        result: { profiles: { profile: string; best: unknown[] | null }[] };
+        summary: { windowCount: number };
+      }[]
+    >(
+      `SELECT solve_fingerprint, result, summary FROM "${schemaName}".report_solve WHERE project_id = $1`,
+      [projectId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].solve_fingerprint).toHaveLength(64);
+    expect(rows[0].summary.windowCount).toBe(2);
+    const bars = rows[0].result.profiles.flatMap((p) => p.best ?? []);
+    expect(bars.length).toBeGreaterThan(0);
+    expect(bars[0]).toEqual({
+      stockMm: expect.any(Number) as number,
+      pieces: expect.arrayContaining([expect.any(Number)]) as number[],
+    });
+  });
+
   it('a USER can read the report too', async () => {
     const res = await api(userToken).get(reportPath()).expect(200);
     expect((res.body as ReportStatus).state).toBe('fresh');

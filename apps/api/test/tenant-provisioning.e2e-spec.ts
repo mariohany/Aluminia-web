@@ -117,6 +117,7 @@ describe('TenantProvisioning (e2e)', () => {
       'project_statuses',
       'projects',
       'report_cache',
+      'report_solve',
       'tenant_info',
       'tenant_migrations',
       'window_dividers',

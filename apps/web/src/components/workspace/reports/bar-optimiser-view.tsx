@@ -15,6 +15,7 @@ import { ReportLanguage, type ReportStatus } from '@repo/types/reports'
 import { Button } from '@/components/ui/button'
 import { downloadPdf, printPdf } from '@/lib/pdf-file'
 import {
+  useBarOptimiserPdf,
   useBarOptimiserStatusQuery,
   useCuttingSettingsQuery,
   useRefreshBarOptimiserMutation,
@@ -70,7 +71,9 @@ export function BarOptimiserView({
   // A server-side failure stays on the row until the next start; the user
   // can hide it here (keyed by when that attempt started).
   const [hiddenFailure, setHiddenFailure] = useState<string | null>(null)
-  const pdf: Blob | undefined = undefined // browser-pdf step 6: draw the PDF here
+  // Drawn in this browser from the saved snapshot (docs/browser_pdf_planing.md).
+  const drawing = useBarOptimiserPdf(projectId, lang, !!status && status.state !== 'none')
+  const pdf = drawing.pdf
 
   // Only the project or client was renamed: refresh the names, no solve
   // (docs/browser_pdf_planing.md P8); otherwise solve in this browser.
@@ -243,6 +246,17 @@ export function BarOptimiserView({
                   <PdfViewer blob={pdf} zoom={zoom} onPageCount={setPageCount} onVisiblePage={onVisiblePage} />
                 </Suspense>
               </div>
+            ) : drawing.isError ? (
+              <Centered>
+                <div className="flex flex-col items-center gap-3">
+                  <p className="text-sm text-destructive">{t('errors.draw')}</p>
+                  <Button variant="outline" size="sm" onClick={drawing.retry}>
+                    {t('retry')}
+                  </Button>
+                </div>
+              </Centered>
+            ) : drawing.isDrawing ? (
+              <PaperSkeleton zoom={zoom} label={t('drawing')} />
             ) : status.state === 'none' && !running ? (
               <Centered>
                 <div className="flex max-w-sm flex-col items-center gap-3 rounded-xl border border-border bg-card p-6 text-center shadow-sm">
@@ -307,9 +321,11 @@ function StatusChip({ status }: { status: ReportStatus }) {
     return (
       <span className={cn(base, 'bg-amber-500/12 text-amber-700 dark:text-amber-500')}>
         <RefreshCw className="size-3.5" aria-hidden="true" />
-        {status.changedWindows > 0
-          ? t('status.staleWindows', { count: status.changedWindows })
-          : t('status.stale')}
+        {status.staleBecause === 'names'
+          ? t('status.staleNames')
+          : status.changedWindows > 0
+            ? t('status.staleWindows', { count: status.changedWindows })
+            : t('status.stale')}
       </span>
     )
   }
@@ -367,6 +383,46 @@ function SolveFailureCard({
             {t('solve.generateAgain')}
           </Button>
         ) : null}
+      </div>
+    </div>
+  )
+}
+
+/** A blank A4 sheet with placeholder lines while the PDF is drawn
+ * (docs/browser_pdf_planing.md Q1), the size the page will have. */
+function PaperSkeleton({ zoom, label }: { zoom: number; label: string }) {
+  const bar = 'animate-pulse rounded-sm bg-muted'
+  return (
+    <div className="flex justify-center px-6 py-6" role="status" aria-busy="true" aria-label={label}>
+      <div
+        className="flex aspect-[210/297] flex-col gap-4 rounded-sm border border-border bg-card p-[7%] shadow-sm"
+        style={{ width: `min(100%, ${Math.round(794 * zoom)}px)` }}
+      >
+        <div className="flex items-start gap-3">
+          <div className={cn(bar, 'size-8')} />
+          <div className="flex flex-1 flex-col gap-2">
+            <div className={cn(bar, 'h-2 w-1/4')} />
+            <div className={cn(bar, 'h-3.5 w-2/5')} />
+            <div className={cn(bar, 'h-2 w-1/3')} />
+          </div>
+        </div>
+        <div className="h-px bg-border" />
+        <div className="grid grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className={cn(bar, 'h-5')} />
+          ))}
+        </div>
+        <div className="mt-2 flex flex-col gap-2.5">
+          {Array.from({ length: 12 }, (_, i) => (
+            <div key={i} className="flex gap-2">
+              <div className={cn(bar, 'h-3 flex-[3]')} />
+              <div className={cn(bar, 'h-3 flex-[2]')} />
+              <div className={cn(bar, 'h-3 flex-[2]')} />
+              <div className={cn(bar, 'h-3 flex-[3]')} />
+            </div>
+          ))}
+        </div>
+        <span className="sr-only">{label}</span>
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { createElement as h, type ReactElement, type ReactNode } from 'react'
-import { Document, Image, Page, Rect, Svg, Text, View, type DocumentProps } from '@react-pdf/renderer'
+import { Document, Image, Page, Rect, Svg, Text, View, pdf, type DocumentProps } from '@react-pdf/renderer'
 import type { Style } from '@react-pdf/types'
 import type {
   BarOptimiserReport,
@@ -95,6 +95,12 @@ export function barOptimiserDocument(input: BarOptimiserPdfInput): ReactElement<
     ),
     ...cuttingPlan(d, s, report, page, head),
   )
+}
+
+/** The drawn PDF's bytes: what the browser's worker shows, prints and
+ * downloads. Fonts must be registered first (`registerFonts`). */
+export async function barOptimiserPdfBytes(input: BarOptimiserPdfInput): Promise<ArrayBuffer> {
+  return (await pdf(barOptimiserDocument(input)).toBlob()).arrayBuffer()
 }
 
 /** Direction-aware building blocks for one language. */

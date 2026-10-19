@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { LanguageToggle } from '@/components/language-switcher'
 import { ThemeToggle } from '@/components/theme-switch'
+import { isBusy, useLocalSolves } from '@/lib/solve/solve-manager'
 import { cn } from '@/lib/utils'
 
 /**
@@ -137,7 +138,7 @@ export function WorkspaceRail({
         aria-current={section === 'reports' ? 'page' : undefined}
         onClick={onNavigate}
       >
-        <FileChartColumn className="size-[19px]" aria-hidden="true" />
+        <ReportsIcon active={section === 'reports'} />
         {t('rail.reports')}
       </Link>
 
@@ -203,5 +204,35 @@ export function WorkspaceRail({
         </DropdownMenu>
       </div>
     </nav>
+  )
+}
+
+/** The Reports icon, ringed while this tab makes a report and dotted red
+ * when one failed (docs/browser_solve_planing.md B3, Q2). Hover names
+ * the projects; the floating notice says how each one ended. */
+function ReportsIcon({ active }: { active: boolean }) {
+  const { t } = useTranslation('reports')
+  const solves = [...useLocalSolves().values()]
+  const running = solves.filter((solve) => isBusy(solve))
+  const failed = solves.some((solve) => solve.state === 'failed')
+  return (
+    <span
+      className="relative grid place-items-center"
+      title={running.length ? t('notice.rail', { projects: running.map((s) => s.projectName).join(', ') }) : undefined}
+    >
+      <FileChartColumn className="size-[19px]" aria-hidden="true" />
+      {running.length > 0 && (
+        <span
+          aria-hidden="true"
+          className={cn(
+            'absolute size-[27px] animate-spin rounded-full border-2',
+            active ? 'border-primary-foreground/30 border-t-primary-foreground' : 'border-primary/25 border-t-primary',
+          )}
+        />
+      )}
+      {failed && (
+        <span aria-hidden="true" className="absolute -end-1 -top-1 size-2 rounded-full bg-destructive ring-2 ring-card" />
+      )}
+    </span>
   )
 }

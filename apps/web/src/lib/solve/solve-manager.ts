@@ -24,11 +24,16 @@ import type { SolveFailure } from './solve-messages'
 const HEARTBEAT_MS = 15_000
 /** Progress changes are sent at most this often. */
 const PROGRESS_COALESCE_MS = 1_000
+/** How long the "ready" notice stays after a solve is printed (Q2). */
+const DONE_NOTICE_MS = 6_000
 
 export interface LocalSolve {
   projectId: string
+  /** For the rail and the floating notice. */
+  projectName: string
   lang: ReportLanguage
-  state: 'starting' | 'solving' | 'sending' | 'failed'
+  /** `done`: sent and accepted; shown briefly, then removed. */
+  state: 'starting' | 'solving' | 'sending' | 'done' | 'failed'
   /** Date.now() when it started, for the elapsed timer. */
   startedAt: number
   groups: ReportProgressGroup[]
@@ -76,17 +81,17 @@ export function useLocalSolve(projectId: string | undefined): LocalSolve | undef
   return projectId ? all.get(projectId) : undefined
 }
 
-function isBusy(solve: LocalSolve): boolean {
-  return solve.state !== 'failed'
+/** Still on its way: closing the tab would lose it. */
+export function isBusy(solve: LocalSolve | undefined): boolean {
+  return !!solve && solve.state !== 'failed' && solve.state !== 'done'
 }
 
 /** Generate (docs/browser_solve_planing.md §3). Does nothing while this
  * tab is already making the project's report. */
-export async function startSolve(projectId: string, lang: ReportLanguage): Promise<void> {
-  const existing = solves.get(projectId)
-  if (existing && isBusy(existing)) return
+export async function startSolve(projectId: string, projectName: string, lang: ReportLanguage): Promise<void> {
+  if (isBusy(solves.get(projectId))) return
   watchUnload()
-  set(projectId, { projectId, lang, state: 'starting', startedAt: Date.now(), groups: [], error: null })
+  set(projectId, { projectId, projectName, lang, state: 'starting', startedAt: Date.now(), groups: [], error: null })
 
   let start: SolveStart
   try {
@@ -164,9 +169,16 @@ export async function stopSolve(projectId: string): Promise<void> {
   refresh(projectId)
 }
 
-/** Clears a failed solve's message. */
+const KNOWN_ERRORS = ['too_big', 'windows_changed', 'outdated_client', 'solving_elsewhere', 'solve_lost', 'stopped']
+
+/** The `reports:solve.errors.*` key for a failure code: unknown → `failed`. */
+export function solveErrorKey(code: string | null | undefined): string {
+  return `solve.errors.${code && KNOWN_ERRORS.includes(code) ? code : 'failed'}`
+}
+
+/** Clears a failed solve's message or a "ready" notice. */
 export function dismissSolve(projectId: string): void {
-  if (solves.get(projectId)?.state === 'failed') set(projectId, null)
+  if (!isBusy(solves.get(projectId))) set(projectId, null)
 }
 
 function updateGroup(
@@ -215,7 +227,10 @@ async function finish(projectId: string, lang: ReportLanguage, profiles: SolvedP
       profiles,
     })
     end(projectId)
-    set(projectId, null)
+    patch(projectId, { state: 'done' })
+    setTimeout(() => {
+      if (solves.get(projectId)?.state === 'done') set(projectId, null)
+    }, DONE_NOTICE_MS)
     queryClient.setQueryData(barOptimiserStatusKey(projectId, lang), status)
   } catch (error) {
     end(projectId)

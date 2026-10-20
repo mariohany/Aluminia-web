@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { ReportLanguage, type ReportStatus } from '@repo/types/reports'
 import { Button } from '@/components/ui/button'
-import { downloadPdf, printPdf } from '@/lib/pdf-file'
+import { canPrintPdf, downloadPdf, printPdf } from '@/lib/pdf-file'
 import {
   useBarOptimiserPdf,
   useBarOptimiserStatusQuery,
@@ -202,23 +202,25 @@ export function BarOptimiserView({
             <RefreshCw className={cn('size-4', (running || pending) && 'animate-spin')} aria-hidden="true" />
             <span className="sr-only sm:not-sr-only">{t('toolbar.regenerate')}</span>
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8"
-            disabled={!pdf}
-            onClick={() => {
-              if (!pdf) return
-              try {
-                printPdf(pdf)
-              } catch {
-                toast.error(t('errors.print'))
-              }
-            }}
-          >
-            <Printer className="size-4" aria-hidden="true" />
-            {t('toolbar.print')}
-          </Button>
+          {canPrintPdf() && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              disabled={!pdf}
+              onClick={() => {
+                if (!pdf) return
+                try {
+                  printPdf(pdf)
+                } catch {
+                  toast.error(t('errors.print'))
+                }
+              }}
+            >
+              <Printer className="size-4" aria-hidden="true" />
+              {t('toolbar.print')}
+            </Button>
+          )}
           <Button size="sm" className="h-8" disabled={!pdf} onClick={() => pdf && downloadPdf(pdf, fileName)}>
             <Download className="size-4" aria-hidden="true" />
             {t('toolbar.download')}

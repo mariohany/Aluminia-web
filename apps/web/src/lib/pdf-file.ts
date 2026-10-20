@@ -17,9 +17,11 @@ export function downloadPdf(blob: Blob, fileName: string): void {
 
 /**
  * Opens the browser's print dialog with the PDF itself, so what prints
- * is exactly the download (A4, page numbers). Chrome, Edge and Firefox
- * print a PDF loaded in a hidden iframe; Safari prints such a frame
- * blank, so there the PDF opens in a new tab for ⌘P.
+ * is exactly the download (A4, page numbers). Desktop Chrome, Edge and
+ * Firefox print a PDF loaded in a hidden iframe. Safari prints such a
+ * frame blank, and mobile browsers can't show a PDF in a frame at all —
+ * `print()` there prints the app around it, side panel and all — so
+ * those open the PDF in its own tab to print from there.
  */
 export function printPdf(blob: Blob): void {
   const url = URL.createObjectURL(blob)
@@ -29,7 +31,7 @@ export function printPdf(blob: Blob): void {
       URL.revokeObjectURL(url)
     }, REVOKE_AFTER_MS)
 
-  if (isSafari()) {
+  if (!canPrintInFrame()) {
     window.open(url, '_blank', 'noopener')
     cleanUp()
     return
@@ -60,7 +62,11 @@ export function printPdf(blob: Blob): void {
   document.body.appendChild(frame)
 }
 
-function isSafari(): boolean {
+function canPrintInFrame(): boolean {
   const ua = navigator.userAgent
-  return /safari/i.test(ua) && !/chrome|chromium|crios|fxios|android|edg/i.test(ua)
+  const safari = /safari/i.test(ua) && !/chrome|chromium|crios|fxios|android|edg/i.test(ua)
+  // iPadOS reports itself as a Mac; every iOS browser is WebKit underneath.
+  const ios = /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1)
+  const android = /android/i.test(ua)
+  return !safari && !ios && !android && navigator.pdfViewerEnabled !== false
 }

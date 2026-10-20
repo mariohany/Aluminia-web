@@ -9,6 +9,7 @@ import { queryClient } from '@/lib/query-client'
 import * as reportsApi from '@/lib/reports-api'
 import { barOptimiserStatusKey } from '@/lib/reports-queries'
 import { solvePool } from './solve-pool'
+import { reportError } from '@/lib/monitoring'
 import type { SolveFailure } from './solve-messages'
 
 // The browser's bar optimiser solves (docs/browser_solve_planing.md §4.3).
@@ -151,7 +152,7 @@ export async function startSolve(projectId: string, projectName: string): Promis
           )
         }
       },
-      onError: (error) => void fail(projectId, error),
+      onError: (error, message) => void fail(projectId, error, message),
     })),
   )
 }
@@ -239,9 +240,11 @@ async function finish(projectId: string, profiles: SolvedProfile[]): Promise<voi
 
 /** A worker gave up (B11): the whole report fails, and the server is told
  * why so everyone sees it. */
-async function fail(projectId: string, error: SolveFailure): Promise<void> {
+async function fail(projectId: string, error: SolveFailure, message: string): Promise<void> {
   const run = end(projectId)
   if (!run) return
+  // `too_big` is this device running out of memory, not a bug (§4.1).
+  if (error === 'failed') reportError(new Error(message || 'A solve worker failed.'), { area: 'solve' })
   patch(projectId, { state: 'failed', error })
   await reportsApi.stopSolve(projectId, { token: run.token, error }).catch(() => undefined)
   refresh(projectId)

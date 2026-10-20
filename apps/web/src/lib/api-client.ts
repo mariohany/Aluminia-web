@@ -1,4 +1,5 @@
 import type { LoginResponse } from '@repo/types/auth'
+import { reportError } from '@/lib/monitoring'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
@@ -112,7 +113,14 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
   if (!res.ok) {
     const body = await res.json().catch(() => undefined)
-    throw new ApiError(res.status, body)
+    const error = new ApiError(res.status, body)
+    // Our API records its own failures (docs/sentry_planing.md Q10); a 5xx
+    // without its error body means it couldn't answer (Render down: the
+    // proxy's 502/503/504), so only the browser can tell.
+    if (res.status >= 500 && !(body && typeof body === 'object' && 'statusCode' in body)) {
+      reportError(error, { area: 'api', tags: { status: res.status, method: options.method ?? 'GET' } })
+    }
+    throw error
   }
 
   if (res.status === 204) return undefined as T

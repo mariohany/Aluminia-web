@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { reportError } from '@/lib/monitoring'
 import { cn } from '@/lib/utils'
 
 /**
@@ -24,6 +25,11 @@ export class ErrorBoundary extends Component<
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack)
+    reportError(error, {
+      area: 'screen',
+      tags: { boundary: this.props.variant },
+      extra: { componentStack: info.componentStack },
+    })
   }
 
   render() {

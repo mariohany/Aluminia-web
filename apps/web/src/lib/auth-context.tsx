@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { AuthenticatedUser, LoginResponse } from '@repo/types/auth'
 import { apiFetch, onSessionChange, refreshSession, setAccessToken } from '@/lib/api-client'
+import { setMonitoringUser } from '@/lib/monitoring'
 
 interface AuthContextValue {
   user: AuthenticatedUser | null
@@ -49,6 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // access as it is now: a changed role re-renders the routes that
   // depend on it, and a session the server ended logs this tab out.
   useEffect(() => onSessionChange((data) => setUser(data?.user ?? null)), [])
+
+  // Errors carry who hit them: ids and role only (docs/sentry_planing.md Q5).
+  useEffect(() => setMonitoringUser(user), [user])
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await apiFetch<LoginResponse>('/auth/login', {

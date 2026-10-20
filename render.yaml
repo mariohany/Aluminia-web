@@ -45,6 +45,12 @@ services:
       # Vercel overwrites X-Forwarded-For with the real client IP.
       - key: TRUST_PROXY
         value: 'true'
+      # Sentry (docs/sentry_planing.md §9): the aluminia-api project's DSN.
+      # Unset = off. The release is Render's own RENDER_GIT_COMMIT.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: test
 
   - type: keyvalue
     name: aluminia-redis

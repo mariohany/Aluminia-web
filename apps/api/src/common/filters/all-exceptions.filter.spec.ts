@@ -1,6 +1,15 @@
-import { ArgumentsHost, ConflictException } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Logger } from 'nestjs-pino';
+import { reportFailure } from '../monitoring';
 import { AllExceptionsFilter } from './all-exceptions.filter';
+
+// What's reported is monitoring.ts's call (monitoring.spec.ts); here only
+// that the filter hands it every answered error with the right details.
+jest.mock('../monitoring', () => ({ reportFailure: jest.fn() }));
 
 function run(exception: unknown) {
   const json = jest.fn();
@@ -11,7 +20,13 @@ function run(exception: unknown) {
   const host = {
     switchToHttp: () => ({
       getResponse: () => response,
-      getRequest: () => ({ url: '/x', id: 'req-1' }),
+      getRequest: () => ({
+        url: '/projects/7',
+        id: 'req-1',
+        method: 'GET',
+        route: { path: '/projects/:id' },
+        user: { id: 'user-1', role: 'USER', companyId: 'company-1' },
+      }),
     }),
   } as unknown as ArgumentsHost;
   const logger = { error: jest.fn() };
@@ -57,5 +72,26 @@ describe('AllExceptionsFilter', () => {
     expect(body.message).toBe('Something went wrong.');
     expect(body).not.toHaveProperty('code');
     expect(logged).toBe(true);
+  });
+
+  it('hands every answered error to monitoring with its status, route and code', () => {
+    jest.mocked(reportFailure).mockClear();
+    run(new NotFoundException());
+    run(new ConflictException({ message: 'Busy.', code: 'solving_elsewhere' }));
+    expect(
+      jest.mocked(reportFailure).mock.calls.map(([, context]) => context),
+    ).toEqual([
+      {
+        status: 404,
+        method: 'GET',
+        route: '/projects/:id',
+        requestId: 'req-1',
+        userId: 'user-1',
+        companyId: 'company-1',
+        role: 'USER',
+        code: undefined,
+      },
+      expect.objectContaining({ status: 409, code: 'solving_elsewhere' }),
+    ]);
   });
 });

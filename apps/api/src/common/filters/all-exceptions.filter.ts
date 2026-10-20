@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 import type { Request, Response } from 'express';
+import { reportFailure } from '../monitoring';
 
 // A plain number, not the enum member, so the >= comparison below never
 // mixes an enum type with a plain number (eslint's
@@ -78,6 +79,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
         'Unhandled exception',
       );
     }
+
+    // Sentry (docs/sentry_planing.md §4.2): crashes, 5xx, 400 and 404 —
+    // monitoring.ts decides; this is the API's only place that reports.
+    reportFailure(exception, {
+      status: statusCode,
+      method: request.method,
+      route:
+        (request.route as { path?: string } | undefined)?.path ?? '(no route)',
+      requestId: request.id,
+      userId: request.user?.id,
+      companyId: request.tenant?.companyId ?? request.user?.companyId,
+      role: request.user?.role,
+      code,
+    });
 
     response.status(statusCode).json(body);
   }

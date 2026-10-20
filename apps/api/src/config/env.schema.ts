@@ -45,6 +45,14 @@ export const envSchema = z.object({
   // Only `postgres` exists today; `s3` (DO Spaces) joins the enum with its
   // driver, so a value with no driver behind it fails here at boot.
   FILE_STORAGE: z.enum(['postgres']).default('postgres'),
+
+  // Sentry (docs/sentry_planing.md §6, §9). Read by instrument.ts before
+  // this schema runs; checked here so a malformed value still fails boot.
+  // Unset = Sentry off (laptops, CI, e2e). The release defaults to
+  // Render's RENDER_GIT_COMMIT.
+  SENTRY_DSN: z.url().optional(),
+  SENTRY_ENVIRONMENT: z.enum(['test', 'production']).optional(),
+  SENTRY_RELEASE: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

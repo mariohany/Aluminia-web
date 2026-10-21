@@ -277,8 +277,7 @@ export function GlassCombinationSection({
       const { deletedIds } = scoped
         ? await companyLookupsApi.bulkDeleteCompanyGlassCombinations(ids)
         : await lookupsApi.bulkDeleteGlassCombinations(ids)
-      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      if (scoped) await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      await queryClient.invalidateQueries({ queryKey: scoped ? ['company-lookups'] : ['lookups'] })
       toast.success(t('messages.bulkDeleteSuccess', { count: deletedIds.length }))
     } catch (err) {
       toast.error(apiErrorMessage(err, t('messages.error')))
@@ -295,8 +294,7 @@ export function GlassCombinationSection({
       : await lookupsApi.bulkDuplicateGlassCombinations(
           named.map((combo) => ({ name: combo.name, items: toAdminItems(combo.items) })),
         )
-    await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-    if (scoped) await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+    await queryClient.invalidateQueries({ queryKey: scoped ? ['company-lookups'] : ['lookups'] })
     if (failedCount > 0) {
       toast.error(t('messages.bulkDuplicatePartial', { failed: failedCount, succeeded: created.length }))
     } else {

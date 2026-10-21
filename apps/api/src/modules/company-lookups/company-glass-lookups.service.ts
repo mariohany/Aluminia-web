@@ -14,6 +14,7 @@ import {
   type CompanyGlassCombinationItemSummary,
   type CompanyGlassCombinationSummary,
   type CompanyGlassLookups,
+  type CompanyLookupSliceResponse,
   type CompanyGlassSummary,
   type CreateCompanyGlassCombinationInput,
   type LooseCompanyGlassCombinationInput,
@@ -22,6 +23,8 @@ import {
 import {
   CombinationItemKind,
   GlassGapType,
+  LOOKUP_SLICE_ENTITIES,
+  LookupSlice,
   type BulkDeleteResult,
   type CreateGlassInput,
   type UpdateGlassInput,
@@ -34,6 +37,7 @@ import { CompanyGlass } from '../../database/tenant/entities/company-glass.entit
 import { CompanyGlassCombination } from '../../database/tenant/entities/company-glass-combination.entity';
 import { CompanyGlassCombinationItem } from '../../database/tenant/entities/company-glass-combination-item.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
+import { readCompanyLookupVersions } from './company-lookup-versions';
 import { translatePostgresError } from '../lookups/pg-error.util';
 import {
   assertGlassAvailable,
@@ -331,8 +335,14 @@ export class CompanyGlassLookupsService {
 
   // ---- Tenant read slice ----
 
-  async assembleSlice(): Promise<CompanyGlassLookups> {
+  async assembleSlice(): Promise<
+    CompanyLookupSliceResponse<CompanyGlassLookups>
+  > {
     return this.tenantContext.run(async (manager) => {
+      const versions = await readCompanyLookupVersions(
+        manager,
+        LOOKUP_SLICE_ENTITIES[LookupSlice.GLASS],
+      );
       const glass = await manager.find(CompanyGlass, {
         order: { name: 'ASC' },
       });
@@ -347,12 +357,15 @@ export class CompanyGlassLookupsService {
             })
           : [];
       return {
-        glass: glass.map(toCompanyGlassSummary),
-        combinations: await this.resolveCombinationSummaries(
-          manager,
-          combos,
-          items,
-        ),
+        versions,
+        data: {
+          glass: glass.map(toCompanyGlassSummary),
+          combinations: await this.resolveCombinationSummaries(
+            manager,
+            combos,
+            items,
+          ),
+        },
       };
     });
   }

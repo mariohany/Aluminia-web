@@ -26,6 +26,7 @@ import {
 import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
 import { apiErrorMessage } from '@/lib/api-client'
 import {
+  useLookupsStatus,
   useMergedColorsQuery,
   useMergedGlassCombinationsQuery,
   useMergedGlassQuery,
@@ -222,6 +223,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const glassQuery = useMergedGlassQuery()
   const combinationsQuery = useMergedGlassCombinationsQuery()
   const colorsQuery = useMergedColorsQuery()
+  const lookupsStatus = useLookupsStatus()
 
   const {
     handleSubmit,
@@ -524,6 +526,10 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const activePanel = sanitizedPanels[activePanelIndex] ?? sanitizedPanels[0]
   const activeInfo = panelInfos[activePanelIndex] ?? panelInfos[0]
   const activeRaw = panels[activePanelIndex] ?? panels[0]
+  // Each inspector field shows only its OWN schema error on this panel —
+  // `errors.panels` alone is set by any nested issue (a section's bead),
+  // which used to light up width, height and frame with it.
+  const activePanelErrors = errors.panels?.[activePanelIndex]
   const activeSection = activePanel.sections[activeSectionIndex] ?? activePanel.sections[0]
   const activeSectionInfo = activeInfo.sections[activeSectionIndex] ?? activeInfo.sections[0]
   const activeIsGridded = activePanel.dividers.length > 0
@@ -1959,7 +1965,10 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // actually applied it. `formReady` is set true in that same effect,
   // right after `reset()`, so it's the one signal that's actually true
   // only once `watch('panels')` reflects the real data.
-  if (!formReady) {
+  // Also held until every lookup list is in (or one failed): the drawing,
+  // the pickers and the issues panel all read them, and without them the
+  // issues panel lists false errors.
+  if (!formReady || lookupsStatus === 'loading') {
     return (
       <div className="flex h-svh flex-col items-center justify-center gap-3 bg-background text-muted-foreground">
         <Loader2 className="size-6 animate-spin" aria-hidden="true" />
@@ -2181,8 +2190,8 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   heightMm={activeRaw?.heightMm ?? NaN}
                   onWidthChange={(mm) => onPanelSizeChange(mm, activeRaw?.heightMm ?? mm)}
                   onHeightChange={(mm) => onPanelSizeChange(activeRaw?.widthMm ?? mm, mm)}
-                  widthError={showValidation && errors.panels ? t('fields.widthMmRequired') : undefined}
-                  heightError={showValidation && errors.panels ? t('fields.heightMmRequired') : undefined}
+                  widthError={showValidation && activePanelErrors?.widthMm ? t('fields.widthMmRequired') : undefined}
+                  heightError={showValidation && activePanelErrors?.heightMm ? t('fields.heightMmRequired') : undefined}
                   headShape={activePanel.headShape}
                   headRiseMm={activePanel.headRiseMm ?? null}
                   frameFaceMm={lightCtx(activePanelIndex).metrics.frameFace}
@@ -2242,7 +2251,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                   isGridded={activeIsGridded}
                   dividerProfile={activePanel.dividerProfile}
                   onDividerProfileChange={onDividerProfileChange}
-                  dividerProfileError={showValidation && errors.panels ? t('fields.dividerProfileRequired') : undefined}
+                  dividerProfileError={showValidation && activePanelErrors?.dividerProfile ? t('fields.dividerProfileRequired') : undefined}
                   frameCatalogRef={activeInfo.frame?.catalog}
                   activeSection={{
                     sectionIndex: activeSectionIndex,
@@ -2291,7 +2300,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                     onSetFavorite: project ? onSetFavorite : undefined,
                     preferredCatalogRef: isEdit ? undefined : project?.defaultSystemCatalog,
                     preferredBrandRef: isEdit ? undefined : project?.defaultSystemBrand,
-                    error: showValidation && errors.panels ? t('fields.frameProfileRequired') : undefined,
+                    error: showValidation && activePanelErrors?.frameProfile ? t('fields.frameProfileRequired') : undefined,
                   }}
                   systemType={activeInfo.systemType}
                   dividerProfileNo={activeInfo.dividerProfile?.profileNo}

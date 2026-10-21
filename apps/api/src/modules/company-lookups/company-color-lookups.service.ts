@@ -11,17 +11,20 @@ import {
   formatScopedRef,
   type CompanyColorLookups,
   type CompanyColorSummary,
+  type CompanyLookupSliceResponse,
   type CompanyPaintBrandSummary,
   type CompanyPaintingPriceSummary,
   type CreateCompanyPaintingPriceInput,
   type UpdateCompanyPaintingPriceInput,
 } from '@repo/types/company-lookups';
-import type {
-  BulkDeleteResult,
-  CreateColorInput,
-  CreatePaintBrandInput,
-  UpdateColorInput,
-  UpdatePaintBrandInput,
+import {
+  LOOKUP_SLICE_ENTITIES,
+  LookupSlice,
+  type BulkDeleteResult,
+  type CreateColorInput,
+  type CreatePaintBrandInput,
+  type UpdateColorInput,
+  type UpdatePaintBrandInput,
 } from '@repo/types/lookups';
 import { Color } from '../../database/control-plane/entities/color.entity';
 import { PaintBrand } from '../../database/control-plane/entities/paint-brand.entity';
@@ -30,6 +33,7 @@ import { CompanyColor } from '../../database/tenant/entities/company-color.entit
 import { CompanyPaintBrand } from '../../database/tenant/entities/company-paint-brand.entity';
 import { CompanyPaintingPrice } from '../../database/tenant/entities/company-painting-price.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
+import { readCompanyLookupVersions } from './company-lookup-versions';
 import { translatePostgresError } from '../lookups/pg-error.util';
 import {
   assertColorAvailable,
@@ -330,17 +334,26 @@ export class CompanyColorLookupsService {
 
   // ---- Tenant read slice ----
 
-  async assembleSlice(): Promise<CompanyColorLookups> {
+  async assembleSlice(): Promise<
+    CompanyLookupSliceResponse<CompanyColorLookups>
+  > {
     return this.tenantContext.run(async (manager) => {
+      const versions = await readCompanyLookupVersions(
+        manager,
+        LOOKUP_SLICE_ENTITIES[LookupSlice.COLORS],
+      );
       const [colors, brands, prices] = await Promise.all([
         manager.find(CompanyColor, { order: { code: 'ASC' } }),
         manager.find(CompanyPaintBrand, { order: { name: 'ASC' } }),
         manager.find(CompanyPaintingPrice, { order: { type: 'ASC' } }),
       ]);
       return {
-        colors: colors.map(toCompanyColorSummary),
-        brands: brands.map(toCompanyPaintBrandSummary),
-        prices: await this.resolvePaintingPriceSummaries(manager, prices),
+        versions,
+        data: {
+          colors: colors.map(toCompanyColorSummary),
+          brands: brands.map(toCompanyPaintBrandSummary),
+          prices: await this.resolvePaintingPriceSummaries(manager, prices),
+        },
       };
     });
   }

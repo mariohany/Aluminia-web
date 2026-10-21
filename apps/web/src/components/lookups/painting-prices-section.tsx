@@ -48,6 +48,7 @@ import {
 import type { LookupRowScope } from './lookup-table-section'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PriceInput } from '@/components/ui/price-input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -76,6 +77,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { ScopeSummary } from '@/components/lookups/scope-summary'
+import { formatPrice } from '@/lib/price'
 
 function usePlatformPaintBrandsQuery(): {
   data: MergedPaintBrandSummary[] | undefined
@@ -510,7 +512,7 @@ export function PaintingPricesSection({
                   return (
                   <TableRow key={price.id}>
                     <TableCell>{price.type}</TableCell>
-                    <TableCell>{price.price.toFixed(2)}</TableCell>
+                    <TableCell>{formatPrice(price.price)}</TableCell>
                     {rowScope && (
                       <TableCell>
                         <span
@@ -679,14 +681,21 @@ export function PaintingPricesSection({
             </div>
             <div>
               <Label htmlFor="create-price-price">{t('fields.pricePerKg')}</Label>
-              <Input
-                id="create-price-price"
-                type="number"
-                step={0.01}
-                min={0}
-                className="mt-1.5"
-                aria-invalid={!!createPriceForm.formState.errors.price}
-                {...createPriceForm.register('price', { valueAsNumber: true })}
+              <Controller
+                name="price"
+                control={createPriceForm.control}
+                render={({ field }) => (
+                  <PriceInput
+                    id="create-price-price"
+                    className="mt-1.5"
+                    aria-invalid={!!createPriceForm.formState.errors.price}
+                    name={field.name}
+                    ref={field.ref}
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                  />
+                )}
               />
               {createPriceForm.formState.errors.price && (
                 <p className="mt-1 text-xs text-destructive">
@@ -746,14 +755,21 @@ export function PaintingPricesSection({
             </div>
             <div>
               <Label htmlFor="edit-price-price">{t('fields.pricePerKg')}</Label>
-              <Input
-                id="edit-price-price"
-                type="number"
-                step={0.01}
-                min={0}
-                className="mt-1.5"
-                aria-invalid={!!editPriceForm.formState.errors.price}
-                {...editPriceForm.register('price', { valueAsNumber: true })}
+              <Controller
+                name="price"
+                control={editPriceForm.control}
+                render={({ field }) => (
+                  <PriceInput
+                    id="edit-price-price"
+                    className="mt-1.5"
+                    aria-invalid={!!editPriceForm.formState.errors.price}
+                    name={field.name}
+                    ref={field.ref}
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                  />
+                )}
               />
               {editPriceForm.formState.errors.price && (
                 <p className="mt-1 text-xs text-destructive">

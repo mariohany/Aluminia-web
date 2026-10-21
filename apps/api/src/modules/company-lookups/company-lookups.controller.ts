@@ -11,7 +11,11 @@ import {
   Body,
 } from '@nestjs/common';
 import { UserRole } from '@repo/types/auth';
-import { LookupSlice, type BulkDeleteResult } from '@repo/types/lookups';
+import {
+  LookupSlice,
+  type BulkDeleteResult,
+  type LookupVersion,
+} from '@repo/types/lookups';
 import type {
   CompanyColorLookups,
   CompanyColorSummary,
@@ -24,12 +28,14 @@ import type {
   CompanySystemCatalogSummary,
   CompanySystemLookups,
   CompanySystemProfileSummary,
+  CompanyLookupSliceResponse,
 } from '@repo/types/company-lookups';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { CompanyColorLookupsService } from './company-color-lookups.service';
 import { CompanyGlassLookupsService } from './company-glass-lookups.service';
 import { CompanySystemLookupsService } from './company-system-lookups.service';
+import { CompanyLookupVersionsService } from './company-lookup-versions';
 import { CreateColorDto } from '../lookups/dto/create-color.dto';
 import { UpdateColorDto } from '../lookups/dto/update-color.dto';
 import { BulkDuplicateColorsDto } from '../lookups/dto/bulk-duplicate-colors.dto';
@@ -54,10 +60,6 @@ import { UpdateCompanySystemProfileDto } from './dto/update-company-system-profi
 import { BulkDuplicateCompanySystemProfilesDto } from './dto/bulk-duplicate-company-system-profiles.dto';
 import { BulkIdsDto } from '../lookups/dto/bulk-ids.dto';
 
-interface SliceResponse<T> {
-  data: T;
-}
-
 // A company's own rows in the same 8 lookup categories as the platform
 // catalogue (GET /lookups/:slice) — see
 // docs/company_lookups_planing.md. Routes mirror admin-lookups.controller.ts
@@ -68,8 +70,9 @@ interface SliceResponse<T> {
 // Both company roles write here, not just COMPANY_ADMIN — matches the
 // precedent set for project deletion (docs/projects_planing.md, "at a
 // five-seat ceiling everyone in a company is a trusted colleague").
-// No `versions` field on the slice response, unlike the platform's —
-// company lookups have no lookup_meta/version machinery to report.
+// Versions (docs/lookup_caching_planing.md §5.2): `company_lookup_meta`
+// per tenant schema, bumped by triggers; each slice response carries its
+// members' versions, and GET version all of them.
 @Roles(UserRole.COMPANY_ADMIN, UserRole.USER)
 @TenantScoped()
 @Controller('company/lookups')
@@ -78,23 +81,30 @@ export class CompanyLookupsController {
     private readonly colorLookups: CompanyColorLookupsService,
     private readonly glassLookups: CompanyGlassLookupsService,
     private readonly systemLookups: CompanySystemLookupsService,
+    private readonly versions: CompanyLookupVersionsService,
   ) {}
+
+  // Declared before `:slice`, which would otherwise take "version".
+  @Get('version')
+  version(): Promise<LookupVersion> {
+    return this.versions.getVersions();
+  }
 
   @Get(':slice')
   slice(
     @Param('slice') slice: string,
   ): Promise<
-    SliceResponse<
+    CompanyLookupSliceResponse<
       CompanyColorLookups | CompanyGlassLookups | CompanySystemLookups
     >
   > {
     switch (slice) {
       case LookupSlice.GLASS:
-        return this.glassLookups.assembleSlice().then((data) => ({ data }));
+        return this.glassLookups.assembleSlice();
       case LookupSlice.COLORS:
-        return this.colorLookups.assembleSlice().then((data) => ({ data }));
+        return this.colorLookups.assembleSlice();
       case LookupSlice.SYSTEMS:
-        return this.systemLookups.assembleSlice().then((data) => ({ data }));
+        return this.systemLookups.assembleSlice();
       default:
         throw new NotFoundException(`Unknown lookup slice "${slice}".`);
     }

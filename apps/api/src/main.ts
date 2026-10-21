@@ -54,6 +54,9 @@ async function bootstrap() {
   // (docs/browser_solve_planing.md §5): a big building can pass Express's
   // 100 KB default. Authenticated and throttled like every other body.
   app.useBodyParser('json', { limit: '2mb' });
+  // Every response is `no-store` (NoStoreMiddleware), so a browser never
+  // revalidates: hashing each body for an ETag would be wasted work.
+  app.set('etag', false);
   app.use(helmet());
   app.use(cookieParser());
   app.enableCors({

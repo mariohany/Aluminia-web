@@ -32,13 +32,14 @@ import {
   useWindowsQuery,
 } from '@/lib/windows-queries'
 import { useBoardSelection } from '@/lib/use-board-selection'
-import { useMergedGlassCombinationsQuery, useMergedGlassQuery, useMergedSystemProfilesQuery } from '@/lib/lookup-merge'
+import { useLookupsStatus, useMergedGlassCombinationsQuery, useMergedGlassQuery, useMergedSystemProfilesQuery } from '@/lib/lookup-merge'
 import { useWindowIssues } from '@/lib/window-render'
 import { displayName } from '@/lib/bilingual'
 import { apiErrorMessage } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { SearchInput } from '@/components/ui/search-input'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -436,7 +437,11 @@ function WindowCard({
   // enforces (a fixed section missing its bead profile, a dangling
   // profile/glass reference, etc.) — a nudge to open and fix, not a
   // duplicate of every warning shown inside the editor.
-  const hasErrors = useWindowIssues(w.panels).length > 0
+  // Only once the lookups are in: before that every window "misses" its
+  // frame profile. Name, size and quantity come with the window itself.
+  const lookups = useLookupsStatus()
+  const issueCount = useWindowIssues(w.panels).length
+  const hasErrors = lookups === 'ready' && issueCount > 0
 
   const windows = t('canvas.windowCount', { count: menuCount })
   // Radix places submenus by physical side; without a DirectionProvider
@@ -498,7 +503,11 @@ function WindowCard({
               stays on a rhythm regardless of each window's proportions; the
               SVG letterboxes itself inside. */}
           <div className="flex h-38 items-center justify-center border-b border-border bg-muted/40 p-2">
-            <WindowThumbnail panels={w.panels} className="h-full w-full" />
+            {lookups === 'loading' ? (
+              <Skeleton className="h-full w-full" />
+            ) : (
+              <WindowThumbnail panels={w.panels} className="h-full w-full" />
+            )}
           </div>
 
           <div className="flex flex-col gap-[3px] px-3 pt-2.5 pb-3">
@@ -509,10 +518,14 @@ function WindowCard({
             <p className="truncate font-mono text-[11.5px] text-muted-foreground" dir="ltr">
               {w.widthMm} × {w.heightMm} mm · ×{w.quantity}
             </p>
-            {(frame || glassName) && (
-              <p className="truncate text-[11.5px] text-muted-foreground">
-                {[frame?.profileNo, glassName].filter(Boolean).join(' · ')}
-              </p>
+            {lookups === 'loading' ? (
+              <Skeleton className="my-[3px] h-3 w-2/3" />
+            ) : (
+              (frame || glassName) && (
+                <p className="truncate text-[11.5px] text-muted-foreground">
+                  {[frame?.profileNo, glassName].filter(Boolean).join(' · ')}
+                </p>
+              )
             )}
             {/* No panel-count chip: the drawing above already shows how many
                 panels there are, and a number repeating the picture is

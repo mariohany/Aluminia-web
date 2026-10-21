@@ -9,13 +9,18 @@ import type { LoginResponse } from '@repo/types/auth';
 import type {
   CompanyColorSummary,
   CompanyGlassSummary,
+  CompanyLookupSliceResponse,
   CompanySystemBrandSummary,
   CompanySystemCatalogSummary,
   CompanySystemProfileSummary,
 } from '@repo/types/company-lookups';
-import type {
-  BulkDeleteResult,
-  SystemProfileSummary,
+import {
+  LOOKUP_SLICE_ENTITIES,
+  LookupEntity,
+  LookupSlice,
+  type BulkDeleteResult,
+  type LookupVersion,
+  type SystemProfileSummary,
 } from '@repo/types/lookups';
 import { AppModule } from './../src/app.module';
 import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provisioning.service';
@@ -566,6 +571,111 @@ describe('Company lookups (e2e)', () => {
           ],
         })
         .expect(201);
+    });
+  });
+
+  // docs/lookup_caching_planing.md §5.2: per-company versions, bumped by
+  // triggers, so the web refetches a slice only when it changed.
+  describe('versions', () => {
+    async function versionsOf(token: string): Promise<LookupVersion> {
+      const res = await request(app.getHttpServer())
+        .get('/company/lookups/version')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      return res.body as LookupVersion;
+    }
+
+    function moved(before: LookupVersion, after: LookupVersion): string[] {
+      return Object.values(LookupEntity).filter(
+        (entity) => after[entity] !== before[entity],
+      );
+    }
+
+    it('reports every entity, and refuses a super admin', async () => {
+      const versions = await versionsOf(tokenAdmin);
+      expect(Object.keys(versions).sort()).toEqual(
+        Object.values(LookupEntity).sort(),
+      );
+      for (const version of Object.values(versions)) {
+        expect(version).toBeGreaterThanOrEqual(1);
+      }
+      await request(app.getHttpServer())
+        .get('/company/lookups/version')
+        .set('Authorization', `Bearer ${tokenSuper}`)
+        .expect(403);
+    });
+
+    it('bumps only the written entity, only for its own company', async () => {
+      const before = await versionsOf(tokenAdmin);
+      const betaBefore = await versionsOf(tokenBeta);
+
+      const created = await request(app.getHttpServer())
+        .post('/company/lookups/glass')
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({
+          name: 'Versioned glass',
+          thickness: 6,
+          weightPerSqm: 15,
+          pricePerSqm: 60,
+        })
+        .expect(201);
+      const id = (created.body as CompanyGlassSummary).id;
+      const afterCreate = await versionsOf(tokenAdmin);
+      expect(moved(before, afterCreate)).toEqual([LookupEntity.GLASS]);
+
+      await request(app.getHttpServer())
+        .patch(`/company/lookups/glass/${id}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({ pricePerSqm: 65 })
+        .expect(200);
+      const afterUpdate = await versionsOf(tokenAdmin);
+      expect(afterUpdate.glass).toBeGreaterThan(afterCreate.glass);
+
+      await request(app.getHttpServer())
+        .delete(`/company/lookups/glass/${id}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .expect(204);
+      const afterDelete = await versionsOf(tokenAdmin);
+      expect(afterDelete.glass).toBeGreaterThan(afterUpdate.glass);
+      expect(moved(before, afterDelete)).toEqual([LookupEntity.GLASS]);
+
+      expect(await versionsOf(tokenBeta)).toEqual(betaBefore);
+    });
+
+    it('bumps on bulk duplicate and bulk delete', async () => {
+      const before = await versionsOf(tokenAdmin);
+      const dup = await request(app.getHttpServer())
+        .post('/company/lookups/colors/bulk-duplicate')
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({ items: [{ code: 'Versioned 1', hex: '#112233' }] })
+        .expect(201);
+      const ids = (dup.body as CompanyColorSummary[]).map((c) => c.id);
+      const afterDup = await versionsOf(tokenAdmin);
+      expect(moved(before, afterDup)).toEqual([LookupEntity.COLOR]);
+
+      await request(app.getHttpServer())
+        .post('/company/lookups/colors/bulk-delete')
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({ ids })
+        .expect(201);
+      const afterDelete = await versionsOf(tokenAdmin);
+      expect(afterDelete.color).toBeGreaterThan(afterDup.color);
+    });
+
+    it("carries the slice's own versions on every slice", async () => {
+      const versions = await versionsOf(tokenAdmin);
+      for (const slice of Object.values(LookupSlice)) {
+        const res = await request(app.getHttpServer())
+          .get(`/company/lookups/${slice}`)
+          .set('Authorization', `Bearer ${tokenAdmin}`)
+          .expect(200);
+        const body = res.body as CompanyLookupSliceResponse<unknown>;
+        expect(body.versions).toEqual(
+          Object.fromEntries(
+            LOOKUP_SLICE_ENTITIES[slice].map((e) => [e, versions[e]]),
+          ),
+        );
+      }
     });
   });
 });

@@ -13,6 +13,7 @@ import { CompanyLookupsController } from './company-lookups.controller';
 import { CompanyColorLookupsService } from './company-color-lookups.service';
 import { CompanyGlassLookupsService } from './company-glass-lookups.service';
 import { CompanySystemLookupsService } from './company-system-lookups.service';
+import { CompanyLookupVersionsService } from './company-lookup-versions';
 
 /**
  * Company-owned rows in the same 8 lookup categories as the platform
@@ -48,6 +49,7 @@ import { CompanySystemLookupsService } from './company-system-lookups.service';
     CompanyColorLookupsService,
     CompanyGlassLookupsService,
     CompanySystemLookupsService,
+    CompanyLookupVersionsService,
   ],
 })
 export class CompanyLookupsModule {}

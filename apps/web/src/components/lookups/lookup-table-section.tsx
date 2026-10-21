@@ -18,6 +18,7 @@ import { apiErrorMessage } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { PriceInput } from '@/components/ui/price-input'
 import { SearchInput } from '@/components/ui/search-input'
 import { Label } from '@/components/ui/label'
 import {
@@ -58,7 +59,8 @@ import { ScopeSummary, ScopeToggle, type ScopeFilterValue } from '@/components/l
 export interface LookupFieldSpec<TInput extends FieldValues> {
   name: Path<TInput>
   label: string
-  type: 'text' | 'number' | 'select' | 'boolean'
+  /** `price` is a number shown as 12,345.00 (`PriceInput`). */
+  type: 'text' | 'number' | 'price' | 'select' | 'boolean'
   step?: number
   min?: number
   max?: number
@@ -207,6 +209,9 @@ export function LookupTableSection<
   const { t: tCommon } = useTranslation('common')
   const { t, i18n } = useTranslation('lookups')
   const queryClient = useQueryClient()
+  // A bulk action only touches its own side: the company's rows on the
+  // workspace Data page (`rowScope`), the platform's in the admin console.
+  const lookupCacheScope = rowScope ? ['company-lookups'] : ['lookups']
   const { data, isLoading, isError } = useList()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<TSummary | null>(null)
@@ -308,8 +313,7 @@ export function LookupTableSection<
     setBulkBusy(true)
     try {
       const { deletedIds, blockedIds } = await bulkDelete(ids)
-      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      await queryClient.invalidateQueries({ queryKey: lookupCacheScope })
       if (blockedIds.length > 0) {
         toast.error(
           t('messages.bulkDeletePartial', {
@@ -333,8 +337,7 @@ export function LookupTableSection<
     setBulkBusy(true)
     try {
       const created = await bulkDuplicate(targets.map((row) => duplicate(row)))
-      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      await queryClient.invalidateQueries({ queryKey: lookupCacheScope })
       toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -357,8 +360,7 @@ export function LookupTableSection<
   const onDuplicateRow = async (row: TSummary) => {
     try {
       const created = await bulkDuplicate([duplicate(row)])
-      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      await queryClient.invalidateQueries({ queryKey: lookupCacheScope })
       toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -750,6 +752,23 @@ function LookupFormFields<TInput extends FieldValues>({
                           ))}
                         </SelectContent>
                       </Select>
+                    )}
+                  />
+                ) : field.type === 'price' ? (
+                  <Controller
+                    name={field.name}
+                    control={control}
+                    render={({ field: controllerField }) => (
+                      <PriceInput
+                        id={fieldId}
+                        className="mt-1.5"
+                        aria-invalid={!!error}
+                        name={controllerField.name}
+                        ref={controllerField.ref}
+                        value={controllerField.value}
+                        onChange={controllerField.onChange}
+                        onBlur={controllerField.onBlur}
+                      />
                     )}
                   />
                 ) : (

@@ -12,6 +12,7 @@ import {
   slidingRailsSchema,
   startsAndEndsWithSheet,
   type BulkDeleteResult,
+  type LookupVersion,
 } from '@repo/types/lookups'
 
 // Phase 2 of Company Lookups (docs/company_lookups_planing.md) — a
@@ -330,3 +331,12 @@ export interface CompanySystemLookups {
 // company bulk-delete endpoints return too.
 export { bulkIdsSchema, bulkCreateSchema, type BulkIdsInput } from '@repo/types/lookups'
 export type { BulkDeleteResult }
+
+// GET /company/lookups/:slice. `versions` are the slice's member entities'
+// versions (LOOKUP_SLICE_ENTITIES), read before the rows in the same
+// tenant transaction, so the data is never older than the versions it
+// claims (docs/lookup_caching_planing.md §5.2).
+export interface CompanyLookupSliceResponse<T> {
+  versions: Partial<LookupVersion>
+  data: T
+}

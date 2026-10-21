@@ -22,6 +22,7 @@ import { AddProjectSettings1792280000000 } from './1792280000000-AddProjectSetti
 import { AddReportSolve1792420000000 } from './1792420000000-AddReportSolve';
 import { AddReportSnapshot1792440000000 } from './1792440000000-AddReportSnapshot';
 import { DropReportCache1792450000000 } from './1792450000000-DropReportCache';
+import { AddCompanyLookupVersions1792460000000 } from './1792460000000-AddCompanyLookupVersions';
 
 /**
  * The tenant migration track, explicitly ordered.
@@ -59,6 +60,7 @@ export const tenantMigrations: Array<new () => MigrationInterface> = [
   AddReportSolve1792420000000,
   AddReportSnapshot1792440000000,
   DropReportCache1792450000000,
+  AddCompanyLookupVersions1792460000000,
 ];
 
 /** TypeORM records applied migrations as `{timestamp}-{ClassName}`. */

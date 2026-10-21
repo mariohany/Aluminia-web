@@ -46,6 +46,7 @@ import {
 } from '@/lib/lookups-queries'
 import { SLIDING_MAX_RAILS, SLIDING_MIN_RAILS } from '@repo/types/sliding'
 import { Badge } from '@/components/ui/badge'
+import { formatPrice } from '@/lib/price'
 import { cn } from '@/lib/utils'
 import { LookupTableSection } from '@/components/lookups/lookup-table-section'
 import { ProfileTypePill } from '@/components/lookups/profile-type-pill'
@@ -133,7 +134,7 @@ export function DataWarehousePage() {
         </div>
       </div>
 
-      <div role="tablist" aria-label={t('tablesLabel')} className="flex shrink-0 gap-5 overflow-x-auto border-b border-border">
+      <div role="tablist" aria-label={t('tablesLabel')} className="flex shrink-0 flex-wrap gap-x-5 border-b border-border">
         {TABS.map((tabId) => {
           const on = tab === tabId
           const count = counts[tabId]
@@ -195,13 +196,13 @@ function GlassTab() {
         { name: 'name', label: t('fields.name'), type: 'text' },
         { name: 'thickness', label: t('fields.thickness'), type: 'number', min: 1 },
         { name: 'weightPerSqm', label: t('fields.weightPerSqm'), type: 'number', step: 0.01, min: 0 },
-        { name: 'pricePerSqm', label: t('fields.pricePerSqm'), type: 'number', step: 0.01, min: 0 },
+        { name: 'pricePerSqm', label: t('fields.pricePerSqm'), type: 'price' },
       ]}
       columns={[
         { header: t('fields.name'), cell: (row) => row.name },
         { header: t('fields.thickness'), cell: (row) => row.thickness },
         { header: t('fields.weightPerSqm'), cell: (row) => row.weightPerSqm.toFixed(2) },
-        { header: t('fields.pricePerSqm'), cell: (row) => row.pricePerSqm.toFixed(2) },
+        { header: t('fields.pricePerSqm'), cell: (row) => formatPrice(row.pricePerSqm) },
       ]}
       search={{
         placeholder: t('search.glass'),

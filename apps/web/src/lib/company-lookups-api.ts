@@ -21,12 +21,9 @@ import type {
   UpdateCompanyPaintingPriceInput,
   UpdateCompanySystemCatalogInput,
   UpdateCompanySystemProfileInput,
+  CompanyLookupSliceResponse,
 } from '@repo/types/company-lookups'
 import { apiFetch } from '@/lib/api-client'
-
-export interface CompanyLookupSliceResponse<T> {
-  data: T
-}
 
 export function getCompanyGlassSlice(): Promise<CompanyLookupSliceResponse<CompanyGlassLookups>> {
   return apiFetch(`/company/lookups/${LookupSlice.GLASS}`)

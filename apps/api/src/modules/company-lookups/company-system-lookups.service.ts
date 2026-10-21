@@ -11,6 +11,7 @@ import {
   LookupScope,
   formatScopedRef,
   type CompanySystemBrandSummary,
+  type CompanyLookupSliceResponse,
   type CompanySystemCatalogSummary,
   type CompanySystemLookups,
   type CompanySystemProfileSummary,
@@ -19,7 +20,11 @@ import {
   type UpdateCompanySystemCatalogInput,
   type UpdateCompanySystemProfileInput,
 } from '@repo/types/company-lookups';
-import { normalizeSlidingRails } from '@repo/types/lookups';
+import {
+  LOOKUP_SLICE_ENTITIES,
+  LookupSlice,
+  normalizeSlidingRails,
+} from '@repo/types/lookups';
 import type {
   BulkDeleteResult,
   CreateSystemBrandInput,
@@ -33,6 +38,7 @@ import { CompanySystemBrand } from '../../database/tenant/entities/company-syste
 import { CompanySystemCatalog } from '../../database/tenant/entities/company-system-catalog.entity';
 import { CompanySystemProfile } from '../../database/tenant/entities/company-system-profile.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
+import { readCompanyLookupVersions } from './company-lookup-versions';
 import { translatePostgresError } from '../lookups/pg-error.util';
 import {
   assertSystemBrandAvailable,
@@ -606,8 +612,14 @@ export class CompanySystemLookupsService {
 
   // ---- Tenant read slice ----
 
-  async assembleSlice(): Promise<CompanySystemLookups> {
+  async assembleSlice(): Promise<
+    CompanyLookupSliceResponse<CompanySystemLookups>
+  > {
     return this.tenantContext.run(async (manager) => {
+      const versions = await readCompanyLookupVersions(
+        manager,
+        LOOKUP_SLICE_ENTITIES[LookupSlice.SYSTEMS],
+      );
       const [brands, catalogs, profiles] = await Promise.all([
         manager.find(CompanySystemBrand, { order: { name: 'ASC' } }),
         manager.find(CompanySystemCatalog, { order: { name: 'ASC' } }),
@@ -618,9 +630,12 @@ export class CompanySystemLookupsService {
         this.resolveProfileSummaries(manager, profiles),
       ]);
       return {
-        brands: brands.map(toCompanySystemBrandSummary),
-        catalogs: catalogSummaries,
-        profiles: profileSummaries,
+        versions,
+        data: {
+          brands: brands.map(toCompanySystemBrandSummary),
+          catalogs: catalogSummaries,
+          profiles: profileSummaries,
+        },
       };
     });
   }

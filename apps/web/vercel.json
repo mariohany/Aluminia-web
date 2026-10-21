@@ -4,6 +4,10 @@
     "deploymentEnabled": { "**": false, "dev": true }
   },
   "rewrites": [
+    {
+      "source": "/api/monitoring",
+      "destination": "https://o4512291079913472.ingest.de.sentry.io/api/4512291105144912/envelope/?sentry_key=ad221c41c2688db5560be81f75ee8693"
+    },
     { "source": "/api/:path*", "destination": "https://aluminia-api.onrender.com/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

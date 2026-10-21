@@ -18,6 +18,7 @@ import { apiErrorMessage } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { PriceInput } from '@/components/ui/price-input'
 import { SearchInput } from '@/components/ui/search-input'
 import { Label } from '@/components/ui/label'
 import {
@@ -58,7 +59,8 @@ import { ScopeSummary, ScopeToggle, type ScopeFilterValue } from '@/components/l
 export interface LookupFieldSpec<TInput extends FieldValues> {
   name: Path<TInput>
   label: string
-  type: 'text' | 'number' | 'select' | 'boolean'
+  /** `price` is a number shown as 12,345.00 (`PriceInput`). */
+  type: 'text' | 'number' | 'price' | 'select' | 'boolean'
   step?: number
   min?: number
   max?: number
@@ -750,6 +752,23 @@ function LookupFormFields<TInput extends FieldValues>({
                           ))}
                         </SelectContent>
                       </Select>
+                    )}
+                  />
+                ) : field.type === 'price' ? (
+                  <Controller
+                    name={field.name}
+                    control={control}
+                    render={({ field: controllerField }) => (
+                      <PriceInput
+                        id={fieldId}
+                        className="mt-1.5"
+                        aria-invalid={!!error}
+                        name={controllerField.name}
+                        ref={controllerField.ref}
+                        value={controllerField.value}
+                        onChange={controllerField.onChange}
+                        onBlur={controllerField.onBlur}
+                      />
                     )}
                   />
                 ) : (

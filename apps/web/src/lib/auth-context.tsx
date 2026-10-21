@@ -1,7 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AuthenticatedUser, LoginResponse } from '@repo/types/auth'
 import { apiFetch, onSessionChange, refreshSession, setAccessToken } from '@/lib/api-client'
 import { setMonitoringUser } from '@/lib/monitoring'
+import { queryClient } from '@/lib/query-client'
 
 interface AuthContextValue {
   user: AuthenticatedUser | null
@@ -53,6 +54,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Errors carry who hit them: ids and role only (docs/sentry_planing.md Q5).
   useEffect(() => setMonitoringUser(user), [user])
+
+  // However the session ended (Log out, or a refresh the server refused),
+  // drop everything cached for it, so the next user in this tab starts
+  // empty (docs/lookup_caching_planing.md §4.2). An effect, not inside
+  // logout(): by now the protected pages have unmounted, so nothing
+  // refetches into the cleared cache without a token.
+  const hadUser = useRef(false)
+  useEffect(() => {
+    if (hadUser.current && !user) queryClient.clear()
+    hadUser.current = user !== null
+  }, [user])
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await apiFetch<LoginResponse>('/auth/login', {

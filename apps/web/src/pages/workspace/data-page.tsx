@@ -95,7 +95,7 @@ export function DataPage() {
       <div
         role="tablist"
         aria-label={tWorkspace('dataPage.tablesLabel')}
-        className="flex shrink-0 gap-5 overflow-x-auto border-b border-border"
+        className="flex shrink-0 flex-wrap gap-x-5 border-b border-border"
       >
         {TABS.map((tabId) => {
           const on = tab === tabId

@@ -133,7 +133,7 @@ export function DataWarehousePage() {
         </div>
       </div>
 
-      <div role="tablist" aria-label={t('tablesLabel')} className="flex shrink-0 gap-5 overflow-x-auto border-b border-border">
+      <div role="tablist" aria-label={t('tablesLabel')} className="flex shrink-0 flex-wrap gap-x-5 border-b border-border">
         {TABS.map((tabId) => {
           const on = tab === tabId
           const count = counts[tabId]

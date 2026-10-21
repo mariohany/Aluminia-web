@@ -302,3 +302,22 @@ export function useMergedSystemProfilesQuery(): MergedResult<MergedSystemProfile
   }, [platform.data, company.data])
   return { data, isLoading: platform.isLoading || company.isLoading, isError: platform.isError || company.isError }
 }
+
+export type LookupsStatus = 'loading' | 'ready' | 'failed'
+
+// Whether every lookup a window drawing reads (all six slices, through the
+// five lists below) has arrived. Until then a window can't be drawn or
+// checked honestly: no frame profile means a plain outline and a false
+// "frame required" error. 'failed' lets callers stop waiting on a request
+// that won't come.
+export function useLookupsStatus(): LookupsStatus {
+  const lists = [
+    useMergedSystemProfilesQuery(),
+    useMergedSystemCatalogsQuery(),
+    useMergedGlassQuery(),
+    useMergedGlassCombinationsQuery(),
+    useMergedColorsQuery(),
+  ]
+  if (lists.some((list) => list.isError)) return 'failed'
+  return lists.every((list) => list.data !== undefined) ? 'ready' : 'loading'
+}

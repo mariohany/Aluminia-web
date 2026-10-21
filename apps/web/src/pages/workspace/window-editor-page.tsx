@@ -26,6 +26,7 @@ import {
 import { formatScopedRef, type ScopedRef } from '@repo/types/company-lookups'
 import { apiErrorMessage } from '@/lib/api-client'
 import {
+  useLookupsStatus,
   useMergedColorsQuery,
   useMergedGlassCombinationsQuery,
   useMergedGlassQuery,
@@ -222,6 +223,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const glassQuery = useMergedGlassQuery()
   const combinationsQuery = useMergedGlassCombinationsQuery()
   const colorsQuery = useMergedColorsQuery()
+  const lookupsStatus = useLookupsStatus()
 
   const {
     handleSubmit,
@@ -1963,7 +1965,10 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // actually applied it. `formReady` is set true in that same effect,
   // right after `reset()`, so it's the one signal that's actually true
   // only once `watch('panels')` reflects the real data.
-  if (!formReady) {
+  // Also held until every lookup list is in (or one failed): the drawing,
+  // the pickers and the issues panel all read them, and without them the
+  // issues panel lists false errors.
+  if (!formReady || lookupsStatus === 'loading') {
     return (
       <div className="flex h-svh flex-col items-center justify-center gap-3 bg-background text-muted-foreground">
         <Loader2 className="size-6 animate-spin" aria-hidden="true" />

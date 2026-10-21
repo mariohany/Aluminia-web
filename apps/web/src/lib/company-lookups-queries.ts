@@ -11,6 +11,7 @@ import type {
   UpdateCompanySystemProfileInput,
 } from '@repo/types/company-lookups'
 import * as api from '@/lib/company-lookups-api'
+import { lookupSliceCache } from '@/lib/lookup-slices-queries'
 
 // Mirrors lookups-queries.ts's shape exactly, one level namespaced under
 // 'company-lookups' — so a bulk action's `invalidateQueries({ queryKey:
@@ -22,13 +23,13 @@ export const companyGlassSliceKey = ['company-lookups', 'slice', 'glass'] as con
 export const companySystemsSliceKey = ['company-lookups', 'slice', 'systems'] as const
 
 export function useCompanyColorsSliceQuery() {
-  return useQuery({ queryKey: companyColorsSliceKey, queryFn: api.getCompanyColorsSlice })
+  return useQuery({ queryKey: companyColorsSliceKey, queryFn: api.getCompanyColorsSlice, ...lookupSliceCache })
 }
 export function useCompanyGlassSliceQuery() {
-  return useQuery({ queryKey: companyGlassSliceKey, queryFn: api.getCompanyGlassSlice })
+  return useQuery({ queryKey: companyGlassSliceKey, queryFn: api.getCompanyGlassSlice, ...lookupSliceCache })
 }
 export function useCompanySystemsSliceQuery() {
-  return useQuery({ queryKey: companySystemsSliceKey, queryFn: api.getCompanySystemsSlice })
+  return useQuery({ queryKey: companySystemsSliceKey, queryFn: api.getCompanySystemsSlice, ...lookupSliceCache })
 }
 
 // ---- Color ----

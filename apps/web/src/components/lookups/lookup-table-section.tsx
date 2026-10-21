@@ -209,6 +209,9 @@ export function LookupTableSection<
   const { t: tCommon } = useTranslation('common')
   const { t, i18n } = useTranslation('lookups')
   const queryClient = useQueryClient()
+  // A bulk action only touches its own side: the company's rows on the
+  // workspace Data page (`rowScope`), the platform's in the admin console.
+  const lookupCacheScope = rowScope ? ['company-lookups'] : ['lookups']
   const { data, isLoading, isError } = useList()
   const [createOpen, setCreateOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<TSummary | null>(null)
@@ -310,8 +313,7 @@ export function LookupTableSection<
     setBulkBusy(true)
     try {
       const { deletedIds, blockedIds } = await bulkDelete(ids)
-      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      await queryClient.invalidateQueries({ queryKey: lookupCacheScope })
       if (blockedIds.length > 0) {
         toast.error(
           t('messages.bulkDeletePartial', {
@@ -335,8 +337,7 @@ export function LookupTableSection<
     setBulkBusy(true)
     try {
       const created = await bulkDuplicate(targets.map((row) => duplicate(row)))
-      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      await queryClient.invalidateQueries({ queryKey: lookupCacheScope })
       toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))
@@ -359,8 +360,7 @@ export function LookupTableSection<
   const onDuplicateRow = async (row: TSummary) => {
     try {
       const created = await bulkDuplicate([duplicate(row)])
-      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      await queryClient.invalidateQueries({ queryKey: lookupCacheScope })
       toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
     } catch (err) {
       toast.error(apiErrorMessage(err, errorLabel))

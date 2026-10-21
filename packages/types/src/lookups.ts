@@ -71,6 +71,26 @@ export const LOOKUP_SLICE_ENTITIES: Record<LookupSlice, LookupEntity[]> = {
   [LookupSlice.SYSTEMS]: [LookupEntity.SYSTEM_BRAND, LookupEntity.SYSTEM_CATALOG, LookupEntity.SYSTEM_PROFILE],
 }
 
+// The slices the browser holds that a version check says are out of date
+// (docs/lookup_caching_planing.md §6.2): a member entity's current version
+// is GREATER than the one the cached slice came with. Not "different":
+// right after our own write the cached slice can be newer than a version
+// answer fetched before it, and refetching then would loop. A slice not
+// in `cached` isn't held, so there is nothing to refresh.
+export function staleLookupSlices(
+  cached: Partial<Record<LookupSlice, Partial<Record<LookupEntity, number>>>>,
+  current: Partial<Record<LookupEntity, number>>,
+): LookupSlice[] {
+  return Object.values(LookupSlice).filter((slice) => {
+    const held = cached[slice]
+    if (!held) return false
+    return LOOKUP_SLICE_ENTITIES[slice].some((entity) => {
+      const now = current[entity]
+      return now !== undefined && now > (held[entity] ?? 0)
+    })
+  })
+}
+
 // Shared shape for every lookup entity's bulk-select actions (bulk
 // delete, bulk duplicate) — see admin-lookups.controller.ts's
 // `*/bulk-delete` and `*/bulk-duplicate` routes.

@@ -1,5 +1,5 @@
 import { LookupSlice } from '@repo/types/lookups'
-import type { BulkDeleteResult, CreateColorInput, CreateGlassInput, CreatePaintBrandInput, CreateSystemBrandInput, UpdateColorInput, UpdateGlassInput, UpdatePaintBrandInput, UpdateSystemBrandInput } from '@repo/types/lookups'
+import type { BulkDeleteResult, LookupVersion, CreateColorInput, CreateGlassInput, CreatePaintBrandInput, CreateSystemBrandInput, UpdateColorInput, UpdateGlassInput, UpdatePaintBrandInput, UpdateSystemBrandInput } from '@repo/types/lookups'
 import type {
   CompanyColorLookups,
   CompanyColorSummary,
@@ -24,6 +24,10 @@ import type {
   CompanyLookupSliceResponse,
 } from '@repo/types/company-lookups'
 import { apiFetch } from '@/lib/api-client'
+
+export function getCompanyLookupVersion(): Promise<LookupVersion> {
+  return apiFetch<LookupVersion>('/company/lookups/version')
+}
 
 export function getCompanyGlassSlice(): Promise<CompanyLookupSliceResponse<CompanyGlassLookups>> {
   return apiFetch(`/company/lookups/${LookupSlice.GLASS}`)

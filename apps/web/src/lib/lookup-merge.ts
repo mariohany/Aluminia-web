@@ -30,9 +30,11 @@ import {
   useCompanyGlassSliceQuery,
   useCompanySystemsSliceQuery,
 } from '@/lib/company-lookups-queries'
+import { useLookupFreshness } from '@/lib/lookup-freshness'
 
 // Phase 2's read model: unions the platform slice (Redis-cached,
-// version-keyed) with this tenant's own company slice (uncached), tags
+// version-keyed) with this tenant's own company slice (both held in memory until their
+// version moves — lookup-freshness.ts), tags
 // every row with which scope it came from, and — for the four entities
 // with a parent reference — resolves that reference into the same
 // { brand, brandName, brandScope } shape regardless of which scope the
@@ -190,6 +192,7 @@ interface MergedResult<T> {
 }
 
 export function useMergedColorsQuery(): MergedResult<MergedColorSummary> {
+  useLookupFreshness()
   const platform = useColorsSliceQuery()
   const company = useCompanyColorsSliceQuery()
   const data = useMemo(() => {
@@ -203,6 +206,7 @@ export function useMergedColorsQuery(): MergedResult<MergedColorSummary> {
 }
 
 export function useMergedPaintBrandsQuery(): MergedResult<MergedPaintBrandSummary> {
+  useLookupFreshness()
   const platform = useColorsSliceQuery()
   const company = useCompanyColorsSliceQuery()
   const data = useMemo(() => {
@@ -216,6 +220,7 @@ export function useMergedPaintBrandsQuery(): MergedResult<MergedPaintBrandSummar
 }
 
 export function useMergedPaintingPricesQuery(): MergedResult<MergedPaintingPriceSummary> {
+  useLookupFreshness()
   const platform = useColorsSliceQuery()
   const company = useCompanyColorsSliceQuery()
   const data = useMemo(() => {
@@ -229,6 +234,7 @@ export function useMergedPaintingPricesQuery(): MergedResult<MergedPaintingPrice
 }
 
 export function useMergedGlassQuery(): MergedResult<MergedGlassSummary> {
+  useLookupFreshness()
   const platform = useGlassSliceQuery()
   const company = useCompanyGlassSliceQuery()
   const data = useMemo(() => {
@@ -242,6 +248,7 @@ export function useMergedGlassQuery(): MergedResult<MergedGlassSummary> {
 }
 
 export function useMergedGlassCombinationsQuery(): MergedResult<MergedGlassCombinationSummary> {
+  useLookupFreshness()
   const platform = useGlassSliceQuery()
   const company = useCompanyGlassSliceQuery()
   const data = useMemo(() => {
@@ -255,6 +262,7 @@ export function useMergedGlassCombinationsQuery(): MergedResult<MergedGlassCombi
 }
 
 export function useMergedSystemBrandsQuery(): MergedResult<MergedSystemBrandSummary> {
+  useLookupFreshness()
   const platform = useSystemsSliceQuery()
   const company = useCompanySystemsSliceQuery()
   const data = useMemo(() => {
@@ -268,6 +276,7 @@ export function useMergedSystemBrandsQuery(): MergedResult<MergedSystemBrandSumm
 }
 
 export function useMergedSystemCatalogsQuery(): MergedResult<MergedSystemCatalogSummary> {
+  useLookupFreshness()
   const platform = useSystemsSliceQuery()
   const company = useCompanySystemsSliceQuery()
   const data = useMemo(() => {
@@ -281,6 +290,7 @@ export function useMergedSystemCatalogsQuery(): MergedResult<MergedSystemCatalog
 }
 
 export function useMergedSystemProfilesQuery(): MergedResult<MergedSystemProfileSummary> {
+  useLookupFreshness()
   const platform = useSystemsSliceQuery()
   const company = useCompanySystemsSliceQuery()
   const data = useMemo(() => {

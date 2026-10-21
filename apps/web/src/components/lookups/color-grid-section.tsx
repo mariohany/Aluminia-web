@@ -103,6 +103,9 @@ export function ColorGridSection({
   const { t } = useTranslation('lookups')
   const { t: tCommon } = useTranslation('common')
   const queryClient = useQueryClient()
+  // A bulk action only touches its own side: the company's rows on the
+  // workspace Data page (`rowScope`), the platform's in the admin console.
+  const lookupCacheScope = rowScope ? ['company-lookups'] : ['lookups']
   const { data, isLoading, isError } = useList()
   const rows = data ?? []
   const rowIsEditable = (row: ColorRow) => (canEdit ? canEdit(row) : true)
@@ -176,8 +179,7 @@ export function ColorGridSection({
     setBulkBusy(true)
     try {
       const { deletedIds, blockedIds } = await bulkDelete(ids)
-      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      await queryClient.invalidateQueries({ queryKey: lookupCacheScope })
       if (blockedIds.length > 0) {
         toast.error(
           t('messages.bulkDeletePartial', {
@@ -203,8 +205,7 @@ export function ColorGridSection({
       const created = await bulkDuplicate(
         targets.map((row) => ({ code: `${row.code} ${t('bulk.copySuffix')}`, hex: row.hex })),
       )
-      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      await queryClient.invalidateQueries({ queryKey: lookupCacheScope })
       toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
     } catch (err) {
       toast.error(apiErrorMessage(err, t('messages.error')))
@@ -236,8 +237,7 @@ export function ColorGridSection({
   const onDuplicateRow = async (row: ColorRow) => {
     try {
       const created = await bulkDuplicate([{ code: `${row.code} ${t('bulk.copySuffix')}`, hex: row.hex }])
-      await queryClient.invalidateQueries({ queryKey: ['lookups'] })
-      await queryClient.invalidateQueries({ queryKey: ['company-lookups'] })
+      await queryClient.invalidateQueries({ queryKey: lookupCacheScope })
       toast.success(t('messages.bulkDuplicateSuccess', { count: created.length }))
     } catch (err) {
       toast.error(apiErrorMessage(err, t('messages.error')))

@@ -5,16 +5,22 @@ import * as api from '@/lib/lookup-slices-api'
 // lookups-queries.ts already own `['lookups', 'colors']` etc. for their
 // own differently-shaped per-entity fetches (a flat ColorSummary[] vs.
 // this slice's { versions, data: { colors, brands, prices } }); reusing
-// that key here would silently collide the two caches. Both still fall
-// under the same `['lookups']` prefix, so the bulk-action invalidation
-// in LookupTableSection (`invalidateQueries({ queryKey: ['lookups'] })`)
-// still retires this cache too when an admin edits the platform catalogue.
+// that key here would silently collide the two caches.
+export const glassSliceKey = ['lookups', 'slice', 'glass'] as const
+export const colorsSliceKey = ['lookups', 'slice', 'colors'] as const
+export const systemsSliceKey = ['lookups', 'slice', 'systems'] as const
+
+// Kept in memory for the whole session and only fetched again when a
+// version check says the slice changed (useLookupFreshness,
+// docs/lookup_caching_planing.md §6). Logout clears it (auth-context.tsx).
+export const lookupSliceCache = { staleTime: Infinity, gcTime: Infinity } as const
+
 export function useGlassSliceQuery() {
-  return useQuery({ queryKey: ['lookups', 'slice', 'glass'], queryFn: api.getGlassSlice })
+  return useQuery({ queryKey: glassSliceKey, queryFn: api.getGlassSlice, ...lookupSliceCache })
 }
 export function useColorsSliceQuery() {
-  return useQuery({ queryKey: ['lookups', 'slice', 'colors'], queryFn: api.getColorsSlice })
+  return useQuery({ queryKey: colorsSliceKey, queryFn: api.getColorsSlice, ...lookupSliceCache })
 }
 export function useSystemsSliceQuery() {
-  return useQuery({ queryKey: ['lookups', 'slice', 'systems'], queryFn: api.getSystemsSlice })
+  return useQuery({ queryKey: systemsSliceKey, queryFn: api.getSystemsSlice, ...lookupSliceCache })
 }

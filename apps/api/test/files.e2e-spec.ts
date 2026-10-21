@@ -202,7 +202,7 @@ describe('Files (e2e)', () => {
       })
       .expect(200);
     expect(res.headers['content-type']).toBe('image/png');
-    expect(res.headers['cache-control']).toBe('private, max-age=300');
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(Buffer.compare(res.body as Buffer, body)).toBe(0);
   });

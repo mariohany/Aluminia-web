@@ -63,10 +63,9 @@ export class FilesController {
     );
   }
 
-  // `private`: only this company's users may see it, so no shared cache
-  // keeps a copy. `nosniff`: the browser trusts the checked type.
+  // `no-store` like every response (NoStoreMiddleware): the web keeps the
+  // logo in memory for the tab. `nosniff`: the browser trusts the checked type.
   @Get(':id')
-  @Header('Cache-Control', 'private, max-age=300')
   @Header('X-Content-Type-Options', 'nosniff')
   async read(
     @Param('id', ParseUUIDPipe) id: string,

@@ -6,6 +6,12 @@
     "delete": "Delete",
     "clearSearch": "Clear search"
   },
+  "crash": {
+    "title": "Something went wrong",
+    "body": "This screen couldn't be shown. Reload the page; if it happens again, send us the details below.",
+    "details": "Details",
+    "reload": "Reload"
+  },
   "nav": {
     "howItWorks": "How it works",
     "features": "What you get",

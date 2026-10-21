@@ -1,3 +1,5 @@
+// First: Sentry must load before Nest and Express to hook them.
+import './instrument';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { getDataSourceToken } from '@nestjs/typeorm';
@@ -13,6 +15,7 @@ import {
   findPendingMigrations,
   hasPending,
 } from './database/migration-check';
+import { reportFatal } from './common/monitoring';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -32,12 +35,11 @@ async function bootstrap() {
     app.get<DataSource>(getDataSourceToken()),
   );
   if (hasPending(pending)) {
-    app
-      .get(Logger)
-      .fatal(
-        `Database is behind this build — refusing to start. Pending migrations:\n  ${describePending(pending)}\n` +
-          `Apply them with: npm run migrate:deploy --workspace=apps/api`,
-      );
+    const message =
+      `Database is behind this build — refusing to start. Pending migrations:\n  ${describePending(pending)}\n` +
+      `Apply them with: npm run migrate:deploy --workspace=apps/api`;
+    app.get(Logger).fatal(message);
+    await reportFatal(message);
     await app.close();
     process.exit(1);
   }

@@ -1,12 +1,24 @@
+import '@/lib/promise-with-resolvers'
 import { useEffect, useRef, useState } from 'react'
-import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs'
 
 // The live preview of a report PDF (docs/reports_planing.md §9, D18):
 // pdf.js draws each page into a canvas, so the toolbar around it is the
 // app's own and looks the same in every browser. Loaded lazily — only a
-// shown report pays for pdf.js.
-GlobalWorkerOptions.workerSrc = workerUrl
+// shown report pays for pdf.js. The legacy build, for every browser: the
+// standard one fails on browsers without the newest features
+// (Map.getOrInsertComputed, Math.sumPrecise, URL.parse …) — a white screen
+// before the error boundary — and the legacy one fills those in, only
+// 15 ms (computer) to 0.15 s (phone on 4G) slower to first open. It still
+// needs Promise.withResolvers (Safari 17.4, Chrome 119), so we fill that
+// in here and in the worker, which starts from our own file for it. One
+// worker for the tab: pdf.js reuses a given port and never ends it.
+GlobalWorkerOptions.workerPort = new Worker(new URL('../../../lib/report-pdf/pdf-preview.worker.ts', import.meta.url), {
+  type: 'module',
+})
+// pdf.js refuses a new document on that worker while the last one is
+// still being destroyed (EN → عربي in a hurry), so the next waits for it.
+let destroying: Promise<void> = Promise.resolve()
 
 export interface PdfViewerProps {
   blob: Blob
@@ -21,7 +33,7 @@ export default function PdfViewer({ blob, zoom, onPageCount, onVisiblePage }: Pd
   useEffect(() => {
     let cancelled = false
     let task: ReturnType<typeof getDocument> | null = null
-    void blob.arrayBuffer().then((data) => {
+    void Promise.all([blob.arrayBuffer(), destroying]).then(([data]) => {
       if (cancelled) return
       task = getDocument({ data })
       return task.promise.then((pdf) => {
@@ -32,8 +44,8 @@ export default function PdfViewer({ blob, zoom, onPageCount, onVisiblePage }: Pd
     })
     return () => {
       cancelled = true
-      // Destroying the loading task frees the document and its worker.
-      void task?.destroy()
+      // Destroying the loading task frees the document; the worker stays.
+      if (task) destroying = task.destroy().catch(() => undefined)
     }
     // onPageCount is a setter from the parent; only a new file reloads.
     // eslint-disable-next-line react-hooks/exhaustive-deps

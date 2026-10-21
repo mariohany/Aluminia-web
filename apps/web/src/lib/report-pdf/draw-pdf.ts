@@ -1,4 +1,5 @@
 import type { BarOptimiserPdfInput } from '@repo/report-pdf/bar-optimiser-document'
+import { reportError } from '@/lib/monitoring'
 import type { DrawReply, DrawRequest } from './draw-messages'
 
 // The page's side of the PDF-drawing worker (docs/browser_pdf_planing.md
@@ -18,13 +19,19 @@ function getWorker(): Worker {
     if (!pending) return
     waiting.delete(reply.id)
     if (reply.ok) pending.resolve(new Blob([reply.bytes], { type: 'application/pdf' }))
-    else pending.reject(new Error(reply.message))
+    else {
+      const error = new Error(reply.message)
+      reportError(error, { area: 'pdf-draw' })
+      pending.reject(error)
+    }
   }
   // The worker itself failed (didn't load, ran out of memory): fail every
   // waiting drawing and start a fresh worker next time.
   worker.onerror = (event) => {
     event.preventDefault()
-    for (const pending of waiting.values()) pending.reject(new Error(event.message || 'The PDF worker stopped.'))
+    const error = new Error(event.message || 'The PDF worker stopped.')
+    reportError(error, { area: 'pdf-draw', tags: { worker: 'crashed' } })
+    for (const pending of waiting.values()) pending.reject(error)
     waiting.clear()
     worker?.terminate()
     worker = null

@@ -21,6 +21,7 @@
     "@repo/geometry": "*",
     "@repo/report-pdf": "*",
     "@repo/types": "*",
+    "@sentry/react": "11.4.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-table": "^9.0.0",
@@ -48,6 +49,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@sentry/vite-plugin": "5.4.1",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

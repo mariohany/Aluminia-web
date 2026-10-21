@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
+import { ErrorBoundary } from '@/components/error-boundary'
 import { ProjectTree } from '@/components/workspace/project-tree'
 import { BarOptimiserView } from '@/components/workspace/reports/bar-optimiser-view'
 import { ReportList } from '@/components/workspace/reports/report-list'
@@ -106,12 +107,15 @@ export function ReportsPage() {
           {!projectId ? (
             <Empty text={t('empty.noProject')} />
           ) : report === 'bar-optimiser' ? (
-            <BarOptimiserView
-              key={projectId}
-              projectId={projectId}
-              projectName={selected ? displayName(selected.project, language) : ''}
-              clientName={selected ? displayName(selected.client, language) : ''}
-            />
+            // A failing report keeps the tree and list usable; picking
+            // another project clears it (the key remounts the boundary).
+            <ErrorBoundary key={projectId} variant="section">
+              <BarOptimiserView
+                projectId={projectId}
+                projectName={selected ? displayName(selected.project, language) : ''}
+                clientName={selected ? displayName(selected.client, language) : ''}
+              />
+            </ErrorBoundary>
           ) : (
             <Empty text={t('empty.noReport')} />
           )}

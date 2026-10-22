@@ -9,7 +9,7 @@ import highsLoader, { type Highs } from 'highs';
 // kerf, trim and every offcut. Minimising waste is minimising metal
 // bought (the pieces are fixed). Lengths may be mixed within a profile
 // (D2). The answer is the least waste the steps below can prove; every
-// solver step has a time limit, and a profile none of them can prove
+// solver step has a work limit, and a profile none of them can prove
 // gets the best plan found, unmarked (D21 amended 2026-10-22: Mario
 // checks those plans himself).
 //
@@ -132,10 +132,17 @@ export async function optimiseProfile<T>(
   for (const length of lengths) {
     single[length] = solve(highs, types, [length], settings);
   }
+  // A plan in one length is a mixed plan too: the best of them is where
+  // the mixed solve starts, so it never ends up worse.
+  const start = Object.values(single).reduce<CutPlan<T> | null>(
+    (cheapest, plan) =>
+      plan && (!cheapest || plan.boughtMm < cheapest.boughtMm)
+        ? plan
+        : cheapest,
+    null,
+  );
   const best =
-    lengths.length > 1
-      ? solve(highs, types, lengths, settings)
-      : (single[lengths[0]] ?? null);
+    lengths.length > 1 ? solve(highs, types, lengths, settings, start) : start;
   return { best, single, tooLong };
 }
 
@@ -161,6 +168,8 @@ function solve<T>(
   types: PieceType<T>[],
   lengths: number[],
   settings: OptimiserSettings,
+  /** A plan to beat, if one is known. */
+  start: CutPlan<T> | null = null,
 ): CutPlan<T> | null {
   if (!types.length) return null;
   const caps = lengths.map((l) => l - 2 * settings.endTrimMm);
@@ -170,10 +179,37 @@ function solve<T>(
   const quick = packCheapestMix(types, lengths, caps);
   if (quick && quick !== 'none') return toPlan(quick, settings);
 
-  // 2. Column generation: the floor, and a plan over its patterns.
-  const { patterns, floor } = generatePatterns(highs, types, lengths, caps);
-  const plan = solvePatterns(highs, patterns, types, lengths, caps);
-  const metal = plan.reduce((sum, bar) => sum + bar.stockMm, 0);
+  // 2. Column generation: the floor, and the best of three plans: the
+  // linear solution rounded down (the rest generated and rounded again,
+  // the last pieces packed by the search), the plan to beat, and the
+  // integer program over the patterns plus those two plans' bars, held
+  // to plans cheaper than both.
+  const { patterns, floor, linear } = generatePatterns(
+    highs,
+    types,
+    lengths,
+    caps,
+  );
+  const rounded = roundDown(highs, patterns, linear, types, lengths, caps);
+  const known = [rounded, start?.bars ?? null].filter(
+    (bars): bars is RawBar<T>[] => bars !== null,
+  );
+  for (const bars of known) {
+    for (const bar of bars)
+      addPattern(patterns, barPattern(bar, types, lengths));
+  }
+  const integer = solvePatterns(
+    highs,
+    patterns,
+    types,
+    lengths,
+    caps,
+    known.length ? Math.min(...known.map(metalOf)) : Infinity,
+  );
+  const plan = [...known, integer].reduce((cheapest, bars) =>
+    metalOf(bars) < metalOf(cheapest) ? bars : cheapest,
+  );
+  const metal = metalOf(plan);
   if (metal <= floor) return toPlan(plan, settings);
 
   // 3. Is there a cheaper plan between the floor and this one?
@@ -187,19 +223,33 @@ function solve<T>(
   if (cheaper === 'none') return toPlan(plan, settings); // proven
   if (cheaper) return toPlan(cheaper, settings);
   const flow = solveArcFlow(highs, types, lengths, caps);
-  if (flow && flow.reduce((sum, bar) => sum + bar.stockMm, 0) < metal) {
-    return toPlan(flow, settings);
-  }
+  if (flow && metalOf(flow) < metal) return toPlan(flow, settings);
   return toPlan(plan, settings); // best found, not proven
 }
 
-/** Time limit of each HiGHS integer program, s. No measured profile
- * got a better plan from a longer one (bug-126). */
-const SOLVER_SECONDS = 2;
+function metalOf(bars: { stockMm: number }[]): number {
+  return bars.reduce((sum, bar) => sum + bar.stockMm, 0);
+}
+
+/** Search nodes each HiGHS integer program may use. A count, not a
+ * clock, so a slow computer gets the same plan as a fast one: a 2 s
+ * limit gave CI a worse plan than a laptop (bug-126). No measured
+ * profile improved past 1000 (≤ 1 s on a laptop). */
+const SOLVER_NODES = 1000;
+
+/** Times the leftover of a rounded-down linear solution is generated
+ * and rounded again before the search packs the rest. */
+const ROUNDING_PASSES = 4;
+
+/** Last resort against a node that never ends: plans don't depend on
+ * it, it only stops a runaway solve. */
+const SOLVER_SAFETY_SECONDS = 60;
 
 /** The arc-flow model is built only up to this many arcs: the sample
- * frame has 2 k, the bead profile that crashed the browser far more. */
-const MAX_ARCS = 60_000;
+ * frame (2 k) and sash (13 k) solve in about a second; at 20–50 k it
+ * ran 37 s without a plan, and the bead profile that crashed the
+ * browser has 244 k. */
+const MAX_ARCS = 15_000;
 
 /** The search between the floor and the plan gets more steps (~150 ms):
  * the floor leaves it only a few mixes. */
@@ -222,7 +272,7 @@ function generatePatterns<T>(
   types: PieceType<T>[],
   lengths: number[],
   caps: number[],
-): { patterns: Pattern[]; floor: number } {
+): { patterns: Pattern[]; floor: number; linear: number[] } {
   const demand = types.map((type) => type.refs.length);
   const unit = lengths.reduce(gcd);
   const patterns: Pattern[] = [];
@@ -269,6 +319,11 @@ function generatePatterns<T>(
       return {
         patterns,
         floor: floorMetal(result.ObjectiveValue * unit, lengths),
+        linear: patterns.map(
+          (_, j) =>
+            (result.Columns as Record<string, { Primal?: number }>)[`p${j}`]
+              ?.Primal ?? 0,
+        ),
       };
     }
   }
@@ -384,20 +439,90 @@ function floorMetal(bound: number, lengths: number[]): number {
   return t * unit;
 }
 
-/** The integer program over the patterns (time-limited), as bars; best-
- * fit's bars when it found no plan in time. Pieces a pattern holds more
- * of than needed are left out. */
+/** The linear solution's bars rounded down; the pieces that leaves get
+ * their own column generation and rounding, up to `ROUNDING_PASSES`,
+ * and the last are packed into their own cheapest mix. `null` when the
+ * search can't. */
+function roundDown<T>(
+  highs: Highs,
+  patterns: Pattern[],
+  linear: number[],
+  types: PieceType<T>[],
+  lengths: number[],
+  caps: number[],
+  pass = 1,
+): RawBar<T>[] | null {
+  const refs = types.map((type) => [...type.refs]);
+  const bars = patterns.flatMap((p, j) =>
+    Array.from({ length: Math.floor(linear[j] + 1e-9) }, () => {
+      const pieces = types.flatMap((type, t) =>
+        refs[t]
+          .splice(0, p.counts[t])
+          .map((ref) => ({ lengthMm: type.lengthMm, ref })),
+      );
+      return { stockMm: lengths[p.stock], pieces };
+    }).filter((bar) => bar.pieces.length),
+  );
+  const rest = types
+    .map((type, t) => ({ ...type, refs: refs[t] }))
+    .filter((type) => type.refs.length);
+  if (!rest.length) return bars;
+  if (pass < ROUNDING_PASSES && bars.length) {
+    const again = generatePatterns(highs, rest, lengths, caps);
+    const more = roundDown(
+      highs,
+      again.patterns,
+      again.linear,
+      rest,
+      lengths,
+      caps,
+      pass + 1,
+    );
+    if (more) return [...bars, ...more];
+  }
+  const packed = packCheapestMix(rest, lengths, caps);
+  return packed && packed !== 'none' ? [...bars, ...packed] : null;
+}
+
+/** A bar as a pattern: its stock length and pieces per type. */
+function barPattern<T>(
+  bar: RawBar<T>,
+  types: PieceType<T>[],
+  lengths: number[],
+): Pattern {
+  const counts = types.map(
+    (type) => bar.pieces.filter((p) => p.lengthMm === type.lengthMm).length,
+  );
+  return { stock: lengths.indexOf(bar.stockMm), counts };
+}
+
+/** Adds a pattern unless the list already has it; whether it did. */
+function addPattern(patterns: Pattern[], pattern: Pattern): boolean {
+  const key = (p: Pattern) => `${p.stock}:${p.counts.join(',')}`;
+  if (patterns.some((p) => key(p) === key(pattern))) return false;
+  patterns.push(pattern);
+  return true;
+}
+
+/** The integer program over the patterns (node-limited), as bars; best-
+ * fit's bars when it found none cheaper than `beat` mm. Pieces a pattern
+ * holds more of than needed are left out. */
 function solvePatterns<T>(
   highs: Highs,
   patterns: Pattern[],
   types: PieceType<T>[],
   lengths: number[],
   caps: number[],
+  beat: number,
 ): RawBar<T>[] {
   const demand = types.map((type) => type.refs.length);
+  const unit = lengths.reduce(gcd);
   const result = highs.solve(patternLp(patterns, demand, lengths, true), {
     mip_abs_gap: 0.999,
-    time_limit: SOLVER_SECONDS,
+    mip_max_nodes: SOLVER_NODES,
+    // only plans cheaper than the best known: worse branches are cut
+    ...(Number.isFinite(beat) ? { objective_bound: beat / unit - 0.5 } : {}),
+    time_limit: SOLVER_SAFETY_SECONDS,
     output_flag: false,
   });
   const chosen = patterns.map((_, j) =>
@@ -428,7 +553,7 @@ function solvePatterns<T>(
   );
 }
 
-/** The arc-flow integer program (time-limited), or `null` when its graph
+/** The arc-flow integer program (node-limited), or `null` when its graph
  * is too big to build safely or it found no plan in time. */
 function solveArcFlow<T>(
   highs: Highs,
@@ -440,12 +565,11 @@ function solveArcFlow<T>(
   if (!arcs) return null;
   const result = highs.solve(toLpFormat(arcs, types, lengths), {
     mip_abs_gap: 0.999,
-    time_limit: SOLVER_SECONDS,
+    mip_max_nodes: SOLVER_NODES,
+    time_limit: SOLVER_SAFETY_SECONDS,
     output_flag: false,
   });
-  if (result.Status !== 'Optimal' && result.Status !== 'Time limit reached') {
-    return null;
-  }
+  // A stopped solve may still hold a plan: decode checks it covers all.
   const flows = arcs.map((_, i) =>
     Math.round(
       (result.Columns as Record<string, { Primal?: number }>)[`x${i}`]

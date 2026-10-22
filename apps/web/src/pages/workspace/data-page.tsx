@@ -4,6 +4,7 @@ import {
   ProfileType,
   SystemType,
   DEFAULT_SLIDING_RAILS,
+  FACE_WIDTH_MAX_MM,
   isSlidingFrameProfile,
   createGlassSchema,
   createSystemBrandSchema,
@@ -387,6 +388,7 @@ function SystemProfilesTab() {
           image: null,
           acceptsFlyScreen: false,
           slidingRails: 2,
+          faceWidthMm: null,
         } as CreateCompanySystemProfileInput
       }
       fields={[
@@ -415,6 +417,18 @@ function SystemProfilesTab() {
           shownDefault: DEFAULT_SLIDING_RAILS,
           visibleWhen: (v) => isSlidingFrameProfile(v.profileType ?? ProfileType.FRAME, catalogByRef.get(v.catalog ?? '')?.systemType),
         },
+        // docs/mitre_cuts_planing.md §4: any profile type; empty = the
+        // drawing's placeholder width.
+        {
+          name: 'faceWidthMm',
+          label: t('fields.faceWidth'),
+          type: 'number',
+          step: 0.1,
+          min: 0.1,
+          max: FACE_WIDTH_MAX_MM,
+          optional: true,
+          placeholder: t('fields.faceWidthPlaceholder'),
+        },
       ]}
       columns={[
         {
@@ -437,6 +451,7 @@ function SystemProfilesTab() {
           cell: (row) => (row.acceptsFlyScreen ? t('common.yes') : t('common.no')),
         },
         { header: t('fields.slidingRails'), cell: (row) => row.slidingRails ?? '—' },
+        { header: t('fields.faceWidth'), cell: (row) => row.faceWidthMm ?? '—' },
       ]}
       search={{
         placeholder: t('search.systemProfiles'),
@@ -475,6 +490,7 @@ function SystemProfilesTab() {
           image: row.image,
           acceptsFlyScreen: row.acceptsFlyScreen,
           slidingRails: row.slidingRails,
+          faceWidthMm: row.faceWidthMm,
         }),
       }}
       useList={useMergedSystemProfilesQuery}
@@ -495,6 +511,7 @@ function SystemProfilesTab() {
         image: row.image,
         acceptsFlyScreen: row.acceptsFlyScreen,
         slidingRails: row.slidingRails,
+        faceWidthMm: row.faceWidthMm,
       })}
       toEditDefaults={(row) => ({
         catalog: row.catalog,
@@ -508,6 +525,7 @@ function SystemProfilesTab() {
         image: row.image,
         acceptsFlyScreen: row.acceptsFlyScreen,
         slidingRails: row.slidingRails,
+        faceWidthMm: row.faceWidthMm,
       })}
       rowLabel={(row) => row.profileNo}
     />

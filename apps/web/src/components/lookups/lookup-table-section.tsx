@@ -74,6 +74,10 @@ export interface LookupFieldSpec<TInput extends FieldValues> {
    * view holding nothing (null/undefined/NaN) — so a row saved without
    * it doesn't reappear as an empty required input. */
   shownDefault?: TInput[Path<TInput>]
+  /** A `number` that may be left empty: empty saves null (a profile's
+   * face width). */
+  optional?: boolean
+  placeholder?: string
 }
 
 export interface LookupColumnSpec<TSummary> {
@@ -778,9 +782,17 @@ function LookupFormFields<TInput extends FieldValues>({
                     step={field.step}
                     min={field.min}
                     max={field.max}
+                    placeholder={field.placeholder}
                     className="mt-1.5"
                     aria-invalid={!!error}
-                    {...register(field.name, field.type === 'number' ? { valueAsNumber: true } : undefined)}
+                    {...register(
+                      field.name,
+                      field.type !== 'number'
+                        ? undefined
+                        : field.optional
+                          ? { setValueAs: (v: unknown) => (v === '' || v === null || v === undefined ? null : Number(v)) }
+                          : { valueAsNumber: true },
+                    )}
                   />
                 )}
               </>

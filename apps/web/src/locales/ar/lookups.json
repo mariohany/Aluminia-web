@@ -65,7 +65,9 @@
     "inertiaIx": "عزم القصور Ix (سم⁴)",
     "inertiaIy": "عزم القصور Iy (سم⁴)",
     "acceptsFlyScreen": "سلك ناموس",
-    "slidingRails": "عدد السكك (منزلق)"
+    "slidingRails": "عدد السكك (منزلق)",
+    "faceWidth": "عرض الواجهة (مم)",
+    "faceWidthPlaceholder": "فارغ = العرض الافتراضي"
   },
   "common": {
     "yes": "أيوه",

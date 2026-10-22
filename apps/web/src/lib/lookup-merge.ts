@@ -176,6 +176,7 @@ const platformProfileToMerged = (row: SystemProfileSummary): MergedSystemProfile
   image: row.image,
   acceptsFlyScreen: row.acceptsFlyScreen,
   slidingRails: row.slidingRails,
+  faceWidthMm: row.faceWidthMm,
   scope: LookupScope.PLATFORM,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,

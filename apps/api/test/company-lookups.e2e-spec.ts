@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import ExcelJS from 'exceljs';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { UserRole } from '@repo/types/auth';
@@ -570,6 +571,187 @@ describe('Company lookups (e2e)', () => {
             ...copies.map((p) => p.id),
           ],
         })
+        .expect(201);
+    });
+  });
+
+  // docs/mitre_cuts_planing.md §4: an optional face width on every
+  // profile type, platform and company; null = the placeholder width.
+  describe('face width on a profile', () => {
+    const base = {
+      maxGlassThickness: 24,
+      weight: 1,
+      perimeter: 100,
+      inertiaIx: 1,
+      inertiaIy: 1,
+      acceptsFlyScreen: false,
+    };
+
+    it('platform: optional, kept on unrelated edits, cleared with null, validated', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/admin/lookups/system-profiles')
+        .set('Authorization', `Bearer ${tokenSuper}`)
+        .send({
+          ...base,
+          catalogId: catalogue.hingedCatalogId,
+          profileNo: 'E2E-FACE-P1',
+          profileType: 'glass_beading',
+        })
+        .expect(201);
+      const profile = created.body as SystemProfileSummary;
+      expect(profile.faceWidthMm).toBeNull();
+
+      const set = await request(app.getHttpServer())
+        .patch(`/admin/lookups/system-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${tokenSuper}`)
+        .send({ faceWidthMm: 12.5 })
+        .expect(200);
+      expect((set.body as SystemProfileSummary).faceWidthMm).toBe(12.5);
+
+      const other = await request(app.getHttpServer())
+        .patch(`/admin/lookups/system-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${tokenSuper}`)
+        .send({ weight: 2 })
+        .expect(200);
+      expect((other.body as SystemProfileSummary).faceWidthMm).toBe(12.5);
+
+      for (const bad of [0, -3, 501, 12.25]) {
+        await request(app.getHttpServer())
+          .patch(`/admin/lookups/system-profiles/${profile.id}`)
+          .set('Authorization', `Bearer ${tokenSuper}`)
+          .send({ faceWidthMm: bad })
+          .expect(400);
+      }
+
+      const cleared = await request(app.getHttpServer())
+        .patch(`/admin/lookups/system-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${tokenSuper}`)
+        .send({ faceWidthMm: null })
+        .expect(200);
+      expect((cleared.body as SystemProfileSummary).faceWidthMm).toBeNull();
+
+      await request(app.getHttpServer())
+        .delete(`/admin/lookups/system-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${tokenSuper}`)
+        .expect(204);
+    });
+
+    it('platform import: the column sets it, a sheet without the column keeps it, a blank cell clears it', async () => {
+      const sheet = async (column: boolean, value: number | null) => {
+        const workbook = new ExcelJS.Workbook();
+        const ws = workbook.addWorksheet('Profile');
+        const header = [
+          'Catalogue',
+          'Profile no.',
+          'Profile type',
+          'Max glass thickness',
+          'Weight',
+          'Perimeter',
+          'Inertia Ix',
+          'Inertia Iy',
+        ];
+        ws.addRow(column ? [...header, 'Face width'] : header);
+        const row = [
+          `${CATALOGUE_PREFIX} Hinged`,
+          'E2E-FACE-IMP',
+          'Frame',
+          24,
+          1,
+          100,
+          1,
+          1,
+        ];
+        ws.addRow(column ? [...row, value] : row);
+        return Buffer.from(await workbook.xlsx.writeBuffer());
+      };
+      const upload = async (file: Buffer) =>
+        request(app.getHttpServer())
+          .post('/admin/lookups/systems/import')
+          .set('Authorization', `Bearer ${tokenSuper}`)
+          .attach('file', file, 'systems.xlsx')
+          .expect(201);
+      const read = async () => {
+        const rows: { face_width_mm: number | null }[] =
+          await controlPlane.query(
+            `SELECT face_width_mm FROM system_profile WHERE profile_no = 'E2E-FACE-IMP'`,
+          );
+        return rows[0]?.face_width_mm;
+      };
+
+      await upload(await sheet(true, 52.5));
+      expect(await read()).toBe(52.5);
+      await upload(await sheet(false, null));
+      expect(await read()).toBe(52.5);
+      await upload(await sheet(true, null));
+      expect(await read()).toBeNull();
+
+      await controlPlane.query(
+        `DELETE FROM system_profile WHERE profile_no = 'E2E-FACE-IMP'`,
+      );
+    });
+
+    it('company: create, read slice, bulk duplicate and update carry it', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/company/lookups/system-profiles')
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({
+          ...base,
+          catalog: `platform:${catalogue.hingedCatalogId}`,
+          profileNo: 'E2E-FACE-C1',
+          profileType: 'frame',
+          faceWidthMm: 48,
+        })
+        .expect(201);
+      const profile = created.body as CompanySystemProfileSummary;
+      expect(profile.faceWidthMm).toBe(48);
+
+      const slice = await request(app.getHttpServer())
+        .get('/company/lookups/systems')
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .expect(200);
+      expect(
+        (
+          slice.body as { data: { profiles: CompanySystemProfileSummary[] } }
+        ).data.profiles.find((p) => p.id === profile.id)?.faceWidthMm,
+      ).toBe(48);
+
+      const dup = await request(app.getHttpServer())
+        .post('/company/lookups/system-profiles/bulk-duplicate')
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({
+          items: [
+            {
+              ...base,
+              catalog: `platform:${catalogue.hingedCatalogId}`,
+              profileNo: 'E2E-FACE-C1-copy',
+              profileType: 'frame',
+              faceWidthMm: 48,
+            },
+          ],
+        })
+        .expect(201);
+      const copies = dup.body as CompanySystemProfileSummary[];
+      expect(copies[0].faceWidthMm).toBe(48);
+
+      const kept = await request(app.getHttpServer())
+        .patch(`/company/lookups/system-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({ weight: 3 })
+        .expect(200);
+      expect((kept.body as CompanySystemProfileSummary).faceWidthMm).toBe(48);
+      const cleared = await request(app.getHttpServer())
+        .patch(`/company/lookups/system-profiles/${profile.id}`)
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({ faceWidthMm: null })
+        .expect(200);
+      expect(
+        (cleared.body as CompanySystemProfileSummary).faceWidthMm,
+      ).toBeNull();
+
+      await request(app.getHttpServer())
+        .post('/company/lookups/system-profiles/bulk-delete')
+        .set('Authorization', `Bearer ${tokenAdmin}`)
+        .send({ ids: [profile.id, ...copies.map((p) => p.id)] })
         .expect(201);
     });
   });

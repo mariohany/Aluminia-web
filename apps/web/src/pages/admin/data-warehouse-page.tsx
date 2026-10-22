@@ -5,6 +5,7 @@ import {
   ProfileType,
   SystemType,
   DEFAULT_SLIDING_RAILS,
+  FACE_WIDTH_MAX_MM,
   isSlidingFrameProfile,
   type CreateGlassInput,
   type CreateSystemBrandInput,
@@ -394,6 +395,7 @@ function SystemProfilesTab() {
           image: null,
           acceptsFlyScreen: false,
           slidingRails: 2,
+          faceWidthMm: null,
         } as CreateSystemProfileInput
       }
       fields={[
@@ -422,6 +424,18 @@ function SystemProfilesTab() {
           shownDefault: DEFAULT_SLIDING_RAILS,
           visibleWhen: (v) => isSlidingFrameProfile(v.profileType ?? ProfileType.FRAME, catalogById.get(v.catalogId ?? '')?.systemType),
         },
+        // docs/mitre_cuts_planing.md §4: any profile type; empty = the
+        // drawing's placeholder width.
+        {
+          name: 'faceWidthMm',
+          label: t('fields.faceWidth'),
+          type: 'number',
+          step: 0.1,
+          min: 0.1,
+          max: FACE_WIDTH_MAX_MM,
+          optional: true,
+          placeholder: t('fields.faceWidthPlaceholder'),
+        },
       ]}
       columns={[
         { header: t('fields.catalog'), cell: (row) => row.catalogName },
@@ -440,6 +454,7 @@ function SystemProfilesTab() {
           cell: (row) => (row.acceptsFlyScreen ? t('common.yes') : t('common.no')),
         },
         { header: t('fields.slidingRails'), cell: (row) => row.slidingRails ?? '—' },
+        { header: t('fields.faceWidth'), cell: (row) => row.faceWidthMm ?? '—' },
       ]}
       search={{
         placeholder: t('search.systemProfiles'),
@@ -485,6 +500,7 @@ function SystemProfilesTab() {
         image: row.image,
         acceptsFlyScreen: row.acceptsFlyScreen,
         slidingRails: row.slidingRails,
+        faceWidthMm: row.faceWidthMm,
       })}
       toEditDefaults={(row) => ({
         catalogId: row.catalogId,
@@ -498,6 +514,7 @@ function SystemProfilesTab() {
         image: row.image,
         acceptsFlyScreen: row.acceptsFlyScreen,
         slidingRails: row.slidingRails,
+        faceWidthMm: row.faceWidthMm,
       })}
       rowLabel={(row) => row.profileNo}
       headerExtra={<SystemsImportButton />}

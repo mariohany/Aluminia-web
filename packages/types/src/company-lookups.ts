@@ -10,6 +10,7 @@ import {
   gapThicknessIssue,
   gapThicknessMatchesType,
   slidingRailsSchema,
+  faceWidthSchema,
   startsAndEndsWithSheet,
   type BulkDeleteResult,
   type LookupVersion,
@@ -276,6 +277,7 @@ export const createCompanySystemProfileSchema = z.object({
   image: z.url().nullable().optional(),
   acceptsFlyScreen: z.boolean(),
   slidingRails: slidingRailsSchema,
+  faceWidthMm: faceWidthSchema,
 })
 export type CreateCompanySystemProfileInput = z.infer<typeof createCompanySystemProfileSchema>
 export const updateCompanySystemProfileSchema = createCompanySystemProfileSchema.partial()
@@ -296,6 +298,7 @@ export interface CompanySystemProfileSummary {
   image: string | null
   acceptsFlyScreen: boolean
   slidingRails: number | null
+  faceWidthMm: number | null
   scope: typeof LookupScope.COMPANY
   createdAt: string
   updatedAt: string

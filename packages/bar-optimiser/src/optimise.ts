@@ -8,18 +8,24 @@ import highsLoader, { type Highs } from 'highs';
 // plus one kerf. Waste is everything bought that isn't a piece (D3):
 // kerf, trim and every offcut. Minimising waste is minimising metal
 // bought (the pieces are fixed). Lengths may be mixed within a profile
-// (D2), and the answer is the PROVEN least waste with no time cap (D21).
+// (D2). The answer is the least waste the steps below can prove; every
+// solver step has a work limit, and a profile none of them can prove
+// gets the best plan found, unmarked (D21 amended 2026-10-22: Mario
+// checks those plans himself).
 //
-// Method: the arc-flow integer program for cutting stock (Valério de
-// Carvalho), solved by HiGHS. Each stock length gets a graph whose nodes
-// are (position along the usable bar, shortest piece type allowed next);
-// an arc adds one piece, pieces always longest first, so every cutting
-// pattern is exactly one path from the start to the end. One unit of flow
-// is one bar; the solver picks flows that cover every piece and minimise
-// metal. Its linear relaxation is famously tight, which is what lets it
-// prove the optimum quickly where a plain search can't (a hand-written
-// branch-and-bound ran out of memory on a 48-piece frame profile).
-// Sample project, largest profile (76 sash pieces, 2 lengths mixed): ~5 s.
+// Method, cheapest first (bug-126):
+// 1. The stock mixes with room for every piece, cheapest first: best-fit,
+//    then an exact bar-by-bar search. The first mix the pieces really fit
+//    is the proven optimum. Settles most profiles in milliseconds.
+// 2. Column generation (Gilmore–Gomory, from Mario's cutting_optimizer.py):
+//    HiGHS solves the linear program over cutting patterns, a knapsack
+//    finds each next pattern. Its bound is the floor no plan can beat; an
+//    integer program over the patterns gives a plan. Plan = floor: done.
+// 3. Between floor and plan: the exact search on the mixes in between,
+//    then the arc-flow integer program (Valério de Carvalho: a graph per
+//    stock length, an arc per piece, one unit of flow per bar) — only
+//    while its graph is small, since it is what ran out of WebAssembly
+//    memory on many short lengths (bug-110, bug-126).
 
 export interface OptimiserSettings {
   /** Stock lengths to try, mm. */
@@ -126,10 +132,17 @@ export async function optimiseProfile<T>(
   for (const length of lengths) {
     single[length] = solve(highs, types, [length], settings);
   }
+  // A plan in one length is a mixed plan too: the best of them is where
+  // the mixed solve starts, so it never ends up worse.
+  const start = Object.values(single).reduce<CutPlan<T> | null>(
+    (cheapest, plan) =>
+      plan && (!cheapest || plan.boughtMm < cheapest.boughtMm)
+        ? plan
+        : cheapest,
+    null,
+  );
   const best =
-    lengths.length > 1
-      ? solve(highs, types, lengths, settings)
-      : (single[lengths[0]] ?? null);
+    lengths.length > 1 ? solve(highs, types, lengths, settings, start) : start;
   return { best, single, tooLong };
 }
 
@@ -155,102 +168,625 @@ function solve<T>(
   types: PieceType<T>[],
   lengths: number[],
   settings: OptimiserSettings,
+  /** A plan to beat, if one is known. */
+  start: CutPlan<T> | null = null,
 ): CutPlan<T> | null {
   if (!types.length) return null;
   const caps = lengths.map((l) => l - 2 * settings.endTrimMm);
   if (types[0].size > Math.max(...caps)) return null;
 
-  // Proof without the solver, when the easy answer is already the best
-  // possible: no packing can use less metal than the cheapest stock mix
-  // with room for every piece (+ kerf). If best-fit fills such a mix,
-  // that is the proven optimum. Profiles of many short, different
-  // lengths make the arc-flow model explode (47 k nodes for 16 bead
-  // lengths, which HiGHS never finished — bug-110) yet are exactly the
-  // ones this settles at once.
-  const proven = packAtLowerBound(types, lengths, caps);
-  if (proven) return toPlan(proven, settings);
+  // 1. Without the solver (see the top of the file).
+  const quick = packCheapestMix(types, lengths, caps);
+  if (quick && quick !== 'none') return toPlan(quick, settings);
 
-  const arcs = buildArcs(types, caps);
-  const lp = toLpFormat(arcs, types, lengths);
-  // The objective counts metal in units of the lengths' gcd, so it is
-  // integral and an absolute gap under 1 proves the optimum.
-  const result = highs.solve(lp, { mip_abs_gap: 0.999, output_flag: false });
-  if (result.Status !== 'Optimal') {
-    throw new Error(`Bar optimiser: solver ended with "${result.Status}"`);
-  }
-  const flows = arcs.map((_, i) =>
-    Math.round(result.Columns[`x${i}`]?.Primal ?? 0),
+  // 2. Column generation: the floor, and the best of three plans: the
+  // linear solution rounded down (the rest generated and rounded again,
+  // the last pieces packed by the search), the plan to beat, and the
+  // integer program over the patterns plus those two plans' bars, held
+  // to plans cheaper than both.
+  const { patterns, floor, linear } = generatePatterns(
+    highs,
+    types,
+    lengths,
+    caps,
   );
-  const bars = decode(arcs, flows, types, lengths);
-  return toPlan(bars, settings);
+  const rounded = roundDown(highs, patterns, linear, types, lengths, caps);
+  const known = [rounded, start?.bars ?? null].filter(
+    (bars): bars is RawBar<T>[] => bars !== null,
+  );
+  for (const bars of known) {
+    for (const bar of bars)
+      addPattern(patterns, barPattern(bar, types, lengths));
+  }
+  const integer = solvePatterns(
+    highs,
+    patterns,
+    types,
+    lengths,
+    caps,
+    known.length ? Math.min(...known.map(metalOf)) : Infinity,
+  );
+  const plan = [...known, integer].reduce((cheapest, bars) =>
+    metalOf(bars) < metalOf(cheapest) ? bars : cheapest,
+  );
+  const metal = metalOf(plan);
+  if (metal <= floor) return toPlan(plan, settings);
+
+  // 3. Is there a cheaper plan between the floor and this one?
+  const cheaper = packCheapestMix(
+    types,
+    lengths,
+    caps,
+    { min: floor, below: metal },
+    SECOND_SEARCH_BUDGET,
+  );
+  if (cheaper === 'none') return toPlan(plan, settings); // proven
+  if (cheaper) return toPlan(cheaper, settings);
+  const flow = solveArcFlow(highs, types, lengths, caps);
+  if (flow && metalOf(flow) < metal) return toPlan(flow, settings);
+  return toPlan(plan, settings); // best found, not proven
 }
 
-/** Best-fit decreasing into each cheapest stock mix that could hold the
- * pieces at all; the bars if one fits, else `null` (the solver decides).
- * A mix is skipped when its total room is short, or when the pieces too
- * long for its smaller bars don't fit its longer ones alone. */
-function packAtLowerBound<T>(
+function metalOf(bars: { stockMm: number }[]): number {
+  return bars.reduce((sum, bar) => sum + bar.stockMm, 0);
+}
+
+/** Search nodes each HiGHS integer program may use. A count, not a
+ * clock, so a slow computer gets the same plan as a fast one: a 2 s
+ * limit gave CI a worse plan than a laptop (bug-126). No measured
+ * profile improved past 1000 (≤ 1 s on a laptop). */
+const SOLVER_NODES = 1000;
+
+/** Times the leftover of a rounded-down linear solution is generated
+ * and rounded again before the search packs the rest. */
+const ROUNDING_PASSES = 4;
+
+/** Last resort against a node that never ends: plans don't depend on
+ * it, it only stops a runaway solve. */
+const SOLVER_SAFETY_SECONDS = 60;
+
+/** The arc-flow model is built only up to this many arcs: the sample
+ * frame (2 k) and sash (13 k) solve in about a second; at 20–50 k it
+ * ran 37 s without a plan, and the bead profile that crashed the
+ * browser has 244 k. */
+const MAX_ARCS = 15_000;
+
+/** The search between the floor and the plan gets more steps (~150 ms):
+ * the floor leaves it only a few mixes. */
+const SECOND_SEARCH_BUDGET = 5_000_000;
+
+interface Pattern {
+  /** Index into the stock lengths. */
+  stock: number;
+  /** Pieces of each type. */
+  counts: number[];
+}
+
+/** Column generation: start from one-type patterns plus best-fit's bars,
+ * solve the linear program over them, and ask a knapsack per stock
+ * length for the pattern the duals value most; repeat until none
+ * improves it. `floor` is the least metal any mix of the lengths can
+ * reach at or above the linear bound. */
+function generatePatterns<T>(
+  highs: Highs,
   types: PieceType<T>[],
   lengths: number[],
   caps: number[],
-): { stockMm: number; pieces: { lengthMm: number; ref: T }[] }[] | null {
-  const items = types.flatMap((type) =>
+): { patterns: Pattern[]; floor: number; linear: number[] } {
+  const demand = types.map((type) => type.refs.length);
+  const unit = lengths.reduce(gcd);
+  const patterns: Pattern[] = [];
+  const seen = new Set<string>();
+  const add = (pattern: Pattern) => {
+    const key = `${pattern.stock}:${pattern.counts.join(',')}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    patterns.push(pattern);
+    return true;
+  };
+  caps.forEach((cap, stock) =>
+    types.forEach((type, t) => {
+      const n = Math.min(Math.floor(cap / type.size), demand[t]);
+      if (!n) return;
+      const counts = types.map(() => 0);
+      counts[t] = n;
+      add({ stock, counts });
+    }),
+  );
+  for (const counts of bestFitPatterns(types, caps[0]))
+    add({ stock: 0, counts });
+
+  for (;;) {
+    const result = highs.solve(patternLp(patterns, demand, lengths, false), {
+      output_flag: false,
+    });
+    if (result.Status !== 'Optimal') {
+      throw new Error(`Bar optimiser: patterns ended with "${result.Status}"`);
+    }
+    const duals = (result.Rows as { Dual: number }[]).map((row) =>
+      Math.max(0, row.Dual * unit),
+    );
+    let added = false;
+    caps.forEach((cap, stock) => {
+      const best = knapsack(cap, types, duals, demand);
+      if (
+        best.value > lengths[stock] + 1e-6 &&
+        add({ stock, counts: best.counts })
+      )
+        added = true;
+    });
+    if (!added) {
+      return {
+        patterns,
+        floor: floorMetal(result.ObjectiveValue * unit, lengths),
+        linear: patterns.map(
+          (_, j) =>
+            (result.Columns as Record<string, { Primal?: number }>)[`p${j}`]
+              ?.Primal ?? 0,
+        ),
+      };
+    }
+  }
+}
+
+/** Best-fit decreasing into bars of room `cap`, as pieces per type. */
+function bestFitPatterns<T>(types: PieceType<T>[], cap: number): number[][] {
+  const free: number[] = [];
+  const counts: number[][] = [];
+  types.forEach((type, t) => {
+    for (let r = 0; r < type.refs.length; r++) {
+      let pick = -1;
+      for (let b = 0; b < free.length; b++) {
+        if (free[b] >= type.size && (pick < 0 || free[b] < free[pick]))
+          pick = b;
+      }
+      if (pick < 0) {
+        free.push(cap);
+        counts.push(types.map(() => 0));
+        pick = free.length - 1;
+      }
+      free[pick] -= type.size;
+      counts[pick][t]++;
+    }
+  });
+  return counts;
+}
+
+/** Bounded knapsack by dynamic programming: the pattern of most dual
+ * value that fits `cap`. Counts are split into powers of two. */
+function knapsack<T>(
+  cap: number,
+  types: PieceType<T>[],
+  duals: number[],
+  limits: number[],
+): { value: number; counts: number[] } {
+  const items: { type: number; n: number; size: number; value: number }[] = [];
+  types.forEach((type, t) => {
+    if (duals[t] <= 0) return;
+    let left = Math.min(limits[t], Math.floor(cap / type.size));
+    for (let k = 1; left > 0; k *= 2) {
+      const n = Math.min(k, left);
+      items.push({ type: t, n, size: type.size * n, value: duals[t] * n });
+      left -= n;
+    }
+  });
+  const best = new Float64Array(cap + 1);
+  const keep = items.map((item) => {
+    const row = new Uint8Array(cap + 1);
+    for (let c = cap; c >= item.size; c--) {
+      const value = best[c - item.size] + item.value;
+      if (value > best[c] + 1e-9) {
+        best[c] = value;
+        row[c] = 1;
+      }
+    }
+    return row;
+  });
+  const counts = types.map(() => 0);
+  let c = cap;
+  for (let k = items.length - 1; k >= 0; k--) {
+    if (!keep[k][c]) continue;
+    counts[items[k].type] += items[k].n;
+    c -= items[k].size;
+  }
+  return { value: best[cap], counts };
+}
+
+/** The pattern model in CPLEX LP format: cover every piece type, metal
+ * minimised in units of the lengths' gcd (integral, so an absolute gap
+ * under 1 proves the optimum of the integer program). */
+function patternLp(
+  patterns: Pattern[],
+  demand: number[],
+  lengths: number[],
+  integer: boolean,
+): string {
+  const unit = lengths.reduce(gcd);
+  const rows = demand.map((d, t) => {
+    const terms = patterns.flatMap((p, j) =>
+      p.counts[t] ? [`${p.counts[t]} p${j}`] : [],
+    );
+    return ` c${t}: ${terms.join(' + ')} >= ${d}`;
+  });
+  const objective = patterns
+    .map((p, j) => `${lengths[p.stock] / unit} p${j}`)
+    .join(' + ');
+  return [
+    'Minimize',
+    ` metal: ${objective}`,
+    'Subject To',
+    ...rows,
+    ...(integer
+      ? ['General', ` ${patterns.map((_, j) => `p${j}`).join(' ')}`]
+      : []),
+    'End',
+    '',
+  ].join('\n');
+}
+
+/** The least metal some mix of the lengths reaches at or above `bound`. */
+function floorMetal(bound: number, lengths: number[]): number {
+  const unit = lengths.reduce(gcd);
+  const steps = lengths.map((l) => l / unit);
+  const target = Math.ceil(bound / unit - 1e-6);
+  const reach = new Uint8Array(target + Math.max(...steps) + 1);
+  reach[0] = 1;
+  for (let t = 1; t < reach.length; t++) {
+    reach[t] = steps.some((s) => t >= s && reach[t - s]) ? 1 : 0;
+  }
+  let t = Math.max(target, 0);
+  while (!reach[t]) t++;
+  return t * unit;
+}
+
+/** The linear solution's bars rounded down; the pieces that leaves get
+ * their own column generation and rounding, up to `ROUNDING_PASSES`,
+ * and the last are packed into their own cheapest mix. `null` when the
+ * search can't. */
+function roundDown<T>(
+  highs: Highs,
+  patterns: Pattern[],
+  linear: number[],
+  types: PieceType<T>[],
+  lengths: number[],
+  caps: number[],
+  pass = 1,
+): RawBar<T>[] | null {
+  const refs = types.map((type) => [...type.refs]);
+  const bars = patterns.flatMap((p, j) =>
+    Array.from({ length: Math.floor(linear[j] + 1e-9) }, () => {
+      const pieces = types.flatMap((type, t) =>
+        refs[t]
+          .splice(0, p.counts[t])
+          .map((ref) => ({ lengthMm: type.lengthMm, ref })),
+      );
+      return { stockMm: lengths[p.stock], pieces };
+    }).filter((bar) => bar.pieces.length),
+  );
+  const rest = types
+    .map((type, t) => ({ ...type, refs: refs[t] }))
+    .filter((type) => type.refs.length);
+  if (!rest.length) return bars;
+  if (pass < ROUNDING_PASSES && bars.length) {
+    const again = generatePatterns(highs, rest, lengths, caps);
+    const more = roundDown(
+      highs,
+      again.patterns,
+      again.linear,
+      rest,
+      lengths,
+      caps,
+      pass + 1,
+    );
+    if (more) return [...bars, ...more];
+  }
+  const packed = packCheapestMix(rest, lengths, caps);
+  return packed && packed !== 'none' ? [...bars, ...packed] : null;
+}
+
+/** A bar as a pattern: its stock length and pieces per type. */
+function barPattern<T>(
+  bar: RawBar<T>,
+  types: PieceType<T>[],
+  lengths: number[],
+): Pattern {
+  const counts = types.map(
+    (type) => bar.pieces.filter((p) => p.lengthMm === type.lengthMm).length,
+  );
+  return { stock: lengths.indexOf(bar.stockMm), counts };
+}
+
+/** Adds a pattern unless the list already has it; whether it did. */
+function addPattern(patterns: Pattern[], pattern: Pattern): boolean {
+  const key = (p: Pattern) => `${p.stock}:${p.counts.join(',')}`;
+  if (patterns.some((p) => key(p) === key(pattern))) return false;
+  patterns.push(pattern);
+  return true;
+}
+
+/** The integer program over the patterns (node-limited), as bars; best-
+ * fit's bars when it found none cheaper than `beat` mm. Pieces a pattern
+ * holds more of than needed are left out. */
+function solvePatterns<T>(
+  highs: Highs,
+  patterns: Pattern[],
+  types: PieceType<T>[],
+  lengths: number[],
+  caps: number[],
+  beat: number,
+): RawBar<T>[] {
+  const demand = types.map((type) => type.refs.length);
+  const unit = lengths.reduce(gcd);
+  const result = highs.solve(patternLp(patterns, demand, lengths, true), {
+    mip_abs_gap: 0.999,
+    mip_max_nodes: SOLVER_NODES,
+    // only plans cheaper than the best known: worse branches are cut
+    ...(Number.isFinite(beat) ? { objective_bound: beat / unit - 0.5 } : {}),
+    time_limit: SOLVER_SAFETY_SECONDS,
+    output_flag: false,
+  });
+  const chosen = patterns.map((_, j) =>
+    Math.round(
+      (result.Columns as Record<string, { Primal?: number }>)[`p${j}`]
+        ?.Primal ?? 0,
+    ),
+  );
+  const toBars = (list: { stock: number; counts: number[] }[]) => {
+    const refs = types.map((type) => [...type.refs]);
+    const bars = list.flatMap(({ stock, counts }) => {
+      const pieces = types.flatMap((type, t) =>
+        refs[t]
+          .splice(0, counts[t])
+          .map((ref) => ({ lengthMm: type.lengthMm, ref })),
+      );
+      return pieces.length ? [{ stockMm: lengths[stock], pieces }] : [];
+    });
+    return refs.some((left) => left.length) ? null : bars;
+  };
+  return (
+    toBars(
+      patterns.flatMap((p, j) => Array.from({ length: chosen[j] }, () => p)),
+    ) ??
+    toBars(
+      bestFitPatterns(types, caps[0]).map((counts) => ({ stock: 0, counts })),
+    )!
+  );
+}
+
+/** The arc-flow integer program (node-limited), or `null` when its graph
+ * is too big to build safely or it found no plan in time. */
+function solveArcFlow<T>(
+  highs: Highs,
+  types: PieceType<T>[],
+  lengths: number[],
+  caps: number[],
+): RawBar<T>[] | null {
+  const arcs = buildArcs(types, caps, MAX_ARCS);
+  if (!arcs) return null;
+  const result = highs.solve(toLpFormat(arcs, types, lengths), {
+    mip_abs_gap: 0.999,
+    mip_max_nodes: SOLVER_NODES,
+    time_limit: SOLVER_SAFETY_SECONDS,
+    output_flag: false,
+  });
+  // A stopped solve may still hold a plan: decode checks it covers all.
+  const flows = arcs.map((_, i) =>
+    Math.round(
+      (result.Columns as Record<string, { Primal?: number }>)[`x${i}`]
+        ?.Primal ?? 0,
+    ),
+  );
+  try {
+    return decode(arcs, flows, types, lengths);
+  } catch {
+    return null; // no plan in time
+  }
+}
+
+/** Steps the exact packing search may take per solve before it leaves
+ * the profile to the solver (~30 ms). More doesn't pay: what it can't
+ * settle in this many (many long pieces among short ones) it still
+ * can't at 100×, and those are the profiles the solver does well. */
+const SEARCH_BUDGET = 1_000_000;
+
+type Item<T> = { size: number; lengthMm: number; ref: T };
+type RawBar<T> = { stockMm: number; pieces: { lengthMm: number; ref: T }[] };
+
+/** The pieces packed into the cheapest stock mix they really fit, or
+ * `null` when that can't be settled here (the solver decides), or
+ * `'none'` when no mix in `range` fits. Mixes
+ * are tried cheapest first: best-fit decreasing on every mix of one
+ * price (today's plans), then the exact search on each. A mix that
+ * fits is the optimum only once every cheaper one is proven not to, so
+ * a search out of budget hands the profile to the solver. A mix is
+ * skipped when its total room is short, or when the pieces too long for
+ * its smaller bars don't fit its longer ones alone. */
+function packCheapestMix<T>(
+  types: PieceType<T>[],
+  lengths: number[],
+  caps: number[],
+  range: { min: number; below: number } = { min: 0, below: Infinity },
+  steps: number = SEARCH_BUDGET,
+): RawBar<T>[] | null | 'none' {
+  // Longest first: the order best-fit and the search place pieces in.
+  const items: Item<T>[] = types.flatMap((type) =>
     type.refs.map((ref) => ({ size: type.size, lengthMm: type.lengthMm, ref })),
   );
   const need = items.reduce((sum, it) => sum + it.size, 0);
   const maxBars = Math.ceil(need / Math.min(...caps)) + 1;
+  // A plan exists in the longest bars alone: no mix dearer is needed.
+  const ceiling = Math.min(
+    barsOpenBestFit(items, caps[0]) * lengths[0],
+    range.below - 1,
+  );
 
-  // Branch and bound on metal: only mixes no dearer than the cheapest
-  // found so far are explored, so many stock lengths stay cheap.
-  let cheapest = Infinity;
-  let mixes: { counts: number[]; metal: number }[] = [];
+  const mixes: { counts: number[]; metal: number }[] = [];
   const counts = lengths.map(() => 0);
   const walk = (i: number, metal: number, room: number) => {
-    if (metal > cheapest) return;
     if (i === lengths.length) {
-      if (room >= need && longPiecesFit(counts, caps, items)) {
-        if (metal < cheapest) {
-          cheapest = metal;
-          mixes = [];
-        }
+      if (
+        metal >= range.min &&
+        room >= need &&
+        longPiecesFit(counts, caps, items)
+      ) {
         mixes.push({ counts: [...counts], metal });
       }
       return;
     }
-    for (let n = 0; n <= maxBars && metal + n * lengths[i] <= cheapest; n++) {
+    for (let n = 0; n <= maxBars && metal + n * lengths[i] <= ceiling; n++) {
       counts[i] = n;
       walk(i + 1, metal + n * lengths[i], room + n * caps[i]);
     }
     counts[i] = 0;
   };
   walk(0, 0, 0);
-  if (!mixes.length) return null;
+  mixes.sort((a, b) => a.metal - b.metal);
 
-  for (const mix of mixes) {
-    const bars = mix.counts.flatMap((n, i) =>
-      Array.from({ length: n }, () => ({
-        stockMm: lengths[i],
-        free: caps[i],
-        pieces: [] as { lengthMm: number; ref: T }[],
-      })),
+  const budget = { left: steps };
+  for (let from = 0; from < mixes.length;) {
+    let to = from;
+    while (to < mixes.length && mixes[to].metal === mixes[from].metal) to++;
+    const level = mixes.slice(from, to).map((mix) =>
+      mix.counts.flatMap((n, i) =>
+        Array.from({ length: n }, () => ({
+          stockMm: lengths[i],
+          cap: caps[i],
+        })),
+      ),
     );
-    let fits = true;
-    for (const item of items) {
-      let pick: (typeof bars)[number] | null = null;
-      for (const bar of bars) {
-        if (bar.free >= item.size && (!pick || bar.free < pick.free))
-          pick = bar;
-      }
-      if (!pick) {
-        fits = false;
-        break;
-      }
-      pick.free -= item.size;
-      pick.pieces.push({ lengthMm: item.lengthMm, ref: item.ref });
+    for (const bins of level) {
+      const bars = packBestFit(items, bins);
+      if (bars) return bars;
     }
-    if (fits) return bars.filter((bar) => bar.pieces.length);
+    let unsettled = false;
+    for (const bins of level) {
+      const bars = packExact(types, bins, budget);
+      if (bars === 'budget') unsettled = true;
+      else if (bars) return bars;
+    }
+    if (unsettled) return null;
+    from = to;
   }
-  return null;
+  return 'none';
+}
+
+/** Best-fit decreasing into these bars; `null` when a piece has no room. */
+function packBestFit<T>(
+  items: Item<T>[],
+  bins: { stockMm: number; cap: number }[],
+): RawBar<T>[] | null {
+  const bars = bins.map((bin) => ({
+    stockMm: bin.stockMm,
+    free: bin.cap,
+    pieces: [] as RawBar<T>['pieces'],
+  }));
+  for (const item of items) {
+    let pick: (typeof bars)[number] | null = null;
+    for (const bar of bars) {
+      if (bar.free >= item.size && (!pick || bar.free < pick.free)) pick = bar;
+    }
+    if (!pick) return null;
+    pick.free -= item.size;
+    pick.pieces.push({ lengthMm: item.lengthMm, ref: item.ref });
+  }
+  return bars.filter((bar) => bar.pieces.length);
+}
+
+/** How many bars of room `cap` best-fit decreasing opens for the items. */
+function barsOpenBestFit(items: { size: number }[], cap: number): number {
+  const free: number[] = [];
+  for (const item of items) {
+    let pick = -1;
+    for (let b = 0; b < free.length; b++) {
+      if (free[b] >= item.size && (pick < 0 || free[b] < free[pick])) pick = b;
+    }
+    if (pick < 0) free.push(cap - item.size);
+    else free[pick] -= item.size;
+  }
+  return free.length;
+}
+
+/** Every way of filling the bars, one bar at a time, until the pieces
+ * fit: the bars, `null` when they can't, or `'budget'` when the search
+ * ran out of steps first. Bar by bar rather than piece by piece, since
+ * a tight mix leaves few ways to fill a bar: each fill may waste no more
+ * than the slack still unspent, and must be full (no piece left over
+ * fits its gap; one that did could always move in). Bars of one stock
+ * length are interchangeable, so they are filled in order of their
+ * longest piece, and an empty one only after the rest. Pieces of one
+ * length are taken by count. */
+function packExact<T>(
+  types: PieceType<T>[],
+  bins: { stockMm: number; cap: number }[],
+  budget: { left: number },
+): RawBar<T>[] | null | 'budget' {
+  const left = types.map((type) => type.refs.length);
+  let remaining = left.reduce((a, b) => a + b, 0);
+  let slack =
+    bins.reduce((sum, bin) => sum + bin.cap, 0) -
+    types.reduce((sum, type) => sum + type.size * type.refs.length, 0);
+  if (slack < 0) return null;
+  // bins come longest stock first (packCheapestMix builds them so).
+  const taken: number[][] = bins.map(() => types.map(() => 0));
+
+  // `from`: the first type this bar may hold (its longest piece may be
+  // no longer than the previous bar's of the same stock length).
+  const fillBar = (b: number, from: number): boolean | 'budget' => {
+    if (remaining === 0) return true;
+    if (b === bins.length) return false;
+    const sameStock = b > 0 && bins[b - 1].cap === bins[b].cap;
+    const start = sameStock ? from : 0;
+    let longest = -1;
+
+    const take = (t: number, free: number): boolean | 'budget' => {
+      if (--budget.left < 0) return 'budget';
+      while (t < types.length && (!left[t] || types[t].size > free)) t++;
+      if (t === types.length) {
+        for (let q = start; q < types.length; q++) {
+          if (left[q] && types[q].size <= free) return false; // not full
+        }
+        if (free > slack) return false;
+        slack -= free;
+        const found = fillBar(b + 1, longest < 0 ? types.length : longest);
+        slack += free;
+        return found;
+      }
+      const most = Math.min(left[t], Math.floor(free / types[t].size));
+      for (let n = most; n >= 0; n--) {
+        const opens = n > 0 && longest < 0;
+        if (opens) longest = t;
+        left[t] -= n;
+        remaining -= n;
+        taken[b][t] = n;
+        const found = take(t + 1, free - n * types[t].size);
+        taken[b][t] = 0;
+        left[t] += n;
+        remaining += n;
+        if (opens) longest = -1;
+        if (found) {
+          if (found === true) taken[b][t] = n;
+          return found;
+        }
+      }
+      return false;
+    };
+    return take(start, bins[b].cap);
+  };
+
+  const found = fillBar(0, 0);
+  if (found === 'budget') return 'budget';
+  if (!found) return null;
+  const refs = types.map((type) => [...type.refs]);
+  return bins
+    .map((bin, b) => ({
+      stockMm: bin.stockMm,
+      pieces: types.flatMap((type, t) =>
+        refs[t]
+          .splice(0, taken[b][t])
+          .map((ref) => ({ lengthMm: type.lengthMm, ref })),
+      ),
+    }))
+    .filter((bar) => bar.pieces.length);
 }
 
 /** Pieces longer than a bar's room can only go into longer bars, so
@@ -274,13 +810,19 @@ function longPiecesFit(
 }
 
 /** One graph per stock length; node `s:pos:lvl` is `pos` mm into the
- * usable bar with piece types `lvl…` still allowed (longest first). */
-function buildArcs<T>(types: PieceType<T>[], caps: number[]): Arc[] {
+ * usable bar with piece types `lvl…` still allowed (longest first).
+ * `null` past `maxArcs`. */
+function buildArcs<T>(
+  types: PieceType<T>[],
+  caps: number[],
+  maxArcs: number,
+): Arc[] | null {
   const arcs: Arc[] = [];
-  caps.forEach((cap, stock) => {
+  for (const [stock, cap] of caps.entries()) {
     const seen = new Set<string>(['0:0']);
     const queue: [number, number][] = [[0, 0]];
     for (let head = 0; head < queue.length; head++) {
+      if (arcs.length > maxArcs) return null;
       const [pos, lvl] = queue[head];
       const from = `${stock}:${pos}:${lvl}`;
       arcs.push({ stock, from, to: `${stock}:end`, type: -1 });
@@ -295,8 +837,8 @@ function buildArcs<T>(types: PieceType<T>[], caps: number[]): Arc[] {
         }
       }
     }
-  });
-  return arcs;
+  }
+  return arcs.length > maxArcs ? null : arcs;
 }
 
 /** The model in CPLEX LP format: flow in = flow out at every inner node,

@@ -134,6 +134,111 @@ describe('optimiseProfile', () => {
     expect(Date.now() - started).toBeLessThan(1000);
   });
 
+  // bug-126: 42 bead pieces in 15 short lengths. The cheapest mix that
+  // could hold them (2 × 6500 + 3 × 6000) has 364 mm to spare; best-fit
+  // can't fill it, and HiGHS ran out of WebAssembly memory in the
+  // browser. The exact search packs it.
+  it('packs a tight mix best-fit misses, without the solver', async () => {
+    const input = pieces({
+      410: 2,
+      414: 4,
+      430: 4,
+      455: 4,
+      553: 2,
+      555: 2,
+      560: 2,
+      561: 2,
+      575: 2,
+      577: 2,
+      881: 2,
+      894: 2,
+      896: 4,
+      1180: 4,
+      1434: 4,
+    });
+    const started = Date.now();
+    const { best } = await optimiseProfile(input, SHOP);
+    expectValid(best, input, SHOP);
+    expect(best!.mix).toEqual({ 6500: 2, 6000: 3 });
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  // bug-126: profiles the search can't settle and whose arc-flow model
+  // never finished (4 stock lengths). Column generation gives the floor
+  // and a plan on it; both proven.
+  const FOUR_STOCK: OptimiserSettings = {
+    lengths: [7000, 6500, 6000, 5800],
+    kerfMm: 3,
+    endTrimMm: 5,
+  };
+  it.each([
+    [
+      'long and short pieces mixed',
+      {
+        311: 5,
+        338: 1,
+        382: 2,
+        532: 5,
+        591: 3,
+        596: 5,
+        873: 4,
+        943: 1,
+        1004: 1,
+        1028: 4,
+        1096: 3,
+        1102: 3,
+        1242: 3,
+        1367: 4,
+        1390: 2,
+        1572: 1,
+        2500: 5,
+        3281: 5,
+        3540: 1,
+      },
+      72_500,
+    ],
+    [
+      '98 short pieces',
+      {
+        361: 1,
+        408: 5,
+        453: 5,
+        708: 4,
+        765: 5,
+        798: 5,
+        845: 5,
+        879: 4,
+        882: 5,
+        900: 5,
+        931: 1,
+        946: 2,
+        959: 5,
+        994: 3,
+        1004: 3,
+        1047: 5,
+        1120: 5,
+        1185: 1,
+        1205: 3,
+        1370: 2,
+        1484: 1,
+        1547: 3,
+        1550: 3,
+        1570: 5,
+        1597: 2,
+      },
+      86_200,
+    ],
+  ])(
+    'four stock lengths, %s: the least metal, within the time limits',
+    async (_name, spec, optimum) => {
+      const input = pieces(spec);
+      const { best } = await optimiseProfile(input, FOUR_STOCK);
+      expectValid(best, input, FOUR_STOCK);
+      expect(best!.boughtMm).toBe(optimum);
+    },
+    60_000,
+  );
+
   it('lists a piece too long for any bar instead of failing', async () => {
     const input = pieces({ 6600: 1, 2000: 2 });
     const { best, tooLong } = await optimiseProfile(input, SHOP);

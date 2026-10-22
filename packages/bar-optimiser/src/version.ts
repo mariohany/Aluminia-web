@@ -9,4 +9,4 @@
 // makes or the shape of a solve result: the model, the lower-bound proof,
 // piece ordering, the result format. Refactors that can't change a plan
 // don't need a bump.
-export const OPTIMISER_VERSION = 1;
+export const OPTIMISER_VERSION = 2;

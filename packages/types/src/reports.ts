@@ -92,6 +92,12 @@ export interface ReportPlanTotals {
   barCount: number
   boughtMm: number
   wasteMm: number
+  /** Waste seen from the front: length × face width, mm²
+   * (docs/bar_waste_area_planing.md). Absent in reports made before it. */
+  wasteMm2?: number
+  /** Bought, as an area: what `wastePct` is of. Absent in older reports. */
+  boughtMm2?: number
+  /** Of the area: a group or the project weighs profiles by width. */
   wastePct: number
 }
 
@@ -136,6 +142,9 @@ export interface BarOptimiserSummary {
 /** One piece on a drawn bar: its length and what it is (D17, D26). */
 export interface BarOptimiserReportPiece {
   lengthMm: number
+  /** Each end's 45° (or apex) triangle along the bar, mm, start and
+   * finish; absent in reports made before it. */
+  endsMm?: [number, number]
   windowName: string
   member: ReportMember
   at: ReportPieceAt
@@ -145,6 +154,8 @@ export interface BarOptimiserReportPiece {
 export interface BarOptimiserReportBar {
   stockMm: number
   wasteMm: number
+  /** mm²; absent in reports made before it. */
+  wasteMm2?: number
   offcutMm: number
   pieces: BarOptimiserReportPiece[]
 }
@@ -154,7 +165,9 @@ export interface BarOptimiserReportPlan {
   profile: string
   profileNo: string | null
   member: ReportMember
-  best: { mix: StockMix; wastePct: number; piecesMm: number; bars: BarOptimiserReportBar[] } | null
+  /** The face width the areas used, mm; absent in older reports. */
+  faceWidthMm?: number
+  best: { mix: StockMix; wastePct: number; wasteMm2?: number; piecesMm: number; bars: BarOptimiserReportBar[] } | null
 }
 
 /** Everything frozen at Generate (P6): the numbers, the plans with their

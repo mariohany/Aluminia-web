@@ -33,8 +33,17 @@ export interface PlanTotals {
   barCount: number;
   boughtMm: number;
   wasteMm: number;
+  /** Seen from the front: length × the profile's face width
+   * (docs/bar_waste_area_planing.md §2). */
+  boughtMm2: number;
+  wasteMm2: number;
+  /** wasteMm2 / boughtMm2: one profile's equals its length %; a group
+   * or the project weighs each profile by its width. */
   wastePct: number;
 }
+
+/** A profile's face width, mm, for the areas. */
+export type WidthOf = (profile: string) => number;
 
 export interface MemberTotals {
   member: CutMember;
@@ -96,17 +105,26 @@ export async function optimiseProject<T>(
 export function assembleProject<T>(
   profiles: ProfileResult<T>[],
   settings: OptimiserSettings,
+  /** Absent (the browser, which shows no waste): 1, so the areas are
+   * lengths. */
+  widthOf: WidthOf = () => 1,
 ): ProjectOptimisation<T> {
+  const sum = (plans: [CutPlan<T> | null, string][]) => totals(plans, widthOf);
   const lengths = [...new Set(settings.lengths)].sort((a, b) => b - a);
   const members = MEMBER_ORDER.flatMap((member) => {
     const own = profiles.filter((p) => p.member === member);
     if (!own.length) return [];
     const single: Record<number, PlanTotals | null> = {};
     for (const length of lengths) {
-      const plans = own.map((p) => p.single[length] ?? null);
-      single[length] = plans.every((p) => p !== null) ? sum(plans) : null;
+      const plans = own.map((p): [CutPlan<T> | null, string] => [
+        p.single[length] ?? null,
+        p.profile,
+      ]);
+      single[length] = plans.every(([p]) => p !== null) ? sum(plans) : null;
     }
-    const best = sum(own.map((p) => p.best));
+    const best = sum(
+      own.map((p): [CutPlan<T> | null, string] => [p.best, p.profile]),
+    );
     return [
       {
         member,
@@ -118,7 +136,9 @@ export function assembleProject<T>(
     ];
   });
 
-  const all = sum(profiles.map((p) => p.best));
+  const all = sum(
+    profiles.map((p): [CutPlan<T> | null, string] => [p.best, p.profile]),
+  );
   return {
     profiles,
     members,
@@ -166,21 +186,31 @@ function majorityMember<T>(list: ProjectPiece<T>[]): CutMember {
   )[0][0];
 }
 
-function sum<T>(plans: (CutPlan<T> | null)[]): PlanTotals {
+function totals<T>(
+  plans: [CutPlan<T> | null, string][],
+  widthOf: WidthOf,
+): PlanTotals {
   let barCount = 0;
   let boughtMm = 0;
   let wasteMm = 0;
-  for (const plan of plans) {
+  let boughtMm2 = 0;
+  let wasteMm2 = 0;
+  for (const [plan, profile] of plans) {
     if (!plan) continue;
+    const w = widthOf(profile);
     barCount += plan.barCount;
     boughtMm += plan.boughtMm;
     wasteMm += plan.wasteMm;
+    boughtMm2 += plan.boughtMm * w;
+    wasteMm2 += plan.wasteMm * w;
   }
   return {
     barCount,
     boughtMm,
-    wasteMm,
-    wastePct: boughtMm ? (wasteMm / boughtMm) * 100 : 0,
+    wasteMm: Math.round(wasteMm * 10) / 10,
+    boughtMm2: Math.round(boughtMm2),
+    wasteMm2: Math.round(wasteMm2),
+    wastePct: boughtMm2 ? (wasteMm2 / boughtMm2) * 100 : 0,
   };
 }
 

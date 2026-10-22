@@ -1,5 +1,5 @@
 import { createElement as h, type ReactElement, type ReactNode } from 'react'
-import { Document, Image, Page, Rect, Svg, Text, View, pdf, type DocumentProps } from '@react-pdf/renderer'
+import { Document, Image, Page, Polygon, Rect, Svg, Text, View, pdf, type DocumentProps } from '@react-pdf/renderer'
 import type { Style } from '@react-pdf/types'
 import type {
   BarOptimiserReport,
@@ -86,7 +86,7 @@ export function barOptimiserDocument(input: BarOptimiserPdfInput): ReactElement<
       ),
       heading(d, '01', s.membersHeading),
       membersTable(d, s, sum),
-      d.text(`${s.membersNote} ${s.wasteNote}`, { fontSize: px(9), color: C.mute, marginTop: px(6) }),
+      d.text(`${s.membersNote} ${sum.total.wasteMm2 !== undefined ? s.wasteNoteArea : s.wasteNote}`, { fontSize: px(9), color: C.mute, marginTop: px(6) }),
       heading(d, '02', s.ordersHeading),
       ordersTable(d, s, report),
       sum.approximate ? d.text(s.approximate, { fontSize: px(9), color: C.mute, marginTop: px(6) }) : null,
@@ -228,15 +228,18 @@ function planCell(d: Dir, plan: ReportPlanTotals | null, width: number | 'flex',
   const blocks = terms.map((term, i) =>
     i < terms.length - 1 ? d.num(`${term} +`, style) : d.num([term, pct], style),
   )
-  return cell(
-    h(
-      View,
-      { style: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: d.rtl ? 'flex-start' : 'flex-end', columnGap: px(6) } },
-      ...blocks,
-    ),
-    width,
-    best ? { backgroundColor: C.accentSoft } : {},
+  const mixRow = h(
+    View,
+    { style: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: d.rtl ? 'flex-start' : 'flex-end', columnGap: px(6) } },
+    ...blocks,
   )
+  // The least-waste cell also says how much, as an area, on its own line
+  // (A5: m² on totals).
+  const area =
+    best && plan.wasteMm2 !== undefined
+      ? d.num(`${squareMetres(plan.wasteMm2)}`, { fontSize: px(8.5), color: C.accent, textAlign: d.end })
+      : null
+  return cell(area ? h(View, null, mixRow, area) : mixRow, width, best ? { backgroundColor: C.accentSoft } : {})
 }
 
 function tableRow(d: Dir, cells: ReactElement[], last = false, bold = false) {
@@ -279,11 +282,17 @@ function membersTable(d: Dir, s: PdfStrings, sum: BarOptimiserSummary) {
     if (plans.some((p) => p === null)) return null
     const bought = plans.reduce((n, p) => n + p!.boughtMm, 0)
     const waste = plans.reduce((n, p) => n + p!.wasteMm, 0)
+    // Weighed by area when the report has areas (docs/bar_waste_area_planing.md §2).
+    const areas = plans.every((p) => p!.boughtMm2 !== undefined && p!.wasteMm2 !== undefined)
+    const boughtMm2 = areas ? plans.reduce((n, p) => n + p!.boughtMm2!, 0) : undefined
+    const wasteMm2 = areas ? plans.reduce((n, p) => n + p!.wasteMm2!, 0) : undefined
     return {
       barCount: plans.reduce((n, p) => n + p!.barCount, 0),
       boughtMm: bought,
       wasteMm: waste,
-      wastePct: bought ? (waste / bought) * 100 : 0,
+      boughtMm2,
+      wasteMm2,
+      wastePct: areas ? (boughtMm2 ? (wasteMm2! / boughtMm2) * 100 : 0) : bought ? (waste / bought) * 100 : 0,
     }
   }
   return h(
@@ -320,19 +329,17 @@ function membersTable(d: Dir, s: PdfStrings, sum: BarOptimiserSummary) {
 function ordersTable(d: Dir, s: PdfStrings, report: BarOptimiserReport) {
   const sum = report.summary
   const lengths = sum.stockLengthsMm
-  const W = { profile: 92, member: 96, pieces: 40, metres: 66 }
-  const single = singleWidth(W.profile + W.member + W.pieces + W.metres, 120, lengths.length, 76)
-  const rows = sum.profiles.map((p) => {
-    const plan = report.plans.find((x) => x.profile === p.profile)?.best
-    return tableRow(d, [
+  const W = { profile: 92, member: 96, pieces: 40 }
+  const single = singleWidth(W.profile + W.member + W.pieces, 120, lengths.length, 76)
+  const rows = sum.profiles.map((p) =>
+    tableRow(d, [
       cell(d.num(p.profileNo ?? '—', { fontWeight: 700, fontSize: px(10), textAlign: d.start }), W.profile),
       cell(d.text(s.member[p.member], { fontSize: px(10) }), W.member),
       cell(d.num(String(p.pieceCount), { textAlign: d.end, fontSize: px(10) }), W.pieces),
-      cell(d.num(plan ? `${(plan.piecesMm / 1000).toFixed(2)} m` : '—', { textAlign: d.end, fontSize: px(10) }), W.metres),
       ...lengths.map((l) => planCell(d, p.single[String(l)] ?? null, single)),
       p.best ? planCell(d, p.best, 'flex', p.best.mix, true) : cell(d.num('—', { textAlign: d.end }), 'flex'),
-    ])
-  })
+    ]),
+  )
   return h(
     View,
     null,
@@ -340,7 +347,6 @@ function ordersTable(d: Dir, s: PdfStrings, report: BarOptimiserReport) {
       th(d, s.colProfile, W.profile),
       th(d, s.colMember, W.member),
       th(d, s.colPieces, W.pieces, true),
-      th(d, s.colInWindows, W.metres, true),
       ...lengths.map((l) => th(d, s.colOnly(l), single, true)),
       th(d, s.colOrder, 'flex', true),
     ]),
@@ -387,6 +393,8 @@ function tooLongBox(d: Dir, s: PdfStrings, report: BarOptimiserReport) {
 
 const BAR_W = 640
 const BAR_H = 26
+/** A mitred end is drawn at least this wide (A1): to scale it'd be ~4. */
+const MIN_END = 8
 
 function cuttingPlan(
   d: Dir,
@@ -409,6 +417,9 @@ function cuttingPlan(
         legendItem({ backgroundColor: C.piece, borderWidth: px(1), borderColor: C.ink }, s.legendPiece),
         legendItem({ backgroundColor: C.accentSoft, borderWidth: px(1), borderColor: C.accent, borderStyle: 'dashed' }, s.legendWaste),
         legendItem({ backgroundColor: C.trim }, s.legendTrim(sum.endTrimMm)),
+        ...(sum.total.wasteMm2 !== undefined
+          ? [legendItem({ backgroundColor: C.accent, width: px(2), marginHorizontal: px(5.5) }, s.legendCut), d.text(s.legendEnds, { fontSize: px(8.5), color: C.mute })]
+          : []),
         d.text(s.legendScale, { fontSize: px(8.5), color: C.mute }),
       ),
       ...plans.map((p) => {
@@ -423,7 +434,11 @@ function cuttingPlan(
             h(View, { style: { flex: 1 } }),
             d.row(
               { gap: px(3) },
-              d.num(`${mixText(best.mix)} · ${best.wastePct.toFixed(1)}%`, { fontSize: px(9.5), fontWeight: 600, color: C.accent }),
+              d.num(`${mixText(best.mix)} · ${best.wastePct.toFixed(1)}%${best.wasteMm2 !== undefined ? ` · ${squareMetres(best.wasteMm2)}` : ''}`, {
+                fontSize: px(9.5),
+                fontWeight: 600,
+                color: C.accent,
+              }),
               d.text(s.waste, { fontSize: px(9.5), fontWeight: 600, color: C.accent }),
             ),
           ),
@@ -447,12 +462,22 @@ function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, bar: BarOptimis
     h(Rect, { key: 'trim-a', x: 0, y: 0, width: trimW, height: BAR_H, fill: C.trim }),
   ]
   let x = trimW
+  // A report with areas also draws what the cuts take (A1, A2): each
+  // mitred end as a slant at least MIN_END wide over a waste box, and
+  // every saw cut as a line at least 1 wide. Older reports: rectangles.
+  const areas = bar.wasteMm2 !== undefined
   bar.pieces.forEach((piece, i) => {
     const pw = piece.lengthMm * scale
     const cx = x + pw / 2
     const roomy = pw > 46
+    const [a, b] = (piece.endsMm ?? [0, 0]).map((e) => (e > 0 ? Math.min(Math.max(e * scale, MIN_END), pw / 3) : 0))
     parts.push(
-      h(Rect, { key: `p${i}`, x, y: 2, width: pw, height: BAR_H - 4, fill: C.piece, stroke: C.ink, strokeWidth: 0.7 }),
+      ...(a || b
+        ? [
+            h(Rect, { key: `pw${i}`, x, y: 2, width: pw, height: BAR_H - 4, fill: C.accentSoft, stroke: C.accent, strokeWidth: 0.5 }),
+            h(Polygon, { key: `p${i}`, points: `${x},2 ${x + pw},2 ${x + pw - b},${BAR_H - 2} ${x + a},${BAR_H - 2}`, fill: C.piece, stroke: C.ink, strokeWidth: 0.7 }),
+          ]
+        : [h(Rect, { key: `p${i}`, x, y: 2, width: pw, height: BAR_H - 4, fill: C.piece, stroke: C.ink, strokeWidth: 0.7 })]),
       h(
         Text,
         { key: `l${i}`, x: cx, y: pw > 20 ? 11 : 15, textAnchor: 'middle', fill: C.ink, style: { fontFamily: mono, fontWeight: 600, fontSize: roomy ? 8.5 : 7 } },
@@ -469,13 +494,18 @@ function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, bar: BarOptimis
         ),
       )
     }
+    if (areas) parts.push(h(Rect, { key: `k${i}`, x: x + pw, y: 0, width: Math.max(kerfW, 1), height: BAR_H, fill: C.accent }))
     x += pw + kerfW
   })
   parts.push(
     h(Rect, { key: 'offcut', x, y: 2, width: Math.max(bar.offcutMm * scale, 0), height: BAR_H - 4, fill: C.accentSoft, stroke: C.accent, strokeWidth: 0.7, strokeDasharray: '3 2' }),
     h(Rect, { key: 'trim-b', x: w - trimW, y: 0, width: trimW, height: BAR_H, fill: C.trim }),
-    h(Text, { key: 'waste', x: w + 6, y: 12, fill: C.accent, style: { fontFamily: mono, fontWeight: 600, fontSize: 8 } }, String(Math.round(bar.wasteMm))),
-    h(Text, { key: 'waste-l', x: w + 6, y: 21, fill: C.accent, style: { fontFamily: d.family, direction: d.s.dir, fontSize: 6.5 } }, s.wasteShort),
+    h(
+      Text,
+      { key: 'waste', x: w + 6, y: 12, fill: C.accent, style: { fontFamily: mono, fontWeight: 600, fontSize: 8 } },
+      areas ? squareMetreNumber(bar.wasteMm2!) : String(Math.round(bar.wasteMm)),
+    ),
+    h(Text, { key: 'waste-l', x: w + 6, y: 21, fill: C.accent, style: { fontFamily: d.family, direction: d.s.dir, fontSize: 6.5 } }, areas ? s.wasteArea : s.wasteShort),
     h(Text, { key: 'stock-l', x: w - trimW - 2, y: -2, textAnchor: 'end', fill: C.mute, style: { fontFamily: mono, fontSize: 6 } }, String(bar.stockMm)),
   )
   return h(
@@ -484,6 +514,18 @@ function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, bar: BarOptimis
     h(Text, { style: { fontFamily: mono, fontSize: px(8.5), color: C.mute, width: px(16), textAlign: 'right' } }, String(index + 1)),
     h(Svg, { width: px(BAR_W), height: px(BAR_H + 8), viewBox: `0 -6 ${BAR_W} ${BAR_H + 8}` }, ...parts),
   )
+}
+
+/** mm² → "0.18" m², every waste in one unit (Mario); a third decimal
+ * below 0.1 m², so a small waste doesn't read "0.00". */
+export function squareMetreNumber(mm2: number): string {
+  const m2 = mm2 / 1e6
+  return m2.toFixed(m2 < 0.1 ? 3 : 2)
+}
+
+/** mm² → "0.18 m²". */
+function squareMetres(mm2: number): string {
+  return `${squareMetreNumber(mm2)} m²`
 }
 
 /** "W-01 · sa B L": a window name like "W-01 Living room" keeps its

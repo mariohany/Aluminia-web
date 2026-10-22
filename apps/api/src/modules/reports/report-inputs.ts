@@ -14,6 +14,7 @@ import {
 import type { WindowDetail } from '@repo/types/windows';
 import { buildCutList, type CutMember } from '@repo/geometry/cut-list';
 import { OPTIMISER_VERSION } from '@repo/bar-optimiser/version';
+import { PLACEHOLDER_METRICS } from '@repo/geometry/profile-metrics';
 import type { SystemCatalog } from '../../database/control-plane/entities/system-catalog.entity';
 import type { SystemProfile } from '../../database/control-plane/entities/system-profile.entity';
 import { CompanySystemCatalog } from '../../database/tenant/entities/company-system-catalog.entity';
@@ -28,6 +29,7 @@ import {
   profileQueue,
   type ProjectOptimisation,
   type ProjectPiece,
+  type WidthOf,
 } from '@repo/bar-optimiser/project';
 
 // Everything a bar optimiser report is made from, read in one tenant
@@ -42,14 +44,17 @@ import {
  * per language (docs/browser_solve_planing.md §6). 4: the browser draws
  * the PDF from a saved snapshot (docs/browser_pdf_planing.md §4). 5: the
  * totals count real metal, mitred ends as waste
- * (docs/mitre_cuts_planing.md §7). */
-export const REPORT_VERSION = 5;
+ * (docs/mitre_cuts_planing.md §7). 6: waste as an area, mitre ends
+ * and saw cuts drawn (docs/bar_waste_area_planing.md). */
+export const REPORT_VERSION = 6;
 
 export interface PieceRef {
   windowId: string;
   windowName: string;
   member: CutMember;
   at: ReportPieceAt;
+  /** Each end's mitre triangle along the bar (cut-list `endsMm`). */
+  endsMm: [number, number];
 }
 
 interface ProfileFacts {
@@ -278,6 +283,7 @@ export function reportSnapshotOf(
   result: ProjectOptimisation<PieceRef>,
   generatedAt: Date,
 ): BarOptimiserReport {
+  const widthOf = widthsOf(inputs, pieces);
   return {
     generatedAt: generatedAt.toISOString(),
     ...namesOf(inputs),
@@ -286,17 +292,21 @@ export function reportSnapshotOf(
       profile: p.profile,
       profileNo: profileNoOf(inputs, p.profile),
       member: p.member,
+      faceWidthMm: widthOf(p.profile),
       best: p.best
         ? {
             mix: { ...p.best.mix },
             wastePct: p.best.wastePct,
+            wasteMm2: Math.round(p.best.wasteMm * widthOf(p.profile)),
             piecesMm: p.best.piecesMm,
             bars: p.best.bars.map((bar) => ({
               stockMm: bar.stockMm,
               wasteMm: bar.wasteMm,
+              wasteMm2: Math.round(bar.wasteMm * widthOf(p.profile)),
               offcutMm: bar.offcutMm,
               pieces: bar.pieces.map((piece) => ({
                 lengthMm: piece.lengthMm,
+                endsMm: piece.ref.endsMm,
                 windowName: piece.ref.windowName,
                 member: piece.ref.member,
                 at: piece.ref.at,
@@ -370,6 +380,7 @@ export function buildProjectPieces(inputs: ReportInputs): ProjectPieces {
           windowName: window.name,
           member: piece.member,
           at: piece.at,
+          endsMm: piece.endsMm,
         },
       });
     }
@@ -385,6 +396,26 @@ export function buildProjectPieces(inputs: ReportInputs): ProjectPieces {
   return out;
 }
 
+/** The placeholder face width of each member group, mm. */
+const PLACEHOLDER_WIDTH: Record<CutMember, number> = {
+  frame: PLACEHOLDER_METRICS.frameFace,
+  sash: PLACEHOLDER_METRICS.sashFace,
+  divider: PLACEHOLDER_METRICS.dividerFace,
+  bead: PLACEHOLDER_METRICS.beadFace,
+};
+
+/** Each profile's face width for the waste areas
+ * (docs/bar_waste_area_planing.md §3): its own, else the placeholder of
+ * the member group it counts under. */
+export function widthsOf(inputs: ReportInputs, pieces: ProjectPieces): WidthOf {
+  const member = new Map(
+    profileQueue(pieces.pieces).map((q) => [q.profile, q.member]),
+  );
+  return (profile) =>
+    inputs.profiles.get(profile)?.faceWidthMm ??
+    PLACEHOLDER_WIDTH[member.get(profile) ?? 'frame'];
+}
+
 export function profileNoOf(inputs: ReportInputs, ref: string): string | null {
   return inputs.profiles.get(ref)?.profileNo ?? null;
 }
@@ -396,21 +427,38 @@ export function summaryOf(
   pieces: ProjectPieces,
   result: ProjectOptimisation<PieceRef>,
 ): BarOptimiserSummary {
-  const totals = (plan: ReportPlanTotals): ReportPlanTotals => ({
+  const widthOf = widthsOf(inputs, pieces);
+  // A group's or the project's totals carry their area; one profile's
+  // plan is its length × its width.
+  const totals = (
+    plan: Omit<ReportPlanTotals, 'wasteMm2' | 'boughtMm2'> & {
+      wasteMm2?: number;
+      boughtMm2?: number;
+    },
+    widthMm = 1,
+  ): ReportPlanTotals => ({
     barCount: plan.barCount,
     boughtMm: plan.boughtMm,
     wasteMm: plan.wasteMm,
+    wasteMm2: plan.wasteMm2 ?? Math.round(plan.wasteMm * widthMm),
+    boughtMm2: plan.boughtMm2 ?? Math.round(plan.boughtMm * widthMm),
     wastePct: plan.wastePct,
   });
-  const singleOf = (single: Record<number, ReportPlanTotals | null>) =>
+  const singleOf = (
+    single: Record<
+      number,
+      Omit<ReportPlanTotals, 'wasteMm2' | 'boughtMm2'> | null
+    >,
+    widthMm?: number,
+  ) =>
     Object.fromEntries(
       Object.entries(single).map(([length, plan]) => [
         length,
-        plan ? totals(plan) : null,
+        plan ? totals(plan, widthMm) : null,
       ]),
     );
-  const bestOf = (plan: CutPlan<PieceRef> | null) =>
-    plan ? { ...totals(plan), mix: { ...plan.mix } } : null;
+  const bestOf = (plan: CutPlan<PieceRef> | null, widthMm: number) =>
+    plan ? { ...totals(plan, widthMm), mix: { ...plan.mix } } : null;
 
   return {
     stockLengthsMm: inputs.settings.stockLengthsMm,
@@ -435,8 +483,8 @@ export function summaryOf(
       profileNo: profileNoOf(inputs, p.profile),
       member: p.member,
       pieceCount: p.pieceCount,
-      single: singleOf(p.single),
-      best: bestOf(p.best),
+      single: singleOf(p.single, widthOf(p.profile)),
+      best: bestOf(p.best, widthOf(p.profile)),
       tooLong: p.tooLong.map((t) => ({
         lengthMm: t.lengthMm,
         count: t.count,

@@ -44,6 +44,7 @@ import {
   namesOf,
   profileNoOf,
   reportSnapshotOf,
+  widthsOf,
   snapshotFingerprintOf,
   solveFingerprintOf,
   windowStampsOf,
@@ -271,6 +272,7 @@ export class ReportsService {
               endTrimMm: inputs.settings.endTrimMm,
             },
             result,
+            widthsOf(inputs, pieces),
           );
           const solvedAt = new Date();
           solve.solveFingerprint = fingerprint;

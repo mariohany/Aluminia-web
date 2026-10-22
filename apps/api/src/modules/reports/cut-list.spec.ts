@@ -298,8 +298,12 @@ describe('buildCutList', () => {
         ['right', 1500, 1500 - F],
         ['bottom', 1000, 1000 - F],
       ]);
+      for (const piece of pieces.filter((p) => p.member === 'frame')) {
+        expect(piece.endsMm).toEqual([F, F]);
+      }
       for (const bead of pieces.filter((p) => p.member === 'bead')) {
         expect(bead.metalMm).toBe(bead.lengthMm);
+        expect(bead.endsMm).toEqual([0, 0]);
       }
     });
 
@@ -339,6 +343,13 @@ describe('buildCutList', () => {
         ['left', 2400, 2400 - F / 2],
         ['right', 2400, 2400 - F / 2],
       ]);
+      expect(
+        pieces.filter((p) => p.member === 'frame').map((p) => p.endsMm),
+      ).toEqual([
+        [F, F],
+        [F, 0],
+        [F, 0],
+      ]);
     });
 
     it('a round head: the arc keeps all of L, the jambs lose only the sill corner', () => {
@@ -357,10 +368,15 @@ describe('buildCutList', () => {
       const frame = pieces.filter((p) => p.member === 'frame');
       const head = frame.find((p) => p.curved)!;
       expect(head.metalMm).toBe(head.lengthMm);
+      expect(head.endsMm).toEqual([0, 0]);
       const jambs = frame.filter(
         (p) => p.at.position === 'left' || p.at.position === 'right',
       );
       expect(jambs.map((p) => p.metalMm)).toEqual([1000 - F / 2, 1000 - F / 2]);
+      expect(jambs.map((p) => p.endsMm)).toEqual([
+        [F, 0],
+        [F, 0],
+      ]);
       expect(frame.find((p) => p.at.position === 'bottom')!.metalMm).toBe(
         1000 - F,
       );
@@ -383,6 +399,8 @@ describe('buildCutList', () => {
       expect(arcs).toHaveLength(2);
       for (const arc of arcs) {
         const loss = arc.lengthMm - arc.metalMm;
+        expect(arc.endsMm[0]).toBe(0);
+        expect(Math.abs(arc.endsMm[1] / 2 - loss)).toBeLessThan(0.11);
         // More than nothing, less than a full 45° end (w/2).
         expect(loss).toBeGreaterThan(0);
         expect(loss).toBeLessThan(F / 2);

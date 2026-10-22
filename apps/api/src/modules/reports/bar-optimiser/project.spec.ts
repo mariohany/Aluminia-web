@@ -1,5 +1,6 @@
 import type { CutMember } from '@repo/geometry/cut-list';
 import {
+  assembleProject,
   optimiseProject,
   type ProjectPiece,
 } from '@repo/bar-optimiser/project';
@@ -85,5 +86,36 @@ describe('optimiseProject', () => {
         0,
       ),
     ).toBe(total.boughtMm);
+  });
+
+  // docs/bar_waste_area_planing.md §2.
+  it('waste areas: a profile keeps its %, a group weighs profiles by width', async () => {
+    const { profiles } = await optimiseProject(pieces, SETTINGS);
+    const widths: Record<string, number> = { 'FRAME-1': 70, MULTI: 10 };
+    const area = assembleProject(profiles, SETTINGS, (p) => widths[p] ?? 1);
+    const frames = area.members.find((m) => m.member === 'frame')!;
+    const [a, b] = ['FRAME-1', 'MULTI'].map(
+      (name) => profiles.find((p) => p.profile === name)!.best!,
+    );
+    expect(frames.best.wasteMm2).toBe(
+      Math.round(a.wasteMm * 70 + b.wasteMm * 10),
+    );
+    expect(frames.best.boughtMm2).toBe(a.boughtMm * 70 + b.boughtMm * 10);
+    expect(frames.best.wastePct).toBeCloseTo(
+      ((a.wasteMm * 70 + b.wasteMm * 10) /
+        (a.boughtMm * 70 + b.boughtMm * 10)) *
+        100,
+      6,
+    );
+    // Without widths (the browser): areas are the lengths.
+    const plain = assembleProject(profiles, SETTINGS);
+    const plainFrames = plain.members.find((m) => m.member === 'frame')!;
+    expect(plainFrames.best.wasteMm2).toBe(
+      Math.round(plainFrames.best.wasteMm),
+    );
+    expect(plainFrames.best.wastePct).toBeCloseTo(
+      (plainFrames.best.wasteMm / plainFrames.best.boughtMm) * 100,
+      6,
+    );
   });
 });

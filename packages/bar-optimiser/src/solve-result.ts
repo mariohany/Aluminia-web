@@ -1,5 +1,6 @@
 import type { CutMember } from '@repo/geometry/cut-list';
 import {
+  capacityOf,
   toPlan,
   usableLengths,
   type CutPlan,
@@ -110,9 +111,12 @@ export function validateSolve<T>(
   result: SolveResult,
 ): ProjectOptimisation<T> {
   const lengths = usableLengths(settings);
-  const capOf = (stockMm: number) => stockMm - 2 * settings.endTrimMm;
+  const capOf = (stockMm: number) => capacityOf(stockMm, settings);
   const maxCap = lengths.length ? capOf(lengths[0]) : 0;
   const sizeOf = (line: number) => lines[line].lengthMm + settings.kerfMm;
+  // The totals count each line's real metal, as the optimiser does.
+  const metalByRef = new Map(lines.map((line) => [line.ref, line.metalMm]));
+  const pieceMetal = (ref: T) => metalByRef.get(ref);
 
   const sent = new Map<string, SolvedProfile>();
   for (const solved of result.profiles) {
@@ -174,7 +178,7 @@ export function validateSolve<T>(
             throw refuse(`piece line ${line} is cut ${cut}×, needs ${count}×.`);
           }
         }
-        return toPlan(raw, settings);
+        return toPlan(raw, settings, pieceMetal);
       };
 
       let best: CutPlan<T> | null = null;

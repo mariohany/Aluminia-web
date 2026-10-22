@@ -4,8 +4,8 @@ import highsLoader, { type Highs } from 'highs';
 // pieces out of stock bars, buying the least metal. No Nest; the report
 // job calls it per profile.
 //
-// A bar of length L has L − 2·trim usable; every piece uses its length
-// plus one kerf. Waste is everything bought that isn't a piece (D3):
+// A bar of length L holds L − 2·trim + kerf (`capacityOf`); every piece
+// uses its length plus one kerf. Waste is everything bought that isn't a piece (D3):
 // kerf, trim and every offcut. Minimising waste is minimising metal
 // bought (the pieces are fixed). Lengths may be mixed within a profile
 // (D2). The answer is the least waste the steps below can prove; every
@@ -37,15 +37,23 @@ export interface OptimiserSettings {
 
 export interface OptimiserPiece<T> {
   lengthMm: number;
+  /** The metal the piece really holds when its ends are mitred
+   * (docs/mitre_cuts_planing.md §3); absent = all of `lengthMm`. Only
+   * the totals read it: pieces are packed by `lengthMm`. */
+  metalMm?: number;
   count: number;
   ref: T;
 }
+
+/** A piece's real metal by its ref, for the totals (`toPlan`). */
+export type MetalOf<T> = (ref: T) => number | undefined;
 
 export interface CutBar<T> {
   stockMm: number;
   /** In cutting order, longest first. */
   pieces: { lengthMm: number; ref: T }[];
-  /** Everything of this bar not in a piece: trim, kerfs, offcut. */
+  /** Everything of this bar not in a piece's metal: trim, kerfs,
+   * offcut, mitred ends. */
   wasteMm: number;
   /** The piece of bar left after the last cut, before the end trim. */
   offcutMm: number;
@@ -58,7 +66,7 @@ export interface CutPlan<T> {
   bars: CutBar<T>[];
   barCount: number;
   boughtMm: number;
-  /** Σ piece lengths. */
+  /** Σ the pieces' real metal (their lengths when not mitred). */
   piecesMm: number;
   wasteMm: number;
   /** wasteMm / boughtMm × 100. */
@@ -106,7 +114,7 @@ export async function optimiseProfile<T>(
   settings: OptimiserSettings,
 ): Promise<ProfileOptimisation<T>> {
   const lengths = usableLengths(settings);
-  const maxCap = lengths.length ? lengths[0] - 2 * settings.endTrimMm : 0;
+  const maxCap = lengths.length ? capacityOf(lengths[0], settings) : 0;
 
   const byLength = new Map<number, PieceType<T>>();
   const tooLong: OptimiserPiece<T>[] = [];
@@ -126,11 +134,13 @@ export async function optimiseProfile<T>(
     byLength.set(piece.lengthMm, type);
   }
   const types = [...byLength.values()].sort((a, b) => b.size - a.size);
+  const metalByRef = new Map(pieces.map((p) => [p.ref, p.metalMm]));
+  const pieceMetal: MetalOf<T> = (ref) => metalByRef.get(ref);
 
   const highs = await getSolver();
   const single: Record<number, CutPlan<T> | null> = {};
   for (const length of lengths) {
-    single[length] = solve(highs, types, [length], settings);
+    single[length] = solve(highs, types, [length], settings, pieceMetal);
   }
   // A plan in one length is a mixed plan too: the best of them is where
   // the mixed solve starts, so it never ends up worse.
@@ -142,15 +152,28 @@ export async function optimiseProfile<T>(
     null,
   );
   const best =
-    lengths.length > 1 ? solve(highs, types, lengths, settings, start) : start;
+    lengths.length > 1
+      ? solve(highs, types, lengths, settings, pieceMetal, start)
+      : start;
   return { best, single, tooLong };
+}
+
+/** How much of a bar its pieces may take, each counted as its length +
+ * one kerf: the bar minus both end trims, plus one kerf, because the cut
+ * after the last piece falls into the end trim, like the first cut does
+ * at the start (Mario, docs/mitre_cuts_planing.md M10). */
+export function capacityOf(
+  stockMm: number,
+  settings: OptimiserSettings,
+): number {
+  return stockMm - 2 * settings.endTrimMm + settings.kerfMm;
 }
 
 /** The stock lengths a plan may use: distinct, longer than both end
  * trims, longest first. */
 export function usableLengths(settings: OptimiserSettings): number[] {
   return [...new Set(settings.lengths)]
-    .filter((l) => l > 2 * settings.endTrimMm)
+    .filter((l) => capacityOf(l, settings) > settings.kerfMm)
     .sort((a, b) => b - a);
 }
 
@@ -168,16 +191,17 @@ function solve<T>(
   types: PieceType<T>[],
   lengths: number[],
   settings: OptimiserSettings,
+  pieceMetal: MetalOf<T>,
   /** A plan to beat, if one is known. */
   start: CutPlan<T> | null = null,
 ): CutPlan<T> | null {
   if (!types.length) return null;
-  const caps = lengths.map((l) => l - 2 * settings.endTrimMm);
+  const caps = lengths.map((l) => capacityOf(l, settings));
   if (types[0].size > Math.max(...caps)) return null;
 
   // 1. Without the solver (see the top of the file).
   const quick = packCheapestMix(types, lengths, caps);
-  if (quick && quick !== 'none') return toPlan(quick, settings);
+  if (quick && quick !== 'none') return toPlan(quick, settings, pieceMetal);
 
   // 2. Column generation: the floor, and the best of three plans: the
   // linear solution rounded down (the rest generated and rounded again,
@@ -210,7 +234,7 @@ function solve<T>(
     metalOf(bars) < metalOf(cheapest) ? bars : cheapest,
   );
   const metal = metalOf(plan);
-  if (metal <= floor) return toPlan(plan, settings);
+  if (metal <= floor) return toPlan(plan, settings, pieceMetal);
 
   // 3. Is there a cheaper plan between the floor and this one?
   const cheaper = packCheapestMix(
@@ -220,11 +244,11 @@ function solve<T>(
     { min: floor, below: metal },
     SECOND_SEARCH_BUDGET,
   );
-  if (cheaper === 'none') return toPlan(plan, settings); // proven
-  if (cheaper) return toPlan(cheaper, settings);
+  if (cheaper === 'none') return toPlan(plan, settings, pieceMetal); // proven
+  if (cheaper) return toPlan(cheaper, settings, pieceMetal);
   const flow = solveArcFlow(highs, types, lengths, caps);
-  if (flow && metalOf(flow) < metal) return toPlan(flow, settings);
-  return toPlan(plan, settings); // best found, not proven
+  if (flow && metalOf(flow) < metal) return toPlan(flow, settings, pieceMetal);
+  return toPlan(plan, settings, pieceMetal); // best found, not proven
 }
 
 function metalOf(bars: { stockMm: number }[]): number {
@@ -233,9 +257,10 @@ function metalOf(bars: { stockMm: number }[]): number {
 
 /** Search nodes each HiGHS integer program may use. A count, not a
  * clock, so a slow computer gets the same plan as a fast one: a 2 s
- * limit gave CI a worse plan than a laptop (bug-126). No measured
- * profile improved past 1000 (≤ 1 s on a laptop). */
-const SOLVER_NODES = 1000;
+ * limit gave CI a worse plan than a laptop (bug-126). 3000 since the
+ * last cut falls into the trim (M10): one slow profile lost 500 mm at
+ * 1000; 150 random profiles −6.5 m of metal for +10 % time. */
+const SOLVER_NODES = 3000;
 
 /** Times the leftover of a rounded-down linear solution is generated
  * and rounded again before the search packs the rest. */
@@ -944,7 +969,12 @@ function decode<T>(
 export function toPlan<T>(
   raw: { stockMm: number; pieces: { lengthMm: number; ref: T }[] }[],
   settings: OptimiserSettings,
+  pieceMetal: MetalOf<T> = () => undefined,
 ): CutPlan<T> {
+  const metalIn = (pieces: { lengthMm: number; ref: T }[]) =>
+    tenths(
+      pieces.reduce((sum, p) => sum + (pieceMetal(p.ref) ?? p.lengthMm), 0),
+    );
   const bars: CutBar<T>[] = raw
     .map(({ stockMm, pieces }) => {
       const sorted = [...pieces].sort((a, b) => b.lengthMm - a.lengthMm);
@@ -952,30 +982,36 @@ export function toPlan<T>(
       return {
         stockMm,
         pieces: sorted,
-        wasteMm: stockMm - piecesMm,
-        offcutMm:
-          stockMm -
-          2 * settings.endTrimMm -
-          (piecesMm + sorted.length * settings.kerfMm),
+        wasteMm: tenths(stockMm - metalIn(sorted)),
+        // What's left between the trims; 0 when the last cut fell into
+        // the end trim (`capacityOf`).
+        offcutMm: Math.max(
+          0,
+          capacityOf(stockMm, settings) -
+            settings.kerfMm -
+            (piecesMm + sorted.length * settings.kerfMm),
+        ),
       };
     })
     .sort((a, b) => b.stockMm - a.stockMm || a.offcutMm - b.offcutMm);
   const mix: Record<number, number> = {};
   for (const bar of bars) mix[bar.stockMm] = (mix[bar.stockMm] ?? 0) + 1;
   const boughtMm = bars.reduce((sum, b) => sum + b.stockMm, 0);
-  const piecesMm = bars.reduce(
-    (sum, b) => sum + b.pieces.reduce((s, p) => s + p.lengthMm, 0),
-    0,
-  );
+  const piecesMm = tenths(bars.reduce((sum, b) => sum + metalIn(b.pieces), 0));
   return {
     mix,
     bars,
     barCount: bars.length,
     boughtMm,
     piecesMm,
-    wasteMm: boughtMm - piecesMm,
+    wasteMm: tenths(boughtMm - piecesMm),
     wastePct: boughtMm ? ((boughtMm - piecesMm) / boughtMm) * 100 : 0,
   };
+}
+
+/** Rounded to 0.1 mm, so sums of tenths don't print 1e-12 noise. */
+function tenths(mm: number): number {
+  return Math.round(mm * 10) / 10;
 }
 
 function gcd(a: number, b: number): number {

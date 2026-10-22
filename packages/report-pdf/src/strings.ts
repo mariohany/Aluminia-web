@@ -135,7 +135,7 @@ const EN: PdfStrings = {
   approximate:
     'Approximate: sash, transom and bead lengths use stand-in profile widths until each profile has its real sizes.',
   wasteNote:
-    'Waste = everything bought that is not inside a window: saw kerf, end trim and every offcut.',
+    'Waste = everything bought that is not inside a window: saw kerf, end trim, every offcut, and the 45° ends of frame and sash pieces.',
   skippedHeading: 'Left out — no profile picked',
   skippedNote: 'These parts have no profile to cut them from.',
   tooLongHeading: 'Too long for any bar',
@@ -216,7 +216,7 @@ const AR: PdfStrings = {
   approximate:
     'تقريبي: أطوال الدفف والفواصل والاسكواش محسوبة بعروض بروفايل افتراضية لحد ما تتسجّل المقاسات الحقيقية لكل بروفايل.',
   wasteNote:
-    'الهالك = كل اللي اتشترى ومش داخل في شباك: سُمك سلاح المنشار، تنظيف الأطراف، وكل البواقي.',
+    'الهالك = كل اللي اتشترى ومش داخل في شباك: سُمك سلاح المنشار، تنظيف الأطراف، كل البواقي، وأطراف الـ45° في قطع الحلق والضلف.',
   skippedHeading: 'غير محسوب — بدون بروفايل',
   skippedNote: 'الأجزاء دي مالهاش بروفايل تتقص منه.',
   tooLongHeading: 'أطول من أي عود',

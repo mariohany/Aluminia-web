@@ -40,8 +40,10 @@ import {
  * `OPTIMISER_VERSION` instead). 2: the header prints the company profile
  * (docs/company_profile_planing.md §5). 3: one solve per project, printed
  * per language (docs/browser_solve_planing.md §6). 4: the browser draws
- * the PDF from a saved snapshot (docs/browser_pdf_planing.md §4). */
-export const REPORT_VERSION = 4;
+ * the PDF from a saved snapshot (docs/browser_pdf_planing.md §4). 5: the
+ * totals count real metal, mitred ends as waste
+ * (docs/mitre_cuts_planing.md §7). */
+export const REPORT_VERSION = 5;
 
 export interface PieceRef {
   windowId: string;
@@ -54,6 +56,8 @@ interface ProfileFacts {
   profileNo: string;
   systemType: SystemType | null;
   acceptsFlyScreen: boolean;
+  /** mm; null = the placeholder width (docs/mitre_cuts_planing.md §4). */
+  faceWidthMm: number | null;
   /** Profile + catalogue `updated_at`: part of the fingerprint. */
   stamp: string;
 }
@@ -201,6 +205,7 @@ async function loadProfiles(
       profileNo: p.profileNo,
       systemType: cat?.systemType ?? null,
       acceptsFlyScreen: p.acceptsFlyScreen,
+      faceWidthMm: p.faceWidthMm,
       stamp: stampOf(p, cat),
     });
   }
@@ -210,6 +215,7 @@ async function loadProfiles(
       profileNo: p.profileNo,
       systemType: cat?.systemType ?? null,
       acceptsFlyScreen: p.acceptsFlyScreen,
+      faceWidthMm: p.faceWidthMm,
       stamp: stampOf(p, cat),
     });
   }
@@ -350,12 +356,14 @@ export function buildProjectPieces(inputs: ReportInputs): ProjectPieces {
       panels: window.panels,
       facts,
       quantity: window.quantity,
+      faceWidthOf: (ref) => inputs.profiles.get(ref)?.faceWidthMm ?? null,
     });
     for (const piece of list.pieces) {
       out.pieces.push({
         profile: piece.profile,
         member: piece.member,
         lengthMm: piece.lengthMm,
+        metalMm: piece.metalMm,
         count: piece.count,
         ref: {
           windowId: window.id,

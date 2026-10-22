@@ -279,6 +279,117 @@ describe('buildCutList', () => {
     expect(lengths(pieces, 'frame')).toEqual([2400, 2400, 1000]);
   });
 
+  // docs/mitre_cuts_planing.md §3: the metal each piece really holds.
+  describe('real metal (mitred ends)', () => {
+    const metal = (pieces: CutPiece[], member: CutMember) =>
+      pieces
+        .filter((p) => p.member === member)
+        .map((p) => [p.at.position, p.lengthMm, p.metalMm]);
+
+    it('a rectangular ring: every piece L − w, beads all of L', () => {
+      const { pieces } = buildCutList({
+        panels: [panel({ widthMm: 1000, heightMm: 1500 })],
+        facts: [HINGED],
+        quantity: 1,
+      });
+      expect(metal(pieces, 'frame')).toEqual([
+        ['top', 1000, 1000 - F],
+        ['left', 1500, 1500 - F],
+        ['right', 1500, 1500 - F],
+        ['bottom', 1000, 1000 - F],
+      ]);
+      for (const bead of pieces.filter((p) => p.member === 'bead')) {
+        expect(bead.metalMm).toBe(bead.lengthMm);
+      }
+    });
+
+    it("the profile's own face width wins; a sash ring defaults to 60", () => {
+      const { pieces } = buildCutList({
+        panels: [panel({ sections: [opening()] })],
+        facts: [HINGED],
+        quantity: 1,
+        faceWidthOf: (ref) => (ref === 'platform:frame' ? 70.5 : null),
+      });
+      const frame = pieces.filter((p) => p.member === 'frame');
+      expect(frame.every((p) => p.metalMm === p.lengthMm - 70.5)).toBe(true);
+      const sash = pieces.filter((p) => p.member === 'sash');
+      expect(sash).toHaveLength(4);
+      expect(
+        sash.every(
+          (p) => p.metalMm === p.lengthMm - PLACEHOLDER_METRICS.sashFace,
+        ),
+      ).toBe(true);
+    });
+
+    it('a hinged door: the jambs are square at the floor, L − w/2', () => {
+      const { pieces } = buildCutList({
+        panels: [
+          panel({
+            widthMm: 1000,
+            heightMm: 2400,
+            isDoor: true,
+            sections: [opening('platform:door-leaf')],
+          }),
+        ],
+        facts: [HINGED],
+        quantity: 1,
+      });
+      expect(metal(pieces, 'frame')).toEqual([
+        ['top', 1000, 1000 - F],
+        ['left', 2400, 2400 - F / 2],
+        ['right', 2400, 2400 - F / 2],
+      ]);
+    });
+
+    it('a round head: the arc keeps all of L, the jambs lose only the sill corner', () => {
+      const { pieces } = buildCutList({
+        panels: [
+          panel({
+            widthMm: 1000,
+            heightMm: 1500,
+            headShape: HeadShape.ROUND,
+            headRiseMm: 500,
+          }),
+        ],
+        facts: [HINGED],
+        quantity: 1,
+      });
+      const frame = pieces.filter((p) => p.member === 'frame');
+      const head = frame.find((p) => p.curved)!;
+      expect(head.metalMm).toBe(head.lengthMm);
+      const jambs = frame.filter(
+        (p) => p.at.position === 'left' || p.at.position === 'right',
+      );
+      expect(jambs.map((p) => p.metalMm)).toEqual([1000 - F / 2, 1000 - F / 2]);
+      expect(frame.find((p) => p.at.position === 'bottom')!.metalMm).toBe(
+        1000 - F,
+      );
+    });
+
+    it('a gothic head: each arc loses (w/2)·tan θ at the apex', () => {
+      const { pieces } = buildCutList({
+        panels: [
+          panel({
+            widthMm: 1000,
+            heightMm: 1800,
+            headShape: HeadShape.GOTHIC,
+            headRiseMm: 600,
+          }),
+        ],
+        facts: [HINGED],
+        quantity: 1,
+      });
+      const arcs = pieces.filter((p) => p.member === 'frame' && p.curved);
+      expect(arcs).toHaveLength(2);
+      for (const arc of arcs) {
+        const loss = arc.lengthMm - arc.metalMm;
+        // More than nothing, less than a full 45° end (w/2).
+        expect(loss).toBeGreaterThan(0);
+        expect(loss).toBeLessThan(F / 2);
+      }
+    });
+  });
+
   it('a divider with no profile anywhere is skipped, not cut', () => {
     const { pieces, skipped } = buildCutList({
       panels: [

@@ -9,4 +9,6 @@
 // makes or the shape of a solve result: the model, the lower-bound proof,
 // piece ordering, the result format. Refactors that can't change a plan
 // don't need a bump.
-export const OPTIMISER_VERSION = 2;
+// 3: the cut after a bar's last piece falls into the end trim
+// (docs/mitre_cuts_planing.md M10).
+export const OPTIMISER_VERSION = 3;

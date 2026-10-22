@@ -4,7 +4,7 @@ import { before, describe, it } from 'node:test'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { BarOptimiserReport, ReportLanguage } from '@repo/types/reports'
-import { barOptimiserDocument, mixText } from './bar-optimiser-document.mts'
+import { barOptimiserDocument, mixText, squareMetreNumber } from './bar-optimiser-document.mts'
 import { registerFonts } from './fonts.mts'
 import { stringsFor } from './strings.ts'
 
@@ -14,9 +14,12 @@ import { stringsFor } from './strings.ts'
 // order, so a missing right-to-left setting shows up as a wrongly ordered
 // line ("أكتوبر 2026 19").
 
-const report = JSON.parse(
-  readFileSync(new URL('../test-fixtures/bar-optimiser-report.json', import.meta.url), 'utf8'),
-) as BarOptimiserReport
+const fixture = (name: string) =>
+  JSON.parse(readFileSync(new URL(`../test-fixtures/${name}`, import.meta.url), 'utf8')) as BarOptimiserReport
+// Saved before docs/bar_waste_area_planing.md: no areas, no mitre ends.
+const report = fixture('bar-optimiser-report.json')
+// The same report with them.
+const areaReport = fixture('bar-optimiser-report-area.json')
 const company = { enName: 'Cairo Aluminium Works', arName: 'مصنع القاهرة' }
 // A real 1 × 1 PNG.
 const PNG =
@@ -34,8 +37,8 @@ interface Drawn {
   pageWidth: number
 }
 
-async function draw(language: ReportLanguage, logo: string | null = null): Promise<Drawn> {
-  const buffer = await renderToBuffer(barOptimiserDocument({ language, report, company, logo }))
+async function draw(language: ReportLanguage, logo: string | null = null, from: BarOptimiserReport = report): Promise<Drawn> {
+  const buffer = await renderToBuffer(barOptimiserDocument({ language, report: from, company, logo }))
   const pdf = await getDocument({ data: new Uint8Array(buffer), verbosity: 0 }).promise
   const pages: Line[][] = []
   let pageWidth = 0
@@ -60,11 +63,16 @@ const has = (lines: Line[], text: string) =>
 
 before(() => registerFonts((file) => new URL(`../fonts/${file}`, import.meta.url).pathname))
 
-for (const language of ['ar', 'en'] as const) {
-  describe(`bar optimiser PDF (${language})`, () => {
+for (const [language, from, label] of [
+  ['ar', report, ''],
+  ['en', report, ''],
+  ['ar', areaReport, ', areas'],
+  ['en', areaReport, ', areas'],
+] as const) {
+  describe(`bar optimiser PDF (${language}${label})`, () => {
     let drawn: Drawn
     before(async () => {
-      drawn = await draw(language)
+      drawn = await draw(language, null, from)
     })
 
     it('keeps every line inside the page margins (bug-119: no cut-off orders)', () => {
@@ -77,9 +85,10 @@ for (const language of ['ar', 'en'] as const) {
     })
 
     it('prints every stock mix whole, wrapping only after a "+"', () => {
-      const page1 = drawn.pages[0]
+      // The orders table may run onto the next page.
+      const page1 = drawn.pages.flat()
       const text = page1.map((l) => l.str).join(' ')
-      for (const p of report.summary.profiles) {
+      for (const p of from.summary.profiles) {
         for (const term of p.best ? mixText(p.best.mix).split(' + ') : []) {
           assert.ok(text.includes(term), `${p.profileNo}: "${term}" missing`)
         }
@@ -120,5 +129,32 @@ describe('the header', () => {
   it('names the company in the PDF\'s language, English when there is no Arabic name', async () => {
     has((await draw('en')).pages[0], 'Cairo Aluminium Works')
     has((await draw('ar')).pages[0], 'مصنع القاهرة')
+  })
+})
+
+// docs/bar_waste_area_planing.md §4.
+describe('waste as an area', () => {
+  for (const language of ['en', 'ar'] as const) {
+    it(`prints every waste in m², each bar's too (${language})`, async () => {
+      const s = stringsFor(language)
+      const { pages } = await draw(language, null, areaReport)
+      const all = pages.flat().map((l) => l.str)
+      const text = all.join(' ')
+      const bar = areaReport.plans.find((p) => p.best?.bars.length)!.best!.bars[0]
+      assert.ok(all.includes(squareMetreNumber(bar.wasteMm2!)), 'a bar prints its m²')
+      assert.ok(text.includes('m²') && !text.includes('mm²'), 'labelled in m², never mm²')
+      assert.ok(all.some((l) => / m²$/.test(l)), 'a total prints m²')
+      // Arabic runs split at digits, so look for words.
+      assert.ok(text.includes(s.legendCut.split(' ').at(-1)!), 'the legend names the saw cut')
+      assert.ok(text.includes(language === 'en' ? 'drawn larger' : 'مرسومة'), 'the legend says the ends are enlarged')
+    })
+  }
+
+  it('draws an older report as before: waste in mm, no m², no new legend', async () => {
+    const s = stringsFor('en')
+    const all = (await draw('en')).pages.flat().map((l) => l.str)
+    assert.ok(!all.some((l) => l.includes('m²')))
+    assert.ok(!all.includes(s.legendCut))
+    assert.ok(all.includes(String(Math.round(report.plans.find((p) => p.best?.bars.length)!.best!.bars[0].wasteMm))))
   })
 })

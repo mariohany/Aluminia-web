@@ -469,6 +469,34 @@ describe('Reports (e2e)', () => {
     const piece = plan?.best?.bars[0].pieces[0];
     expect(piece?.windowName).toMatch(/^W-(fixed|sash)$/);
     expect(piece?.at).toHaveProperty('position');
+    // docs/bar_waste_area_planing.md §3: areas, widths and mitre ends.
+    for (const p of report.plans) {
+      expect(p.faceWidthMm).toBeGreaterThan(0);
+      for (const bar of p.best?.bars ?? []) {
+        expect(bar.wasteMm2).toBe(Math.round(bar.wasteMm * p.faceWidthMm!));
+        for (const x of bar.pieces) expect(x.endsMm).toHaveLength(2);
+      }
+    }
+    const frame = report.plans.find((p) => p.member === 'frame');
+    expect(
+      frame?.best?.bars.flatMap((b) => b.pieces).some((x) => x.endsMm![0] > 0),
+    ).toBe(true);
+    expect(report.summary.total.wasteMm2).toBeGreaterThan(0);
+    // The bars add up to their profile, the profiles to the total.
+    let bars = 0;
+    for (const p of report.plans) {
+      const own = (p.best?.bars ?? []).reduce((n, b) => n + b.wasteMm2!, 0);
+      const listed = report.summary.profiles.find(
+        (x) => x.profile === p.profile,
+      )?.best?.wasteMm2;
+      expect(Math.abs(own - (listed ?? 0))).toBeLessThanOrEqual(
+        p.best?.bars.length ?? 0,
+      );
+      bars += own;
+    }
+    expect(Math.abs(bars - report.summary.total.wasteMm2!)).toBeLessThanOrEqual(
+      report.plans.length * 50,
+    );
     // No company profile saved: the account name, no logo.
     expect(company).toEqual({
       enName: companyName,

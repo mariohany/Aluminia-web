@@ -13,6 +13,7 @@ import {
   type ProfileResult,
   type ProjectOptimisation,
   type ProjectPiece,
+  type WidthOf,
 } from './project.ts';
 
 // A solve made in the browser and checked by the API
@@ -109,6 +110,8 @@ export function validateSolve<T>(
   lines: ProjectPiece<T>[],
   settings: OptimiserSettings,
   result: SolveResult,
+  /** Each profile's face width, for the waste areas (`assembleProject`). */
+  widthOf?: WidthOf,
 ): ProjectOptimisation<T> {
   const lengths = usableLengths(settings);
   const capOf = (stockMm: number) => capacityOf(stockMm, settings);
@@ -243,5 +246,5 @@ export function validateSolve<T>(
     },
   );
 
-  return assembleProject(profiles, settings);
+  return assembleProject(profiles, settings, widthOf);
 }

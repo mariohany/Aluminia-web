@@ -31,11 +31,12 @@ export interface PdfStrings {
   colLeastWaste: string;
   colProfile: string;
   colMember: string;
-  colInWindows: string;
   colOrder: string;
   total: string;
   approximate: string;
   wasteNote: string;
+  /** The note when the waste is an area (docs/bar_waste_area_planing.md). */
+  wasteNoteArea: string;
   skippedHeading: string;
   skippedNote: string;
   tooLongHeading: string;
@@ -46,6 +47,10 @@ export interface PdfStrings {
   legendScale: string;
   waste: string;
   wasteShort: string;
+  /** Under a bar's waste in m². */
+  wasteArea: string;
+  legendCut: string;
+  legendEnds: string;
   bars: (n: number) => string;
   noPieces: string;
   groups: Record<ReportMember, string>;
@@ -129,13 +134,14 @@ const EN: PdfStrings = {
   colLeastWaste: 'Least waste (mixed)',
   colProfile: 'Profile',
   colMember: 'Member',
-  colInWindows: 'In windows',
   colOrder: 'Order',
   total: 'Total',
   approximate:
     'Approximate: sash, transom and bead lengths use stand-in profile widths until each profile has its real sizes.',
   wasteNote:
     'Waste = everything bought that is not inside a window: saw kerf, end trim, every offcut, and the 45° ends of frame and sash pieces.',
+  wasteNoteArea:
+    "Waste = everything bought that is not inside a window: saw kerf, end trim, every offcut, and the 45° ends of frame and sash pieces. Measured as area (length × the profile's face width), so a wide profile counts more than a narrow one.",
   skippedHeading: 'Left out — no profile picked',
   skippedNote: 'These parts have no profile to cut them from.',
   tooLongHeading: 'Too long for any bar',
@@ -147,6 +153,9 @@ const EN: PdfStrings = {
   legendScale: 'Every bar drawn to the same scale.',
   waste: 'waste',
   wasteShort: 'waste',
+  wasteArea: 'm² waste',
+  legendCut: 'saw cut',
+  legendEnds: '45° ends drawn larger than scale',
   bars: (n) => `${n} bar${n === 1 ? '' : 's'}`,
   noPieces: 'No pieces to cut.',
   groups: {
@@ -210,13 +219,14 @@ const AR: PdfStrings = {
   colLeastWaste: 'أقل هالك (مختلط)',
   colProfile: 'البروفايل',
   colMember: 'العنصر',
-  colInWindows: 'في الشبابيك',
   colOrder: 'الطلب',
   total: 'الإجمالي',
   approximate:
     'تقريبي: أطوال الدفف والفواصل والاسكواش محسوبة بعروض بروفايل افتراضية لحد ما تتسجّل المقاسات الحقيقية لكل بروفايل.',
   wasteNote:
     'الهالك = كل اللي اتشترى ومش داخل في شباك: سُمك سلاح المنشار، تنظيف الأطراف، كل البواقي، وأطراف الـ45° في قطع الحلق والضلف.',
+  wasteNoteArea:
+    'الهالك = كل اللي اتشترى ومش داخل في شباك: سُمك سلاح المنشار، تنظيف الأطراف، كل البواقي، وأطراف الـ45° في قطع الحلق والضلف. محسوب كمساحة (الطول × عرض واجهة البروفايل)، فالبروفايل العريض بيتحسب أكتر من الرفيع.',
   skippedHeading: 'غير محسوب — بدون بروفايل',
   skippedNote: 'الأجزاء دي مالهاش بروفايل تتقص منه.',
   tooLongHeading: 'أطول من أي عود',
@@ -227,6 +237,9 @@ const AR: PdfStrings = {
   legendScale: 'كل الأعواد مرسومة بنفس المقياس.',
   waste: 'هالك',
   wasteShort: 'هالك',
+  wasteArea: 'هالك m²',
+  legendCut: 'قطع المنشار',
+  legendEnds: 'أطراف الـ45° مرسومة أكبر من المقياس',
   bars: (n) => `${n} عود`,
   noPieces: 'مفيش قطع للقص.',
   groups: {

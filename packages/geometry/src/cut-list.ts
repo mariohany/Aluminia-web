@@ -56,6 +56,10 @@ export interface CutPiece {
   /** The metal the piece really holds, to 0.1 mm: `lengthMm` less what
    * its mitred ends take off (see the top of the file). */
   metalMm: number
+  /** How far each end's mitre triangle runs along the bar, mm, start
+   * and finish (w·tan θ: w for 45°, 0 for a square end). What the PDF
+   * draws; `metalMm = lengthMm − Σ endsMm / 2`. */
+  endsMm: [number, number]
   curved: boolean
   /** How many identical pieces: the window's quantity. */
   count: number
@@ -84,9 +88,9 @@ export interface CutListInput {
   faceWidthOf?: (profile: string) => number | null
 }
 
-/** A piece before rounding. `endLoss`: what its ends take off, in face
- * widths (½ per 45° end); absent = square ends. */
-type RawPiece = { lengthMm: number; curved: boolean; position: PiecePosition; positionIndex?: number; endLoss?: number }
+/** A piece before rounding. `ends`: tan θ of each end's cut off square
+ * (1 for 45°), start and finish; absent = square ends. */
+type RawPiece = { lengthMm: number; curved: boolean; position: PiecePosition; positionIndex?: number; ends?: [number, number] }
 
 export function buildCutList(input: CutListInput): CutList {
   const resolved = input.panels.map((given, i) => resolvePanelLayout(given, input.facts[i] ?? { systemType: null, flyScreenAllowed: false }))
@@ -106,11 +110,14 @@ export function buildCutList(input: CutListInput): CutList {
       for (const piece of pieces) {
         if (!(piece.lengthMm >= 1)) continue
         const lengthMm = Math.round(piece.lengthMm)
+        const [a, b] = piece.ends ?? [0, 0]
+        const endsMm: [number, number] = [tenths(a * w), tenths(b * w)]
         out.pieces.push({
           member,
           profile,
           lengthMm,
-          metalMm: Math.max(0, Math.round((lengthMm - (piece.endLoss ?? 0) * w) * 10) / 10),
+          metalMm: Math.max(0, tenths(lengthMm - (endsMm[0] + endsMm[1]) / 2)),
+          endsMm,
           curved: piece.curved,
           count: input.quantity,
           at: { ...at, position: piece.position, ...(piece.positionIndex !== undefined ? { positionIndex: piece.positionIndex } : {}) },
@@ -169,18 +176,24 @@ export function buildCutList(input: CutListInput): CutList {
 function ringPieces(part: WindowPart, opts: { sill: boolean }): RawPiece[] {
   const { width, height } = part.rectMm
   const pieces: RawPiece[] = []
-  const foot = opts.sill ? 0.5 : 0
+  const foot = opts.sill ? 1 : 0
   if (part.head && part.head.shape !== HeadShape.FLAT && part.head.riseMm > 0) {
     const outline: HeadOutline = { rect: part.rectMm, shape: part.head.shape, riseMm: part.head.riseMm }
-    pieces.push(...headPieces(outline).map((p) => ({ ...p, endLoss: p.positionIndex !== undefined ? 0.5 * apexTan(outline) : 0 })))
+    // A gothic arc: square at the springing line, cut on the vertical at the apex.
+    pieces.push(...headPieces(outline).map((p): RawPiece => ({ ...p, ends: [0, p.positionIndex !== undefined ? apexTan(outline) : 0] })))
     const jamb = height - part.head.riseMm
-    pieces.push({ lengthMm: jamb, curved: false, position: 'left', endLoss: foot }, { lengthMm: jamb, curved: false, position: 'right', endLoss: foot })
+    pieces.push({ lengthMm: jamb, curved: false, position: 'left', ends: [foot, 0] }, { lengthMm: jamb, curved: false, position: 'right', ends: [foot, 0] })
   } else {
-    pieces.push({ lengthMm: width, curved: false, position: 'top', endLoss: 1 })
-    pieces.push({ lengthMm: height, curved: false, position: 'left', endLoss: 0.5 + foot }, { lengthMm: height, curved: false, position: 'right', endLoss: 0.5 + foot })
+    pieces.push({ lengthMm: width, curved: false, position: 'top', ends: [1, 1] })
+    pieces.push({ lengthMm: height, curved: false, position: 'left', ends: [1, foot] }, { lengthMm: height, curved: false, position: 'right', ends: [1, foot] })
   }
-  if (opts.sill) pieces.push({ lengthMm: width, curved: false, position: 'bottom', endLoss: 1 })
+  if (opts.sill) pieces.push({ lengthMm: width, curved: false, position: 'bottom', ends: [1, 1] })
   return pieces
+}
+
+/** To 0.1 mm. */
+function tenths(mm: number): number {
+  return Math.round(mm * 10) / 10
 }
 
 /** tan θ of a gothic arc's apex end: cut on the vertical, θ off square

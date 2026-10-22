@@ -435,6 +435,18 @@ export const slidingRailsSchema = z
 
 export const DEFAULT_SLIDING_RAILS = 2
 
+// A profile's face width, mm, to one decimal — any profile type
+// (docs/mitre_cuts_planing.md §4). Null / omitted = the drawing's
+// placeholder width for its member.
+export const FACE_WIDTH_MAX_MM = 500
+export const faceWidthSchema = z
+  .number()
+  .positive()
+  .max(FACE_WIDTH_MAX_MM)
+  .refine((v) => Math.abs(v * 10 - Math.round(v * 10)) < 1e-9, { message: 'At most one decimal.' })
+  .nullable()
+  .optional()
+
 export const isSlidingFrameProfile = (profileType: ProfileType, systemType: SystemType | null | undefined): boolean =>
   profileType === ProfileType.FRAME && systemType === SystemType.SLIDING
 
@@ -470,6 +482,7 @@ export const createSystemProfileSchema = z.object({
   image: z.url().nullable().optional(),
   acceptsFlyScreen: z.boolean(),
   slidingRails: slidingRailsSchema,
+  faceWidthMm: faceWidthSchema,
 })
 export type CreateSystemProfileInput = z.infer<typeof createSystemProfileSchema>
 export const updateSystemProfileSchema = createSystemProfileSchema.partial()
@@ -489,6 +502,7 @@ export interface SystemProfileSummary {
   image: string | null
   acceptsFlyScreen: boolean
   slidingRails: number | null
+  faceWidthMm: number | null
   createdAt: string
   updatedAt: string
 }

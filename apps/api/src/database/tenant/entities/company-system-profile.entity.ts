@@ -70,6 +70,11 @@ export class CompanySystemProfile {
   @Column({ name: 'sliding_rails', type: 'integer', nullable: true })
   slidingRails: number | null;
 
+  // Face width in mm, any profile type; null = the drawing's placeholder
+  // (docs/mitre_cuts_planing.md §4).
+  @Column({ name: 'face_width_mm', type: 'real', nullable: true })
+  faceWidthMm: number | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

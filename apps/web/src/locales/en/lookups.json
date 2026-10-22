@@ -65,7 +65,9 @@
     "inertiaIx": "Inertia Ix (cm⁴)",
     "inertiaIy": "Inertia Iy (cm⁴)",
     "acceptsFlyScreen": "Fly screen",
-    "slidingRails": "Sliding rails"
+    "slidingRails": "Sliding rails",
+    "faceWidth": "Face width (mm)",
+    "faceWidthPlaceholder": "Empty = default width"
   },
   "common": {
     "yes": "Yes",

@@ -725,6 +725,10 @@ export class SystemLookupsService {
             toCreate.push(row);
             continue;
           }
+          // No face-width column in the sheet: keep the profile's own.
+          if (row.faceWidthMm === undefined) {
+            row.faceWidthMm = existing.faceWidthMm;
+          }
           const numbersChanged = [
             [existing.maxGlassThickness, row.maxGlassThickness],
             [existing.weight, row.weight],
@@ -737,7 +741,9 @@ export class SystemLookupsService {
             numbersChanged ||
             (existing.image ?? null) !== (row.image ?? null) ||
             existing.acceptsFlyScreen !== row.acceptsFlyScreen ||
-            existing.slidingRails !== row.slidingRails;
+            existing.slidingRails !== row.slidingRails ||
+            Math.abs((existing.faceWidthMm ?? -1) - (row.faceWidthMm ?? -1)) >
+              0.001;
           if (changed) toUpdate.push({ id: existing.id, row });
           else profilesResult.unchangedCount += 1;
         }
@@ -766,6 +772,7 @@ export class SystemLookupsService {
                       image: row.image,
                       acceptsFlyScreen: row.acceptsFlyScreen,
                       slidingRails: row.slidingRails,
+                      faceWidthMm: row.faceWidthMm ?? null,
                     })),
                   )
                   .execute();
@@ -779,7 +786,7 @@ export class SystemLookupsService {
                 const values = toUpdate
                   .map(
                     (_, i) =>
-                      `($${i * 10 + 1}::uuid, $${i * 10 + 2}::profile_type, $${i * 10 + 3}::integer, $${i * 10 + 4}::real, $${i * 10 + 5}::integer, $${i * 10 + 6}::real, $${i * 10 + 7}::real, $${i * 10 + 8}::varchar, $${i * 10 + 9}::boolean, $${i * 10 + 10}::integer)`,
+                      `($${i * 11 + 1}::uuid, $${i * 11 + 2}::profile_type, $${i * 11 + 3}::integer, $${i * 11 + 4}::real, $${i * 11 + 5}::integer, $${i * 11 + 6}::real, $${i * 11 + 7}::real, $${i * 11 + 8}::varchar, $${i * 11 + 9}::boolean, $${i * 11 + 10}::integer, $${i * 11 + 11}::real)`,
                   )
                   .join(', ');
                 const params = toUpdate.flatMap(({ id, row }) => [
@@ -793,11 +800,12 @@ export class SystemLookupsService {
                   row.image,
                   row.acceptsFlyScreen,
                   row.slidingRails,
+                  row.faceWidthMm ?? null,
                 ]);
                 await queryRunner.query(
                   `UPDATE "system_profile" AS t
-                   SET "profile_type" = v.profile_type, "max_glass_thickness" = v.max_glass_thickness, "weight" = v.weight, "perimeter" = v.perimeter, "inertia_ix" = v.inertia_ix, "inertia_iy" = v.inertia_iy, "image" = v.image, "accepts_fly_screen" = v.accepts_fly_screen, "sliding_rails" = v.sliding_rails, "updated_at" = now()
-                   FROM (VALUES ${values}) AS v(id, profile_type, max_glass_thickness, weight, perimeter, inertia_ix, inertia_iy, image, accepts_fly_screen, sliding_rails)
+                   SET "profile_type" = v.profile_type, "max_glass_thickness" = v.max_glass_thickness, "weight" = v.weight, "perimeter" = v.perimeter, "inertia_ix" = v.inertia_ix, "inertia_iy" = v.inertia_iy, "image" = v.image, "accepts_fly_screen" = v.accepts_fly_screen, "sliding_rails" = v.sliding_rails, "face_width_mm" = v.face_width_mm, "updated_at" = now()
+                   FROM (VALUES ${values}) AS v(id, profile_type, max_glass_thickness, weight, perimeter, inertia_ix, inertia_iy, image, accepts_fly_screen, sliding_rails, face_width_mm)
                    WHERE t.id = v.id`,
                   params,
                 );
@@ -910,6 +918,7 @@ function toSystemProfileSummary(profile: SystemProfile): SystemProfileSummary {
     image: profile.image,
     acceptsFlyScreen: profile.acceptsFlyScreen,
     slidingRails: profile.slidingRails,
+    faceWidthMm: profile.faceWidthMm,
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
   };

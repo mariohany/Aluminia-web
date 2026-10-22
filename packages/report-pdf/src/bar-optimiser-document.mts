@@ -474,7 +474,7 @@ function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, bar: BarOptimis
   parts.push(
     h(Rect, { key: 'offcut', x, y: 2, width: Math.max(bar.offcutMm * scale, 0), height: BAR_H - 4, fill: C.accentSoft, stroke: C.accent, strokeWidth: 0.7, strokeDasharray: '3 2' }),
     h(Rect, { key: 'trim-b', x: w - trimW, y: 0, width: trimW, height: BAR_H, fill: C.trim }),
-    h(Text, { key: 'waste', x: w + 6, y: 12, fill: C.accent, style: { fontFamily: mono, fontWeight: 600, fontSize: 8 } }, String(bar.wasteMm)),
+    h(Text, { key: 'waste', x: w + 6, y: 12, fill: C.accent, style: { fontFamily: mono, fontWeight: 600, fontSize: 8 } }, String(Math.round(bar.wasteMm))),
     h(Text, { key: 'waste-l', x: w + 6, y: 21, fill: C.accent, style: { fontFamily: d.family, direction: d.s.dir, fontSize: 6.5 } }, s.wasteShort),
     h(Text, { key: 'stock-l', x: w - trimW - 2, y: -2, textAnchor: 'end', fill: C.mute, style: { fontFamily: mono, fontSize: 6 } }, String(bar.stockMm)),
   )

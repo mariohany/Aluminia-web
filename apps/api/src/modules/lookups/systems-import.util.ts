@@ -1,5 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
-import { ProfileType, SystemType } from '@repo/types/lookups';
+import {
+  FACE_WIDTH_MAX_MM,
+  ProfileType,
+  SystemType,
+  faceWidthSchema,
+} from '@repo/types/lookups';
 import type ExcelJS from 'exceljs';
 import {
   cellNumber,
@@ -81,6 +86,10 @@ export interface ParsedProfileRow {
   // service normalises it against the resolved catalogue (2 for a
   // sliding frame, null otherwise), the same as the create endpoint.
   slidingRails: number | null;
+  // mm, one decimal (docs/mitre_cuts_planing.md §4). `undefined` = the
+  // sheet has no face-width column: an update keeps what the profile
+  // has, a new profile gets null. A blank cell under the column = null.
+  faceWidthMm: number | null | undefined;
   rowNumber: number;
 }
 
@@ -236,6 +245,9 @@ function parseProfileSheet(
   const railsHeader = findColumns(sheet.getRow(header.rowNumber), [
     { key: 'slidingRails', hints: ['rails', 'tracks'] },
   ]);
+  const faceHeader = findColumns(sheet.getRow(header.rowNumber), [
+    { key: 'faceWidthMm', hints: ['face width', 'face'] },
+  ]);
 
   const rows: ParsedProfileRow[] = [];
   for (let i = header.rowNumber + 1; i <= sheet.rowCount; i++) {
@@ -296,6 +308,18 @@ function parseProfileSheet(
       );
       continue;
     }
+    const faceWidthMm = faceHeader
+      ? cellNumber(line.getCell(faceHeader.faceWidthMm))
+      : undefined;
+    if (
+      faceWidthMm != null &&
+      !faceWidthSchema.safeParse(faceWidthMm).success
+    ) {
+      errors.push(
+        `Profile row ${i}: face width must be a number above 0 and up to ${FACE_WIDTH_MAX_MM} mm, with at most one decimal.`,
+      );
+      continue;
+    }
     rows.push({
       catalogName,
       profileNo,
@@ -308,6 +332,7 @@ function parseProfileSheet(
       image,
       acceptsFlyScreen,
       slidingRails,
+      faceWidthMm,
       rowNumber: i,
     });
   }

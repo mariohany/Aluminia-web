@@ -23,8 +23,8 @@ const pieces = (spec: Record<number, number>): OptimiserPiece<string>[] =>
     ref: `p${length}`,
   }));
 
-/** Every piece placed exactly once, no bar over its usable length, and
- * the totals add up. */
+/** Every piece placed exactly once, no bar over its capacity (the cut
+ * after the last piece falls into the end trim), and the totals add up. */
 function expectValid(
   plan: CutPlan<string> | null,
   input: OptimiserPiece<string>[],
@@ -44,7 +44,9 @@ function expectValid(
       (sum, x) => sum + x.lengthMm + settings.kerfMm,
       0,
     );
-    expect(used).toBeLessThanOrEqual(bar.stockMm - 2 * settings.endTrimMm);
+    expect(used).toBeLessThanOrEqual(
+      bar.stockMm - 2 * settings.endTrimMm + settings.kerfMm,
+    );
     expect(bar.offcutMm).toBeGreaterThanOrEqual(0);
     expect(bar.pieces.map((x) => x.lengthMm)).toEqual(
       [...bar.pieces.map((x) => x.lengthMm)].sort((a, b) => b - a),
@@ -68,16 +70,16 @@ describe('optimiseProfile', () => {
   });
 
   it('an exact fit uses one bar with nothing left', async () => {
-    // 5980 usable = 2 × (2986 + 4 kerf).
+    // 5980 between the trims + the last kerf = 2 × (2988 + 4 kerf).
     const settings = { ...SHOP, lengths: [6000] };
-    const input = pieces({ 2986: 2 });
+    const input = pieces({ 2988: 2 });
     const { best } = await optimiseProfile(input, settings);
     expect(best!.barCount).toBe(1);
     expect(best!.bars[0].offcutMm).toBe(0);
   });
 
   it('kerf and trim push a piece onto a second bar', async () => {
-    // 2 × 2990 = 5980 of metal, but 2 × (2990 + 4) > 5980 usable.
+    // 2 × 2990 = 5980 of metal, but 2 × (2990 + 4) > 5980 + 4.
     const settings = { ...SHOP, lengths: [6000] };
     const { best } = await optimiseProfile(pieces({ 2990: 2 }), settings);
     expect(best!.barCount).toBe(2);
@@ -239,6 +241,37 @@ describe('optimiseProfile', () => {
     60_000,
   );
 
+  // docs/mitre_cuts_planing.md M10.
+  it('the cut after the last piece falls into the end trim', async () => {
+    // 5980 between the trims: 2 × (2988 + 4) = 5984 fits only because the
+    // second cut lands in the trim; the offcut is then 0, not -4.
+    const settings = { ...SHOP, lengths: [6000] };
+    const input = pieces({ 2988: 2 });
+    const { best } = await optimiseProfile(input, settings);
+    expectValid(best, input, settings);
+    expect(best!.barCount).toBe(1);
+    expect(best!.bars[0].offcutMm).toBe(0);
+  });
+
+  // docs/mitre_cuts_planing.md §6: real metal changes the totals, never
+  // the bars.
+  it('counts real metal in the totals and packs by cutting length', async () => {
+    const plain = pieces({ 1500: 3, 900: 2 });
+    const mitred = plain.map((p) => ({ ...p, metalMm: p.lengthMm - 45 }));
+    const a = (await optimiseProfile(plain, SHOP)).best!;
+    const b = (await optimiseProfile(mitred, SHOP)).best!;
+    expect(b.bars.map((bar) => bar.pieces.map((p) => p.lengthMm))).toEqual(
+      a.bars.map((bar) => bar.pieces.map((p) => p.lengthMm)),
+    );
+    expect(b.boughtMm).toBe(a.boughtMm);
+    expect(b.piecesMm).toBe(a.piecesMm - 5 * 45);
+    expect(b.wasteMm).toBe(a.wasteMm + 5 * 45);
+    expect(b.bars.reduce((n, bar) => n + bar.wasteMm, 0)).toBe(b.wasteMm);
+    expect(b.bars.map((bar) => bar.offcutMm)).toEqual(
+      a.bars.map((bar) => bar.offcutMm),
+    );
+  });
+
   it('lists a piece too long for any bar instead of failing', async () => {
     const input = pieces({ 6600: 1, 2000: 2 });
     const { best, tooLong } = await optimiseProfile(input, SHOP);
@@ -297,10 +330,11 @@ describe('optimiseProfile', () => {
     'S67-3101 transom': { 2310: 4, 1410: 2, 1110: 2, 937: 4 },
   };
 
-  // Optimal metal, proven by HiGHS (mixed 6000 + 6500, kerf 4, trim 10).
+  // Optimal metal, proven (mixed 6000 + 6500, kerf 4, trim 10; the sash
+  // at the lower bound).
   const OPTIMUM: Record<string, number> = {
     'S67-1101 frame': 7 * 6000 + 4 * 6500,
-    'S67-2201 sash': 11 * 6500,
+    'S67-2201 sash': 1 * 6000 + 10 * 6500, // 11 × 6500 before M10
     'SL90-2140 sliding leaf': 2 * 6000 + 5 * 6500,
     'S67-3101 transom': 1 * 6000 + 2 * 6500,
   };

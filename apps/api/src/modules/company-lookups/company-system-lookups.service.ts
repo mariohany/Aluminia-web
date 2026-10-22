@@ -384,6 +384,7 @@ export class CompanySystemLookupsService {
           await this.catalogSystemType(manager, platformId, companyId),
           input.slidingRails,
         ),
+        faceWidthMm: input.faceWidthMm ?? null,
       });
       try {
         await manager.save(profile);
@@ -432,6 +433,8 @@ export class CompanySystemLookupsService {
       if (input.image !== undefined) profile.image = input.image ?? null;
       if (input.acceptsFlyScreen !== undefined)
         profile.acceptsFlyScreen = input.acceptsFlyScreen;
+      if (input.faceWidthMm !== undefined)
+        profile.faceWidthMm = input.faceWidthMm ?? null;
       // Re-normalised on every update (see the platform service): a
       // catalogue or type change must null the count even when the
       // client didn't send `slidingRails` at all.
@@ -509,6 +512,7 @@ export class CompanySystemLookupsService {
               ),
               item.slidingRails,
             ),
+            faceWidthMm: item.faceWidthMm ?? null,
           });
         }
         const insertResult = await manager
@@ -603,6 +607,7 @@ export class CompanySystemLookupsService {
         image: profile.image,
         acceptsFlyScreen: profile.acceptsFlyScreen,
         slidingRails: profile.slidingRails,
+        faceWidthMm: profile.faceWidthMm,
         scope: LookupScope.COMPANY,
         createdAt: profile.createdAt.toISOString(),
         updatedAt: profile.updatedAt.toISOString(),

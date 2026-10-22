@@ -28,6 +28,12 @@ describe('Health (e2e)', () => {
     await app.init();
   });
 
+  // Render's post-deploy requests: no 404 (Sentry records every 404).
+  it('/ (GET, HEAD) answers 204, not 404', async () => {
+    await request(app.getHttpServer()).get('/').expect(204);
+    await request(app.getHttpServer()).head('/').expect(204);
+  });
+
   it('/health (GET) reports the database and Redis as up', () => {
     return request(app.getHttpServer())
       .get('/health')

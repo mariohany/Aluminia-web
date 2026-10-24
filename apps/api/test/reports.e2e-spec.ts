@@ -722,12 +722,13 @@ describe('Reports (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ quantity: 5 })
       .expect(200);
+    // No colours picked: the sash's bar group is its profile with both
+    // colours empty (docs/report_colours_planing.md §3).
+    const sashGroup = `platform:${leafId}||`;
     const start = await startSolve();
-    expect(start.reused).toEqual([`platform:${leafId}`]);
+    expect(start.reused).toEqual([sashGroup]);
     const sent = await browserSolve(start);
-    expect(sent.profiles.map((p) => p.profile)).not.toContain(
-      `platform:${leafId}`,
-    );
+    expect(sent.profiles.map((p) => p.profile)).not.toContain(sashGroup);
     const res = await sendResult(start, sent).expect(200);
 
     // The saved report is what a full solve makes.

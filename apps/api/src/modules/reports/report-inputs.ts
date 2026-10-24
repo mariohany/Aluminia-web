@@ -290,7 +290,7 @@ export function reportSnapshotOf(
     ...namesOf(inputs),
     summary: summaryOf(inputs, pieces, result),
     plans: result.profiles.map((p) => ({
-      profile: p.profile,
+      profile: profileRefOf(p.profile),
       profileNo: profileNoOf(inputs, p.profile),
       member: p.member,
       faceWidthMm: widthOf(p.profile),
@@ -399,6 +399,23 @@ export function changedWindowCount(
   return changed;
 }
 
+/** A bar group (docs/report_colours_planing.md §3): one profile in one
+ * interior + exterior colour pair (scoped refs, empty = none picked).
+ * Only a group's pieces may share a bar, so it is the key the whole solve
+ * path uses where it says "profile" — the optimiser treats it as opaque. */
+export function barGroupOf(
+  profile: string,
+  interior: string | null | undefined,
+  exterior: string | null | undefined,
+): string {
+  return `${profile}|${interior ?? ''}|${exterior ?? ''}`;
+}
+
+/** The profile ref a bar group is cut from. */
+export function profileRefOf(group: string): string {
+  return group.split('|')[0];
+}
+
 export interface ProjectPieces {
   pieces: ProjectPiece<PieceRef>[];
   skipped: BarOptimiserSummary['skipped'];
@@ -423,8 +440,14 @@ export function buildProjectPieces(inputs: ReportInputs): ProjectPieces {
       faceWidthOf: (ref) => inputs.profiles.get(ref)?.faceWidthMm ?? null,
     });
     for (const piece of list.pieces) {
+      // Sash, divider and bead take their panel's colours (C3).
+      const panel = window.panels[piece.at.panelIndex];
       out.pieces.push({
-        profile: piece.profile,
+        profile: barGroupOf(
+          piece.profile,
+          panel?.interiorColor,
+          panel?.exteriorColor,
+        ),
         member: piece.member,
         lengthMm: piece.lengthMm,
         metalMm: piece.metalMm,
@@ -458,20 +481,21 @@ const PLACEHOLDER_WIDTH: Record<CutMember, number> = {
   bead: PLACEHOLDER_METRICS.beadFace,
 };
 
-/** Each profile's face width for the waste areas
- * (docs/bar_waste_area_planing.md §3): its own, else the placeholder of
- * the member group it counts under. */
+/** Each bar group's face width for the waste areas
+ * (docs/bar_waste_area_planing.md §3): its profile's own, else the
+ * placeholder of the member group it counts under. */
 export function widthsOf(inputs: ReportInputs, pieces: ProjectPieces): WidthOf {
   const member = new Map(
     profileQueue(pieces.pieces).map((q) => [q.profile, q.member]),
   );
-  return (profile) =>
-    inputs.profiles.get(profile)?.faceWidthMm ??
-    PLACEHOLDER_WIDTH[member.get(profile) ?? 'frame'];
+  return (group) =>
+    inputs.profiles.get(profileRefOf(group))?.faceWidthMm ??
+    PLACEHOLDER_WIDTH[member.get(group) ?? 'frame'];
 }
 
+/** A profile's number; takes a profile ref or a bar group. */
 export function profileNoOf(inputs: ReportInputs, ref: string): string | null {
-  return inputs.profiles.get(ref)?.profileNo ?? null;
+  return inputs.profiles.get(profileRefOf(ref))?.profileNo ?? null;
 }
 
 /** What the screen shows and the cache keeps (no bars: those go into
@@ -528,12 +552,12 @@ export function summaryOf(
     members: result.members.map((m) => ({
       member: m.member,
       pieceCount: m.pieceCount,
-      profiles: m.profiles,
+      profiles: [...new Set(m.profiles.map(profileRefOf))],
       single: singleOf(m.single),
       best: { ...totals(m.best), mix: { ...m.best.mix } },
     })),
     profiles: result.profiles.map((p) => ({
-      profile: p.profile,
+      profile: profileRefOf(p.profile),
       profileNo: profileNoOf(inputs, p.profile),
       member: p.member,
       pieceCount: p.pieceCount,
@@ -577,7 +601,7 @@ export function initialProgress(
   });
 }
 
-/** Each profile's plan key (docs/report_speed_planing.md §6): everything
+/** Each bar group's plan key (docs/report_speed_planing.md §6): everything
  * its plans depend on — the optimiser, the stock lengths, kerf and end
  * trim, and its pieces' lengths with how many of each. Not which window a
  * piece is from: the optimiser packs by length. Same key = same plans. */

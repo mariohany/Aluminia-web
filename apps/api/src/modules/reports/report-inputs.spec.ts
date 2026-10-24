@@ -1,6 +1,13 @@
 import type { Project } from '../../database/tenant/entities/project.entity';
 import type { CutBar } from '@repo/bar-optimiser/optimise';
+import { optimiseProject, profileQueue } from '@repo/bar-optimiser/project';
+import type { WindowDetail } from '@repo/types/windows';
 import {
+  barGroupOf,
+  buildProjectPieces,
+  planKeysOf,
+  profileNoOf,
+  profileRefOf,
   patternsOf,
   snapshotFingerprintOf,
   solveFingerprintOf,
@@ -114,5 +121,131 @@ describe('patternsOf', () => {
       ['W2', 1],
     ]);
     expect(patterns.reduce((n, p) => n + p.count, 0)).toBe(bars.length);
+  });
+});
+
+// Bar groups (docs/report_colours_planing.md §3): only one profile in one
+// interior + exterior colour pair may share a bar.
+describe('bar groups', () => {
+  const FRAME = 'platform:00000000-0000-4000-8000-000000000001';
+  const WHITE = 'platform:00000000-0000-4000-8000-0000000000a1';
+  const GREY = 'company:00000000-0000-4000-8000-0000000000a2';
+  const settings = { lengths: [6500, 6000], kerfMm: 4, endTrimMm: 10 };
+
+  const window = (
+    id: string,
+    widthMm: number,
+    interiorColor: string | null,
+    exteriorColor: string | null,
+  ) =>
+    ({
+      id,
+      name: id,
+      quantity: 3,
+      updatedAt: '2026-10-02T10:00:00.000Z',
+      panels: [
+        {
+          xMm: 0,
+          yMm: 0,
+          widthMm,
+          heightMm: 1500,
+          frameProfile: FRAME,
+          dividerProfile: null,
+          dividers: [],
+          sections: [
+            {
+              faceKey: 'left|right|sill|top',
+              openingType: null,
+              glassKind: 'single',
+              glass: null,
+              hasFlyScreen: false,
+              sliding: null,
+            },
+          ],
+          isDoor: false,
+          interiorColor,
+          exteriorColor,
+          headShape: 'flat',
+          headRiseMm: null,
+        },
+      ],
+    }) as unknown as WindowDetail;
+
+  const piecesOf = (...windows: WindowDetail[]) => {
+    const base = inputs();
+    base.windows = windows;
+    return { base, pieces: buildProjectPieces(base) };
+  };
+
+  it('a different colour pair is its own group; empty is its own too', () => {
+    const { pieces } = piecesOf(
+      window('w1', 1200, WHITE, GREY),
+      window('w2', 1100, WHITE, WHITE),
+      window('w3', 1000, WHITE, null),
+    );
+    expect(pieces.pieces.length).toBeGreaterThan(0);
+    expect(
+      profileQueue(pieces.pieces)
+        .map((q) => q.profile)
+        .sort(),
+    ).toEqual(
+      [
+        barGroupOf(FRAME, WHITE, GREY),
+        barGroupOf(FRAME, WHITE, WHITE),
+        barGroupOf(FRAME, WHITE, null),
+      ].sort(),
+    );
+    for (const piece of pieces.pieces) {
+      expect(profileRefOf(piece.profile)).toBe(FRAME);
+    }
+  });
+
+  it('never puts two colour pairs on one bar', async () => {
+    const { pieces } = piecesOf(
+      window('w1', 1200, WHITE, GREY),
+      window('w2', 1100, WHITE, WHITE),
+    );
+    const result = await optimiseProject(pieces.pieces, settings);
+    expect(result.profiles).toHaveLength(2);
+    for (const profile of result.profiles) {
+      const names = new Set(
+        profile.best!.bars.flatMap((b) =>
+          b.pieces.map((p) => p.ref.windowName),
+        ),
+      );
+      expect(names.size).toBe(1);
+    }
+  });
+
+  it('one colour pair everywhere solves exactly as one profile did', async () => {
+    const { pieces } = piecesOf(
+      window('w1', 1200, WHITE, GREY),
+      window('w2', 1100, WHITE, GREY),
+    );
+    const grouped = await optimiseProject(pieces.pieces, settings);
+    const plain = await optimiseProject(
+      pieces.pieces.map((p) => ({ ...p, profile: FRAME })),
+      settings,
+    );
+    expect(grouped.profiles).toHaveLength(1);
+    expect(grouped.profiles[0].best).toEqual(plain.profiles[0].best);
+    expect(grouped.total).toEqual(plain.total);
+  });
+
+  it('plan keys and profile numbers go by group', () => {
+    const { base, pieces } = piecesOf(
+      window('w1', 1200, WHITE, GREY),
+      window('w2', 1200, GREY, GREY),
+    );
+    base.profiles = new Map([
+      [FRAME, { profileNo: '1045' }],
+    ]) as unknown as ReportInputs['profiles'];
+    const keys = planKeysOf(base, pieces);
+    expect([...keys.keys()].sort()).toEqual(
+      [barGroupOf(FRAME, WHITE, GREY), barGroupOf(FRAME, GREY, GREY)].sort(),
+    );
+    // Same lengths in both pairs: same plan, but each group keeps its own.
+    expect(new Set(keys.values()).size).toBe(1);
+    expect(profileNoOf(base, barGroupOf(FRAME, WHITE, GREY))).toBe('1045');
   });
 });

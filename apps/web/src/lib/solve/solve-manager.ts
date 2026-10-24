@@ -105,9 +105,12 @@ export async function startSolve(projectId: string, projectName: string): Promis
   queryClient.setQueryData(barOptimiserStatusKey(projectId), start.status)
   patch(projectId, { state: 'solving', groups: start.status.solve?.groups ?? [] })
 
+  // Profiles the API reuses from the last solve are skipped; the progress
+  // it sent already counts them done (docs/report_speed_planing.md §6).
+  const reused = new Set(start.reused ?? [])
   const queue = profileQueue(
     solveInput(start.lines.map((line) => ({ ...line, member: line.member as CutMember }))),
-  )
+  ).filter((q) => !reused.has(q.profile))
   const results = new Map<string, SolvedProfile>()
   const run: Running = {
     token: start.token,

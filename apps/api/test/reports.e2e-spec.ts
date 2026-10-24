@@ -289,14 +289,20 @@ describe('Reports (e2e)', () => {
   }
 
   /** What an honest browser does with a start: the real optimiser on the
-   * line numbers. */
-  async function browserSolve(start: SolveStart): Promise<SolveResult> {
+   * line numbers, skipping the profiles the API reuses
+   * (docs/report_speed_planing.md §6) unless `all`. */
+  async function browserSolve(
+    start: SolveStart,
+    all = false,
+  ): Promise<SolveResult> {
     const project = await optimiseProject(
       solveInput(start.lines),
       start.settings,
     );
     return {
-      profiles: project.profiles.map((p) => solvedProfileOf(p.profile, p)),
+      profiles: project.profiles
+        .filter((p) => all || !start.reused.includes(p.profile))
+        .map((p) => solvedProfileOf(p.profile, p)),
     };
   }
 
@@ -581,7 +587,9 @@ describe('Reports (e2e)', () => {
 
   it('refuses tampered plans with 422 and ends the solve', async () => {
     const start = await startSolve();
-    const result = await browserSolve(start);
+    // Every profile solved, so there's a plan to tamper with even when
+    // all are reused (docs/report_speed_planing.md §6).
+    const result = await browserSolve(start, true);
     const bars = result.profiles[0].best!;
     bars[0].pieces.pop(); // a piece goes missing
     if (!bars[0].pieces.length) bars.shift();
@@ -692,6 +700,46 @@ describe('Reports (e2e)', () => {
     const again = await generate();
     expect(again).toMatchObject({ state: 'fresh', solve: null });
     expect(again.summary?.unitCount).toBe(7);
+  });
+
+  it('Generate re-solves only the profiles whose pieces changed (docs/report_speed_planing.md §6)', async () => {
+    // Nothing changed since the last Generate: every profile is reused,
+    // the browser sends none, the report is the same.
+    const before = (await status()).summary;
+    const unchanged = await startSolve();
+    const profiles = [...new Set(unchanged.lines.map((l) => l.profile))];
+    expect([...unchanged.reused].sort()).toEqual([...profiles].sort());
+    expect(
+      unchanged.status.solve?.groups.every((g) => g.state === 'done'),
+    ).toBe(true);
+    const same = await sendResult(unchanged, { profiles: [] }).expect(200);
+    expect((same.body as ReportStatus).summary?.total).toEqual(before?.total);
+
+    // One more fixed window: its frame and bead profiles solve again, the
+    // sash's profile (only in W-sash) is reused.
+    await request(app.getHttpServer())
+      .patch(`/windows/${fixedWindowId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ quantity: 5 })
+      .expect(200);
+    const start = await startSolve();
+    expect(start.reused).toEqual([`platform:${leafId}`]);
+    const sent = await browserSolve(start);
+    expect(sent.profiles.map((p) => p.profile)).not.toContain(
+      `platform:${leafId}`,
+    );
+    const res = await sendResult(start, sent).expect(200);
+
+    // The saved report is what a full solve makes.
+    const full = await optimiseProject(solveInput(start.lines), start.settings);
+    const total = (res.body as ReportStatus).summary!.total;
+    expect(total.barCount).toBe(full.total.barCount);
+    expect(total.boughtMm).toBe(full.total.boughtMm);
+    expect(total.mix).toEqual(full.total.mix);
+
+    // An older tab that solves everything anyway is taken as sent.
+    const again = await startSolve();
+    await sendResult(again, await browserSolve(again, true)).expect(200);
   });
 
   it('saving settings needs a new solve; the next one uses them', async () => {

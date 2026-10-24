@@ -4,7 +4,9 @@ import {
 } from '@repo/bar-optimiser/project';
 import {
   SolveRefused,
+  plansByLength,
   solveInput,
+  solvedFromLengths,
   solvedProfileOf,
   validateSolve,
   type SolveResult,
@@ -217,5 +219,32 @@ describe('validateSolve', () => {
     const zero = copy(honest);
     zero.profiles[0].best![0].count = 0;
     refused(zero, /a bar is cut 0×/);
+  });
+
+  // docs/report_speed_planing.md §6: plans kept by length, put back onto
+  // today's lines, which may sit elsewhere or belong to other windows.
+  it('puts plans kept by length back onto moved lines, the same report', () => {
+    const stored = honest.profiles.map((p) => ({
+      profile: p.profile,
+      plans: plansByLength(p, lines),
+    }));
+    const today = [...lines].reverse();
+    const filled = stored.map(({ profile, plans }) =>
+      solvedFromLengths(profile, plans, today)!,
+    );
+    expect(filled.every(Boolean)).toBe(true);
+    const checked = validateSolve(today, settings, { profiles: filled });
+    expect(checked.total).toEqual(
+      validateSolve(lines, settings, copy(honest)).total,
+    );
+  });
+
+  it("can't put plans back when a length's pieces are gone", () => {
+    const frame = honest.profiles.find((p) => p.profile === 'frame')!;
+    const plans = plansByLength(frame, lines);
+    const fewer = lines.map((l) =>
+      l.lengthMm === 1200 ? { ...l, count: l.count - 1 } : l,
+    );
+    expect(solvedFromLengths('frame', plans, fewer)).toBeNull();
   });
 });

@@ -298,6 +298,10 @@ export interface SolveStart {
   lines: SolveLine[]
   /** Profile ref → its number, for the progress card. */
   profileNos: Record<string, string | null>
+  /** Profiles whose pieces and settings haven't changed since the last
+   * solve: the API reuses their plans, the browser skips them
+   * (docs/report_speed_planing.md §6). */
+  reused: string[]
   status: ReportStatus
 }
 

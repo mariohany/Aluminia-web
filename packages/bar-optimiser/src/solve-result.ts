@@ -86,15 +86,115 @@ export function solvedProfileOf(
 /** A plan's bars, each distinct one once with how many there are, in
  * the order they first appear. */
 function collapseBars(plan: CutPlan<number>): SolvedBar[] {
+  return collapseSolved(
+    plan.bars.map((bar) => ({
+      stockMm: bar.stockMm,
+      pieces: bar.pieces.map((p) => p.ref),
+    })),
+  );
+}
+
+function collapseSolved(bars: SolvedBar[]): SolvedBar[] {
   const byCut = new Map<string, SolvedBar>();
-  for (const bar of plan.bars) {
-    const pieces = bar.pieces.map((p) => p.ref);
-    const key = `${bar.stockMm}:${pieces.join(',')}`;
+  for (const bar of bars) {
+    const key = `${bar.stockMm}:${bar.pieces.join(',')}`;
     const seen = byCut.get(key);
-    if (seen) seen.count = (seen.count ?? 1) + 1;
-    else byCut.set(key, { stockMm: bar.stockMm, pieces });
+    const times = bar.count ?? 1;
+    if (seen) seen.count = (seen.count ?? 1) + times;
+    else {
+      byCut.set(key, {
+        stockMm: bar.stockMm,
+        pieces: [...bar.pieces],
+        ...(times > 1 ? { count: times } : {}),
+      });
+    }
   }
   return [...byCut.values()];
+}
+
+// ---- Reusing a profile's plans (docs/report_speed_planing.md §6) ----
+// A plan depends only on the profile's piece lengths and counts and the
+// settings, not on which window a piece is from or where its line sits
+// in today's list. So the API keeps plans by length and, when a profile
+// is unchanged, fills them back onto today's line numbers.
+
+/** A bar as stock + piece lengths in cutting order, `count` of them. */
+export interface LengthBar {
+  stockMm: number;
+  lengths: number[];
+  count: number;
+}
+
+export interface LengthPlans {
+  best: LengthBar[] | null;
+  single: Record<string, LengthBar[] | null>;
+}
+
+/** A solved profile's plans with lengths in place of line numbers. */
+export function plansByLength(
+  solved: SolvedProfile,
+  lines: { lengthMm: number }[],
+): LengthPlans {
+  const plan = (bars: SolvedPlan): LengthBar[] | null =>
+    bars?.map((bar) => ({
+      stockMm: bar.stockMm,
+      lengths: bar.pieces.map((line) => lines[line].lengthMm),
+      count: bar.count ?? 1,
+    })) ?? null;
+  return {
+    best: plan(solved.best),
+    single: Object.fromEntries(
+      Object.entries(solved.single).map(([length, bars]) => [
+        length,
+        plan(bars),
+      ]),
+    ),
+  };
+}
+
+/** Stored plans on today's line numbers: each length takes the profile's
+ * lines of that length in order, as the optimiser hands out its refs.
+ * `null` when they don't fit today's lines (validateSolve still checks
+ * what does). */
+export function solvedFromLengths(
+  profile: string,
+  plans: LengthPlans,
+  lines: SolvePiece[],
+): SolvedProfile | null {
+  const own = lines
+    .map((line, number) => ({ line, number }))
+    .filter(({ line }) => line.profile === profile);
+  const plan = (bars: LengthBar[] | null): SolvedPlan | undefined => {
+    if (!bars) return null;
+    const left = new Map<number, number[]>();
+    for (const { line, number } of own) {
+      const queue = left.get(line.lengthMm) ?? [];
+      for (let i = 0; i < line.count; i++) queue.push(number);
+      left.set(line.lengthMm, queue);
+    }
+    const out: SolvedBar[] = [];
+    for (const bar of bars) {
+      for (let n = 0; n < bar.count; n++) {
+        const pieces: number[] = [];
+        for (const length of bar.lengths) {
+          const next = left.get(length)?.shift();
+          if (next === undefined) return undefined;
+          pieces.push(next);
+        }
+        out.push({ stockMm: bar.stockMm, pieces });
+      }
+    }
+    return collapseSolved(out);
+  };
+  const best = plan(plans.best);
+  if (best === undefined) return null;
+  const single: Record<string, SolvedPlan> = {};
+  for (const [length, bars] of Object.entries(plans.single)) {
+    const filled = plan(bars);
+    if (filled === undefined) return null;
+    single[length] = filled;
+  }
+  return { profile, best, single };
 }
 
 /** Why a solve was refused: the API answers 422 with the message. */

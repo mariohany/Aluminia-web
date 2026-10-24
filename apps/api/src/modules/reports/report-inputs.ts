@@ -553,20 +553,58 @@ export function summaryOf(
 
 /** One line per member group that has pieces, all waiting: a new solve's
  * progress (docs/browser_solve_planing.md B5). */
-export function initialProgress(pieces: ProjectPieces): ReportProgressGroup[] {
+export function initialProgress(
+  pieces: ProjectPieces,
+  /** Profiles reused from the last solve: done from the start (S1). */
+  reused: ReadonlySet<string> = new Set(),
+): ReportProgressGroup[] {
   const queue = profileQueue(pieces.pieces);
   return MEMBER_ORDER.flatMap((member) => {
-    const total = queue.filter((q) => q.member === member).length;
-    return total
+    const mine = queue.filter((q) => q.member === member);
+    const done = mine.filter((q) => reused.has(q.profile)).length;
+    return mine.length
       ? [
           {
             member,
-            state: 'waiting' as const,
-            profilesDone: 0,
-            profilesTotal: total,
+            state:
+              done === mine.length ? ('done' as const) : ('waiting' as const),
+            profilesDone: done,
+            profilesTotal: mine.length,
             currentProfile: null,
           },
         ]
       : [];
   });
+}
+
+/** Each profile's plan key (docs/report_speed_planing.md §6): everything
+ * its plans depend on — the optimiser, the stock lengths, kerf and end
+ * trim, and its pieces' lengths with how many of each. Not which window a
+ * piece is from: the optimiser packs by length. Same key = same plans. */
+export function planKeysOf(
+  inputs: ReportInputs,
+  pieces: ProjectPieces,
+): Map<string, string> {
+  const byProfile = new Map<string, Map<number, number>>();
+  for (const piece of pieces.pieces) {
+    const lengths = byProfile.get(piece.profile) ?? new Map<number, number>();
+    lengths.set(
+      piece.lengthMm,
+      (lengths.get(piece.lengthMm) ?? 0) + piece.count,
+    );
+    byProfile.set(piece.profile, lengths);
+  }
+  const { stockLengthsMm, kerfMm, endTrimMm } = inputs.settings;
+  return new Map(
+    [...byProfile].map(([profile, lengths]) => [
+      profile,
+      sha256({
+        optimiser: OPTIMISER_VERSION,
+        stock: [...stockLengthsMm].sort((a, b) => a - b),
+        kerfMm,
+        endTrimMm,
+        pieces: [...lengths].sort(([a], [b]) => a - b),
+      }),
+    ]),
+  );
 }

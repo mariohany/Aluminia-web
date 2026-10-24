@@ -97,6 +97,25 @@ export function barOptimiserDocument(input: BarOptimiserPdfInput): ReactElement<
   )
 }
 
+/** A throwaway page with text in every family and weight, drawn when the
+ * Reports section opens (docs/report_speed_planing.md §3): @react-pdf
+ * fetches and parses a font only when text first uses it, so the first
+ * real report would otherwise wait for all of them. */
+export async function warmUpPdfBytes(): Promise<ArrayBuffer> {
+  const families = [FONT_FAMILY.sans, FONT_FAMILY.mono, FONT_FAMILY.arabic]
+  const weights = [400, 600, 700] as const
+  const page = h(
+    Page,
+    { size: 'A6' },
+    ...families.flatMap((fontFamily) =>
+      weights.map((fontWeight) =>
+        h(Text, { key: `${fontFamily}-${fontWeight}`, style: { fontFamily, fontWeight, direction: fontFamily === FONT_FAMILY.arabic ? 'rtl' : 'ltr' } }, fontFamily === FONT_FAMILY.arabic ? 'هالك ٠١٢' : 'Aluminia 0123'),
+      ),
+    ),
+  )
+  return (await pdf(h(Document, {}, page)).toBlob()).arrayBuffer()
+}
+
 /** The drawn PDF's bytes: what the browser's worker shows, prints and
  * downloads. Fonts must be registered first (`registerFonts`). */
 export async function barOptimiserPdfBytes(input: BarOptimiserPdfInput): Promise<ArrayBuffer> {

@@ -48,6 +48,20 @@ export function drawBarOptimiserPdf(input: BarOptimiserPdfInput): Promise<Blob> 
   })
 }
 
+let warmed = false
+
+/** Starts the worker and loads the fonts, once per tab, so the first
+ * report doesn't wait for them (docs/report_speed_planing.md §3, S4).
+ * A failure only means the first report loads them itself. */
+export function warmPdfWorker(): void {
+  if (warmed) return
+  warmed = true
+  const id = nextId++
+  waiting.set(id, { resolve: () => undefined, reject: () => undefined })
+  const request: DrawRequest = { id, warm: true }
+  getWorker().postMessage(request)
+}
+
 /** The logo as a data URI @react-pdf can embed: PNG and JPEG as they are,
  * anything else (WebP) converted to PNG first. */
 export async function logoDataUri(blob: Blob): Promise<string> {

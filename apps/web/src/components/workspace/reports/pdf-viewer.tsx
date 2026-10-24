@@ -20,6 +20,10 @@ GlobalWorkerOptions.workerPort = new Worker(new URL('../../../lib/report-pdf/pdf
 // still being destroyed (EN → عربي in a hurry), so the next waits for it.
 let destroying: Promise<void> = Promise.resolve()
 
+/** Pages redraw sharp this long after the zoom stops moving (a pinch
+ * sends dozens of zooms); until then the last drawing is stretched. */
+const REDRAW_AFTER_MS = 150
+
 export interface PdfViewerProps {
   blob: Blob
   zoom: number
@@ -29,6 +33,12 @@ export interface PdfViewerProps {
 
 export default function PdfViewer({ blob, zoom, onPageCount, onVisiblePage }: PdfViewerProps) {
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null)
+  const [drawZoom, setDrawZoom] = useState(zoom)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDrawZoom(zoom), REDRAW_AFTER_MS)
+    return () => clearTimeout(timer)
+  }, [zoom])
 
   useEffect(() => {
     let cancelled = false
@@ -53,9 +63,11 @@ export default function PdfViewer({ blob, zoom, onPageCount, onVisiblePage }: Pd
 
   if (!doc) return null
   return (
-    <div className="flex flex-col items-center gap-5 py-6">
+    // As wide as the widest page (never narrower than the view), so a page
+    // zoomed past the view scrolls on both sides instead of clipping left.
+    <div className="flex w-fit min-w-full flex-col items-center gap-5 px-6 py-6">
       {Array.from({ length: doc.numPages }, (_, i) => (
-        <PdfPage key={i} doc={doc} pageNumber={i + 1} zoom={zoom} onVisible={onVisiblePage} />
+        <PdfPage key={i} doc={doc} pageNumber={i + 1} zoom={zoom} drawZoom={drawZoom} onVisible={onVisiblePage} />
       ))}
     </div>
   )
@@ -65,17 +77,22 @@ function PdfPage({
   doc,
   pageNumber,
   zoom,
+  drawZoom,
   onVisible,
 }: {
   doc: PDFDocumentProxy
   pageNumber: number
+  /** The size shown, at once (pinch zoom). */
   zoom: number
+  /** The size the canvas is drawn at, once the zoom settles. */
+  drawZoom: number
   onVisible: (page: number) => void
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  // A4 at this zoom until the page reports its real size.
-  const [size, setSize] = useState({ width: 794 * zoom, height: 1123 * zoom })
+  // The page at zoom 1, CSS px; A4 until the page reports its real size.
+  const [base, setBase] = useState({ width: 794, height: 1123 })
+  const size = { width: base.width * zoom, height: base.height * zoom }
 
   useEffect(() => {
     let task: { cancel: () => void; promise: Promise<void> } | null = null
@@ -84,11 +101,11 @@ function PdfPage({
       const canvas = canvasRef.current
       if (cancelled || !canvas) return
       // pdf.js units are points; 96/72 makes zoom 1 the page's CSS size.
-      const viewport = page.getViewport({ scale: zoom * (96 / 72) })
+      const viewport = page.getViewport({ scale: drawZoom * (96 / 72) })
       const ratio = window.devicePixelRatio || 1
       canvas.width = Math.floor(viewport.width * ratio)
       canvas.height = Math.floor(viewport.height * ratio)
-      setSize({ width: viewport.width, height: viewport.height })
+      setBase({ width: viewport.width / drawZoom, height: viewport.height / drawZoom })
       task = page.render({
         canvas,
         viewport,
@@ -100,7 +117,7 @@ function PdfPage({
       cancelled = true
       task?.cancel()
     }
-  }, [doc, pageNumber, zoom])
+  }, [doc, pageNumber, drawZoom])
 
   useEffect(() => {
     const element = wrapperRef.current

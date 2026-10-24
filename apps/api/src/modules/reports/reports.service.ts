@@ -34,6 +34,7 @@ import {
   type SolveStart,
   type StopSolveInput,
 } from '@repo/types/reports';
+import { Color } from '../../database/control-plane/entities/color.entity';
 import { SystemCatalog } from '../../database/control-plane/entities/system-catalog.entity';
 import { SystemProfile } from '../../database/control-plane/entities/system-profile.entity';
 import { User } from '../../database/control-plane/entities/user.entity';
@@ -48,6 +49,7 @@ import {
   namesOf,
   planKeysOf,
   profileNoOf,
+  recolored,
   reportSnapshotOf,
   widthsOf,
   snapshotFingerprintOf,
@@ -80,6 +82,8 @@ export class ReportsService {
     private readonly platformProfiles: Repository<SystemProfile>,
     @InjectRepository(SystemCatalog)
     private readonly platformCatalogs: Repository<SystemCatalog>,
+    @InjectRepository(Color)
+    private readonly platformColors: Repository<Color>,
     @InjectRepository(User)
     private readonly users: Repository<User>,
   ) {}
@@ -137,8 +141,8 @@ export class ReportsService {
     });
   }
 
-  /** Only the project or client was renamed (P8): re-save the snapshot's
-   * names, no solve. 409 `no_solve` when the plan itself is out of date
+  /** Only the project, the client or a colour code was renamed (P8):
+   * re-save the snapshot's names, no solve. 409 `no_solve` when the plan itself is out of date
    * (windows, settings or profiles changed): that needs Generate. */
   refresh(projectId: string, userId: string): Promise<ReportStatus> {
     return this.tenantContext.run(async (manager) => {
@@ -153,9 +157,20 @@ export class ReportsService {
           code: SolveRefusal.NO_SOLVE,
         });
       }
+      const report = solve.report as BarOptimiserReport;
       solve.report = {
-        ...(solve.report as BarOptimiserReport),
+        ...report,
         ...namesOf(inputs),
+        // A renamed colour code (report colours §4).
+        summary: {
+          ...report.summary,
+          profiles: report.summary.profiles.map((p) =>
+            p.colors ? { ...p, colors: recolored(inputs, p.colors) } : p,
+          ),
+        },
+        plans: report.plans.map((p) =>
+          p.colors ? { ...p, colors: recolored(inputs, p.colors) } : p,
+        ),
       };
       solve.snapshotFingerprint = snapshotFingerprintOf(inputs);
       await manager.save(solve);
@@ -357,7 +372,11 @@ export class ReportsService {
   ): Promise<ReportInputs> {
     const inputs = await loadReportInputs(
       manager,
-      { profiles: this.platformProfiles, catalogs: this.platformCatalogs },
+      {
+        profiles: this.platformProfiles,
+        catalogs: this.platformCatalogs,
+        colors: this.platformColors,
+      },
       projectId,
     );
     if (!inputs) throw new NotFoundException('Project not found.');

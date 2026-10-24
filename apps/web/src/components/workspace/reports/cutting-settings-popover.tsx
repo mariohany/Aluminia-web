@@ -12,6 +12,24 @@ import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useSaveCuttingSettingsMutation } from '@/lib/reports-queries'
 
+const ARABIC_INDIC_ZERO = 0x0660
+
+/**
+ * What a number box keeps while it's typed in: digits only, plus one dot
+ * and one decimal when `decimal` (the kerf's 0.5 mm steps). Arabic-Indic
+ * digits and the Arabic decimal separator are read as their Western twins.
+ */
+function numberText(raw: string, decimal: boolean): string {
+  const western = raw
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - ARABIC_INDIC_ZERO))
+    .replace(/٫/g, '.')
+  if (!decimal) return western.replace(/\D/g, '')
+  const kept = western.replace(/[^\d.]/g, '')
+  const dot = kept.indexOf('.')
+  if (dot === -1) return kept
+  return `${kept.slice(0, dot)}.${kept.slice(dot + 1).replace(/\./g, '').slice(0, 1)}`
+}
+
 /**
  * The company's cutting settings, edited from the report itself — the
  * only place they are edited (docs/reports_planing.md D9), by any
@@ -157,7 +175,7 @@ export function CuttingSettingsPopover({
                   inputMode="numeric"
                   value={newLength}
                   onChange={(event) => {
-                    setNewLength(event.target.value)
+                    setNewLength(numberText(event.target.value, false))
                     setLengthError(null)
                   }}
                   onKeyDown={(event) => {
@@ -193,6 +211,7 @@ export function CuttingSettingsPopover({
               label={t('settings.kerf')}
               unit={t('settings.mm')}
               value={kerf}
+              decimal
               onChange={setKerf}
               error={submitted && !kerfValid ? t('settings.errors.kerf') : null}
             />
@@ -226,6 +245,7 @@ function NumberField({
   label,
   unit,
   value,
+  decimal = false,
   onChange,
   error,
 }: {
@@ -233,6 +253,7 @@ function NumberField({
   label: string
   unit: string
   value: string
+  decimal?: boolean
   onChange: (value: string) => void
   error: string | null
 }) {
@@ -244,9 +265,9 @@ function NumberField({
       <div className="relative">
         <Input
           id={id}
-          inputMode="decimal"
+          inputMode={decimal ? 'decimal' : 'numeric'}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(numberText(event.target.value, decimal))}
           aria-invalid={!!error}
           className="h-8 pe-14 font-mono"
         />

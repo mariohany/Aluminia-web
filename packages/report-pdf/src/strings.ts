@@ -53,6 +53,8 @@ export interface PdfStrings {
   legendEnds: string;
   /** Before a pattern's labels: "goes to: W1 · fr T ×264, …". */
   goesTo: string;
+  /** A side with no colour picked (docs/report_colours_planing.md §5). */
+  noColour: string;
   bars: (n: number) => string;
   noPieces: string;
   groups: Record<ReportMember, string>;
@@ -159,6 +161,7 @@ const EN: PdfStrings = {
   legendCut: 'saw cut',
   legendEnds: '45° ends drawn larger than scale',
   goesTo: 'goes to:',
+  noColour: 'No colour',
   bars: (n) => `${n} bar${n === 1 ? '' : 's'}`,
   noPieces: 'No pieces to cut.',
   groups: {
@@ -244,6 +247,7 @@ const AR: PdfStrings = {
   legendCut: 'قطع المنشار',
   legendEnds: 'أطراف الـ45° مرسومة أكبر من المقياس',
   goesTo: 'تروح لـ:',
+  noColour: 'بدون لون',
   bars: (n) => `${n} عود`,
   noPieces: 'مفيش قطع للقص.',
   groups: {

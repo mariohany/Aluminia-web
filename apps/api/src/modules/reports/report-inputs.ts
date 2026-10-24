@@ -8,6 +8,7 @@ import {
   type BarOptimiserReport,
   type BarOptimiserReportGoesTo,
   type BarOptimiserSummary,
+  type ReportColorPair,
   type ReportPieceAt,
   type ReportPlanTotals,
   type ReportProgressGroup,
@@ -16,8 +17,10 @@ import type { WindowDetail } from '@repo/types/windows';
 import { buildCutList, type CutMember } from '@repo/geometry/cut-list';
 import { OPTIMISER_VERSION } from '@repo/bar-optimiser/version';
 import { PLACEHOLDER_METRICS } from '@repo/geometry/profile-metrics';
+import type { Color } from '../../database/control-plane/entities/color.entity';
 import type { SystemCatalog } from '../../database/control-plane/entities/system-catalog.entity';
 import type { SystemProfile } from '../../database/control-plane/entities/system-profile.entity';
+import { CompanyColor } from '../../database/tenant/entities/company-color.entity';
 import { CompanySystemCatalog } from '../../database/tenant/entities/company-system-catalog.entity';
 import { CompanySystemProfile } from '../../database/tenant/entities/company-system-profile.entity';
 import { CuttingSettingsRow } from '../../database/tenant/entities/cutting-settings.entity';
@@ -46,8 +49,9 @@ import {
  * the PDF from a saved snapshot (docs/browser_pdf_planing.md §4). 5: the
  * totals count real metal, mitred ends as waste
  * (docs/mitre_cuts_planing.md §7). 6: waste as an area, mitre ends
- * and saw cuts drawn (docs/bar_waste_area_planing.md). */
-export const REPORT_VERSION = 6;
+ * and saw cuts drawn (docs/bar_waste_area_planing.md). 7: pieces share
+ * a bar only within one colour pair (docs/report_colours_planing.md). */
+export const REPORT_VERSION = 7;
 
 export interface PieceRef {
   windowId: string;
@@ -68,6 +72,13 @@ interface ProfileFacts {
   stamp: string;
 }
 
+interface ColorFacts {
+  code: string;
+  hex: string;
+  /** `updated_at`: part of the snapshot fingerprint. */
+  stamp: string;
+}
+
 export interface ReportInputs {
   project: Project;
   windows: WindowDetail[];
@@ -80,6 +91,8 @@ export interface ReportInputs {
   };
   /** Every profile ref the windows use. Absent = the row is gone. */
   profiles: Map<string, ProfileFacts>;
+  /** Every colour ref the windows' panels use. Absent = the row is gone. */
+  colors: Map<string, ColorFacts>;
   /** The company profile's printed names + logo for the header
    * (docs/company_profile_planing.md §5). Null names = not saved yet:
    * the header falls back to the account name. */
@@ -94,6 +107,7 @@ export interface ReportInputs {
 export interface PlatformRepos {
   profiles: Repository<SystemProfile>;
   catalogs: Repository<SystemCatalog>;
+  colors: Repository<Color>;
 }
 
 /** `null` when the project doesn't exist (in this tenant). */
@@ -127,6 +141,7 @@ export async function loadReportInputs(
     windows,
     settings,
     profiles: await loadProfiles(manager, platform, profileRefsOf(windows)),
+    colors: await loadColors(manager, platform, colorRefsOf(windows)),
     letterhead: {
       enName: profile?.enName ?? null,
       arName: profile?.arName ?? null,
@@ -153,6 +168,43 @@ function profileRefsOf(windows: WindowDetail[]): Set<string> {
     }
   }
   return refs;
+}
+
+function colorRefsOf(windows: WindowDetail[]): Set<string> {
+  const refs = new Set<string>();
+  for (const panel of windows.flatMap((w) => w.panels)) {
+    if (panel.interiorColor) refs.add(panel.interiorColor);
+    if (panel.exteriorColor) refs.add(panel.exteriorColor);
+  }
+  return refs;
+}
+
+async function loadColors(
+  manager: EntityManager,
+  platform: PlatformRepos,
+  refs: Set<string>,
+): Promise<Map<string, ColorFacts>> {
+  const ids = { platform: [] as string[], company: [] as string[] };
+  for (const ref of refs) {
+    const { scope, id } = parseScopedRef(ref);
+    ids[scope === LookupScope.PLATFORM ? 'platform' : 'company'].push(id);
+  }
+  const rows = [
+    ...(ids.platform.length
+      ? await platform.colors.find({ where: { id: In(ids.platform) } })
+      : []
+    ).map((c) => [LookupScope.PLATFORM, c] as const),
+    ...(ids.company.length
+      ? await manager.find(CompanyColor, { where: { id: In(ids.company) } })
+      : []
+    ).map((c) => [LookupScope.COMPANY, c] as const),
+  ];
+  return new Map(
+    rows.map(([scope, c]) => [
+      `${scope}:${c.id}`,
+      { code: c.code, hex: c.hex, stamp: c.updatedAt.toISOString() },
+    ]),
+  );
 }
 
 async function loadProfiles(
@@ -255,6 +307,10 @@ export function snapshotFingerprintOf(inputs: ReportInputs): string {
     solve: solveFingerprintOf(inputs),
     project: inputs.project.updatedAt.toISOString(),
     client: inputs.project.client?.updatedAt.toISOString() ?? null,
+    // A renamed colour code only re-saves the snapshot (report colours §4).
+    colors: [...colorRefsOf(inputs.windows)]
+      .sort()
+      .map((ref) => [ref, inputs.colors.get(ref)?.stamp ?? 'missing']),
   });
 }
 
@@ -289,9 +345,10 @@ export function reportSnapshotOf(
     generatedAt: generatedAt.toISOString(),
     ...namesOf(inputs),
     summary: summaryOf(inputs, pieces, result),
-    plans: result.profiles.map((p) => ({
-      profile: p.profile,
+    plans: byColorCode(inputs, result.profiles).map((p) => ({
+      profile: profileRefOf(p.profile),
       profileNo: profileNoOf(inputs, p.profile),
+      colors: colorsOf(inputs, p.profile),
       member: p.member,
       faceWidthMm: widthOf(p.profile),
       best: p.best
@@ -399,6 +456,75 @@ export function changedWindowCount(
   return changed;
 }
 
+/** A bar group (docs/report_colours_planing.md §3): one profile in one
+ * interior + exterior colour pair (scoped refs, empty = none picked).
+ * Only a group's pieces may share a bar, so it is the key the whole solve
+ * path uses where it says "profile" — the optimiser treats it as opaque. */
+export function barGroupOf(
+  profile: string,
+  interior: string | null | undefined,
+  exterior: string | null | undefined,
+): string {
+  return `${profile}|${interior ?? ''}|${exterior ?? ''}`;
+}
+
+/** The profile ref a bar group is cut from. */
+export function profileRefOf(group: string): string {
+  return group.split('|')[0];
+}
+
+/** A bar group's colour pair with today's codes. */
+export function colorsOf(
+  inputs: Pick<ReportInputs, 'colors'>,
+  group: string,
+): ReportColorPair {
+  const [, interior, exterior] = group.split('|');
+  const side = (ref: string | undefined) => {
+    if (!ref) return null;
+    const facts = inputs.colors.get(ref);
+    return { ref, code: facts?.code ?? null, hex: facts?.hex ?? null };
+  };
+  return { interior: side(interior), exterior: side(exterior) };
+}
+
+/** The same colours with today's codes: what a refresh re-saves. */
+export function recolored(
+  inputs: Pick<ReportInputs, 'colors'>,
+  pair: ReportColorPair,
+): ReportColorPair {
+  return colorsOf(
+    inputs,
+    barGroupOf('', pair.interior?.ref, pair.exterior?.ref),
+  );
+}
+
+/** Within one profile, its colour pairs by code, no colour last
+ * (report colours §3). A profile's groups sit together already: the
+ * queue sorts by the group key, which starts with the profile ref. */
+function byColorCode<T extends { profile: string }>(
+  inputs: Pick<ReportInputs, 'colors'>,
+  rows: T[],
+): T[] {
+  const label = (group: string) => {
+    const { interior, exterior } = colorsOf(inputs, group);
+    const last = '\uffff';
+    return `${interior?.code ?? last}|${exterior?.code ?? last}`;
+  };
+  const runs: T[][] = [];
+  for (const row of rows) {
+    const run = runs.at(-1);
+    if (run && profileRefOf(run[0].profile) === profileRefOf(row.profile)) {
+      run.push(row);
+    } else runs.push([row]);
+  }
+  return runs.flatMap((run) =>
+    run
+      .map((row) => ({ row, label: label(row.profile) }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+      .map(({ row }) => row),
+  );
+}
+
 export interface ProjectPieces {
   pieces: ProjectPiece<PieceRef>[];
   skipped: BarOptimiserSummary['skipped'];
@@ -423,8 +549,14 @@ export function buildProjectPieces(inputs: ReportInputs): ProjectPieces {
       faceWidthOf: (ref) => inputs.profiles.get(ref)?.faceWidthMm ?? null,
     });
     for (const piece of list.pieces) {
+      // Sash, divider and bead take their panel's colours (C3).
+      const panel = window.panels[piece.at.panelIndex];
       out.pieces.push({
-        profile: piece.profile,
+        profile: barGroupOf(
+          piece.profile,
+          panel?.interiorColor,
+          panel?.exteriorColor,
+        ),
         member: piece.member,
         lengthMm: piece.lengthMm,
         metalMm: piece.metalMm,
@@ -458,20 +590,21 @@ const PLACEHOLDER_WIDTH: Record<CutMember, number> = {
   bead: PLACEHOLDER_METRICS.beadFace,
 };
 
-/** Each profile's face width for the waste areas
- * (docs/bar_waste_area_planing.md §3): its own, else the placeholder of
- * the member group it counts under. */
+/** Each bar group's face width for the waste areas
+ * (docs/bar_waste_area_planing.md §3): its profile's own, else the
+ * placeholder of the member group it counts under. */
 export function widthsOf(inputs: ReportInputs, pieces: ProjectPieces): WidthOf {
   const member = new Map(
     profileQueue(pieces.pieces).map((q) => [q.profile, q.member]),
   );
-  return (profile) =>
-    inputs.profiles.get(profile)?.faceWidthMm ??
-    PLACEHOLDER_WIDTH[member.get(profile) ?? 'frame'];
+  return (group) =>
+    inputs.profiles.get(profileRefOf(group))?.faceWidthMm ??
+    PLACEHOLDER_WIDTH[member.get(group) ?? 'frame'];
 }
 
+/** A profile's number; takes a profile ref or a bar group. */
 export function profileNoOf(inputs: ReportInputs, ref: string): string | null {
-  return inputs.profiles.get(ref)?.profileNo ?? null;
+  return inputs.profiles.get(profileRefOf(ref))?.profileNo ?? null;
 }
 
 /** What the screen shows and the cache keeps (no bars: those go into
@@ -528,13 +661,14 @@ export function summaryOf(
     members: result.members.map((m) => ({
       member: m.member,
       pieceCount: m.pieceCount,
-      profiles: m.profiles,
+      profiles: [...new Set(m.profiles.map(profileRefOf))],
       single: singleOf(m.single),
       best: { ...totals(m.best), mix: { ...m.best.mix } },
     })),
-    profiles: result.profiles.map((p) => ({
-      profile: p.profile,
+    profiles: byColorCode(inputs, result.profiles).map((p) => ({
+      profile: profileRefOf(p.profile),
       profileNo: profileNoOf(inputs, p.profile),
+      colors: colorsOf(inputs, p.profile),
       member: p.member,
       pieceCount: p.pieceCount,
       single: singleOf(p.single, widthOf(p.profile)),
@@ -577,7 +711,7 @@ export function initialProgress(
   });
 }
 
-/** Each profile's plan key (docs/report_speed_planing.md §6): everything
+/** Each bar group's plan key (docs/report_speed_planing.md §6): everything
  * its plans depend on — the optimiser, the stock lengths, kerf and end
  * trim, and its pieces' lengths with how many of each. Not which window a
  * piece is from: the optimiser packs by length. Same key = same plans. */

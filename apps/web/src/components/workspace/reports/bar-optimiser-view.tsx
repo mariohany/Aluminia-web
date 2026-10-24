@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useState } from 'react'
+import { lazy, Suspense, useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -22,13 +22,15 @@ import {
   isSolving,
 } from '@/lib/reports-queries'
 import { dismissSolve, isBusy, solveErrorKey, startSolve, stopSolve, useLocalSolve } from '@/lib/solve/solve-manager'
+import { MAX_ZOOM, MIN_ZOOM, usePinchZoom } from '@/lib/use-pinch-zoom'
 import { cn } from '@/lib/utils'
 import { CuttingSettingsPopover } from './cutting-settings-popover'
 import { ReportProgressCard, type ReportProgress } from './report-progress-card'
 
 const PdfViewer = lazy(() => import('./pdf-viewer'))
 
-const ZOOMS = [0.5, 0.6, 0.7, 0.85, 1, 1.25, 1.5]
+// The − / + steps; a pinch or Ctrl/⌘ + wheel goes anywhere in between.
+const ZOOMS = [MIN_ZOOM, 0.6, 0.7, 0.85, 1, 1.25, 1.5, MAX_ZOOM]
 const DEFAULT_ZOOM = 0.85
 
 /**
@@ -54,6 +56,7 @@ export function BarOptimiserView({
   const appLanguage = i18n.resolvedLanguage === 'ar' ? ReportLanguage.AR : ReportLanguage.EN
   const [lang, setLang] = useState<ReportLanguage>(appLanguage)
   const [zoom, setZoom] = useState(DEFAULT_ZOOM)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const [pageCount, setPageCount] = useState(0)
   const [page, setPage] = useState(1)
 
@@ -116,7 +119,10 @@ export function BarOptimiserView({
 
   const onVisiblePage = useCallback((n: number) => setPage(n), [])
   const fileName = `${slug(projectName)}-bar-optimiser-${lang}.pdf`
-  const zoomIndex = ZOOMS.indexOf(zoom)
+  // The next step past a pinched zoom like 0.93.
+  const zoomOut = ZOOMS.findLast((z) => z < zoom - 0.001)
+  const zoomIn = ZOOMS.find((z) => z > zoom + 0.001)
+  usePinchZoom(scrollRef, zoom, setZoom, !!pdf)
   const settings = settingsQuery.data
 
   return (
@@ -151,8 +157,8 @@ export function BarOptimiserView({
             size="icon"
             className="size-8"
             aria-label={t('toolbar.zoomOut')}
-            disabled={zoomIndex <= 0 || !pdf}
-            onClick={() => setZoom(ZOOMS[Math.max(zoomIndex - 1, 0)] ?? DEFAULT_ZOOM)}
+            disabled={zoomOut === undefined || !pdf}
+            onClick={() => zoomOut !== undefined && setZoom(zoomOut)}
           >
             <ZoomOut className="size-4" aria-hidden="true" />
           </Button>
@@ -162,8 +168,8 @@ export function BarOptimiserView({
             size="icon"
             className="size-8"
             aria-label={t('toolbar.zoomIn')}
-            disabled={zoomIndex >= ZOOMS.length - 1 || !pdf}
-            onClick={() => setZoom(ZOOMS[Math.min(zoomIndex + 1, ZOOMS.length - 1)] ?? DEFAULT_ZOOM)}
+            disabled={zoomIn === undefined || !pdf}
+            onClick={() => zoomIn !== undefined && setZoom(zoomIn)}
           >
             <ZoomIn className="size-4" aria-hidden="true" />
           </Button>
@@ -229,6 +235,7 @@ export function BarOptimiserView({
       </div>
 
       <div
+        ref={scrollRef}
         className="relative min-h-0 flex-1 overflow-auto"
         style={{ backgroundColor: 'var(--board)' }}
       >

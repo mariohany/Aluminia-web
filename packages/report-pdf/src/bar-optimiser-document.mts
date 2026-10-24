@@ -6,6 +6,8 @@ import type {
   BarOptimiserReportBar,
   BarOptimiserReportPiece,
   BarOptimiserSummary,
+  ReportColor,
+  ReportColorPair,
   ReportLanguage,
   ReportPlanTotals,
   StockMix,
@@ -345,6 +347,39 @@ function membersTable(d: Dir, s: PdfStrings, sum: BarOptimiserSummary) {
   )
 }
 
+/** A plan's colour pair, inside / outside (docs/report_colours_planing.md
+ * §5): a swatch + code per side, each part its own block so Arabic can't
+ * reorder it (bug-129). Null for reports made before colours split bars. */
+function colorPair(d: Dir, s: PdfStrings, colors: ReportColorPair | undefined, size: number) {
+  if (!colors) return null
+  const { interior, exterior } = colors
+  const none = () => d.text(s.noColour, { fontSize: px(size), color: C.mute })
+  if (!interior && !exterior) return none()
+  const side = (c: ReportColor | null) =>
+    c
+      ? d.row(
+          { gap: px(2.5), alignItems: 'center' },
+          h(View, {
+            style: {
+              width: px(size),
+              height: px(size),
+              borderRadius: px(1.5),
+              borderWidth: px(0.75),
+              borderColor: C.mute,
+              backgroundColor: c.hex ?? '#FFFFFF',
+            },
+          }),
+          d.num(c.code ?? '?', { fontSize: px(size) }),
+        )
+      : none()
+  return d.row(
+    { gap: px(4), alignItems: 'center', flexWrap: 'wrap' },
+    side(interior),
+    d.num('/', { fontSize: px(size), color: C.mute }),
+    side(exterior),
+  )
+}
+
 function ordersTable(d: Dir, s: PdfStrings, report: BarOptimiserReport) {
   const sum = report.summary
   const lengths = sum.stockLengthsMm
@@ -352,7 +387,15 @@ function ordersTable(d: Dir, s: PdfStrings, report: BarOptimiserReport) {
   const single = singleWidth(W.profile + W.member + W.pieces, 120, lengths.length, 76)
   const rows = sum.profiles.map((p) =>
     tableRow(d, [
-      cell(d.num(p.profileNo ?? '—', { fontWeight: 700, fontSize: px(10), textAlign: d.start }), W.profile),
+      cell(
+        h(
+          View,
+          { style: { gap: px(2) } },
+          d.num(p.profileNo ?? '—', { fontWeight: 700, fontSize: px(10), textAlign: d.start }),
+          colorPair(d, s, p.colors, 7.5),
+        ),
+        W.profile,
+      ),
       cell(d.text(s.member[p.member], { fontSize: px(10) }), W.member),
       cell(d.num(String(p.pieceCount), { textAlign: d.end, fontSize: px(10) }), W.pieces),
       ...lengths.map((l) => planCell(d, p.single[String(l)] ?? null, single)),
@@ -401,7 +444,9 @@ function tooLongBox(d: Dir, s: PdfStrings, report: BarOptimiserReport) {
     p.tooLong.map((t) =>
       d.row(
         { gap: px(3) },
-        d.num(`${p.profileNo ?? '—'} · ${t.lengthMm} mm × ${t.count}`, { fontSize: px(9) }),
+        d.num(p.profileNo ?? '—', { fontSize: px(9) }),
+        colorPair(d, s, p.colors, 8),
+        d.num(`· ${t.lengthMm} mm × ${t.count}`, { fontSize: px(9) }),
         d.text(`· ${t.windowName}`, { fontSize: px(9) }),
       ),
     ),
@@ -441,12 +486,13 @@ function cuttingPlan(
           : []),
         d.text(s.legendScale, { fontSize: px(8.5), color: C.mute }),
       ),
-      ...plans.map((p) => {
+      ...plans.map((p, index) => {
         const best = p.best!
         const [first, ...rest] = barPatterns(best.bars, s).map((pattern) => barRow(d, s, sum, pattern, longest))
         return h(
           View,
-          { key: p.profile, style: { marginTop: px(12) } },
+          // a profile repeats once per colour pair: the index keeps keys apart
+          { key: `${p.profile}-${index}`, style: { marginTop: px(12) } },
           h(
             View,
             // the profile's header never ends a page without its first pattern
@@ -455,6 +501,7 @@ function cuttingPlan(
               { gap: px(8), alignItems: 'flex-end', paddingTop: px(6), borderTopWidth: px(1), borderTopColor: C.line },
               d.num(p.profileNo ?? '—', { fontSize: px(11), fontWeight: 700 }),
               d.text(s.member[p.member], { fontSize: px(10) }),
+              colorPair(d, s, p.colors, 9),
               h(View, { style: { flex: 1 } }),
               d.row(
                 { gap: px(3) },

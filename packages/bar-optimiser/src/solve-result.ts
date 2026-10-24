@@ -39,6 +39,9 @@ export interface SolvePiece {
 export interface SolvedBar {
   stockMm: number;
   pieces: number[];
+  /** How many bars are cut exactly like this; absent = 1
+   * (docs/report_speed_planing.md §5: a 150-copy project sent 660 KB). */
+  count?: number;
 }
 
 /** A plan's bars, or `null` where the optimiser had none. */
@@ -67,12 +70,7 @@ export function solvedProfileOf(
   result: ProfileOptimisation<number>,
 ): SolvedProfile {
   const bars = (plan: CutPlan<number> | null): SolvedPlan =>
-    plan
-      ? plan.bars.map((bar) => ({
-          stockMm: bar.stockMm,
-          pieces: bar.pieces.map((p) => p.ref),
-        }))
-      : null;
+    plan ? collapseBars(plan) : null;
   return {
     profile,
     best: bars(result.best),
@@ -83,6 +81,20 @@ export function solvedProfileOf(
       ]),
     ),
   };
+}
+
+/** A plan's bars, each distinct one once with how many there are, in
+ * the order they first appear. */
+function collapseBars(plan: CutPlan<number>): SolvedBar[] {
+  const byCut = new Map<string, SolvedBar>();
+  for (const bar of plan.bars) {
+    const pieces = bar.pieces.map((p) => p.ref);
+    const key = `${bar.stockMm}:${pieces.join(',')}`;
+    const seen = byCut.get(key);
+    if (seen) seen.count = (seen.count ?? 1) + 1;
+    else byCut.set(key, { stockMm: bar.stockMm, pieces });
+  }
+  return [...byCut.values()];
 }
 
 /** Why a solve was refused: the API answers 422 with the message. */
@@ -151,36 +163,49 @@ export function validateSolve<T>(
         const refuse = (why: string) =>
           new SolveRefused(`${profile}, ${label}: ${why}`);
         const used = new Map<number, number>();
-        const raw = bars.map((bar) => {
+        // Each distinct bar is checked once and counted `count` times;
+        // bars are only multiplied out once every piece count holds, so a
+        // forged count can't make thousands of them.
+        for (const bar of bars) {
           if (!allowed.includes(bar.stockMm)) {
             throw refuse(`${bar.stockMm} mm isn't an allowed stock length.`);
           }
           if (!bar.pieces.length) throw refuse('a bar has no pieces.');
+          const times = bar.count ?? 1;
+          if (!Number.isInteger(times) || times < 1) {
+            throw refuse(`a bar is cut ${times}×.`);
+          }
           let room = capOf(bar.stockMm);
           for (const line of bar.pieces) {
             if (!need.has(line)) {
               throw refuse(`piece line ${line} isn't cut from this profile.`);
             }
-            used.set(line, (used.get(line) ?? 0) + 1);
+            used.set(line, (used.get(line) ?? 0) + times);
             room -= sizeOf(line);
           }
           if (room < -EPSILON_MM) {
             throw refuse(`a ${bar.stockMm} mm bar is overfilled.`);
           }
-          return {
-            stockMm: bar.stockMm,
-            pieces: bar.pieces.map((line) => ({
-              lengthMm: lines[line].lengthMm,
-              ref: lines[line].ref,
-            })),
-          };
-        });
+        }
         for (const [line, count] of need) {
           const cut = used.get(line) ?? 0;
           if (cut !== count) {
             throw refuse(`piece line ${line} is cut ${cut}×, needs ${count}×.`);
           }
         }
+        const raw = bars.flatMap((bar) => {
+          const one = {
+            stockMm: bar.stockMm,
+            pieces: bar.pieces.map((line) => ({
+              lengthMm: lines[line].lengthMm,
+              ref: lines[line].ref,
+            })),
+          };
+          return Array.from({ length: bar.count ?? 1 }, () => ({
+            ...one,
+            pieces: [...one.pieces],
+          }));
+        });
         return toPlan(raw, settings, pieceMetal);
       };
 

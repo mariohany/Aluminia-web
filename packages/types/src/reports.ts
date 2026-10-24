@@ -150,7 +150,19 @@ export interface BarOptimiserReportPiece {
   at: ReportPieceAt
 }
 
-/** One bar to scale: pieces in cutting order, the offcut, the waste. */
+/** Where a pattern's pieces go, and how many (docs/report_speed_planing.md §5). */
+export interface BarOptimiserReportGoesTo {
+  windowName: string
+  member: ReportMember
+  at: ReportPieceAt
+  count: number
+}
+
+/** One bar to scale: pieces in cutting order, the offcut, the waste. In
+ * reports from 2026-10-24 on, one bar per pattern (the same stock and
+ * pieces, lengths and ends): `count` bars like it, its `pieces` labelled
+ * as the first of them, `goesTo` every piece of all of them. Older
+ * reports list every bar and have neither. */
 export interface BarOptimiserReportBar {
   stockMm: number
   wasteMm: number
@@ -158,6 +170,8 @@ export interface BarOptimiserReportBar {
   wasteMm2?: number
   offcutMm: number
   pieces: BarOptimiserReportPiece[]
+  count?: number
+  goesTo?: BarOptimiserReportGoesTo[]
 }
 
 /** One profile's least-waste plan, as the cutting-plan pages draw it. */
@@ -308,6 +322,8 @@ const solvedPlanSchema = z
       .object({
         stockMm: z.number().int().positive(),
         pieces: z.array(z.number().int().min(0)).min(1),
+        /** Bars cut exactly like this; absent = 1 (docs/report_speed_planing.md §5). */
+        count: z.number().int().min(1).max(100_000).optional(),
       })
       .strict(),
   )

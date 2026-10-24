@@ -225,4 +225,25 @@ describe('patterns: repeated bars drawn once (docs/bar_patterns_planing.md)', ()
       assert.ok(text.join(' ').includes(ls.goesTo.replace(/[:\s]+$/, '')), 'prints the goes-to line')
     })
   }
+
+  it('draws a stored-pattern report exactly like the same report listing every bar', async () => {
+    // What the API stores from 2026-10-24 on (docs/report_speed_planing.md §5).
+    const compact: BarOptimiserReport = structuredClone(areaReport)
+    for (const plan of compact.plans) {
+      if (!plan.best) continue
+      const byCut = new Map<string, BarOptimiserReportBar>()
+      for (const bar of plan.best.bars) {
+        const key = [bar.stockMm, ...bar.pieces.map((p) => `${p.lengthMm}/${(p.endsMm ?? [0, 0]).join('/')}`)].join(':')
+        const stored = byCut.get(key) ?? { ...bar, count: 0, goesTo: [] }
+        stored.count! += 1
+        for (const { windowName, member, at } of bar.pieces) stored.goesTo!.push({ windowName, member, at, count: 1 })
+        byCut.set(key, stored)
+      }
+      plan.best.bars = [...byCut.values()]
+    }
+    for (const language of ['en', 'ar'] as const) {
+      const text = async (from: BarOptimiserReport) => (await draw(language, null, from)).pages.map((page) => page.map((l) => l.str))
+      assert.deepEqual(await text(compact), await text(areaReport))
+    }
+  })
 })

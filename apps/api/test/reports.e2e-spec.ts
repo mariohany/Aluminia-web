@@ -482,15 +482,27 @@ describe('Reports (e2e)', () => {
       frame?.best?.bars.flatMap((b) => b.pieces).some((x) => x.endsMm![0] > 0),
     ).toBe(true);
     expect(report.summary.total.wasteMm2).toBeGreaterThan(0);
-    // The bars add up to their profile, the profiles to the total.
+    // The bars add up to their profile, the profiles to the total. Each
+    // stored bar is a pattern of `count` bars (docs/report_speed_planing.md
+    // §5), and they count every bar of the plan.
     let bars = 0;
     for (const p of report.plans) {
-      const own = (p.best?.bars ?? []).reduce((n, b) => n + b.wasteMm2!, 0);
-      const listed = report.summary.profiles.find(
+      const patterns = p.best?.bars ?? [];
+      const own = patterns.reduce((n, b) => n + b.wasteMm2! * b.count!, 0);
+      const summary = report.summary.profiles.find(
         (x) => x.profile === p.profile,
-      )?.best?.wasteMm2;
-      expect(Math.abs(own - (listed ?? 0))).toBeLessThanOrEqual(
-        p.best?.bars.length ?? 0,
+      )?.best;
+      const barCount = patterns.reduce((n, b) => n + b.count!, 0);
+      expect(barCount).toBe(summary?.barCount ?? 0);
+      const pieces = patterns.reduce(
+        (n, b) => n + b.goesTo!.reduce((m, g) => m + g.count, 0),
+        0,
+      );
+      expect(pieces).toBe(
+        patterns.reduce((n, b) => n + b.pieces.length * b.count!, 0),
+      );
+      expect(Math.abs(own - (summary?.wasteMm2 ?? 0))).toBeLessThanOrEqual(
+        barCount,
       );
       bars += own;
     }

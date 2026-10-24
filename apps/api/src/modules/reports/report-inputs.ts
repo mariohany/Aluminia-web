@@ -6,6 +6,7 @@ import {
   DEFAULT_CUTTING_SETTINGS,
   stockLengthsOf,
   type BarOptimiserReport,
+  type BarOptimiserReportGoesTo,
   type BarOptimiserSummary,
   type ReportPieceAt,
   type ReportPlanTotals,
@@ -23,7 +24,7 @@ import { CuttingSettingsRow } from '../../database/tenant/entities/cutting-setti
 import { CompanyProfileRow } from '../../database/tenant/entities/company-profile.entity';
 import { Project } from '../../database/tenant/entities/project.entity';
 import { loadProjectWindows } from '../windows/windows.service';
-import type { CutPlan } from '@repo/bar-optimiser/optimise';
+import type { CutBar, CutPlan } from '@repo/bar-optimiser/optimise';
 import {
   MEMBER_ORDER,
   profileQueue,
@@ -299,7 +300,7 @@ export function reportSnapshotOf(
             wastePct: p.best.wastePct,
             wasteMm2: Math.round(p.best.wasteMm * widthOf(p.profile)),
             piecesMm: p.best.piecesMm,
-            bars: p.best.bars.map((bar) => ({
+            bars: patternsOf(p.best.bars).map(({ bar, count, goesTo }) => ({
               stockMm: bar.stockMm,
               wasteMm: bar.wasteMm,
               wasteMm2: Math.round(bar.wasteMm * widthOf(p.profile)),
@@ -311,6 +312,8 @@ export function reportSnapshotOf(
                 member: piece.ref.member,
                 at: piece.ref.at,
               })),
+              count,
+              goesTo,
             })),
           }
         : null,
@@ -319,6 +322,57 @@ export function reportSnapshotOf(
       inputs.windows.map((w) => [w.id, w.panels.length]),
     ),
   };
+}
+
+/** A plan's bars grouped as the PDF draws them
+ * (docs/bar_patterns_planing.md G1, docs/report_speed_planing.md §5):
+ * the same stock and the same pieces in order, each with the same length
+ * and ends. Labels don't split a pattern; `goesTo` counts them. In the
+ * order of each pattern's first bar. */
+export function patternsOf(bars: CutBar<PieceRef>[]): {
+  bar: CutBar<PieceRef>;
+  count: number;
+  goesTo: BarOptimiserReportGoesTo[];
+}[] {
+  const byCut = new Map<
+    string,
+    {
+      bar: CutBar<PieceRef>;
+      count: number;
+      goesTo: Map<string, BarOptimiserReportGoesTo>;
+    }
+  >();
+  for (const bar of bars) {
+    const key = [
+      bar.stockMm,
+      ...bar.pieces.map((p) => `${p.lengthMm}/${p.ref.endsMm.join('/')}`),
+    ].join(':');
+    const group = byCut.get(key) ?? {
+      bar,
+      count: 0,
+      goesTo: new Map<string, BarOptimiserReportGoesTo>(),
+    };
+    group.count++;
+    for (const { ref } of bar.pieces) {
+      const where = JSON.stringify([ref.windowName, ref.member, ref.at]);
+      const seen = group.goesTo.get(where);
+      if (seen) seen.count++;
+      else {
+        group.goesTo.set(where, {
+          windowName: ref.windowName,
+          member: ref.member,
+          at: ref.at,
+          count: 1,
+        });
+      }
+    }
+    byCut.set(key, group);
+  }
+  return [...byCut.values()].map((g) => ({
+    bar: g.bar,
+    count: g.count,
+    goesTo: [...g.goesTo.values()],
+  }));
 }
 
 function sha256(body: unknown): string {

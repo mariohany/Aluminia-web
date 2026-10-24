@@ -1,7 +1,10 @@
 import type { Project } from '../../database/tenant/entities/project.entity';
+import type { CutBar } from '@repo/bar-optimiser/optimise';
 import {
+  patternsOf,
   snapshotFingerprintOf,
   solveFingerprintOf,
+  type PieceRef,
   type ReportInputs,
 } from './report-inputs';
 
@@ -68,5 +71,48 @@ describe('report fingerprints', () => {
     const edited = inputs();
     edited.windows[0].updatedAt = '2026-10-03T10:00:00.000Z';
     expect(snapshotFingerprintOf(edited)).not.toBe(snapshot);
+  });
+});
+
+// docs/report_speed_planing.md §5: the snapshot keeps each cut once.
+describe('patternsOf', () => {
+  const piece = (lengthMm: number, windowName: string, end = 45) => ({
+    lengthMm,
+    ref: {
+      windowId: windowName,
+      windowName,
+      member: 'frame' as const,
+      at: {
+        panelIndex: 0,
+        sectionIndex: null,
+        sashIndex: null,
+        position: 'top' as const,
+      },
+      endsMm: [end, end] as [number, number],
+    },
+  });
+  const bar = (
+    stockMm: number,
+    pieces: ReturnType<typeof piece>[],
+  ): CutBar<PieceRef> => ({ stockMm, pieces, wasteMm: 100, offcutMm: 80 });
+
+  it('groups by stock, lengths and ends; counts where the pieces go', () => {
+    const bars = [
+      bar(7000, [piece(2500, 'W1'), piece(2500, 'W1')]),
+      bar(7000, [piece(2500, 'W2'), piece(2500, 'W1')]),
+      bar(7000, [piece(2500, 'W1', 0), piece(2500, 'W1')]), // square end
+      bar(6500, [piece(2500, 'W1'), piece(2500, 'W1')]),
+    ];
+    const patterns = patternsOf(bars);
+    expect(patterns.map((p) => [p.bar.stockMm, p.count])).toEqual([
+      [7000, 2],
+      [7000, 1],
+      [6500, 1],
+    ]);
+    expect(patterns[0].goesTo.map((g) => [g.windowName, g.count])).toEqual([
+      ['W1', 3],
+      ['W2', 1],
+    ]);
+    expect(patterns.reduce((n, p) => n + p.count, 0)).toBe(bars.length);
   });
 });

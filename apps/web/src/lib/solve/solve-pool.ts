@@ -1,20 +1,19 @@
 import { IDLE_WORKER_MS, TaskQueue, poolSize } from '@repo/bar-optimiser/pool'
-import type { OptimiserSettings } from '@repo/bar-optimiser/optimise'
+import type { CutPlan, OptimiserSettings } from '@repo/bar-optimiser/optimise'
 import type { ProjectPiece } from '@repo/bar-optimiser/project'
-import type { SolvedProfile } from '@repo/bar-optimiser/solve-result'
-import type { SolveFailure, SolveWorkerReply, SolveWorkerRequest } from './solve-messages'
+import type { SolveFailure, SolvePart, SolveWorkerReply, SolveWorkerRequest } from './solve-messages'
 
 // The tab's one solve pool (docs/browser_solve_planing.md §4.2, B9, B10):
-// every running report's profiles share half the cores (1–4), first come
-// first served, so the PC stays usable and the first report finishes
-// first. Scheduling rules live in @repo/bar-optimiser/pool (tested there).
+// every running report's profile parts (docs/report_speed_planing.md §4)
+// share half the cores (1–4), first come first served, so the PC stays
+// usable and the first report finishes first. Scheduling rules live in @repo/bar-optimiser/pool (tested there).
 
 export interface PoolTask {
-  profile: string
   list: ProjectPiece<number>[]
   settings: OptimiserSettings
+  part: SolvePart
   onStart: () => void
-  onDone: (result: SolvedProfile) => void
+  onDone: (plan: CutPlan<number> | null) => void
   onError: (error: SolveFailure, message: string) => void
 }
 
@@ -33,6 +32,12 @@ class SolvePool {
   /** Queues a report's profiles behind everything already waiting. */
   submit(report: string, tasks: PoolTask[]): void {
     this.queue.add(report, tasks)
+    this.pump()
+  }
+
+  /** Tasks a report needs before its others: a profile's mixed plan. */
+  submitNext(report: string, tasks: PoolTask[]): void {
+    this.queue.addNext(report, tasks)
     this.pump()
   }
 
@@ -78,7 +83,7 @@ class SolvePool {
     const id = this.nextTaskId++
     slot.task = { id, report, task }
     task.onStart()
-    const request: SolveWorkerRequest = { taskId: id, profile: task.profile, list: task.list, settings: task.settings }
+    const request: SolveWorkerRequest = { taskId: id, list: task.list, settings: task.settings, part: task.part }
     slot.worker.postMessage(request)
   }
 
@@ -88,7 +93,7 @@ class SolvePool {
     if (message.type === 'done') {
       slot.task = null
       slot.idleTimer = setTimeout(() => this.close(slot), IDLE_WORKER_MS)
-      running.task.onDone(message.result)
+      running.task.onDone(message.plan)
     } else {
       // A HiGHS that aborted can't be trusted with another solve.
       this.close(slot)

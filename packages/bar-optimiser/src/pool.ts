@@ -26,10 +26,35 @@ export interface QueuedTask<T> {
 /** The tasks waiting for a free worker, oldest first. */
 export class TaskQueue<T> {
   private items: QueuedTask<T>[] = [];
+  /** Each report's place in line: the order it first added tasks. */
+  private rank = new Map<string, number>();
+  private nextRank = 0;
 
   /** A report's tasks, in its own order, after everything already waiting. */
   add(report: string, tasks: T[]): void {
+    this.rankOf(report);
     for (const task of tasks) this.items.push({ report, task });
+  }
+
+  /** Tasks a report needs next (a profile's mixed solve once its single
+   * lengths are in, docs/report_speed_planing.md §4): ahead of the
+   * report's other waiting tasks, never ahead of an older report's. */
+  addNext(report: string, tasks: T[]): void {
+    const rank = this.rankOf(report);
+    let at = this.items.findIndex(
+      (item) => (this.rank.get(item.report) ?? Infinity) >= rank,
+    );
+    if (at < 0) at = this.items.length;
+    this.items.splice(at, 0, ...tasks.map((task) => ({ report, task })));
+  }
+
+  private rankOf(report: string): number {
+    let rank = this.rank.get(report);
+    if (rank === undefined) {
+      rank = this.nextRank++;
+      this.rank.set(report, rank);
+    }
+    return rank;
   }
 
   /** The next task for a free worker, or `undefined` when none waits. */
@@ -39,6 +64,7 @@ export class TaskQueue<T> {
 
   /** Stop: removes a report's waiting tasks and returns them. */
   drop(report: string): T[] {
+    this.rank.delete(report);
     const dropped = this.items.filter((i) => i.report === report);
     this.items = this.items.filter((i) => i.report !== report);
     return dropped.map((i) => i.task);

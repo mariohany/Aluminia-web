@@ -113,6 +113,70 @@ export async function optimiseProfile<T>(
   pieces: OptimiserPiece<T>[],
   settings: OptimiserSettings,
 ): Promise<ProfileOptimisation<T>> {
+  const single: Record<number, CutPlan<T> | null> = {};
+  for (const length of usableLengths(settings)) {
+    single[length] = await solveSingleLength(pieces, settings, length);
+  }
+  return {
+    best: await solveMixed(pieces, settings, cheapestOf(single)),
+    single,
+    tooLong: prepare(pieces, settings).tooLong,
+  };
+}
+
+/** A profile's plan in one stock length: one of `optimiseProfile`'s
+ * parts, which the browser runs on separate workers
+ * (docs/report_speed_planing.md §4). `null` where a piece doesn't fit
+ * that length. */
+export async function solveSingleLength<T>(
+  pieces: OptimiserPiece<T>[],
+  settings: OptimiserSettings,
+  length: number,
+): Promise<CutPlan<T> | null> {
+  const { types, pieceMetal } = prepare(pieces, settings);
+  return solve(await getSolver(), types, [length], settings, pieceMetal);
+}
+
+/** The least-waste plan over every stock length, mixed. A plan in one
+ * length is a mixed plan too: it starts from `start` (the cheapest
+ * single-length plan, `cheapestOf`), so it never ends up worse. With one
+ * usable length that plan is the answer. */
+export async function solveMixed<T>(
+  pieces: OptimiserPiece<T>[],
+  settings: OptimiserSettings,
+  start: CutPlan<T> | null,
+): Promise<CutPlan<T> | null> {
+  const lengths = usableLengths(settings);
+  if (lengths.length <= 1) return start;
+  const { types, pieceMetal } = prepare(pieces, settings);
+  return solve(await getSolver(), types, lengths, settings, pieceMetal, start);
+}
+
+/** The single-length plan that buys the least metal. On a tie the
+ * shortest length's, as before the split: `Object.values` walks integer
+ * keys in ascending order, whatever order the parts finished in. */
+export function cheapestOf<T>(
+  single: Record<number, CutPlan<T> | null>,
+): CutPlan<T> | null {
+  return Object.values(single).reduce<CutPlan<T> | null>(
+    (cheapest, plan) =>
+      plan && (!cheapest || plan.boughtMm < cheapest.boughtMm)
+        ? plan
+        : cheapest,
+    null,
+  );
+}
+
+/** The pieces as the solver takes them: one type per length (longest
+ * first), the ones too long for any bar set aside. */
+function prepare<T>(
+  pieces: OptimiserPiece<T>[],
+  settings: OptimiserSettings,
+): {
+  types: PieceType<T>[];
+  tooLong: OptimiserPiece<T>[];
+  pieceMetal: MetalOf<T>;
+} {
   const lengths = usableLengths(settings);
   const maxCap = lengths.length ? capacityOf(lengths[0], settings) : 0;
 
@@ -135,27 +199,7 @@ export async function optimiseProfile<T>(
   }
   const types = [...byLength.values()].sort((a, b) => b.size - a.size);
   const metalByRef = new Map(pieces.map((p) => [p.ref, p.metalMm]));
-  const pieceMetal: MetalOf<T> = (ref) => metalByRef.get(ref);
-
-  const highs = await getSolver();
-  const single: Record<number, CutPlan<T> | null> = {};
-  for (const length of lengths) {
-    single[length] = solve(highs, types, [length], settings, pieceMetal);
-  }
-  // A plan in one length is a mixed plan too: the best of them is where
-  // the mixed solve starts, so it never ends up worse.
-  const start = Object.values(single).reduce<CutPlan<T> | null>(
-    (cheapest, plan) =>
-      plan && (!cheapest || plan.boughtMm < cheapest.boughtMm)
-        ? plan
-        : cheapest,
-    null,
-  );
-  const best =
-    lengths.length > 1
-      ? solve(highs, types, lengths, settings, pieceMetal, start)
-      : start;
-  return { best, single, tooLong };
+  return { types, tooLong, pieceMetal: (ref) => metalByRef.get(ref) };
 }
 
 /** How much of a bar its pieces may take, each counted as its length +

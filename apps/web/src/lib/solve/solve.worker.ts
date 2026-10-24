@@ -1,21 +1,26 @@
 /// <reference lib="webworker" />
 import highsWasmUrl from 'highs/runtime?url'
-import { configureSolver, optimiseProfile, type OptimiserSettings } from '@repo/bar-optimiser/optimise'
+import { configureSolver, solveMixed, solveSingleLength, type OptimiserSettings } from '@repo/bar-optimiser/optimise'
 import type { ProjectPiece } from '@repo/bar-optimiser/project'
-import { solvedProfileOf } from '@repo/bar-optimiser/solve-result'
 import type { SolveWorkerReply, SolveWorkerRequest } from './solve-messages'
 
 // One worker of the browser's solve pool (docs/browser_solve_planing.md
-// §4.2): solves one profile at a time with its own HiGHS, loaded on the
-// first task and kept for the next. The pool closes it when idle.
+// §4.2): solves one part of a profile at a time — one stock length, or
+// the mixed plan (docs/report_speed_planing.md §4) — with its own HiGHS,
+// loaded on the first task and kept for the next. The pool closes it
+// when idle.
 
 configureSolver({ locateFile: () => highsWasmUrl })
 
 self.onmessage = async (event: MessageEvent<SolveWorkerRequest>) => {
-  const { taskId, profile, list, settings } = event.data
+  const { taskId, list, settings, part } = event.data
+  const pieces = list as ProjectPiece<number>[]
   try {
-    const result = await optimiseProfile(list as ProjectPiece<number>[], settings as OptimiserSettings)
-    reply({ type: 'done', taskId, result: solvedProfileOf(profile, result) })
+    const plan =
+      part.kind === 'single'
+        ? await solveSingleLength(pieces, settings as OptimiserSettings, part.length)
+        : await solveMixed(pieces, settings as OptimiserSettings, part.start)
+    reply({ type: 'done', taskId, plan })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     reply({ type: 'error', taskId, error: isOutOfMemory(error, message) ? 'too_big' : 'failed', message })

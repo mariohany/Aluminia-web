@@ -352,4 +352,52 @@ describe('optimiseProfile', () => {
     },
     60_000,
   );
+
+  // 150 copies of each window of a test-deploy project (bug-128): ~700
+  // bars a profile ran Node out of 4 GB and overflowed a browser
+  // worker's stack in the mix search. Every plan here is at its floor.
+  const BIG_SHOP: OptimiserSettings = {
+    lengths: [7000, 6500, 6000, 5000],
+    kerfMm: 4,
+    endTrimMm: 10,
+  };
+  const BIG: Record<string, [Record<number, number>, number]> = {
+    frame: [{ 500: 300, 1000: 300, 2000: 600, 2500: 300, 3927: 300 }, 3715500],
+    bead: [
+      {
+        410: 300,
+        414: 1200,
+        430: 1200,
+        455: 1200,
+        553: 600,
+        555: 600,
+        560: 600,
+        561: 600,
+        575: 600,
+        577: 600,
+        881: 600,
+        894: 300,
+        896: 1200,
+        1180: 1200,
+        1434: 1200,
+      },
+      8787500,
+    ],
+    divider: [
+      { 430: 300, 561: 600, 960: 600, 1180: 300, 1450: 600, 2410: 600 },
+      3740000,
+    ],
+    sash: [{ 1450: 1200 }, 1800000],
+  };
+
+  it.each(Object.entries(BIG))(
+    '150 copies of a window, %s: the proven least metal, in seconds',
+    async (_, [spec, optimum]) => {
+      const input = pieces(spec);
+      const { best } = await optimiseProfile(input, BIG_SHOP);
+      expectValid(best, input, BIG_SHOP);
+      expect(best!.boughtMm).toBe(optimum);
+    },
+    30_000,
+  );
 });

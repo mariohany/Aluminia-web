@@ -206,6 +206,7 @@ describe('Reports (e2e)', () => {
     name: string,
     quantity: number,
     section: Record<string, unknown>,
+    panel: Record<string, unknown> = {},
   ): Promise<WindowDetail> {
     const res = await request(app.getHttpServer())
       .post('/windows')
@@ -237,6 +238,7 @@ describe('Reports (e2e)', () => {
             isDoor: false,
             headShape: 'flat',
             headRiseMm: null,
+            ...panel,
           },
         ],
       })
@@ -789,6 +791,105 @@ describe('Reports (e2e)', () => {
     // Stopping a spent token changes nothing.
     await api().post(solvePath('/stop'), { token: stopped.token }).expect(200);
     expect((await status()).solve?.error).toBe(SolveError.TOO_BIG);
+  });
+
+  it('splits a profile by colour pair; a renamed colour code only refreshes (docs/report_colours_planing.md)', async () => {
+    const mainProject = projectId;
+    const colour = async (code: string, hex: string) =>
+      `company:${
+        (
+          await controlPlane.query<{ id: string }[]>(
+            `INSERT INTO "${schemaName}".company_color (code, hex)
+             VALUES ($1, $2) RETURNING id`,
+            [code, hex],
+          )
+        )[0].id
+      }`;
+    const white = await colour('E2E 9016', '#f1f0ea');
+    const grey = await colour('E2E 7016', '#383e42');
+    try {
+      const project = await request(app.getHttpServer())
+        .post('/projects')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ clientId, enName: 'Reports Colours' })
+        .expect(201);
+      projectId = (project.body as ProjectDetail).id;
+      const fixed = {
+        kind: 'fixed',
+        sashProfile: null,
+        beadProfile: `platform:${beadId}`,
+      };
+      await createWindow('W-two-tone', 2, fixed, {
+        interiorColor: white,
+        exteriorColor: grey,
+      });
+      await createWindow('W-white', 2, fixed, {
+        interiorColor: white,
+        exteriorColor: white,
+      });
+      await createWindow('W-plain', 1, fixed);
+
+      // Frame and bead each split three ways: two pairs + no colour.
+      const start = await startSolve();
+      const groups = new Set(start.lines.map((l) => l.profile));
+      expect(groups).toEqual(
+        new Set(
+          [frameId, beadId].flatMap((id) => [
+            `platform:${id}|${white}|${grey}`,
+            `platform:${id}|${white}|${white}`,
+            `platform:${id}||`,
+          ]),
+        ),
+      );
+      await sendResult(start, await browserSolve(start)).expect(200);
+
+      const { report } = await snapshot();
+      const frames = report.plans.filter(
+        (p) => p.profile === `platform:${frameId}`,
+      );
+      expect(
+        frames.map((p) => [
+          p.colors?.interior?.code ?? null,
+          p.colors?.exterior?.code ?? null,
+        ]),
+      ).toEqual([
+        ['E2E 9016', 'E2E 7016'],
+        ['E2E 9016', 'E2E 9016'],
+        [null, null],
+      ]);
+      // No bar holds pieces of two pairs.
+      for (const plan of report.plans) {
+        const windows = new Set(
+          plan.best!.bars.flatMap((b) => b.pieces.map((p) => p.windowName)),
+        );
+        expect(windows.size).toBe(1);
+      }
+
+      // Renaming a colour code: names only, no solve.
+      await controlPlane.query(
+        `UPDATE "${schemaName}".company_color
+         SET code = 'E2E 9016 M', updated_at = now() WHERE id = $1`,
+        [white.split(':')[1]],
+      );
+      expect(await status()).toMatchObject({
+        state: 'stale',
+        staleBecause: 'names',
+      });
+      await api().post(`${basePath()}/refresh`).expect(200);
+      expect((await status()).state).toBe('fresh');
+      const renamed = (await snapshot()).report;
+      expect(renamed.plans[0].colors?.interior?.code).toBe('E2E 9016 M');
+      expect(renamed.summary.profiles[0].colors?.interior?.code).toBe(
+        'E2E 9016 M',
+      );
+
+      // Nothing changed: every group is reused.
+      const again = await startSolve();
+      expect([...again.reused].sort()).toEqual([...groups].sort());
+      await sendResult(again, { profiles: [] }).expect(200);
+    } finally {
+      projectId = mainProject;
+    }
   });
 
   it('no longer prints on the server (docs/browser_pdf_planing.md P5)', async () => {

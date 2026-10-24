@@ -5,6 +5,9 @@ import type { WindowDetail } from '@repo/types/windows';
 import {
   barGroupOf,
   buildProjectPieces,
+  colorsOf,
+  recolored,
+  reportSnapshotOf,
   planKeysOf,
   profileNoOf,
   profileRefOf,
@@ -38,6 +41,7 @@ function inputs(): ReportInputs {
       updatedAt: null,
     },
     profiles: new Map(),
+    colors: new Map(),
     letterhead: {
       enName: null,
       arName: null,
@@ -247,5 +251,57 @@ describe('bar groups', () => {
     // Same lengths in both pairs: same plan, but each group keeps its own.
     expect(new Set(keys.values()).size).toBe(1);
     expect(profileNoOf(base, barGroupOf(FRAME, WHITE, GREY))).toBe('1045');
+  });
+
+  it('a renamed colour code only refreshes the snapshot', () => {
+    const before = inputs();
+    before.windows = [window('w1', 1200, WHITE, GREY)];
+    const after = inputs();
+    after.windows = before.windows;
+    before.colors = new Map([
+      [WHITE, { code: 'RAL 9016', hex: '#f1f0ea', stamp: 'a' }],
+    ]);
+    after.colors = new Map([
+      [WHITE, { code: 'RAL 9016 M', hex: '#f1f0ea', stamp: 'b' }],
+    ]);
+    expect(solveFingerprintOf(after)).toBe(solveFingerprintOf(before));
+    expect(snapshotFingerprintOf(after)).not.toBe(
+      snapshotFingerprintOf(before),
+    );
+    // GREY's row is gone: its ref stays, with no code.
+    const pair = colorsOf(after, barGroupOf(FRAME, WHITE, GREY));
+    expect(pair).toEqual({
+      interior: { ref: WHITE, code: 'RAL 9016 M', hex: '#f1f0ea' },
+      exterior: { ref: GREY, code: null, hex: null },
+    });
+    expect(recolored(before, pair).interior?.code).toBe('RAL 9016');
+  });
+
+  it('plans carry their colours: by code within a profile, no colour last', async () => {
+    const { base, pieces } = piecesOf(
+      window('w1', 1200, null, null),
+      window('w2', 1100, WHITE, GREY),
+      window('w3', 1000, GREY, GREY),
+    );
+    base.colors = new Map([
+      [WHITE, { code: 'RAL 9016', hex: '#f1f0ea', stamp: 'a' }],
+      [GREY, { code: 'RAL 7016', hex: '#383e42', stamp: 'a' }],
+    ]);
+    const result = await optimiseProject(pieces.pieces, settings);
+    const report = reportSnapshotOf(base, pieces, result, new Date());
+    const codes = report.plans.map((p) => [
+      p.profile,
+      p.colors?.interior?.code ?? null,
+      p.colors?.exterior?.code ?? null,
+    ]);
+    expect(codes).toEqual([
+      [FRAME, 'RAL 7016', 'RAL 7016'],
+      [FRAME, 'RAL 9016', 'RAL 7016'],
+      [FRAME, null, null],
+    ]);
+    expect(report.summary.profiles.map((p) => p.colors)).toEqual(
+      report.plans.map((p) => p.colors),
+    );
+    expect(report.summary.members[0].profiles).toEqual([FRAME]);
   });
 });

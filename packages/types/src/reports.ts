@@ -104,6 +104,21 @@ export interface ReportPlanTotals {
 /** Bars per stock length; JSON keys are the length in mm. */
 export type StockMix = Record<string, number>
 
+/** One side's colour as the report froze it
+ * (docs/report_colours_planing.md §4). `code`/`hex` null: the colour row
+ * is gone; `ref` lets a refresh re-read a renamed code. */
+export interface ReportColor {
+  ref: string
+  code: string | null
+  hex: string | null
+}
+
+/** A plan's colour pair, inside then outside; null = none picked. */
+export interface ReportColorPair {
+  interior: ReportColor | null
+  exterior: ReportColor | null
+}
+
 export interface BarOptimiserSummary {
   stockLengthsMm: number[]
   kerfMm: number
@@ -124,6 +139,8 @@ export interface BarOptimiserSummary {
   profiles: {
     profile: string
     profileNo: string | null
+    /** Absent in reports made before colours split the bars. */
+    colors?: ReportColorPair
     member: ReportMember
     pieceCount: number
     single: Record<string, ReportPlanTotals | null>
@@ -174,10 +191,13 @@ export interface BarOptimiserReportBar {
   goesTo?: BarOptimiserReportGoesTo[]
 }
 
-/** One profile's least-waste plan, as the cutting-plan pages draw it. */
+/** One bar group's least-waste plan (a profile in one colour pair), as
+ * the cutting-plan pages draw it. */
 export interface BarOptimiserReportPlan {
   profile: string
   profileNo: string | null
+  /** Absent in reports made before colours split the bars. */
+  colors?: ReportColorPair
   member: ReportMember
   /** The face width the areas used, mm; absent in older reports. */
   faceWidthMm?: number

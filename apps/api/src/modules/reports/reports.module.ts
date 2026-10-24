@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { Color } from '../../database/control-plane/entities/color.entity';
 import { SystemCatalog } from '../../database/control-plane/entities/system-catalog.entity';
 import { SystemProfile } from '../../database/control-plane/entities/system-profile.entity';
 import { User } from '../../database/control-plane/entities/user.entity';
@@ -18,7 +19,7 @@ import { ReportsService } from './reports.service';
 @Module({
   imports: [
     TenancyModule,
-    TypeOrmModule.forFeature([SystemProfile, SystemCatalog, User]),
+    TypeOrmModule.forFeature([SystemProfile, SystemCatalog, Color, User]),
   ],
   controllers: [ReportsController],
   providers: [ReportsService],

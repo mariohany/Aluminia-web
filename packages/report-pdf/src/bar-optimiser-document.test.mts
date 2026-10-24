@@ -247,3 +247,52 @@ describe('patterns: repeated bars drawn once (docs/bar_patterns_planing.md)', ()
     }
   })
 })
+
+describe('colour pairs (docs/report_colours_planing.md §5)', () => {
+  const white = { ref: 'platform:white', code: 'RAL 9016', hex: '#F1F0EA' }
+  const grey = { ref: 'company:grey', code: 'RAL 7016', hex: '#383E42' }
+  const gone = { ref: 'company:gone', code: null, hex: null }
+  const coloured: BarOptimiserReport = structuredClone(areaReport)
+  const pairs = [
+    { interior: white, exterior: grey },
+    { interior: null, exterior: null },
+    { interior: gone, exterior: white },
+  ]
+  coloured.plans.forEach((plan, i) => (plan.colors = pairs[i % pairs.length]))
+  coloured.summary.profiles.forEach((p, i) => (p.colors = pairs[i % pairs.length]))
+
+  for (const language of ['en', 'ar'] as const) {
+    it(`prints each plan's pair, "no colour" and a gone code as "?" (${language})`, async () => {
+      const s = stringsFor(language)
+      const { pages, pageWidth } = await draw(language, null, coloured)
+      const lines = pages.flat()
+      // pdf.js may join "RAL 9016 /" into one run or split "RAL" from
+      // its number, so look at the text, not single runs.
+      const text = lines.map((l) => l.str).join(' ')
+      for (const term of ['9016', '7016', '?', '/', s.noColour]) {
+        assert.ok(text.includes(term), `"${term}" missing`)
+      }
+      // Swatches + codes stay inside the margins too (bug-119).
+      const margin = 14 * (72 / 25.4) - 1
+      for (const line of lines) {
+        assert.ok(line.x >= margin && line.right <= pageWidth - margin, `"${line.str}" at ${line.x}–${line.right}`)
+      }
+      // Inside before outside in reading order, on every line with both.
+      let rows = 0
+      for (const page of pages) {
+        for (const run of page.filter((l) => l.str.includes('9016'))) {
+          const outside = page.find((l) => l.str.includes('7016') && Math.abs(l.y - run.y) < 1.5)
+          if (!outside) continue
+          rows++
+          assert.ok(language === 'en' ? run.x < outside.x : run.x > outside.x, `inside / outside order at y ${run.y}`)
+        }
+      }
+      assert.ok(rows > 0, 'a header prints both sides on one line')
+    })
+  }
+
+  it('prints no colours for a report made before them', async () => {
+    const lines = (await draw('en', null, areaReport)).pages.flat()
+    assert.ok(!lines.some((l) => l.str === stringsFor('en').noColour))
+  })
+})

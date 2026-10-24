@@ -4,7 +4,9 @@ import {
 } from '@repo/bar-optimiser/project';
 import {
   SolveRefused,
+  plansByLength,
   solveInput,
+  solvedFromLengths,
   solvedProfileOf,
   validateSolve,
   type SolveResult,
@@ -157,7 +159,9 @@ describe('validateSolve', () => {
     const frame = result.profiles.find((p) => p.profile === 'frame')!;
     // One piece per 6500 bar: valid, but far worse than the 6000 plan.
     frame.best = frame.best!.flatMap((b) =>
-      b.pieces.map((piece) => ({ stockMm: 6500, pieces: [piece] })),
+      Array.from({ length: b.count ?? 1 }, () => b.pieces).flatMap((pieces) =>
+        pieces.map((piece) => ({ stockMm: 6500, pieces: [piece] })),
+      ),
     );
     refused(result, /buys more metal than the \d+ mm one/);
   });
@@ -180,5 +184,67 @@ describe('validateSolve', () => {
     const checked = validateSolve(onlyTooLong, settings, result);
     expect(checked.profiles[0].tooLong).toHaveLength(1);
     expect(checked.total.barCount).toBe(0);
+  });
+
+  // docs/report_speed_planing.md §5: identical bars are sent once.
+  it('sends identical bars once with a count, and checks them as many', () => {
+    const counted = honest.profiles.flatMap((p) => [
+      ...(p.best ?? []),
+      ...Object.values(p.single).flatMap((plan) => plan ?? []),
+    ]);
+    expect(counted.some((bar) => (bar.count ?? 1) > 1)).toBe(true);
+
+    // An older browser sends every bar: the same report.
+    const expanded = copy(honest);
+    for (const p of expanded.profiles) {
+      const spread = (plan: SolveResult['profiles'][number]['best']) =>
+        plan?.flatMap(({ count = 1, ...bar }) =>
+          Array.from({ length: count }, () => ({ ...bar })),
+        ) ?? null;
+      p.best = spread(p.best);
+      for (const length of Object.keys(p.single)) {
+        p.single[length] = spread(p.single[length]);
+      }
+    }
+    expect(validateSolve(lines, settings, expanded).total).toEqual(
+      validateSolve(lines, settings, copy(honest)).total,
+    );
+  });
+
+  it('refuses a forged count before multiplying any bars out', () => {
+    const forged = copy(honest);
+    forged.profiles[0].best![0].count = 100_000;
+    refused(forged, /is cut \d+×, needs \d+×/);
+
+    const zero = copy(honest);
+    zero.profiles[0].best![0].count = 0;
+    refused(zero, /a bar is cut 0×/);
+  });
+
+  // docs/report_speed_planing.md §6: plans kept by length, put back onto
+  // today's lines, which may sit elsewhere or belong to other windows.
+  it('puts plans kept by length back onto moved lines, the same report', () => {
+    const stored = honest.profiles.map((p) => ({
+      profile: p.profile,
+      plans: plansByLength(p, lines),
+    }));
+    const today = [...lines].reverse();
+    const filled = stored.map(({ profile, plans }) =>
+      solvedFromLengths(profile, plans, today)!,
+    );
+    expect(filled.every(Boolean)).toBe(true);
+    const checked = validateSolve(today, settings, { profiles: filled });
+    expect(checked.total).toEqual(
+      validateSolve(lines, settings, copy(honest)).total,
+    );
+  });
+
+  it("can't put plans back when a length's pieces are gone", () => {
+    const frame = honest.profiles.find((p) => p.profile === 'frame')!;
+    const plans = plansByLength(frame, lines);
+    const fewer = lines.map((l) =>
+      l.lengthMm === 1200 ? { ...l, count: l.count - 1 } : l,
+    );
+    expect(solvedFromLengths('frame', plans, fewer)).toBeNull();
   });
 });

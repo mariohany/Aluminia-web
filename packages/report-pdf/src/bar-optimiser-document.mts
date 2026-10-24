@@ -97,6 +97,25 @@ export function barOptimiserDocument(input: BarOptimiserPdfInput): ReactElement<
   )
 }
 
+/** A throwaway page with text in every family and weight, drawn when the
+ * Reports section opens (docs/report_speed_planing.md §3): @react-pdf
+ * fetches and parses a font only when text first uses it, so the first
+ * real report would otherwise wait for all of them. */
+export async function warmUpPdfBytes(): Promise<ArrayBuffer> {
+  const families = [FONT_FAMILY.sans, FONT_FAMILY.mono, FONT_FAMILY.arabic]
+  const weights = [400, 600, 700] as const
+  const page = h(
+    Page,
+    { size: 'A6' },
+    ...families.flatMap((fontFamily) =>
+      weights.map((fontWeight) =>
+        h(Text, { key: `${fontFamily}-${fontWeight}`, style: { fontFamily, fontWeight, direction: fontFamily === FONT_FAMILY.arabic ? 'rtl' : 'ltr' } }, fontFamily === FONT_FAMILY.arabic ? 'هالك ٠١٢' : 'Aluminia 0123'),
+      ),
+    ),
+  )
+  return (await pdf(h(Document, {}, page)).toBlob()).arrayBuffer()
+}
+
 /** The drawn PDF's bytes: what the browser's worker shows, prints and
  * downloads. Fonts must be registered first (`registerFonts`). */
 export async function barOptimiserPdfBytes(input: BarOptimiserPdfInput): Promise<ArrayBuffer> {
@@ -476,10 +495,13 @@ export function barPatterns(bars: BarOptimiserReportBar[], s: PdfStrings): BarPa
   for (const bar of bars) {
     const key = [bar.stockMm, ...bar.pieces.map((p) => `${p.lengthMm}/${(p.endsMm ?? [0, 0]).join('/')}`)].join(':')
     const group = byCut.get(key) ?? { bar, count: 0, labels: new Map<string, number>() }
-    group.count++
-    for (const piece of bar.pieces) {
-      const label = shortLabel(piece, s)
-      group.labels.set(label, (group.labels.get(label) ?? 0) + 1)
+    // A report from 2026-10-24 on stores each pattern once, with its count
+    // and where its pieces go (docs/report_speed_planing.md §5); an older
+    // one lists every bar.
+    group.count += bar.count ?? 1
+    for (const where of bar.goesTo ?? bar.pieces.map((piece) => ({ ...piece, count: 1 }))) {
+      const label = shortLabel(where, s)
+      group.labels.set(label, (group.labels.get(label) ?? 0) + where.count)
     }
     byCut.set(key, group)
   }
@@ -598,7 +620,7 @@ function squareMetres(mm2: number): string {
 
 /** "W-01 · sa B L": a window name like "W-01 Living room" keeps its
  * leading code; otherwise the whole name, before the part (D26). */
-function shortLabel(piece: BarOptimiserReportPiece, s: PdfStrings): string {
+function shortLabel(piece: Pick<BarOptimiserReportPiece, 'windowName' | 'member' | 'at'>, s: PdfStrings): string {
   const [first, ...rest] = piece.windowName.trim().split(/\s+/)
   const windowShort = rest.length && /\d/.test(first) ? first : piece.windowName
   return `${windowShort} · ${s.partShort(piece.member, piece.at)}`

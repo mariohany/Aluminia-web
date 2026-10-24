@@ -4,7 +4,10 @@ import { Font } from '@react-pdf/renderer'
 // Arabic and Geist / Geist Mono, regular · semibold · bold. Vendored in
 // ../fonts (OFL, licences beside them) because @react-pdf's font engine
 // can't subset the app's own web fonts (Geist's variable woff2, the
-// @fontsource Arabic subset): complete WOFF / static TTF files only.
+// @fontsource Arabic subset): complete static TTF files only. Not WOFF:
+// fontkit inflates a WOFF's tables again on every PDF, which made each
+// Arabic report ~1 s slower (docs/report_speed_planing.md §3; the TTFs
+// are the vendored WOFFs unpacked, same glyphs).
 
 export const FONT_FAMILY = {
   arabic: 'Plex Arabic',
@@ -16,7 +19,7 @@ export const FONT_WEIGHTS = [400, 600, 700] as const
 
 /** Every file, by family and weight, as named in ../fonts. */
 export const FONT_FILES = {
-  arabic: ['IBMPlexSansArabic-Regular.woff', 'IBMPlexSansArabic-SemiBold.woff', 'IBMPlexSansArabic-Bold.woff'],
+  arabic: ['IBMPlexSansArabic-Regular.ttf', 'IBMPlexSansArabic-SemiBold.ttf', 'IBMPlexSansArabic-Bold.ttf'],
   sans: ['Geist-Regular.ttf', 'Geist-SemiBold.ttf', 'Geist-Bold.ttf'],
   mono: ['GeistMono-Regular.ttf', 'GeistMono-SemiBold.ttf', 'GeistMono-Bold.ttf'],
 } as const

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { ErrorBoundary } from '@/components/error-boundary'
@@ -6,6 +7,7 @@ import { BarOptimiserView } from '@/components/workspace/reports/bar-optimiser-v
 import { ReportList } from '@/components/workspace/reports/report-list'
 import { REPORTS } from '@/lib/report-kinds'
 import { displayName } from '@/lib/bilingual'
+import { warmPdfWorker } from '@/lib/report-pdf/draw-pdf'
 import { useClientTreeQuery } from '@/lib/clients-queries'
 import type { ClientWithProjects } from '@repo/types/clients'
 
@@ -26,6 +28,9 @@ export function ReportsPage() {
   const treeQuery = useClientTreeQuery()
   const clients = treeQuery.data ?? NO_CLIENTS
   const selected = findProject(clients, projectId)
+
+  // The PDF fonts load while a project and report are picked (S4).
+  useEffect(warmPdfWorker, [])
 
   return (
     <div className="flex h-full min-h-0">

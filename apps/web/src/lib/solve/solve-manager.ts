@@ -1,14 +1,15 @@
 import { useSyncExternalStore } from 'react'
 import type { CutMember } from '@repo/geometry/cut-list'
+import { cheapestOf, usableLengths, type CutPlan } from '@repo/bar-optimiser/optimise'
 import { profileQueue } from '@repo/bar-optimiser/project'
-import { solveInput, type SolvedProfile } from '@repo/bar-optimiser/solve-result'
+import { solveInput, solvedProfileOf, type SolvedProfile } from '@repo/bar-optimiser/solve-result'
 import { OPTIMISER_VERSION } from '@repo/bar-optimiser/version'
 import type { ReportProgressGroup, SolveStart } from '@repo/types/reports'
 import { ApiError } from '@/lib/api-client'
 import { queryClient } from '@/lib/query-client'
 import * as reportsApi from '@/lib/reports-api'
 import { barOptimiserStatusKey } from '@/lib/reports-queries'
-import { solvePool } from './solve-pool'
+import { solvePool, type PoolTask } from './solve-pool'
 import { reportError } from '@/lib/monitoring'
 import type { SolveFailure } from './solve-messages'
 
@@ -104,9 +105,12 @@ export async function startSolve(projectId: string, projectName: string): Promis
   queryClient.setQueryData(barOptimiserStatusKey(projectId), start.status)
   patch(projectId, { state: 'solving', groups: start.status.solve?.groups ?? [] })
 
+  // Profiles the API reuses from the last solve are skipped; the progress
+  // it sent already counts them done (docs/report_speed_planing.md §6).
+  const reused = new Set(start.reused ?? [])
   const queue = profileQueue(
     solveInput(start.lines.map((line) => ({ ...line, member: line.member as CutMember }))),
-  )
+  ).filter((q) => !reused.has(q.profile))
   const results = new Map<string, SolvedProfile>()
   const run: Running = {
     token: start.token,
@@ -117,13 +121,19 @@ export async function startSolve(projectId: string, projectName: string): Promis
   running.set(projectId, run)
   if (!queue.length) return void finish(projectId, [])
 
-  solvePool.submit(
-    projectId,
-    queue.map(({ profile, member, list }) => ({
-      profile,
+  const lengths = usableLengths(start.settings)
+  const onError = (error: SolveFailure, message: string) => void fail(projectId, error, message)
+  const tasks = queue.flatMap(({ profile, member, list }) => {
+    const single: Record<number, CutPlan<number> | null> = {}
+    let started = false
+    let singlesLeft = lengths.length
+    const task = (part: PoolTask['part'], onDone: PoolTask['onDone']): PoolTask => ({
       list,
       settings: start.settings,
+      part,
       onStart: () => {
+        if (started) return
+        started = true
         run.active.set(member, [...(run.active.get(member) ?? []), profile])
         updateGroup(projectId, member, (g) => ({
           ...g,
@@ -131,30 +141,47 @@ export async function startSolve(projectId: string, projectName: string): Promis
           currentProfile: start.profileNos[profile] ?? profile,
         }))
       },
-      onDone: (result) => {
-        results.set(profile, result)
-        const left = (run.active.get(member) ?? []).filter((p) => p !== profile)
-        run.active.set(member, left)
-        const latest = left.at(-1)
-        updateGroup(projectId, member, (g) => {
-          const done = g.profilesDone + 1
-          return {
-            ...g,
-            profilesDone: done,
-            state: done >= g.profilesTotal ? 'done' : 'running',
-            currentProfile: latest ? (start.profileNos[latest] ?? latest) : null,
-          }
-        })
-        if (results.size === queue.length) {
-          void finish(
-            projectId,
-            queue.map((q) => results.get(q.profile)!),
-          )
+      onDone,
+      onError,
+    })
+    const profileDone = (best: CutPlan<number> | null) => {
+      results.set(profile, solvedProfileOf(profile, { best, single, tooLong: [] }))
+      const left = (run.active.get(member) ?? []).filter((p) => p !== profile)
+      run.active.set(member, left)
+      const latest = left.at(-1)
+      updateGroup(projectId, member, (g) => {
+        const done = g.profilesDone + 1
+        return {
+          ...g,
+          profilesDone: done,
+          state: done >= g.profilesTotal ? 'done' : 'running',
+          currentProfile: latest ? (start.profileNos[latest] ?? latest) : null,
         }
-      },
-      onError: (error, message) => void fail(projectId, error, message),
-    })),
-  )
+      })
+      if (results.size === queue.length) {
+        void finish(
+          projectId,
+          queue.map((q) => results.get(q.profile)!),
+        )
+      }
+    }
+    // No usable length: nothing to cut, as optimiseProfile would say.
+    if (!lengths.length) {
+      queueMicrotask(() => profileDone(null))
+      return []
+    }
+    return lengths.map((length) =>
+      task({ kind: 'single', length }, (plan) => {
+        single[length] = plan
+        if (--singlesLeft > 0) return
+        if (lengths.length === 1) return profileDone(cheapestOf(single))
+        // The mixed plan goes ahead of this report's other parts: it's
+        // what the profile still waits for.
+        solvePool.submitNext(projectId, [task({ kind: 'mixed', start: cheapestOf(single) }, profileDone)])
+      }),
+    )
+  })
+  solvePool.submit(projectId, tasks)
 }
 
 /** Stop (B6): this tab's solve ends; the last good report stays. */

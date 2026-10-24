@@ -52,4 +52,36 @@ describe('TaskQueue', () => {
     expect(queue.waiting()).toBe(1);
     expect(queue.next()).toEqual({ report: 'tower', task: 'bead' });
   });
+
+  it("puts a report's next task ahead of its own, never an older report's", () => {
+    const queue = new TaskQueue<string>();
+    queue.add('villa', ['frame 7000', 'frame 6500']);
+    queue.add('tower', ['bead 7000', 'bead 6500']);
+    queue.addNext('tower', ['bead mixed']); // behind villa, ahead of tower
+    queue.addNext('villa', ['frame mixed']); // villa is older: first
+    expect(
+      [1, 2, 3, 4, 5, 6, 7].map(() => {
+        const next = queue.next();
+        return next && `${next.report}:${next.task}`;
+      }),
+    ).toEqual([
+      'villa:frame mixed',
+      'villa:frame 7000',
+      'villa:frame 6500',
+      'tower:bead mixed',
+      'tower:bead 7000',
+      'tower:bead 6500',
+      undefined,
+    ]);
+  });
+
+  it('a next task of a report with nothing waiting still goes ahead of newer reports', () => {
+    const queue = new TaskQueue<string>();
+    queue.add('villa', ['frame']);
+    queue.add('tower', ['bead']);
+    queue.next(); // villa:frame runs
+    queue.addNext('villa', ['frame mixed']);
+    expect(queue.next()).toEqual({ report: 'villa', task: 'frame mixed' });
+    expect(queue.next()).toEqual({ report: 'tower', task: 'bead' });
+  });
 });

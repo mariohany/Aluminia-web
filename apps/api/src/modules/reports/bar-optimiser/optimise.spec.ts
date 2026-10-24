@@ -1,5 +1,8 @@
 import {
+  cheapestOf,
   optimiseProfile,
+  solveMixed,
+  solveSingleLength,
   type CutPlan,
   type OptimiserPiece,
   type OptimiserSettings,
@@ -400,4 +403,40 @@ describe('optimiseProfile', () => {
     },
     30_000,
   );
+
+  // The browser solves the parts on separate workers, in whatever order
+  // they finish (docs/report_speed_planing.md §4): same plans.
+  it('the parts give the same plans as one optimiseProfile, in any order', async () => {
+    let seed = 11;
+    const rand = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
+    const settings = {
+      lengths: [7000, 6500, 6000, 5000],
+      kerfMm: 4,
+      endTrimMm: 10,
+    };
+    for (let run = 0; run < 12; run++) {
+      const spec: Record<number, number> = {};
+      const kinds = 2 + Math.floor(rand() * 6);
+      for (let k = 0; k < kinds; k++) {
+        spec[300 + Math.floor(rand() * 3000)] = 1 + Math.floor(rand() * 20);
+      }
+      const input = pieces(spec);
+      const whole = await optimiseProfile(input, settings);
+      const single: Record<number, CutPlan<string> | null> = {};
+      for (const length of [5000, 7000, 6000, 6500]) {
+        single[length] = await solveSingleLength(input, settings, length);
+      }
+      expect(single).toEqual(whole.single);
+      expect(await solveMixed(input, settings, cheapestOf(single))).toEqual(
+        whole.best,
+      );
+    }
+  }, 60_000);
+
+  it('one usable length: the mixed plan is that plan', async () => {
+    const settings = { ...SHOP, lengths: [6000] };
+    const input = pieces({ 2400: 3 });
+    const plan = await solveSingleLength(input, settings, 6000);
+    expect(await solveMixed(input, settings, plan)).toBe(plan);
+  });
 });

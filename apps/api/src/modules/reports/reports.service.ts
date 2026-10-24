@@ -10,8 +10,12 @@ import type { EntityManager, Repository } from 'typeorm';
 import { OPTIMISER_VERSION } from '@repo/bar-optimiser/version';
 import {
   SolveRefused,
+  plansByLength,
+  solvedFromLengths,
   validateSolve,
+  type LengthPlans,
   type SolveResult,
+  type SolvedProfile,
 } from '@repo/bar-optimiser/solve-result';
 import {
   DEFAULT_CUTTING_SETTINGS,
@@ -42,6 +46,7 @@ import {
   initialProgress,
   loadReportInputs,
   namesOf,
+  planKeysOf,
   profileNoOf,
   reportSnapshotOf,
   widthsOf,
@@ -178,10 +183,13 @@ export class ReportsService {
       }
 
       const pieces = buildProjectPieces(inputs);
+      const reused = reusablePlans(solve, planKeysOf(inputs, pieces));
       solve.solveState = 'solving';
       solve.solveToken = randomUUID();
       solve.solvePendingFingerprint = solveFingerprintOf(inputs);
-      solve.solveProgress = { groups: initialProgress(pieces) };
+      solve.solveProgress = {
+        groups: initialProgress(pieces, new Set(reused.keys())),
+      };
       solve.solveStartedAt = new Date();
       solve.solveStartedByUserId = userId;
       solve.solveError = null;
@@ -207,6 +215,7 @@ export class ReportsService {
             profileNoOf(inputs, ref),
           ]),
         ),
+        reused: [...reused.keys()],
         status: await this.toStatus(manager, inputs, userId),
       };
     });
@@ -255,7 +264,28 @@ export class ReportsService {
 
       const fingerprint = solveFingerprintOf(inputs);
       const pieces = buildProjectPieces(inputs);
-      const result: SolveResult = { profiles: input.profiles };
+      const keys = planKeysOf(inputs, pieces);
+      // The profiles the browser skipped (`reused` at the start) come
+      // from the last solve, onto today's lines; one it sent anyway (an
+      // older tab) is taken as sent.
+      const lines = pieces.pieces.map(
+        ({ profile, member, lengthMm, count }) => ({
+          profile,
+          member,
+          lengthMm,
+          count,
+        }),
+      );
+      const sent = new Set(input.profiles.map((p) => p.profile));
+      const filled: SolvedProfile[] = [];
+      for (const [profile, plans] of reusablePlans(solve, keys)) {
+        if (sent.has(profile)) continue;
+        const back = solvedFromLengths(profile, plans, lines);
+        if (back) filled.push(back);
+      }
+      const result: StoredSolveResult = {
+        profiles: [...input.profiles, ...filled],
+      };
       if (solve.solvePendingFingerprint !== fingerprint) {
         outcome.refusal = new ConflictException({
           message: 'Windows changed while the report was being made.',
@@ -278,6 +308,12 @@ export class ReportsService {
           solve.solveFingerprint = fingerprint;
           solve.snapshotFingerprint = snapshotFingerprintOf(inputs);
           solve.windowStamps = windowStampsOf(inputs);
+          result.plans = Object.fromEntries(
+            result.profiles.map((p) => [
+              p.profile,
+              { key: keys.get(p.profile)!, ...plansByLength(p, lines) },
+            ]),
+          );
           solve.result = result;
           solve.report = reportSnapshotOf(inputs, pieces, checked, solvedAt);
           solve.solvedAt = solvedAt;
@@ -402,6 +438,27 @@ function solveLost(): ConflictException {
     message: 'This report is no longer being made here.',
     code: SolveRefusal.SOLVE_LOST,
   });
+}
+
+/** `report_solve.result`: the browser's plans on line numbers, and from
+ * 2026-10-24 each profile's plan key + plans by length, to reuse
+ * (docs/report_speed_planing.md §6). */
+interface StoredSolveResult extends SolveResult {
+  plans?: Record<string, LengthPlans & { key: string }>;
+}
+
+/** The last solve's plans of every profile whose key is still today's. */
+function reusablePlans(
+  solve: ReportSolve,
+  keys: Map<string, string>,
+): Map<string, LengthPlans> {
+  const stored = (solve.result as StoredSolveResult | null)?.plans ?? {};
+  const out = new Map<string, LengthPlans>();
+  for (const [profile, key] of keys) {
+    const plans = stored[profile];
+    if (plans && plans.key === key) out.set(profile, plans);
+  }
+  return out;
 }
 
 function findSolve(

@@ -424,34 +424,90 @@ function cuttingPlan(
       ),
       ...plans.map((p) => {
         const best = p.best!
+        const [first, ...rest] = barPatterns(best.bars, s).map((pattern) => barRow(d, s, sum, pattern, longest))
         return h(
           View,
           { key: p.profile, style: { marginTop: px(12) } },
-          d.row(
-            { gap: px(8), alignItems: 'flex-end', paddingTop: px(6), borderTopWidth: px(1), borderTopColor: C.line },
-            d.num(p.profileNo ?? '—', { fontSize: px(11), fontWeight: 700 }),
-            d.text(s.member[p.member], { fontSize: px(10) }),
-            h(View, { style: { flex: 1 } }),
+          h(
+            View,
+            // the profile's header never ends a page without its first pattern
+            { wrap: false },
             d.row(
-              { gap: px(3) },
-              d.num(`${mixText(best.mix)} · ${best.wastePct.toFixed(1)}%${best.wasteMm2 !== undefined ? ` · ${squareMetres(best.wasteMm2)}` : ''}`, {
-                fontSize: px(9.5),
-                fontWeight: 600,
-                color: C.accent,
-              }),
-              d.text(s.waste, { fontSize: px(9.5), fontWeight: 600, color: C.accent }),
+              { gap: px(8), alignItems: 'flex-end', paddingTop: px(6), borderTopWidth: px(1), borderTopColor: C.line },
+              d.num(p.profileNo ?? '—', { fontSize: px(11), fontWeight: 700 }),
+              d.text(s.member[p.member], { fontSize: px(10) }),
+              h(View, { style: { flex: 1 } }),
+              d.row(
+                { gap: px(3) },
+                d.num(`${mixText(best.mix)} · ${best.wastePct.toFixed(1)}%${best.wasteMm2 !== undefined ? ` · ${squareMetres(best.wasteMm2)}` : ''}`, {
+                  fontSize: px(9.5),
+                  fontWeight: 600,
+                  color: C.accent,
+                }),
+                d.text(s.waste, { fontSize: px(9.5), fontWeight: 600, color: C.accent }),
+              ),
             ),
+            first,
           ),
-          ...best.bars.map((bar, i) => barRow(d, s, sum, bar, i, longest)),
+          ...rest,
         )
       }),
     ),
   ]
 }
 
-/** One bar to scale: trim · pieces with their kerfs · offcut · trim, left
- * to right in both languages, as the saw cuts it (D19). */
-function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, bar: BarOptimiserReportBar, index: number, longest: number) {
+/** Bars cut the same way, drawn once (docs/bar_patterns_planing.md). */
+export interface BarPattern {
+  /** A, B … Z, AA, AB …, per profile. */
+  letter: string
+  /** How many bars are cut this way. */
+  count: number
+  /** The first of them: every bar of a pattern has the same stock, pieces and waste. */
+  bar: BarOptimiserReportBar
+  /** Its pieces' short labels (D26) with how many, most first. */
+  goesTo: { label: string; count: number }[]
+}
+
+/** A plan's bars grouped by their cut (G1): the same stock and the same
+ * pieces in order, each with the same length and end angles. Labels don't
+ * split a pattern. In order of each pattern's first bar. */
+export function barPatterns(bars: BarOptimiserReportBar[], s: PdfStrings): BarPattern[] {
+  const byCut = new Map<string, { bar: BarOptimiserReportBar; count: number; labels: Map<string, number> }>()
+  for (const bar of bars) {
+    const key = [bar.stockMm, ...bar.pieces.map((p) => `${p.lengthMm}/${(p.endsMm ?? [0, 0]).join('/')}`)].join(':')
+    const group = byCut.get(key) ?? { bar, count: 0, labels: new Map<string, number>() }
+    group.count++
+    for (const piece of bar.pieces) {
+      const label = shortLabel(piece, s)
+      group.labels.set(label, (group.labels.get(label) ?? 0) + 1)
+    }
+    byCut.set(key, group)
+  }
+  return [...byCut.values()].map((group, i) => ({
+    letter: patternLetter(i),
+    count: group.count,
+    bar: group.bar,
+    goesTo: [...group.labels]
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+  }))
+}
+
+/** 0 → A, 25 → Z, 26 → AA, 27 → AB … */
+export function patternLetter(index: number): string {
+  let letter = ''
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) {
+    letter = String.fromCharCode(65 + ((n - 1) % 26)) + letter
+  }
+  return letter
+}
+
+/** One pattern: its letter over "×N", then its bar to scale — trim ·
+ * pieces with their kerfs · offcut · trim, left to right in both
+ * languages, as the saw cuts it (D19) — lengths only (G2), and under it
+ * the windows its pieces go to. */
+function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, pattern: BarPattern, longest: number) {
+  const { bar } = pattern
   const scale = (BAR_W - 64) / longest
   const trimW = sum.endTrimMm * scale
   const kerfW = sum.kerfMm * scale
@@ -480,20 +536,10 @@ function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, bar: BarOptimis
         : [h(Rect, { key: `p${i}`, x, y: 2, width: pw, height: BAR_H - 4, fill: C.piece, stroke: C.ink, strokeWidth: 0.7 })]),
       h(
         Text,
-        { key: `l${i}`, x: cx, y: pw > 20 ? 11 : 15, textAnchor: 'middle', fill: C.ink, style: { fontFamily: mono, fontWeight: 600, fontSize: roomy ? 8.5 : 7 } },
+        { key: `l${i}`, x: cx, y: 15, textAnchor: 'middle', fill: C.ink, style: { fontFamily: mono, fontWeight: 600, fontSize: roomy ? 8.5 : 7 } },
         String(piece.lengthMm),
       ),
     )
-    const label = fitLabel(shortLabel(piece, s), pw)
-    if (label && pw > 20) {
-      parts.push(
-        h(
-          Text,
-          { key: `t${i}`, x: cx, y: 20.5, textAnchor: 'middle', fill: C.mute, style: { fontFamily: d.family, direction: d.s.dir, fontSize: roomy ? 6.8 : 6 } },
-          label,
-        ),
-      )
-    }
     if (areas) parts.push(h(Rect, { key: `k${i}`, x: x + pw, y: 0, width: Math.max(kerfW, 1), height: BAR_H, fill: C.accent }))
     x += pw + kerfW
   })
@@ -510,9 +556,31 @@ function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, bar: BarOptimis
   )
   return h(
     View,
-    { key: index, wrap: false, style: { flexDirection: 'row', alignItems: 'center', gap: px(6), marginTop: px(4) } },
-    h(Text, { style: { fontFamily: mono, fontSize: px(8.5), color: C.mute, width: px(16), textAlign: 'right' } }, String(index + 1)),
-    h(Svg, { width: px(BAR_W), height: px(BAR_H + 8), viewBox: `0 -6 ${BAR_W} ${BAR_H + 8}` }, ...parts),
+    { key: pattern.letter, wrap: false, style: { flexDirection: 'row', alignItems: 'flex-start', gap: px(6), marginTop: px(6) } },
+    h(
+      View,
+      { style: { width: px(34), alignItems: 'flex-end', paddingTop: px(6) } },
+      h(Text, { style: { fontFamily: mono, fontWeight: 700, fontSize: px(10) } }, pattern.letter),
+      h(Text, { style: { fontFamily: mono, fontWeight: 600, fontSize: px(8.5), color: C.accent } }, `×${pattern.count}`),
+    ),
+    h(
+      View,
+      { style: { width: px(BAR_W) } },
+      h(Svg, { width: px(BAR_W), height: px(BAR_H + 8), viewBox: `0 -6 ${BAR_W} ${BAR_H + 8}` }, ...parts),
+      // Each "label ×N" its own block, wrapping whole: one long Arabic run
+      // reorders the counts into the next label ("×Window-01 ,2").
+      d.row(
+        { flexWrap: 'wrap', columnGap: px(8), marginTop: px(1) },
+        d.text(s.goesTo, { fontSize: px(7.5), color: C.mute }),
+        ...pattern.goesTo.map((g) =>
+          d.row(
+            { gap: px(2) },
+            d.text(g.label, { fontSize: px(7.5), color: C.mute }),
+            d.num(`×${g.count}`, { fontSize: px(7.5), color: C.mute }),
+          ),
+        ),
+      ),
+    ),
   )
 }
 
@@ -534,14 +602,6 @@ function shortLabel(piece: BarOptimiserReportPiece, s: PdfStrings): string {
   const [first, ...rest] = piece.windowName.trim().split(/\s+/)
   const windowShort = rest.length && /\d/.test(first) ? first : piece.windowName
   return `${windowShort} · ${s.partShort(piece.member, piece.at)}`
-}
-
-/** As much of the label as fits in `widthPx` at ~3.9 px per character. */
-function fitLabel(label: string, widthPx: number): string | null {
-  const budget = Math.floor((widthPx - 4) / 3.9)
-  if (budget < 3) return null
-  if (label.length <= budget) return label
-  return `${label.slice(0, Math.max(budget - 1, 1))}…`
 }
 
 /** "Aluminia" and "n / N" on every page, digits only. */

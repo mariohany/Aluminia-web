@@ -51,6 +51,8 @@ export interface PdfStrings {
   wasteArea: string;
   legendCut: string;
   legendEnds: string;
+  /** Before a pattern's labels: "goes to: W1 · fr T ×264, …". */
+  goesTo: string;
   bars: (n: number) => string;
   noPieces: string;
   groups: Record<ReportMember, string>;
@@ -115,7 +117,7 @@ const EN: PdfStrings = {
   title: 'Bar optimisation',
   subtitle: 'What to order with the least waste',
   planTitle: 'Bar optimisation — cutting plan',
-  planSubtitle: 'Each bar drawn to scale, pieces in cutting order',
+  planSubtitle: 'Each cut drawn once to scale, ×N bars, pieces in cutting order',
   client: 'Client',
   project: 'Project',
   windows: 'Windows',
@@ -147,7 +149,7 @@ const EN: PdfStrings = {
   tooLongHeading: 'Too long for any bar',
   tooLongNote:
     'Longer than the longest stock length can give: order separately.',
-  legendPiece: 'piece (mm · window)',
+  legendPiece: 'piece (mm)',
   legendWaste: 'waste',
   legendTrim: (t) => `end trim ${t} mm`,
   legendScale: 'Every bar drawn to the same scale.',
@@ -156,6 +158,7 @@ const EN: PdfStrings = {
   wasteArea: 'm² waste',
   legendCut: 'saw cut',
   legendEnds: '45° ends drawn larger than scale',
+  goesTo: 'goes to:',
   bars: (n) => `${n} bar${n === 1 ? '' : 's'}`,
   noPieces: 'No pieces to cut.',
   groups: {
@@ -201,7 +204,7 @@ const AR: PdfStrings = {
   title: 'تحسين تقطيع الأعواد',
   subtitle: 'المطلوب شراؤه بأقل هالك',
   planTitle: 'تحسين تقطيع الأعواد — خطة القص',
-  planSubtitle: 'كل عود مرسوم بنفس المقياس، والقطع بترتيب القص',
+  planSubtitle: 'كل قصة مرسومة مرة واحدة بنفس المقياس، ×عدد الأعواد، والقطع بترتيب القص',
   client: 'العميل',
   project: 'المشروع',
   windows: 'الشبابيك',
@@ -231,7 +234,7 @@ const AR: PdfStrings = {
   skippedNote: 'الأجزاء دي مالهاش بروفايل تتقص منه.',
   tooLongHeading: 'أطول من أي عود',
   tooLongNote: 'أطول من أطول عود متاح: تتطلب لوحدها.',
-  legendPiece: 'قطعة (مم · الشباك)',
+  legendPiece: 'قطعة (مم)',
   legendWaste: 'هالك',
   legendTrim: (t) => `تنظيف الطرف ${t} مم`,
   legendScale: 'كل الأعواد مرسومة بنفس المقياس.',
@@ -240,6 +243,7 @@ const AR: PdfStrings = {
   wasteArea: 'هالك m²',
   legendCut: 'قطع المنشار',
   legendEnds: 'أطراف الـ45° مرسومة أكبر من المقياس',
+  goesTo: 'تروح لـ:',
   bars: (n) => `${n} عود`,
   noPieces: 'مفيش قطع للقص.',
   groups: {

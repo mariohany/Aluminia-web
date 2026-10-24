@@ -11,4 +11,6 @@
 // don't need a bump.
 // 3: the cut after a bar's last piece falls into the end trim
 // (docs/mitre_cuts_planing.md M10).
-export const OPTIMISER_VERSION = 3;
+// 4: profiles over 60 bars skip the mix search for column generation
+// (bug-128).
+export const OPTIMISER_VERSION = 4;

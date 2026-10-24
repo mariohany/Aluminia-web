@@ -614,6 +614,17 @@ function solveArcFlow<T>(
  * can't at 100×, and those are the profiles the solver does well. */
 const SEARCH_BUDGET = 1_000_000;
 
+/** Profiles needing more bars than this skip the mix search: its mixes
+ * grow with the bar count to the power of the stock lengths, and the
+ * exact search recurses once per bar. 150 copies of one window (~700
+ * bars) ran Node out of 4 GB and overflowed a browser worker's stack;
+ * column generation solves those in seconds (bug-128). */
+const MAX_SEARCH_BARS = 60;
+
+/** The most stock mixes the search lists before it leaves the profile
+ * to the solver: a backstop under `MAX_SEARCH_BARS`. */
+const MAX_MIXES = 100_000;
+
 type Item<T> = { size: number; lengthMm: number; ref: T };
 type RawBar<T> = { stockMm: number; pieces: { lengthMm: number; ref: T }[] };
 
@@ -638,6 +649,7 @@ function packCheapestMix<T>(
     type.refs.map((ref) => ({ size: type.size, lengthMm: type.lengthMm, ref })),
   );
   const need = items.reduce((sum, it) => sum + it.size, 0);
+  if (need / caps[0] > MAX_SEARCH_BARS) return null;
   const maxBars = Math.ceil(need / Math.min(...caps)) + 1;
   // A plan exists in the longest bars alone: no mix dearer is needed.
   const ceiling = Math.min(
@@ -647,8 +659,11 @@ function packCheapestMix<T>(
 
   const mixes: { counts: number[]; metal: number }[] = [];
   const counts = lengths.map(() => 0);
+  let visited = 0;
   const walk = (i: number, metal: number, room: number) => {
+    if (visited > MAX_MIXES) return;
     if (i === lengths.length) {
+      visited++;
       if (
         metal >= range.min &&
         room >= need &&
@@ -665,6 +680,7 @@ function packCheapestMix<T>(
     counts[i] = 0;
   };
   walk(0, 0, 0);
+  if (visited > MAX_MIXES) return null;
   mixes.sort((a, b) => a.metal - b.metal);
 
   const budget = { left: steps };

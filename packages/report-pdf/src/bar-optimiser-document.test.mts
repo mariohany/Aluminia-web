@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs'
 import { before, describe, it } from 'node:test'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
-import type { BarOptimiserReport, ReportLanguage } from '@repo/types/reports'
-import { barOptimiserDocument, mixText, squareMetreNumber } from './bar-optimiser-document.mts'
+import type { BarOptimiserReport, BarOptimiserReportBar, ReportLanguage } from '@repo/types/reports'
+import { barOptimiserDocument, barPatterns, mixText, patternLetter, squareMetreNumber } from './bar-optimiser-document.mts'
 import { registerFonts } from './fonts.mts'
 import { stringsFor } from './strings.ts'
 
@@ -157,4 +157,72 @@ describe('waste as an area', () => {
     assert.ok(!all.includes(s.legendCut))
     assert.ok(all.includes(String(Math.round(report.plans.find((p) => p.best?.bars.length)!.best!.bars[0].wasteMm))))
   })
+})
+
+describe('patterns: repeated bars drawn once (docs/bar_patterns_planing.md)', () => {
+  const s = stringsFor('en')
+  const template = areaReport.plans.find((p) => p.best?.bars.length)!.best!.bars[0]
+  const piece = template.pieces[0]
+  const bar = (stockMm: number, pieces: [number, number?, string?][]): BarOptimiserReportBar => ({
+    ...template,
+    stockMm,
+    pieces: pieces.map(([lengthMm, end = 45, windowName = 'W-01 Living']) => ({ ...piece, lengthMm, endsMm: [end, end], windowName })),
+  })
+
+  it('groups bars by stock, lengths and ends, not by window labels (G1)', () => {
+    const bars = [
+      bar(7000, [[2500], [2500]]),
+      bar(7000, [[2500, 45, 'W-02 Kitchen'], [2500]]),
+      bar(7000, [[2500, 0], [2500]]), // square end: another cut
+      bar(6500, [[2500], [2500]]), // another stock
+      bar(7000, [[2500], [2500]]),
+    ]
+    const patterns = barPatterns(bars, s)
+    assert.deepEqual(
+      patterns.map((p) => [p.letter, p.count, p.bar.stockMm]),
+      [
+        ['A', 3, 7000],
+        ['B', 1, 7000],
+        ['C', 1, 6500],
+      ],
+    )
+    assert.equal(
+      patterns.reduce((n, p) => n + p.count, 0),
+      bars.length,
+      'every bar counted once',
+    )
+  })
+
+  it('lists where the pieces go, most first (G2)', () => {
+    const [a] = barPatterns([bar(7000, [[2500], [2500, 45, 'W-02 Kitchen']]), bar(7000, [[2500], [2500]])], s)
+    const part = s.partShort(piece.member, piece.at)
+    assert.deepEqual(a.goesTo, [
+      { label: `W-01 · ${part}`, count: 3 },
+      { label: `W-02 · ${part}`, count: 1 },
+    ])
+  })
+
+  it('names patterns A … Z, then AA, AB …', () => {
+    assert.deepEqual([0, 25, 26, 27, 701, 702].map(patternLetter), ['A', 'Z', 'AA', 'AB', 'ZZ', 'AAA'])
+  })
+
+  for (const language of ['en', 'ar'] as const) {
+    it(`prints each pattern once with ×N, the Ns adding up to the bars (${language})`, async () => {
+      const ls = stringsFor(language)
+      const lines = (await draw(language, null, areaReport)).pages.flat()
+      const text = lines.map((l) => l.str)
+      for (const plan of areaReport.plans.filter((p) => p.best?.bars.length)) {
+        for (const pattern of barPatterns(plan.best!.bars, ls)) {
+          assert.ok(text.includes(`×${pattern.count}`), `prints ×${pattern.count}`)
+        }
+      }
+      // A pattern's ×N sits left of its bar (in both languages); the goes-to counts sit under it.
+      const counts = lines.filter((l) => /^×\d+$/.test(l.str) && l.x < 70)
+      const printed = counts.reduce((n, l) => n + Number(l.str.slice(1)), 0)
+      const bars = areaReport.plans.reduce((n, p) => n + (p.best?.bars.length ?? 0), 0)
+      assert.equal(printed, bars)
+      // Arabic runs split at digits, so look for the words.
+      assert.ok(text.join(' ').includes(ls.goesTo.replace(/[:\s]+$/, '')), 'prints the goes-to line')
+    })
+  }
 })

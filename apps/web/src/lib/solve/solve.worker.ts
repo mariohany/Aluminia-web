@@ -27,7 +27,9 @@ function reply(message: SolveWorkerReply) {
 }
 
 /** HiGHS (Emscripten) aborts with "OOM"; the browser refuses a bigger
- * WebAssembly memory with a RangeError (B11). */
+ * WebAssembly memory with a RangeError about memory (B11). Any other
+ * RangeError ("Maximum call stack size exceeded", "Set maximum size
+ * exceeded") is an optimiser bug, reported as `failed` (bug-128). */
 function isOutOfMemory(error: unknown, message: string): boolean {
-  return error instanceof RangeError || /\bOOM\b|out of memory|allocat/i.test(message)
+  return /\bOOM\b|out of memory|allocat/i.test(message) || (error instanceof RangeError && /memory/i.test(message))
 }

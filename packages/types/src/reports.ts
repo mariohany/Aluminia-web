@@ -92,12 +92,16 @@ export interface ReportPlanTotals {
   barCount: number
   boughtMm: number
   wasteMm: number
-  /** Waste seen from the front: length × face width, mm²
-   * (docs/bar_waste_area_planing.md). Absent in reports made before it. */
+  /** Waste as weight: length × the profile's kg/m
+   * (docs/report_waste_kg_planing.md). Absent in reports made before it. */
+  wasteKg?: number
+  /** Bought, as weight: what `wastePct` is of. Absent in older reports. */
+  boughtKg?: number
+  /** Reports 6–7 weighed waste as an area (length × face width, mm²,
+   * docs/bar_waste_area_planing.md); kept so they still draw. */
   wasteMm2?: number
-  /** Bought, as an area: what `wastePct` is of. Absent in older reports. */
   boughtMm2?: number
-  /** Of the area: a group or the project weighs profiles by width. */
+  /** Of the weight: a group or the project weighs profiles by kg/m. */
   wastePct: number
 }
 
@@ -183,7 +187,9 @@ export interface BarOptimiserReportGoesTo {
 export interface BarOptimiserReportBar {
   stockMm: number
   wasteMm: number
-  /** mm²; absent in reports made before it. */
+  /** kg; absent in reports made before it. */
+  wasteKg?: number
+  /** mm², reports 6–7 only. */
   wasteMm2?: number
   offcutMm: number
   pieces: BarOptimiserReportPiece[]
@@ -199,9 +205,19 @@ export interface BarOptimiserReportPlan {
   /** Absent in reports made before colours split the bars. */
   colors?: ReportColorPair
   member: ReportMember
-  /** The face width the areas used, mm; absent in older reports. */
+  /** The weight the waste used, kg/m; absent in older reports. */
+  kgPerM?: number
+  /** The face width reports 6–7 used for areas, mm. */
   faceWidthMm?: number
-  best: { mix: StockMix; wastePct: number; wasteMm2?: number; piecesMm: number; bars: BarOptimiserReportBar[] } | null
+  best: {
+    mix: StockMix
+    wastePct: number
+    wasteKg?: number
+    /** Reports 6–7. */
+    wasteMm2?: number
+    piecesMm: number
+    bars: BarOptimiserReportBar[]
+  } | null
 }
 
 /** Everything frozen at Generate (P6): the numbers, the plans with their

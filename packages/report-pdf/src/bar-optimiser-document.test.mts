@@ -4,7 +4,7 @@ import { before, describe, it } from 'node:test'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { BarOptimiserReport, BarOptimiserReportBar, ReportLanguage } from '@repo/types/reports'
-import { barOptimiserDocument, barPatterns, mixText, patternLetter, squareMetreNumber } from './bar-optimiser-document.mts'
+import { barOptimiserDocument, barPatterns, colourTotals, kgNumber, mixText, tonNumber, patternLetter, squareMetreNumber } from './bar-optimiser-document.mts'
 import { registerFonts } from './fonts.mts'
 import { stringsFor } from './strings.ts'
 
@@ -248,6 +248,69 @@ describe('patterns: repeated bars drawn once (docs/bar_patterns_planing.md)', ()
   })
 })
 
+// docs/report_waste_kg_planing.md: report 8 weighs the waste in kg.
+/** The area fixture as a report 8: every waste a weight at 1.2 kg/m. */
+function asKgReport(from: BarOptimiserReport): BarOptimiserReport {
+  const out = structuredClone(from)
+  const walk = (x: unknown) => {
+    if (!x || typeof x !== 'object') return
+    const o = x as Record<string, unknown>
+    if ('wasteMm2' in o) {
+      o.wasteKg = Math.round((o.wasteMm as number) * 1.2) / 1000
+      delete o.wasteMm2
+    }
+    if ('boughtMm2' in o) {
+      o.boughtKg = Math.round((o.boughtMm as number) * 1.2) / 1000
+      delete o.boughtMm2
+    }
+    delete o.faceWidthMm
+    Object.values(o).forEach(walk)
+  }
+  walk(out)
+  return out
+}
+const kgReport = asKgReport(areaReport)
+
+describe('waste in kg', () => {
+  for (const language of ['en', 'ar'] as const) {
+    it(`prints every waste in kg, never m² (${language})`, async () => {
+      const s = stringsFor(language)
+      const all = (await draw(language, null, kgReport)).pages.flat().map((l) => l.str)
+      const text = all.join(' ')
+      const bar = kgReport.plans.find((p) => p.best?.bars.length)!.best!.bars[0]
+      assert.ok(all.includes(kgNumber(bar.wasteKg!)), 'a bar prints its kg')
+      assert.ok(text.includes('kg') && !text.includes('m²'), 'labelled in kg, never m²')
+      // Arabic runs split "kg" from its number; the browser check covers it.
+      if (language === 'en') assert.ok(all.some((l) => / kg$/.test(l)), 'a total prints kg')
+      if (language === 'en') assert.ok(text.includes('kg/m'), 'the note says how kg is weighed')
+      // The saw-cut legend and mitred ends stay.
+      assert.ok(text.includes(s.legendCut.split(' ').at(-1)!), 'the legend names the saw cut')
+    })
+  }
+
+  it('formats kg: 3 decimals under 0.1, 2 under 100, then 1', () => {
+    assert.equal(kgNumber(0.0123), '0.012')
+    assert.equal(kgNumber(1.836), '1.84')
+    assert.equal(kgNumber(123.45), '123.5')
+  })
+
+  it('turns 1000 kg and more into tons, up to 3 decimals, no trailing zeros', () => {
+    assert.equal(tonNumber(1000), '1')
+    assert.equal(tonNumber(1250), '1.25')
+    assert.equal(tonNumber(1234.56), '1.235')
+    assert.equal(tonNumber(2100.04), '2.1')
+  })
+
+  it('prints a total of 1000 kg and more in tons, as "t" (en)', async () => {
+    const heavy = structuredClone(kgReport)
+    heavy.summary.total.wasteKg = 1250
+    const all = (await draw('en', null, heavy)).pages.flat().map((l) => l.str)
+    // pdf.js may return "1.25" and "t" as separate runs.
+    assert.ok(all.join(' ').includes('1.25 t'), 'the total reads 1.25 t')
+    assert.ok(!all.join(' ').includes('ton'), 'never spelled "ton"')
+  })
+})
+
 describe('colour pairs (docs/report_colours_planing.md §5)', () => {
   const white = { ref: 'platform:white', code: 'RAL 9016', hex: '#F1F0EA' }
   const grey = { ref: 'company:grey', code: 'RAL 7016', hex: '#383E42' }
@@ -291,8 +354,61 @@ describe('colour pairs (docs/report_colours_planing.md §5)', () => {
     })
   }
 
+  it('prints one colour when both sides match or only one is picked', async () => {
+    const one: BarOptimiserReport = structuredClone(areaReport)
+    const sides = [
+      { interior: white, exterior: { ...white } },
+      { interior: null, exterior: grey },
+      { interior: white, exterior: null },
+    ]
+    one.plans.forEach((plan, i) => (plan.colors = sides[i % sides.length]))
+    one.summary.profiles.forEach((p, i) => (p.colors = sides[i % sides.length]))
+    const text = (await draw('en', null, one)).pages.flat().map((l) => l.str).join(' ')
+    assert.ok(text.includes('9016') && text.includes('7016'), 'the colours print')
+    // The settings line and column header have their own " / ".
+    assert.ok(!/RAL\s*\d{4}\s*\//.test(text), 'never a pair')
+    assert.ok(!text.includes(stringsFor('en').noColour), 'an unpicked side says nothing')
+  })
+
   it('prints no colours for a report made before them', async () => {
     const lines = (await draw('en', null, areaReport)).pages.flat()
     assert.ok(!lines.some((l) => l.str === stringsFor('en').noColour))
+    assert.ok(!lines.some((l) => l.str === stringsFor('en').coloursHeading))
+    assert.equal(colourTotals(areaReport.summary), null)
   })
+
+  it('sums the bars per colour pair, by code, no colour last', () => {
+    const totals = colourTotals(coloured.summary)!
+    assert.deepEqual(
+      totals.map((t) => [t.colors.interior?.code, t.colors.exterior?.code]),
+      [['RAL 9016', 'RAL 7016'], [null, 'RAL 9016'], [undefined, undefined]],
+    )
+    // Every bar of the order list lands in exactly one colour.
+    const bars = coloured.summary.profiles.reduce((n, p) => n + (p.best?.barCount ?? 0), 0)
+    assert.equal(totals.reduce((n, t) => n + t.barCount, 0), bars)
+    for (const t of totals) {
+      assert.equal(Object.values(t.mix).reduce((n, c) => n + c, 0), t.barCount)
+    }
+    // Two profiles with the same pair add up into one row.
+    const twice = structuredClone(coloured.summary)
+    twice.profiles.forEach((p) => (p.colors = pairs[0]))
+    const [one] = colourTotals(twice)!
+    assert.equal(colourTotals(twice)!.length, 1)
+    assert.equal(one.barCount, bars)
+  })
+
+  for (const language of ['en', 'ar'] as const) {
+    it(`prints the bars-per-colour table with its total (${language})`, async () => {
+      const s = stringsFor(language)
+      // Page 1 is full in this fixture, so the table may start on page 2.
+      const lines = (await draw(language, null, coloured)).pages.flat()
+      // pdf.js reads Arabic back in presentation forms: check English only.
+      if (language === 'en') {
+        has(lines, s.coloursHeading)
+        has(lines, s.colColour.toUpperCase())
+      }
+      const bars = coloured.summary.profiles.reduce((n, p) => n + (p.best?.barCount ?? 0), 0)
+      assert.ok(lines.some((l) => l.str.trim() === String(bars)), `grand total ${bars}`)
+    })
+  }
 })

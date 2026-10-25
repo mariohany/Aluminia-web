@@ -88,30 +88,28 @@ describe('optimiseProject', () => {
     ).toBe(total.boughtMm);
   });
 
-  // docs/bar_waste_area_planing.md §2.
-  it('waste areas: a profile keeps its %, a group weighs profiles by width', async () => {
+  // docs/report_waste_kg_planing.md.
+  it('waste weights: a profile keeps its %, a group weighs profiles by kg/m', async () => {
     const { profiles } = await optimiseProject(pieces, SETTINGS);
-    const widths: Record<string, number> = { 'FRAME-1': 70, MULTI: 10 };
-    const area = assembleProject(profiles, SETTINGS, (p) => widths[p] ?? 1);
-    const frames = area.members.find((m) => m.member === 'frame')!;
+    const kgPerM: Record<string, number> = { 'FRAME-1': 1.9, MULTI: 0.3 };
+    const weighed = assembleProject(profiles, SETTINGS, (p) => kgPerM[p] ?? 1);
+    const frames = weighed.members.find((m) => m.member === 'frame')!;
     const [a, b] = ['FRAME-1', 'MULTI'].map(
       (name) => profiles.find((p) => p.profile === name)!.best!,
     );
-    expect(frames.best.wasteMm2).toBe(
-      Math.round(a.wasteMm * 70 + b.wasteMm * 10),
-    );
-    expect(frames.best.boughtMm2).toBe(a.boughtMm * 70 + b.boughtMm * 10);
+    const kg = (mmA: number, mmB: number) => (mmA * 1.9 + mmB * 0.3) / 1000;
+    expect(frames.best.wasteKg).toBeCloseTo(kg(a.wasteMm, b.wasteMm), 3);
+    expect(frames.best.boughtKg).toBeCloseTo(kg(a.boughtMm, b.boughtMm), 3);
     expect(frames.best.wastePct).toBeCloseTo(
-      ((a.wasteMm * 70 + b.wasteMm * 10) /
-        (a.boughtMm * 70 + b.boughtMm * 10)) *
-        100,
+      (kg(a.wasteMm, b.wasteMm) / kg(a.boughtMm, b.boughtMm)) * 100,
       6,
     );
-    // Without widths (the browser): areas are the lengths.
+    // Without weights (the browser): the weights are metres.
     const plain = assembleProject(profiles, SETTINGS);
     const plainFrames = plain.members.find((m) => m.member === 'frame')!;
-    expect(plainFrames.best.wasteMm2).toBe(
-      Math.round(plainFrames.best.wasteMm),
+    expect(plainFrames.best.wasteKg).toBeCloseTo(
+      plainFrames.best.wasteMm / 1000,
+      3,
     );
     expect(plainFrames.best.wastePct).toBeCloseTo(
       (plainFrames.best.wasteMm / plainFrames.best.boughtMm) * 100,

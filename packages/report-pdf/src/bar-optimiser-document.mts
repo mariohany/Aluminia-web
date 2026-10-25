@@ -17,7 +17,7 @@ import { stringsFor, type PdfStrings } from './strings.ts'
 
 // The bar optimiser PDF, drawn in the user's browser by @react-pdf
 // (docs/browser_pdf_planing.md; layout from docs/reports_planing.md D19,
-// the API's former HTML template): page 1 = members table + order list,
+// the API's former HTML template): page 1 = members table + order list + bars per colour,
 // then the cutting plan, every bar to one scale. Paper only: never themed.
 //
 // Right to left: every Arabic-language text goes through `text()`, which
@@ -88,10 +88,11 @@ export function barOptimiserDocument(input: BarOptimiserPdfInput): ReactElement<
       ),
       heading(d, '01', s.membersHeading),
       membersTable(d, s, sum),
-      d.text(`${s.membersNote} ${sum.total.wasteMm2 !== undefined ? s.wasteNoteArea : s.wasteNote}`, { fontSize: px(9), color: C.mute, marginTop: px(6) }),
+      d.text(`${s.membersNote} ${sum.total.wasteKg !== undefined ? s.wasteNoteKg : sum.total.wasteMm2 !== undefined ? s.wasteNoteArea : s.wasteNote}`, { fontSize: px(9), color: C.mute, marginTop: px(6) }),
       heading(d, '02', s.ordersHeading),
       ordersTable(d, s, report),
       sum.approximate ? d.text(s.approximate, { fontSize: px(9), color: C.mute, marginTop: px(6) }) : null,
+      ...coloursSection(d, s, sum),
       skippedBox(d, s, report),
       tooLongBox(d, s, report),
     ),
@@ -254,12 +255,12 @@ function planCell(d: Dir, plan: ReportPlanTotals | null, width: number | 'flex',
     { style: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: d.rtl ? 'flex-start' : 'flex-end', columnGap: px(6) } },
     ...blocks,
   )
-  // The least-waste cell also says how much, as an area, on its own line
-  // (A5: m² on totals).
-  const area =
-    best && plan.wasteMm2 !== undefined
-      ? d.num(`${squareMetres(plan.wasteMm2)}`, { fontSize: px(8.5), color: C.accent, textAlign: d.end })
-      : null
+  // The least-waste cell also says how much, in kg (m² in reports 6–7),
+  // on its own line.
+  const amount = best ? wasteAmount(plan) : null
+  const area = amount
+    ? d.num(`${amount.number} ${amount.unit}`, { fontSize: px(8.5), color: C.accent, textAlign: d.end })
+    : null
   return cell(area ? h(View, null, mixRow, area) : mixRow, width, best ? { backgroundColor: C.accentSoft } : {})
 }
 
@@ -303,17 +304,26 @@ function membersTable(d: Dir, s: PdfStrings, sum: BarOptimiserSummary) {
     if (plans.some((p) => p === null)) return null
     const bought = plans.reduce((n, p) => n + p!.boughtMm, 0)
     const waste = plans.reduce((n, p) => n + p!.wasteMm, 0)
-    // Weighed by area when the report has areas (docs/bar_waste_area_planing.md §2).
-    const areas = plans.every((p) => p!.boughtMm2 !== undefined && p!.wasteMm2 !== undefined)
-    const boughtMm2 = areas ? plans.reduce((n, p) => n + p!.boughtMm2!, 0) : undefined
-    const wasteMm2 = areas ? plans.reduce((n, p) => n + p!.wasteMm2!, 0) : undefined
+    // Weighed by kg when the report has weights (docs/report_waste_kg_planing.md),
+    // by area in reports 6–7 (docs/bar_waste_area_planing.md §2).
+    const sumOf = (key: 'boughtKg' | 'wasteKg' | 'boughtMm2' | 'wasteMm2') =>
+      plans.every((p) => p![key] !== undefined) ? plans.reduce((n, p) => n + p![key]!, 0) : undefined
+    const [boughtKg, wasteKg, boughtMm2, wasteMm2] = (['boughtKg', 'wasteKg', 'boughtMm2', 'wasteMm2'] as const).map(sumOf)
+    const pct = (w: number, b: number) => (b ? (w / b) * 100 : 0)
     return {
       barCount: plans.reduce((n, p) => n + p!.barCount, 0),
       boughtMm: bought,
       wasteMm: waste,
+      boughtKg,
+      wasteKg,
       boughtMm2,
       wasteMm2,
-      wastePct: areas ? (boughtMm2 ? (wasteMm2! / boughtMm2) * 100 : 0) : bought ? (waste / bought) * 100 : 0,
+      wastePct:
+        boughtKg !== undefined && wasteKg !== undefined
+          ? pct(wasteKg, boughtKg)
+          : boughtMm2 !== undefined && wasteMm2 !== undefined
+            ? pct(wasteMm2, boughtMm2)
+            : pct(waste, bought),
     }
   }
   return h(
@@ -349,7 +359,9 @@ function membersTable(d: Dir, s: PdfStrings, sum: BarOptimiserSummary) {
 
 /** A plan's colour pair, inside / outside (docs/report_colours_planing.md
  * §5): a swatch + code per side, each part its own block so Arabic can't
- * reorder it (bug-129). Null for reports made before colours split bars. */
+ * reorder it (bug-129). One colour when both sides match or only one is
+ * picked (Mario); "No colour" when neither. Null for reports made before
+ * colours split bars. */
 function colorPair(d: Dir, s: PdfStrings, colors: ReportColorPair | undefined, size: number) {
   if (!colors) return null
   const { interior, exterior } = colors
@@ -372,6 +384,7 @@ function colorPair(d: Dir, s: PdfStrings, colors: ReportColorPair | undefined, s
           d.num(c.code ?? '?', { fontSize: px(size) }),
         )
       : none()
+  if (!interior || !exterior || interior.ref === exterior.ref) return side(interior ?? exterior)
   return d.row(
     { gap: px(4), alignItems: 'center', flexWrap: 'wrap' },
     side(interior),
@@ -414,6 +427,90 @@ function ordersTable(d: Dir, s: PdfStrings, report: BarOptimiserReport) {
     ]),
     ...(rows.length ? rows : [d.text(s.noPieces, { padding: px(6) })]),
   )
+}
+
+/** One colour pair's bars across every profile: what to order (or send
+ * to the coater) per colour. */
+export interface ColourTotal {
+  colors: ReportColorPair
+  /** Bars per stock length, from each profile's least-waste order. */
+  mix: StockMix
+  barCount: number
+}
+
+/** The order list's bars summed per colour pair (inside + outside
+ * together), ordered by code with "no colour" last like the plans.
+ * Null for a report made before colours split the bars. */
+export function colourTotals(sum: BarOptimiserSummary): ColourTotal[] | null {
+  if (!sum.profiles.some((p) => p.colors)) return null
+  const byPair = new Map<string, ColourTotal>()
+  for (const p of sum.profiles) {
+    if (!p.best || !p.colors) continue
+    const key = `${p.colors.interior?.ref ?? ''}|${p.colors.exterior?.ref ?? ''}`
+    const total = byPair.get(key) ?? { colors: p.colors, mix: {}, barCount: 0 }
+    for (const [length, n] of Object.entries(p.best.mix)) total.mix[length] = (total.mix[length] ?? 0) + n
+    total.barCount += p.best.barCount
+    byPair.set(key, total)
+  }
+  // No colour sorts after every code, a gone code ("?") just before it.
+  const rank = (c: ReportColor | null) => (c ? (c.code ?? '\uFFFE') : '\uFFFF')
+  // Plain code-unit order (localeCompare ignores U+FFFE/U+FFFF).
+  const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+  const order = (a: ColourTotal, b: ColourTotal) =>
+    compare(rank(a.colors.interior), rank(b.colors.interior)) ||
+    compare(rank(a.colors.exterior), rank(b.colors.exterior))
+  return [...byPair.values()].sort(order)
+}
+
+/** "03 Bars per colour": one row per colour pair, bars per stock length,
+ * and the total row (docs/report_colours_planing.md §5). */
+function coloursSection(d: Dir, s: PdfStrings, sum: BarOptimiserSummary): ReactElement[] {
+  const totals = colourTotals(sum)
+  if (!totals?.length) return []
+  const lengths = sum.stockLengthsMm
+  const W = { colour: 200, total: 70 }
+  const single = singleWidth(W.colour + W.total, 0, lengths.length, 80)
+  const count = (n: number, width: number, bold = false) =>
+    cell(
+      d.num(n ? String(n) : '—', { textAlign: d.end, fontSize: px(10), ...(bold ? { fontWeight: 700 } : {}), ...(n ? {} : { color: C.mute }) }),
+      width,
+    )
+  const all = (l: number) => totals.reduce((n, t) => n + (t.mix[String(l)] ?? 0), 0)
+  return [
+    heading(d, '03', s.coloursHeading),
+    h(
+      View,
+      null,
+      headRow(d, [
+        th(d, s.colColour, W.colour),
+        ...lengths.map((l) => th(d, String(l), single, true)),
+        th(d, s.total, 'flex', true),
+      ]),
+      ...totals.map((t) =>
+        tableRow(d, [
+          cell(colorPair(d, s, t.colors, 9)!, W.colour),
+          ...lengths.map((l) => count(t.mix[String(l)] ?? 0, single)),
+          cell(d.num(String(t.barCount), { textAlign: d.end, fontSize: px(10), fontWeight: 700, color: C.accent }), 'flex', {
+            backgroundColor: C.accentSoft,
+          }),
+        ]),
+      ),
+      tableRow(
+        d,
+        [
+          cell(d.text(s.total, { fontWeight: 700, fontSize: px(10) }), W.colour),
+          ...lengths.map((l) => count(all(l), single, true)),
+          cell(
+            d.num(String(totals.reduce((n, t) => n + t.barCount, 0)), { textAlign: d.end, fontSize: px(10), fontWeight: 700, color: C.accent }),
+            'flex',
+            { backgroundColor: C.accentSoft },
+          ),
+        ],
+        true,
+        true,
+      ),
+    ),
+  ]
 }
 
 function box(d: Dir, title: string, note: string, items: ReactNode[]) {
@@ -481,7 +578,7 @@ function cuttingPlan(
         legendItem({ backgroundColor: C.piece, borderWidth: px(1), borderColor: C.ink }, s.legendPiece),
         legendItem({ backgroundColor: C.accentSoft, borderWidth: px(1), borderColor: C.accent, borderStyle: 'dashed' }, s.legendWaste),
         legendItem({ backgroundColor: C.trim }, s.legendTrim(sum.endTrimMm)),
-        ...(sum.total.wasteMm2 !== undefined
+        ...(sum.total.wasteKg !== undefined || sum.total.wasteMm2 !== undefined
           ? [legendItem({ backgroundColor: C.accent, width: px(2), marginHorizontal: px(5.5) }, s.legendCut), d.text(s.legendEnds, { fontSize: px(8.5), color: C.mute })]
           : []),
         d.text(s.legendScale, { fontSize: px(8.5), color: C.mute }),
@@ -505,7 +602,7 @@ function cuttingPlan(
               h(View, { style: { flex: 1 } }),
               d.row(
                 { gap: px(3) },
-                d.num(`${mixText(best.mix)} · ${best.wastePct.toFixed(1)}%${best.wasteMm2 !== undefined ? ` · ${squareMetres(best.wasteMm2)}` : ''}`, {
+                d.num(`${mixText(best.mix)} · ${best.wastePct.toFixed(1)}%${wasteSuffix(best)}`, {
                   fontSize: px(9.5),
                   fontWeight: 600,
                   color: C.accent,
@@ -587,10 +684,11 @@ function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, pattern: BarPat
     h(Rect, { key: 'trim-a', x: 0, y: 0, width: trimW, height: BAR_H, fill: C.trim }),
   ]
   let x = trimW
-  // A report with areas also draws what the cuts take (A1, A2): each
+  // A report from version 6 also draws what the cuts take (A1, A2): each
   // mitred end as a slant at least MIN_END wide over a waste box, and
   // every saw cut as a line at least 1 wide. Older reports: rectangles.
-  const areas = bar.wasteMm2 !== undefined
+  const amount = wasteAmount(bar)
+  const areas = amount !== null
   bar.pieces.forEach((piece, i) => {
     const pw = piece.lengthMm * scale
     const cx = x + pw / 2
@@ -618,9 +716,13 @@ function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, pattern: BarPat
     h(
       Text,
       { key: 'waste', x: w + 6, y: 12, fill: C.accent, style: { fontFamily: mono, fontWeight: 600, fontSize: 8 } },
-      areas ? squareMetreNumber(bar.wasteMm2!) : String(Math.round(bar.wasteMm)),
+      amount ? amount.number : String(Math.round(bar.wasteMm)),
     ),
-    h(Text, { key: 'waste-l', x: w + 6, y: 21, fill: C.accent, style: { fontFamily: d.family, direction: d.s.dir, fontSize: 6.5 } }, areas ? s.wasteArea : s.wasteShort),
+    h(
+      Text,
+      { key: 'waste-l', x: w + 6, y: 21, fill: C.accent, style: { fontFamily: d.family, direction: d.s.dir, fontSize: 6.5 } },
+      amount ? { kg: s.wasteKg, t: s.wasteTon, 'm²': s.wasteArea }[amount.unit] : s.wasteShort,
+    ),
     h(Text, { key: 'stock-l', x: w - trimW - 2, y: -2, textAnchor: 'end', fill: C.mute, style: { fontFamily: mono, fontSize: 6 } }, String(bar.stockMm)),
   )
   return h(
@@ -660,9 +762,33 @@ export function squareMetreNumber(mm2: number): string {
   return m2.toFixed(m2 < 0.1 ? 3 : 2)
 }
 
-/** mm² → "0.18 m²". */
-function squareMetres(mm2: number): string {
-  return `${squareMetreNumber(mm2)} m²`
+/** kg → "1.84": two decimals, a third below 0.1 kg so a small waste
+ * doesn't read "0.00", one from 100 kg. */
+export function kgNumber(kg: number): string {
+  return kg.toFixed(kg < 0.1 ? 3 : kg < 100 ? 2 : 1)
+}
+
+/** kg → tons ("t") from 1000 kg (Mario): up to 3 decimals, trailing
+ * zeros dropped ("1.25", "2"). */
+export function tonNumber(kg: number): string {
+  return String(Number((kg / 1000).toFixed(3)))
+}
+
+/** A plan's or bar's waste as printed: kg, tons from 1000 kg
+ * (docs/report_waste_kg_planing.md), m² in reports 6–7, null before that
+ * (the bar prints mm). */
+function wasteAmount(x: { wasteKg?: number; wasteMm2?: number }): { number: string; unit: 'kg' | 't' | 'm²' } | null {
+  if (x.wasteKg !== undefined) {
+    return x.wasteKg >= 1000 ? { number: tonNumber(x.wasteKg), unit: 't' } : { number: kgNumber(x.wasteKg), unit: 'kg' }
+  }
+  if (x.wasteMm2 !== undefined) return { number: squareMetreNumber(x.wasteMm2), unit: 'm²' }
+  return null
+}
+
+/** " · 1.84 kg", or nothing for a report without amounts. */
+function wasteSuffix(x: { wasteKg?: number; wasteMm2?: number }): string {
+  const amount = wasteAmount(x)
+  return amount ? ` · ${amount.number} ${amount.unit}` : ''
 }
 
 /** "W-01 · sa B L": a window name like "W-01 Living room" keeps its

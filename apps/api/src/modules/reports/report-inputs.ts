@@ -16,7 +16,6 @@ import {
 import type { WindowDetail } from '@repo/types/windows';
 import { buildCutList, type CutMember } from '@repo/geometry/cut-list';
 import { OPTIMISER_VERSION } from '@repo/bar-optimiser/version';
-import { PLACEHOLDER_METRICS } from '@repo/geometry/profile-metrics';
 import type { Color } from '../../database/control-plane/entities/color.entity';
 import type { SystemCatalog } from '../../database/control-plane/entities/system-catalog.entity';
 import type { SystemProfile } from '../../database/control-plane/entities/system-profile.entity';
@@ -33,7 +32,8 @@ import {
   profileQueue,
   type ProjectOptimisation,
   type ProjectPiece,
-  type WidthOf,
+  type KgPerMOf,
+  roundKg,
 } from '@repo/bar-optimiser/project';
 
 // Everything a bar optimiser report is made from, read in one tenant
@@ -50,8 +50,10 @@ import {
  * totals count real metal, mitred ends as waste
  * (docs/mitre_cuts_planing.md §7). 6: waste as an area, mitre ends
  * and saw cuts drawn (docs/bar_waste_area_planing.md). 7: pieces share
- * a bar only within one colour pair (docs/report_colours_planing.md). */
-export const REPORT_VERSION = 7;
+ * a bar only within one colour pair (docs/report_colours_planing.md).
+ * 8: waste as weight, kg, from each profile's kg/m
+ * (docs/report_waste_kg_planing.md). */
+export const REPORT_VERSION = 8;
 
 export interface PieceRef {
   windowId: string;
@@ -68,6 +70,8 @@ interface ProfileFacts {
   acceptsFlyScreen: boolean;
   /** mm; null = the placeholder width (docs/mitre_cuts_planing.md §4). */
   faceWidthMm: number | null;
+  /** The catalogue's weight, kg/m: what the waste weighs. */
+  kgPerM: number;
   /** Profile + catalogue `updated_at`: part of the fingerprint. */
   stamp: string;
 }
@@ -264,6 +268,7 @@ async function loadProfiles(
       systemType: cat?.systemType ?? null,
       acceptsFlyScreen: p.acceptsFlyScreen,
       faceWidthMm: p.faceWidthMm,
+      kgPerM: p.weight,
       stamp: stampOf(p, cat),
     });
   }
@@ -274,6 +279,7 @@ async function loadProfiles(
       systemType: cat?.systemType ?? null,
       acceptsFlyScreen: p.acceptsFlyScreen,
       faceWidthMm: p.faceWidthMm,
+      kgPerM: p.weight,
       stamp: stampOf(p, cat),
     });
   }
@@ -340,7 +346,7 @@ export function reportSnapshotOf(
   result: ProjectOptimisation<PieceRef>,
   generatedAt: Date,
 ): BarOptimiserReport {
-  const widthOf = widthsOf(inputs, pieces);
+  const kgPerMOf = weightsOf(inputs);
   return {
     generatedAt: generatedAt.toISOString(),
     ...namesOf(inputs),
@@ -350,17 +356,17 @@ export function reportSnapshotOf(
       profileNo: profileNoOf(inputs, p.profile),
       colors: colorsOf(inputs, p.profile),
       member: p.member,
-      faceWidthMm: widthOf(p.profile),
+      kgPerM: kgPerMOf(p.profile),
       best: p.best
         ? {
             mix: { ...p.best.mix },
             wastePct: p.best.wastePct,
-            wasteMm2: Math.round(p.best.wasteMm * widthOf(p.profile)),
+            wasteKg: roundKg((p.best.wasteMm * kgPerMOf(p.profile)) / 1000),
             piecesMm: p.best.piecesMm,
             bars: patternsOf(p.best.bars).map(({ bar, count, goesTo }) => ({
               stockMm: bar.stockMm,
               wasteMm: bar.wasteMm,
-              wasteMm2: Math.round(bar.wasteMm * widthOf(p.profile)),
+              wasteKg: roundKg((bar.wasteMm * kgPerMOf(p.profile)) / 1000),
               offcutMm: bar.offcutMm,
               pieces: bar.pieces.map((piece) => ({
                 lengthMm: piece.lengthMm,
@@ -458,14 +464,18 @@ export function changedWindowCount(
 
 /** A bar group (docs/report_colours_planing.md §3): one profile in one
  * interior + exterior colour pair (scoped refs, empty = none picked).
- * Only a group's pieces may share a bar, so it is the key the whole solve
- * path uses where it says "profile" — the optimiser treats it as opaque. */
+ * One picked side colours the whole bar (Mario, C2b): it shares bars with
+ * that colour on both sides. Only a group's pieces may share a bar, so it
+ * is the key the whole solve path uses where it says "profile" — the
+ * optimiser treats it as opaque. */
 export function barGroupOf(
   profile: string,
   interior: string | null | undefined,
   exterior: string | null | undefined,
 ): string {
-  return `${profile}|${interior ?? ''}|${exterior ?? ''}`;
+  const inside = interior || exterior || '';
+  const outside = exterior || interior || '';
+  return `${profile}|${inside}|${outside}`;
 }
 
 /** The profile ref a bar group is cut from. */
@@ -582,24 +592,10 @@ export function buildProjectPieces(inputs: ReportInputs): ProjectPieces {
   return out;
 }
 
-/** The placeholder face width of each member group, mm. */
-const PLACEHOLDER_WIDTH: Record<CutMember, number> = {
-  frame: PLACEHOLDER_METRICS.frameFace,
-  sash: PLACEHOLDER_METRICS.sashFace,
-  divider: PLACEHOLDER_METRICS.dividerFace,
-  bead: PLACEHOLDER_METRICS.beadFace,
-};
-
-/** Each bar group's face width for the waste areas
- * (docs/bar_waste_area_planing.md §3): its profile's own, else the
- * placeholder of the member group it counts under. */
-export function widthsOf(inputs: ReportInputs, pieces: ProjectPieces): WidthOf {
-  const member = new Map(
-    profileQueue(pieces.pieces).map((q) => [q.profile, q.member]),
-  );
-  return (group) =>
-    inputs.profiles.get(profileRefOf(group))?.faceWidthMm ??
-    PLACEHOLDER_WIDTH[member.get(group) ?? 'frame'];
+/** Each bar group's weight, kg/m, for the waste weights
+ * (docs/report_waste_kg_planing.md): its profile's catalogue weight. */
+export function weightsOf(inputs: ReportInputs): KgPerMOf {
+  return (group) => inputs.profiles.get(profileRefOf(group))?.kgPerM ?? 0;
 }
 
 /** A profile's number; takes a profile ref or a bar group. */
@@ -614,38 +610,38 @@ export function summaryOf(
   pieces: ProjectPieces,
   result: ProjectOptimisation<PieceRef>,
 ): BarOptimiserSummary {
-  const widthOf = widthsOf(inputs, pieces);
-  // A group's or the project's totals carry their area; one profile's
-  // plan is its length × its width.
+  const kgPerMOf = weightsOf(inputs);
+  // A group's or the project's totals carry their weight; one profile's
+  // plan is its length × its kg/m.
   const totals = (
-    plan: Omit<ReportPlanTotals, 'wasteMm2' | 'boughtMm2'> & {
-      wasteMm2?: number;
-      boughtMm2?: number;
+    plan: Omit<ReportPlanTotals, 'wasteKg' | 'boughtKg'> & {
+      wasteKg?: number;
+      boughtKg?: number;
     },
-    widthMm = 1,
+    kgPerM = 1,
   ): ReportPlanTotals => ({
     barCount: plan.barCount,
     boughtMm: plan.boughtMm,
     wasteMm: plan.wasteMm,
-    wasteMm2: plan.wasteMm2 ?? Math.round(plan.wasteMm * widthMm),
-    boughtMm2: plan.boughtMm2 ?? Math.round(plan.boughtMm * widthMm),
+    wasteKg: plan.wasteKg ?? roundKg((plan.wasteMm * kgPerM) / 1000),
+    boughtKg: plan.boughtKg ?? roundKg((plan.boughtMm * kgPerM) / 1000),
     wastePct: plan.wastePct,
   });
   const singleOf = (
     single: Record<
       number,
-      Omit<ReportPlanTotals, 'wasteMm2' | 'boughtMm2'> | null
+      Omit<ReportPlanTotals, 'wasteKg' | 'boughtKg'> | null
     >,
-    widthMm?: number,
+    kgPerM?: number,
   ) =>
     Object.fromEntries(
       Object.entries(single).map(([length, plan]) => [
         length,
-        plan ? totals(plan, widthMm) : null,
+        plan ? totals(plan, kgPerM) : null,
       ]),
     );
-  const bestOf = (plan: CutPlan<PieceRef> | null, widthMm: number) =>
-    plan ? { ...totals(plan, widthMm), mix: { ...plan.mix } } : null;
+  const bestOf = (plan: CutPlan<PieceRef> | null, kgPerM: number) =>
+    plan ? { ...totals(plan, kgPerM), mix: { ...plan.mix } } : null;
 
   return {
     stockLengthsMm: inputs.settings.stockLengthsMm,
@@ -671,8 +667,8 @@ export function summaryOf(
       colors: colorsOf(inputs, p.profile),
       member: p.member,
       pieceCount: p.pieceCount,
-      single: singleOf(p.single, widthOf(p.profile)),
-      best: bestOf(p.best, widthOf(p.profile)),
+      single: singleOf(p.single, kgPerMOf(p.profile)),
+      best: bestOf(p.best, kgPerMOf(p.profile)),
       tooLong: p.tooLong.map((t) => ({
         lengthMm: t.lengthMm,
         count: t.count,

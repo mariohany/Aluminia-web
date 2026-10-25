@@ -13,7 +13,7 @@ import {
   type ProfileResult,
   type ProjectOptimisation,
   type ProjectPiece,
-  type WidthOf,
+  type KgPerMOf,
 } from './project.ts';
 
 // A solve made in the browser and checked by the API
@@ -222,8 +222,8 @@ export function validateSolve<T>(
   lines: ProjectPiece<T>[],
   settings: OptimiserSettings,
   result: SolveResult,
-  /** Each profile's face width, for the waste areas (`assembleProject`). */
-  widthOf?: WidthOf,
+  /** Each profile's kg/m, for the waste weights (`assembleProject`). */
+  kgPerMOf?: KgPerMOf,
 ): ProjectOptimisation<T> {
   const lengths = usableLengths(settings);
   const capOf = (stockMm: number) => capacityOf(stockMm, settings);
@@ -371,5 +371,5 @@ export function validateSolve<T>(
     },
   );
 
-  return assembleProject(profiles, settings, widthOf);
+  return assembleProject(profiles, settings, kgPerMOf);
 }

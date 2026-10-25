@@ -88,7 +88,7 @@ export function barOptimiserDocument(input: BarOptimiserPdfInput): ReactElement<
       ),
       heading(d, '01', s.membersHeading),
       membersTable(d, s, sum),
-      d.text(`${s.membersNote} ${sum.total.wasteMm2 !== undefined ? s.wasteNoteArea : s.wasteNote}`, { fontSize: px(9), color: C.mute, marginTop: px(6) }),
+      d.text(`${s.membersNote} ${sum.total.wasteKg !== undefined ? s.wasteNoteKg : sum.total.wasteMm2 !== undefined ? s.wasteNoteArea : s.wasteNote}`, { fontSize: px(9), color: C.mute, marginTop: px(6) }),
       heading(d, '02', s.ordersHeading),
       ordersTable(d, s, report),
       sum.approximate ? d.text(s.approximate, { fontSize: px(9), color: C.mute, marginTop: px(6) }) : null,
@@ -255,12 +255,12 @@ function planCell(d: Dir, plan: ReportPlanTotals | null, width: number | 'flex',
     { style: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: d.rtl ? 'flex-start' : 'flex-end', columnGap: px(6) } },
     ...blocks,
   )
-  // The least-waste cell also says how much, as an area, on its own line
-  // (A5: m² on totals).
-  const area =
-    best && plan.wasteMm2 !== undefined
-      ? d.num(`${squareMetres(plan.wasteMm2)}`, { fontSize: px(8.5), color: C.accent, textAlign: d.end })
-      : null
+  // The least-waste cell also says how much, in kg (m² in reports 6–7),
+  // on its own line.
+  const amount = best ? wasteAmount(plan) : null
+  const area = amount
+    ? d.num(`${amount.number} ${amount.unit}`, { fontSize: px(8.5), color: C.accent, textAlign: d.end })
+    : null
   return cell(area ? h(View, null, mixRow, area) : mixRow, width, best ? { backgroundColor: C.accentSoft } : {})
 }
 
@@ -304,17 +304,26 @@ function membersTable(d: Dir, s: PdfStrings, sum: BarOptimiserSummary) {
     if (plans.some((p) => p === null)) return null
     const bought = plans.reduce((n, p) => n + p!.boughtMm, 0)
     const waste = plans.reduce((n, p) => n + p!.wasteMm, 0)
-    // Weighed by area when the report has areas (docs/bar_waste_area_planing.md §2).
-    const areas = plans.every((p) => p!.boughtMm2 !== undefined && p!.wasteMm2 !== undefined)
-    const boughtMm2 = areas ? plans.reduce((n, p) => n + p!.boughtMm2!, 0) : undefined
-    const wasteMm2 = areas ? plans.reduce((n, p) => n + p!.wasteMm2!, 0) : undefined
+    // Weighed by kg when the report has weights (docs/report_waste_kg_planing.md),
+    // by area in reports 6–7 (docs/bar_waste_area_planing.md §2).
+    const sumOf = (key: 'boughtKg' | 'wasteKg' | 'boughtMm2' | 'wasteMm2') =>
+      plans.every((p) => p![key] !== undefined) ? plans.reduce((n, p) => n + p![key]!, 0) : undefined
+    const [boughtKg, wasteKg, boughtMm2, wasteMm2] = (['boughtKg', 'wasteKg', 'boughtMm2', 'wasteMm2'] as const).map(sumOf)
+    const pct = (w: number, b: number) => (b ? (w / b) * 100 : 0)
     return {
       barCount: plans.reduce((n, p) => n + p!.barCount, 0),
       boughtMm: bought,
       wasteMm: waste,
+      boughtKg,
+      wasteKg,
       boughtMm2,
       wasteMm2,
-      wastePct: areas ? (boughtMm2 ? (wasteMm2! / boughtMm2) * 100 : 0) : bought ? (waste / bought) * 100 : 0,
+      wastePct:
+        boughtKg !== undefined && wasteKg !== undefined
+          ? pct(wasteKg, boughtKg)
+          : boughtMm2 !== undefined && wasteMm2 !== undefined
+            ? pct(wasteMm2, boughtMm2)
+            : pct(waste, bought),
     }
   }
   return h(
@@ -566,7 +575,7 @@ function cuttingPlan(
         legendItem({ backgroundColor: C.piece, borderWidth: px(1), borderColor: C.ink }, s.legendPiece),
         legendItem({ backgroundColor: C.accentSoft, borderWidth: px(1), borderColor: C.accent, borderStyle: 'dashed' }, s.legendWaste),
         legendItem({ backgroundColor: C.trim }, s.legendTrim(sum.endTrimMm)),
-        ...(sum.total.wasteMm2 !== undefined
+        ...(sum.total.wasteKg !== undefined || sum.total.wasteMm2 !== undefined
           ? [legendItem({ backgroundColor: C.accent, width: px(2), marginHorizontal: px(5.5) }, s.legendCut), d.text(s.legendEnds, { fontSize: px(8.5), color: C.mute })]
           : []),
         d.text(s.legendScale, { fontSize: px(8.5), color: C.mute }),
@@ -590,7 +599,7 @@ function cuttingPlan(
               h(View, { style: { flex: 1 } }),
               d.row(
                 { gap: px(3) },
-                d.num(`${mixText(best.mix)} · ${best.wastePct.toFixed(1)}%${best.wasteMm2 !== undefined ? ` · ${squareMetres(best.wasteMm2)}` : ''}`, {
+                d.num(`${mixText(best.mix)} · ${best.wastePct.toFixed(1)}%${wasteSuffix(best)}`, {
                   fontSize: px(9.5),
                   fontWeight: 600,
                   color: C.accent,
@@ -672,10 +681,11 @@ function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, pattern: BarPat
     h(Rect, { key: 'trim-a', x: 0, y: 0, width: trimW, height: BAR_H, fill: C.trim }),
   ]
   let x = trimW
-  // A report with areas also draws what the cuts take (A1, A2): each
+  // A report from version 6 also draws what the cuts take (A1, A2): each
   // mitred end as a slant at least MIN_END wide over a waste box, and
   // every saw cut as a line at least 1 wide. Older reports: rectangles.
-  const areas = bar.wasteMm2 !== undefined
+  const amount = wasteAmount(bar)
+  const areas = amount !== null
   bar.pieces.forEach((piece, i) => {
     const pw = piece.lengthMm * scale
     const cx = x + pw / 2
@@ -703,9 +713,13 @@ function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, pattern: BarPat
     h(
       Text,
       { key: 'waste', x: w + 6, y: 12, fill: C.accent, style: { fontFamily: mono, fontWeight: 600, fontSize: 8 } },
-      areas ? squareMetreNumber(bar.wasteMm2!) : String(Math.round(bar.wasteMm)),
+      amount ? amount.number : String(Math.round(bar.wasteMm)),
     ),
-    h(Text, { key: 'waste-l', x: w + 6, y: 21, fill: C.accent, style: { fontFamily: d.family, direction: d.s.dir, fontSize: 6.5 } }, areas ? s.wasteArea : s.wasteShort),
+    h(
+      Text,
+      { key: 'waste-l', x: w + 6, y: 21, fill: C.accent, style: { fontFamily: d.family, direction: d.s.dir, fontSize: 6.5 } },
+      amount ? (amount.unit === 'kg' ? s.wasteKg : s.wasteArea) : s.wasteShort,
+    ),
     h(Text, { key: 'stock-l', x: w - trimW - 2, y: -2, textAnchor: 'end', fill: C.mute, style: { fontFamily: mono, fontSize: 6 } }, String(bar.stockMm)),
   )
   return h(
@@ -745,9 +759,24 @@ export function squareMetreNumber(mm2: number): string {
   return m2.toFixed(m2 < 0.1 ? 3 : 2)
 }
 
-/** mm² → "0.18 m²". */
-function squareMetres(mm2: number): string {
-  return `${squareMetreNumber(mm2)} m²`
+/** kg → "1.84": two decimals, a third below 0.1 kg so a small waste
+ * doesn't read "0.00", one from 100 kg. */
+export function kgNumber(kg: number): string {
+  return kg.toFixed(kg < 0.1 ? 3 : kg < 100 ? 2 : 1)
+}
+
+/** A plan's or bar's waste as printed: kg (docs/report_waste_kg_planing.md),
+ * m² in reports 6–7, null before that (the bar prints mm). */
+function wasteAmount(x: { wasteKg?: number; wasteMm2?: number }): { number: string; unit: 'kg' | 'm²' } | null {
+  if (x.wasteKg !== undefined) return { number: kgNumber(x.wasteKg), unit: 'kg' }
+  if (x.wasteMm2 !== undefined) return { number: squareMetreNumber(x.wasteMm2), unit: 'm²' }
+  return null
+}
+
+/** " · 1.84 kg", or nothing for a report without amounts. */
+function wasteSuffix(x: { wasteKg?: number; wasteMm2?: number }): string {
+  const amount = wasteAmount(x)
+  return amount ? ` · ${amount.number} ${amount.unit}` : ''
 }
 
 /** "W-01 · sa B L": a window name like "W-01 Living room" keeps its

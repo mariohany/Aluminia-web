@@ -33,17 +33,17 @@ export interface PlanTotals {
   barCount: number;
   boughtMm: number;
   wasteMm: number;
-  /** Seen from the front: length × the profile's face width
-   * (docs/bar_waste_area_planing.md §2). */
-  boughtMm2: number;
-  wasteMm2: number;
-  /** wasteMm2 / boughtMm2: one profile's equals its length %; a group
-   * or the project weighs each profile by its width. */
+  /** As weight: length × the profile's kg/m
+   * (docs/report_waste_kg_planing.md). */
+  boughtKg: number;
+  wasteKg: number;
+  /** wasteKg / boughtKg: one profile's equals its length %; a group or
+   * the project weighs each profile by its kg/m. */
   wastePct: number;
 }
 
-/** A profile's face width, mm, for the areas. */
-export type WidthOf = (profile: string) => number;
+/** A profile's weight, kg per metre. */
+export type KgPerMOf = (profile: string) => number;
 
 export interface MemberTotals {
   member: CutMember;
@@ -105,11 +105,11 @@ export async function optimiseProject<T>(
 export function assembleProject<T>(
   profiles: ProfileResult<T>[],
   settings: OptimiserSettings,
-  /** Absent (the browser, which shows no waste): 1, so the areas are
-   * lengths. */
-  widthOf: WidthOf = () => 1,
+  /** Absent (the browser, which shows no waste): 1, so the weights are
+   * metres. */
+  kgPerMOf: KgPerMOf = () => 1,
 ): ProjectOptimisation<T> {
-  const sum = (plans: [CutPlan<T> | null, string][]) => totals(plans, widthOf);
+  const sum = (plans: [CutPlan<T> | null, string][]) => totals(plans, kgPerMOf);
   const lengths = [...new Set(settings.lengths)].sort((a, b) => b - a);
   const members = MEMBER_ORDER.flatMap((member) => {
     const own = profiles.filter((p) => p.member === member);
@@ -188,29 +188,29 @@ function majorityMember<T>(list: ProjectPiece<T>[]): CutMember {
 
 function totals<T>(
   plans: [CutPlan<T> | null, string][],
-  widthOf: WidthOf,
+  kgPerMOf: KgPerMOf,
 ): PlanTotals {
   let barCount = 0;
   let boughtMm = 0;
   let wasteMm = 0;
-  let boughtMm2 = 0;
-  let wasteMm2 = 0;
+  let boughtKg = 0;
+  let wasteKg = 0;
   for (const [plan, profile] of plans) {
     if (!plan) continue;
-    const w = widthOf(profile);
+    const kgPerMm = kgPerMOf(profile) / 1000;
     barCount += plan.barCount;
     boughtMm += plan.boughtMm;
     wasteMm += plan.wasteMm;
-    boughtMm2 += plan.boughtMm * w;
-    wasteMm2 += plan.wasteMm * w;
+    boughtKg += plan.boughtMm * kgPerMm;
+    wasteKg += plan.wasteMm * kgPerMm;
   }
   return {
     barCount,
     boughtMm,
     wasteMm: Math.round(wasteMm * 10) / 10,
-    boughtMm2: Math.round(boughtMm2),
-    wasteMm2: Math.round(wasteMm2),
-    wastePct: boughtMm2 ? (wasteMm2 / boughtMm2) * 100 : 0,
+    boughtKg: roundKg(boughtKg),
+    wasteKg: roundKg(wasteKg),
+    wastePct: boughtKg ? (wasteKg / boughtKg) * 100 : 0,
   };
 }
 
@@ -222,4 +222,9 @@ function mixOf<T>(plans: (CutPlan<T> | null)[]): Record<number, number> {
     }
   }
   return mix;
+}
+
+/** Kilograms to the gram. */
+export function roundKg(kg: number): number {
+  return Math.round(kg * 1000) / 1000;
 }

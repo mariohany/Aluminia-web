@@ -4,7 +4,7 @@ import { before, describe, it } from 'node:test'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { BarOptimiserReport, BarOptimiserReportBar, ReportLanguage } from '@repo/types/reports'
-import { barOptimiserDocument, barPatterns, colourTotals, mixText, patternLetter, squareMetreNumber } from './bar-optimiser-document.mts'
+import { barOptimiserDocument, barPatterns, colourTotals, kgNumber, mixText, patternLetter, squareMetreNumber } from './bar-optimiser-document.mts'
 import { registerFonts } from './fonts.mts'
 import { stringsFor } from './strings.ts'
 
@@ -245,6 +245,53 @@ describe('patterns: repeated bars drawn once (docs/bar_patterns_planing.md)', ()
       const text = async (from: BarOptimiserReport) => (await draw(language, null, from)).pages.map((page) => page.map((l) => l.str))
       assert.deepEqual(await text(compact), await text(areaReport))
     }
+  })
+})
+
+// docs/report_waste_kg_planing.md: report 8 weighs the waste in kg.
+/** The area fixture as a report 8: every waste a weight at 1.2 kg/m. */
+function asKgReport(from: BarOptimiserReport): BarOptimiserReport {
+  const out = structuredClone(from)
+  const walk = (x: unknown) => {
+    if (!x || typeof x !== 'object') return
+    const o = x as Record<string, unknown>
+    if ('wasteMm2' in o) {
+      o.wasteKg = Math.round((o.wasteMm as number) * 1.2) / 1000
+      delete o.wasteMm2
+    }
+    if ('boughtMm2' in o) {
+      o.boughtKg = Math.round((o.boughtMm as number) * 1.2) / 1000
+      delete o.boughtMm2
+    }
+    delete o.faceWidthMm
+    Object.values(o).forEach(walk)
+  }
+  walk(out)
+  return out
+}
+const kgReport = asKgReport(areaReport)
+
+describe('waste in kg', () => {
+  for (const language of ['en', 'ar'] as const) {
+    it(`prints every waste in kg, never m² (${language})`, async () => {
+      const s = stringsFor(language)
+      const all = (await draw(language, null, kgReport)).pages.flat().map((l) => l.str)
+      const text = all.join(' ')
+      const bar = kgReport.plans.find((p) => p.best?.bars.length)!.best!.bars[0]
+      assert.ok(all.includes(kgNumber(bar.wasteKg!)), 'a bar prints its kg')
+      assert.ok(text.includes('kg') && !text.includes('m²'), 'labelled in kg, never m²')
+      // Arabic runs split "kg" from its number; the browser check covers it.
+      if (language === 'en') assert.ok(all.some((l) => / kg$/.test(l)), 'a total prints kg')
+      if (language === 'en') assert.ok(text.includes('kg/m'), 'the note says how kg is weighed')
+      // The saw-cut legend and mitred ends stay.
+      assert.ok(text.includes(s.legendCut.split(' ').at(-1)!), 'the legend names the saw cut')
+    })
+  }
+
+  it('formats kg: 3 decimals under 0.1, 2 under 100, then 1', () => {
+    assert.equal(kgNumber(0.0123), '0.012')
+    assert.equal(kgNumber(1.836), '1.84')
+    assert.equal(kgNumber(123.45), '123.5')
   })
 })
 

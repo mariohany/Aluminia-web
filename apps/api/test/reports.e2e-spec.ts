@@ -477,11 +477,11 @@ describe('Reports (e2e)', () => {
     const piece = plan?.best?.bars[0].pieces[0];
     expect(piece?.windowName).toMatch(/^W-(fixed|sash)$/);
     expect(piece?.at).toHaveProperty('position');
-    // docs/bar_waste_area_planing.md §3: areas, widths and mitre ends.
+    // docs/report_waste_kg_planing.md: kg/m, weights and mitre ends.
     for (const p of report.plans) {
-      expect(p.faceWidthMm).toBeGreaterThan(0);
+      expect(p.kgPerM).toBeGreaterThan(0);
       for (const bar of p.best?.bars ?? []) {
-        expect(bar.wasteMm2).toBe(Math.round(bar.wasteMm * p.faceWidthMm!));
+        expect(bar.wasteKg).toBeCloseTo((bar.wasteMm * p.kgPerM!) / 1000, 3);
         for (const x of bar.pieces) expect(x.endsMm).toHaveLength(2);
       }
     }
@@ -489,14 +489,14 @@ describe('Reports (e2e)', () => {
     expect(
       frame?.best?.bars.flatMap((b) => b.pieces).some((x) => x.endsMm![0] > 0),
     ).toBe(true);
-    expect(report.summary.total.wasteMm2).toBeGreaterThan(0);
+    expect(report.summary.total.wasteKg).toBeGreaterThan(0);
     // The bars add up to their profile, the profiles to the total. Each
     // stored bar is a pattern of `count` bars (docs/report_speed_planing.md
     // §5), and they count every bar of the plan.
     let bars = 0;
     for (const p of report.plans) {
       const patterns = p.best?.bars ?? [];
-      const own = patterns.reduce((n, b) => n + b.wasteMm2! * b.count!, 0);
+      const own = patterns.reduce((n, b) => n + b.wasteKg! * b.count!, 0);
       const summary = report.summary.profiles.find(
         (x) => x.profile === p.profile,
       )?.best;
@@ -509,13 +509,13 @@ describe('Reports (e2e)', () => {
       expect(pieces).toBe(
         patterns.reduce((n, b) => n + b.pieces.length * b.count!, 0),
       );
-      expect(Math.abs(own - (summary?.wasteMm2 ?? 0))).toBeLessThanOrEqual(
-        barCount,
+      expect(Math.abs(own - (summary?.wasteKg ?? 0))).toBeLessThanOrEqual(
+        barCount * 0.001,
       );
       bars += own;
     }
-    expect(Math.abs(bars - report.summary.total.wasteMm2!)).toBeLessThanOrEqual(
-      report.plans.length * 50,
+    expect(Math.abs(bars - report.summary.total.wasteKg!)).toBeLessThanOrEqual(
+      report.plans.length * 0.05,
     );
     // No company profile saved: the account name, no logo.
     expect(company).toEqual({

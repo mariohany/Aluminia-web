@@ -51,7 +51,7 @@ import {
   profileNoOf,
   recolored,
   reportSnapshotOf,
-  widthsOf,
+  weightsOf,
   snapshotFingerprintOf,
   solveFingerprintOf,
   windowStampsOf,
@@ -317,7 +317,7 @@ export class ReportsService {
               endTrimMm: inputs.settings.endTrimMm,
             },
             result,
-            widthsOf(inputs, pieces),
+            weightsOf(inputs),
           );
           const solvedAt = new Date();
           solve.solveFingerprint = fingerprint;

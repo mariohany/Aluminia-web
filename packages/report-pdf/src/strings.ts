@@ -37,6 +37,8 @@ export interface PdfStrings {
   wasteNote: string;
   /** The note when the waste is an area (docs/bar_waste_area_planing.md). */
   wasteNoteArea: string;
+  /** The note when the waste is a weight (docs/report_waste_kg_planing.md). */
+  wasteNoteKg: string;
   skippedHeading: string;
   skippedNote: string;
   tooLongHeading: string;
@@ -49,6 +51,8 @@ export interface PdfStrings {
   wasteShort: string;
   /** Under a bar's waste in m². */
   wasteArea: string;
+  /** Under a bar's waste in kg. */
+  wasteKg: string;
   legendCut: string;
   legendEnds: string;
   /** Before a pattern's labels: "goes to: W1 · fr T ×264, …". */
@@ -149,6 +153,8 @@ const EN: PdfStrings = {
     'Waste = everything bought that is not inside a window: saw kerf, end trim, every offcut, and the 45° ends of frame and sash pieces.',
   wasteNoteArea:
     "Waste = everything bought that is not inside a window: saw kerf, end trim, every offcut, and the 45° ends of frame and sash pieces. Measured as area (length × the profile's face width), so a wide profile counts more than a narrow one.",
+  wasteNoteKg:
+    "Waste = everything bought that is not inside a window: saw kerf, end trim, every offcut, and the 45° ends of frame and sash pieces. Weighed in kg (length × the profile's kg/m), so a heavy profile counts more than a light one.",
   skippedHeading: 'Left out — no profile picked',
   skippedNote: 'These parts have no profile to cut them from.',
   tooLongHeading: 'Too long for any bar',
@@ -161,6 +167,7 @@ const EN: PdfStrings = {
   waste: 'waste',
   wasteShort: 'waste',
   wasteArea: 'm² waste',
+  wasteKg: 'kg waste',
   legendCut: 'saw cut',
   legendEnds: '45° ends drawn larger than scale',
   goesTo: 'goes to:',
@@ -238,6 +245,8 @@ const AR: PdfStrings = {
     'الهالك = كل اللي اتشترى ومش داخل في شباك: سُمك سلاح المنشار، تنظيف الأطراف، كل البواقي، وأطراف الـ45° في قطع الحلق والضلف.',
   wasteNoteArea:
     'الهالك = كل اللي اتشترى ومش داخل في شباك: سُمك سلاح المنشار، تنظيف الأطراف، كل البواقي، وأطراف الـ45° في قطع الحلق والضلف. محسوب كمساحة (الطول × عرض واجهة البروفايل)، فالبروفايل العريض بيتحسب أكتر من الرفيع.',
+  wasteNoteKg:
+    'الهالك = كل اللي اتشترى ومش داخل في شباك: سُمك سلاح المنشار، تنظيف الأطراف، كل البواقي، وأطراف الـ45° في قطع الحلق والضلف. محسوب بالكيلو (الطول × وزن البروفايل kg/m)، فالبروفايل التقيل بيتحسب أكتر من الخفيف.',
   skippedHeading: 'غير محسوب — بدون بروفايل',
   skippedNote: 'الأجزاء دي مالهاش بروفايل تتقص منه.',
   tooLongHeading: 'أطول من أي عود',
@@ -249,6 +258,7 @@ const AR: PdfStrings = {
   waste: 'هالك',
   wasteShort: 'هالك',
   wasteArea: 'هالك m²',
+  wasteKg: 'هالك kg',
   legendCut: 'قطع المنشار',
   legendEnds: 'أطراف الـ45° مرسومة أكبر من المقياس',
   goesTo: 'تروح لـ:',

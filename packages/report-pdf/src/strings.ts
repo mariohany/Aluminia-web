@@ -51,8 +51,9 @@ export interface PdfStrings {
   wasteShort: string;
   /** Under a bar's waste in m². */
   wasteArea: string;
-  /** Under a bar's waste in kg. */
+  /** Under a bar's waste in kg, or tons from 1000 kg. */
   wasteKg: string;
+  wasteTon: string;
   legendCut: string;
   legendEnds: string;
   /** Before a pattern's labels: "goes to: W1 · fr T ×264, …". */
@@ -168,6 +169,7 @@ const EN: PdfStrings = {
   wasteShort: 'waste',
   wasteArea: 'm² waste',
   wasteKg: 'kg waste',
+  wasteTon: 'ton waste',
   legendCut: 'saw cut',
   legendEnds: '45° ends drawn larger than scale',
   goesTo: 'goes to:',
@@ -259,6 +261,7 @@ const AR: PdfStrings = {
   wasteShort: 'هالك',
   wasteArea: 'هالك m²',
   wasteKg: 'هالك kg',
+  wasteTon: 'هالك ton',
   legendCut: 'قطع المنشار',
   legendEnds: 'أطراف الـ45° مرسومة أكبر من المقياس',
   goesTo: 'تروح لـ:',

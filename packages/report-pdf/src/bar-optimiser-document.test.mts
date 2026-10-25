@@ -4,7 +4,7 @@ import { before, describe, it } from 'node:test'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { BarOptimiserReport, BarOptimiserReportBar, ReportLanguage } from '@repo/types/reports'
-import { barOptimiserDocument, barPatterns, colourTotals, kgNumber, mixText, patternLetter, squareMetreNumber } from './bar-optimiser-document.mts'
+import { barOptimiserDocument, barPatterns, colourTotals, kgNumber, mixText, tonNumber, patternLetter, squareMetreNumber } from './bar-optimiser-document.mts'
 import { registerFonts } from './fonts.mts'
 import { stringsFor } from './strings.ts'
 
@@ -292,6 +292,21 @@ describe('waste in kg', () => {
     assert.equal(kgNumber(0.0123), '0.012')
     assert.equal(kgNumber(1.836), '1.84')
     assert.equal(kgNumber(123.45), '123.5')
+  })
+
+  it('turns 1000 kg and more into tons, up to 3 decimals, no trailing zeros', () => {
+    assert.equal(tonNumber(1000), '1')
+    assert.equal(tonNumber(1250), '1.25')
+    assert.equal(tonNumber(1234.56), '1.235')
+    assert.equal(tonNumber(2100.04), '2.1')
+  })
+
+  it('prints a total of 1000 kg and more in tons (en)', async () => {
+    const heavy = structuredClone(kgReport)
+    heavy.summary.total.wasteKg = 1250
+    const all = (await draw('en', null, heavy)).pages.flat().map((l) => l.str)
+    // pdf.js may return "1.25" and "ton" as separate runs.
+    assert.ok(all.join(' ').includes('1.25 ton'), 'the total reads 1.25 ton')
   })
 })
 

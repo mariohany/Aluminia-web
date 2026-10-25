@@ -718,7 +718,7 @@ function barRow(d: Dir, s: PdfStrings, sum: BarOptimiserSummary, pattern: BarPat
     h(
       Text,
       { key: 'waste-l', x: w + 6, y: 21, fill: C.accent, style: { fontFamily: d.family, direction: d.s.dir, fontSize: 6.5 } },
-      amount ? (amount.unit === 'kg' ? s.wasteKg : s.wasteArea) : s.wasteShort,
+      amount ? { kg: s.wasteKg, ton: s.wasteTon, 'm²': s.wasteArea }[amount.unit] : s.wasteShort,
     ),
     h(Text, { key: 'stock-l', x: w - trimW - 2, y: -2, textAnchor: 'end', fill: C.mute, style: { fontFamily: mono, fontSize: 6 } }, String(bar.stockMm)),
   )
@@ -765,10 +765,19 @@ export function kgNumber(kg: number): string {
   return kg.toFixed(kg < 0.1 ? 3 : kg < 100 ? 2 : 1)
 }
 
-/** A plan's or bar's waste as printed: kg (docs/report_waste_kg_planing.md),
- * m² in reports 6–7, null before that (the bar prints mm). */
-function wasteAmount(x: { wasteKg?: number; wasteMm2?: number }): { number: string; unit: 'kg' | 'm²' } | null {
-  if (x.wasteKg !== undefined) return { number: kgNumber(x.wasteKg), unit: 'kg' }
+/** kg → tons from 1000 kg (Mario): up to 3 decimals, trailing zeros
+ * dropped ("1.25", "2"). */
+export function tonNumber(kg: number): string {
+  return String(Number((kg / 1000).toFixed(3)))
+}
+
+/** A plan's or bar's waste as printed: kg, tons from 1000 kg
+ * (docs/report_waste_kg_planing.md), m² in reports 6–7, null before that
+ * (the bar prints mm). */
+function wasteAmount(x: { wasteKg?: number; wasteMm2?: number }): { number: string; unit: 'kg' | 'ton' | 'm²' } | null {
+  if (x.wasteKg !== undefined) {
+    return x.wasteKg >= 1000 ? { number: tonNumber(x.wasteKg), unit: 'ton' } : { number: kgNumber(x.wasteKg), unit: 'kg' }
+  }
   if (x.wasteMm2 !== undefined) return { number: squareMetreNumber(x.wasteMm2), unit: 'm²' }
   return null
 }

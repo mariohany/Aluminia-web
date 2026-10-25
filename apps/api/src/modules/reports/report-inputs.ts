@@ -464,14 +464,18 @@ export function changedWindowCount(
 
 /** A bar group (docs/report_colours_planing.md §3): one profile in one
  * interior + exterior colour pair (scoped refs, empty = none picked).
- * Only a group's pieces may share a bar, so it is the key the whole solve
- * path uses where it says "profile" — the optimiser treats it as opaque. */
+ * One picked side colours the whole bar (Mario, C2b): it shares bars with
+ * that colour on both sides. Only a group's pieces may share a bar, so it
+ * is the key the whole solve path uses where it says "profile" — the
+ * optimiser treats it as opaque. */
 export function barGroupOf(
   profile: string,
   interior: string | null | undefined,
   exterior: string | null | undefined,
 ): string {
-  return `${profile}|${interior ?? ''}|${exterior ?? ''}`;
+  const inside = interior || exterior || '';
+  const outside = exterior || interior || '';
+  return `${profile}|${inside}|${outside}`;
 }
 
 /** The profile ref a bar group is cut from. */

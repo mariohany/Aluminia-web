@@ -827,6 +827,8 @@ describe('Reports (e2e)', () => {
         interiorColor: white,
         exteriorColor: white,
       });
+      // One picked side colours the whole bar: shares W-white's bars (C2b).
+      await createWindow('W-inside', 1, fixed, { interiorColor: white });
       await createWindow('W-plain', 1, fixed);
 
       // Frame and bead each split three ways: two pairs + no colour.
@@ -857,12 +859,20 @@ describe('Reports (e2e)', () => {
         ['E2E 9016', 'E2E 9016'],
         [null, null],
       ]);
-      // No bar holds pieces of two pairs.
+      // No bar holds pieces of two pairs; W-inside counts as white.
+      const pairOf: Record<string, string> = {
+        'W-two-tone': 'two-tone',
+        'W-white': 'white',
+        'W-inside': 'white',
+        'W-plain': 'plain',
+      };
       for (const plan of report.plans) {
-        const windows = new Set(
-          plan.best!.bars.flatMap((b) => b.pieces.map((p) => p.windowName)),
+        const pairs = new Set(
+          plan.best!.bars.flatMap((b) =>
+            b.pieces.map((p) => pairOf[p.windowName]),
+          ),
         );
-        expect(windows.size).toBe(1);
+        expect(pairs.size).toBe(1);
       }
 
       // Renaming a colour code: names only, no solve.

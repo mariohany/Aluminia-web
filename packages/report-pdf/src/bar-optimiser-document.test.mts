@@ -301,12 +301,13 @@ describe('waste in kg', () => {
     assert.equal(tonNumber(2100.04), '2.1')
   })
 
-  it('prints a total of 1000 kg and more in tons (en)', async () => {
+  it('prints a total of 1000 kg and more in tons, as "t" (en)', async () => {
     const heavy = structuredClone(kgReport)
     heavy.summary.total.wasteKg = 1250
     const all = (await draw('en', null, heavy)).pages.flat().map((l) => l.str)
-    // pdf.js may return "1.25" and "ton" as separate runs.
-    assert.ok(all.join(' ').includes('1.25 ton'), 'the total reads 1.25 ton')
+    // pdf.js may return "1.25" and "t" as separate runs.
+    assert.ok(all.join(' ').includes('1.25 t'), 'the total reads 1.25 t')
+    assert.ok(!all.join(' ').includes('ton'), 'never spelled "ton"')
   })
 })
 
@@ -352,6 +353,22 @@ describe('colour pairs (docs/report_colours_planing.md §5)', () => {
       assert.ok(rows > 0, 'a header prints both sides on one line')
     })
   }
+
+  it('prints one colour when both sides match or only one is picked', async () => {
+    const one: BarOptimiserReport = structuredClone(areaReport)
+    const sides = [
+      { interior: white, exterior: { ...white } },
+      { interior: null, exterior: grey },
+      { interior: white, exterior: null },
+    ]
+    one.plans.forEach((plan, i) => (plan.colors = sides[i % sides.length]))
+    one.summary.profiles.forEach((p, i) => (p.colors = sides[i % sides.length]))
+    const text = (await draw('en', null, one)).pages.flat().map((l) => l.str).join(' ')
+    assert.ok(text.includes('9016') && text.includes('7016'), 'the colours print')
+    // The settings line and column header have their own " / ".
+    assert.ok(!/RAL\s*\d{4}\s*\//.test(text), 'never a pair')
+    assert.ok(!text.includes(stringsFor('en').noColour), 'an unpicked side says nothing')
+  })
 
   it('prints no colours for a report made before them', async () => {
     const lines = (await draw('en', null, areaReport)).pages.flat()

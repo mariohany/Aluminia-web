@@ -185,7 +185,7 @@ describe('bar groups', () => {
     const { pieces } = piecesOf(
       window('w1', 1200, WHITE, GREY),
       window('w2', 1100, WHITE, WHITE),
-      window('w3', 1000, WHITE, null),
+      window('w3', 1000, null, null),
     );
     expect(pieces.pieces.length).toBeGreaterThan(0);
     expect(
@@ -196,12 +196,28 @@ describe('bar groups', () => {
       [
         barGroupOf(FRAME, WHITE, GREY),
         barGroupOf(FRAME, WHITE, WHITE),
-        barGroupOf(FRAME, WHITE, null),
+        barGroupOf(FRAME, null, null),
       ].sort(),
     );
     for (const piece of pieces.pieces) {
       expect(profileRefOf(piece.profile)).toBe(FRAME);
     }
+  });
+
+  it('one picked side colours the whole bar (C2b)', () => {
+    expect(barGroupOf(FRAME, WHITE, null)).toBe(
+      barGroupOf(FRAME, WHITE, WHITE),
+    );
+    expect(barGroupOf(FRAME, null, GREY)).toBe(barGroupOf(FRAME, GREY, GREY));
+    expect(barGroupOf(FRAME, null, null)).toBe(`${FRAME}||`);
+    const { pieces } = piecesOf(
+      window('w1', 1200, WHITE, WHITE),
+      window('w2', 1100, WHITE, null),
+      window('w3', 1000, null, WHITE),
+    );
+    expect(profileQueue(pieces.pieces).map((q) => q.profile)).toEqual([
+      barGroupOf(FRAME, WHITE, WHITE),
+    ]);
   });
 
   it('never puts two colour pairs on one bar', async () => {

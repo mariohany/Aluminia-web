@@ -17,7 +17,7 @@ import { stringsFor, type PdfStrings } from './strings.ts'
 
 // The bar optimiser PDF, drawn in the user's browser by @react-pdf
 // (docs/browser_pdf_planing.md; layout from docs/reports_planing.md D19,
-// the API's former HTML template): page 1 = members table + order list,
+// the API's former HTML template): page 1 = members table + order list + bars per colour,
 // then the cutting plan, every bar to one scale. Paper only: never themed.
 //
 // Right to left: every Arabic-language text goes through `text()`, which
@@ -92,6 +92,7 @@ export function barOptimiserDocument(input: BarOptimiserPdfInput): ReactElement<
       heading(d, '02', s.ordersHeading),
       ordersTable(d, s, report),
       sum.approximate ? d.text(s.approximate, { fontSize: px(9), color: C.mute, marginTop: px(6) }) : null,
+      ...coloursSection(d, s, sum),
       skippedBox(d, s, report),
       tooLongBox(d, s, report),
     ),
@@ -414,6 +415,90 @@ function ordersTable(d: Dir, s: PdfStrings, report: BarOptimiserReport) {
     ]),
     ...(rows.length ? rows : [d.text(s.noPieces, { padding: px(6) })]),
   )
+}
+
+/** One colour pair's bars across every profile: what to order (or send
+ * to the coater) per colour. */
+export interface ColourTotal {
+  colors: ReportColorPair
+  /** Bars per stock length, from each profile's least-waste order. */
+  mix: StockMix
+  barCount: number
+}
+
+/** The order list's bars summed per colour pair (inside + outside
+ * together), ordered by code with "no colour" last like the plans.
+ * Null for a report made before colours split the bars. */
+export function colourTotals(sum: BarOptimiserSummary): ColourTotal[] | null {
+  if (!sum.profiles.some((p) => p.colors)) return null
+  const byPair = new Map<string, ColourTotal>()
+  for (const p of sum.profiles) {
+    if (!p.best || !p.colors) continue
+    const key = `${p.colors.interior?.ref ?? ''}|${p.colors.exterior?.ref ?? ''}`
+    const total = byPair.get(key) ?? { colors: p.colors, mix: {}, barCount: 0 }
+    for (const [length, n] of Object.entries(p.best.mix)) total.mix[length] = (total.mix[length] ?? 0) + n
+    total.barCount += p.best.barCount
+    byPair.set(key, total)
+  }
+  // No colour sorts after every code, a gone code ("?") just before it.
+  const rank = (c: ReportColor | null) => (c ? (c.code ?? '\uFFFE') : '\uFFFF')
+  // Plain code-unit order (localeCompare ignores U+FFFE/U+FFFF).
+  const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+  const order = (a: ColourTotal, b: ColourTotal) =>
+    compare(rank(a.colors.interior), rank(b.colors.interior)) ||
+    compare(rank(a.colors.exterior), rank(b.colors.exterior))
+  return [...byPair.values()].sort(order)
+}
+
+/** "03 Bars per colour": one row per colour pair, bars per stock length,
+ * and the total row (docs/report_colours_planing.md §5). */
+function coloursSection(d: Dir, s: PdfStrings, sum: BarOptimiserSummary): ReactElement[] {
+  const totals = colourTotals(sum)
+  if (!totals?.length) return []
+  const lengths = sum.stockLengthsMm
+  const W = { colour: 200, total: 70 }
+  const single = singleWidth(W.colour + W.total, 0, lengths.length, 80)
+  const count = (n: number, width: number, bold = false) =>
+    cell(
+      d.num(n ? String(n) : '—', { textAlign: d.end, fontSize: px(10), ...(bold ? { fontWeight: 700 } : {}), ...(n ? {} : { color: C.mute }) }),
+      width,
+    )
+  const all = (l: number) => totals.reduce((n, t) => n + (t.mix[String(l)] ?? 0), 0)
+  return [
+    heading(d, '03', s.coloursHeading),
+    h(
+      View,
+      null,
+      headRow(d, [
+        th(d, s.colColour, W.colour),
+        ...lengths.map((l) => th(d, String(l), single, true)),
+        th(d, s.total, 'flex', true),
+      ]),
+      ...totals.map((t) =>
+        tableRow(d, [
+          cell(colorPair(d, s, t.colors, 9)!, W.colour),
+          ...lengths.map((l) => count(t.mix[String(l)] ?? 0, single)),
+          cell(d.num(String(t.barCount), { textAlign: d.end, fontSize: px(10), fontWeight: 700, color: C.accent }), 'flex', {
+            backgroundColor: C.accentSoft,
+          }),
+        ]),
+      ),
+      tableRow(
+        d,
+        [
+          cell(d.text(s.total, { fontWeight: 700, fontSize: px(10) }), W.colour),
+          ...lengths.map((l) => count(all(l), single, true)),
+          cell(
+            d.num(String(totals.reduce((n, t) => n + t.barCount, 0)), { textAlign: d.end, fontSize: px(10), fontWeight: 700, color: C.accent }),
+            'flex',
+            { backgroundColor: C.accentSoft },
+          ),
+        ],
+        true,
+        true,
+      ),
+    ),
+  ]
 }
 
 function box(d: Dir, title: string, note: string, items: ReactNode[]) {

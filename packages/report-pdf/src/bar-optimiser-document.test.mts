@@ -4,7 +4,7 @@ import { before, describe, it } from 'node:test'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { BarOptimiserReport, BarOptimiserReportBar, ReportLanguage } from '@repo/types/reports'
-import { barOptimiserDocument, barPatterns, mixText, patternLetter, squareMetreNumber } from './bar-optimiser-document.mts'
+import { barOptimiserDocument, barPatterns, colourTotals, mixText, patternLetter, squareMetreNumber } from './bar-optimiser-document.mts'
 import { registerFonts } from './fonts.mts'
 import { stringsFor } from './strings.ts'
 
@@ -294,5 +294,42 @@ describe('colour pairs (docs/report_colours_planing.md §5)', () => {
   it('prints no colours for a report made before them', async () => {
     const lines = (await draw('en', null, areaReport)).pages.flat()
     assert.ok(!lines.some((l) => l.str === stringsFor('en').noColour))
+    assert.ok(!lines.some((l) => l.str === stringsFor('en').coloursHeading))
+    assert.equal(colourTotals(areaReport.summary), null)
   })
+
+  it('sums the bars per colour pair, by code, no colour last', () => {
+    const totals = colourTotals(coloured.summary)!
+    assert.deepEqual(
+      totals.map((t) => [t.colors.interior?.code, t.colors.exterior?.code]),
+      [['RAL 9016', 'RAL 7016'], [null, 'RAL 9016'], [undefined, undefined]],
+    )
+    // Every bar of the order list lands in exactly one colour.
+    const bars = coloured.summary.profiles.reduce((n, p) => n + (p.best?.barCount ?? 0), 0)
+    assert.equal(totals.reduce((n, t) => n + t.barCount, 0), bars)
+    for (const t of totals) {
+      assert.equal(Object.values(t.mix).reduce((n, c) => n + c, 0), t.barCount)
+    }
+    // Two profiles with the same pair add up into one row.
+    const twice = structuredClone(coloured.summary)
+    twice.profiles.forEach((p) => (p.colors = pairs[0]))
+    const [one] = colourTotals(twice)!
+    assert.equal(colourTotals(twice)!.length, 1)
+    assert.equal(one.barCount, bars)
+  })
+
+  for (const language of ['en', 'ar'] as const) {
+    it(`prints the bars-per-colour table with its total (${language})`, async () => {
+      const s = stringsFor(language)
+      // Page 1 is full in this fixture, so the table may start on page 2.
+      const lines = (await draw(language, null, coloured)).pages.flat()
+      // pdf.js reads Arabic back in presentation forms: check English only.
+      if (language === 'en') {
+        has(lines, s.coloursHeading)
+        has(lines, s.colColour.toUpperCase())
+      }
+      const bars = coloured.summary.profiles.reduce((n, p) => n + (p.best?.barCount ?? 0), 0)
+      assert.ok(lines.some((l) => l.str.trim() === String(bars)), `grand total ${bars}`)
+    })
+  }
 })

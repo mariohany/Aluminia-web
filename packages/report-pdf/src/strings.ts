@@ -55,6 +55,9 @@ export interface PdfStrings {
   goesTo: string;
   /** A side with no colour picked (docs/report_colours_planing.md §5). */
   noColour: string;
+  /** Page 1's bars-per-colour table (docs/report_colours_planing.md §5). */
+  coloursHeading: string;
+  colColour: string;
   bars: (n: number) => string;
   noPieces: string;
   groups: Record<ReportMember, string>;
@@ -162,6 +165,8 @@ const EN: PdfStrings = {
   legendEnds: '45° ends drawn larger than scale',
   goesTo: 'goes to:',
   noColour: 'No colour',
+  coloursHeading: 'Bars per colour',
+  colColour: 'Colour (inside / outside)',
   bars: (n) => `${n} bar${n === 1 ? '' : 's'}`,
   noPieces: 'No pieces to cut.',
   groups: {
@@ -248,6 +253,8 @@ const AR: PdfStrings = {
   legendEnds: 'أطراف الـ45° مرسومة أكبر من المقياس',
   goesTo: 'تروح لـ:',
   noColour: 'بدون لون',
+  coloursHeading: 'عدد الأعواد لكل لون',
+  colColour: 'اللون (جوه / بره)',
   bars: (n) => `${n} عود`,
   noPieces: 'مفيش قطع للقص.',
   groups: {

@@ -6,6 +6,7 @@
     "dataWarehouse": "Data warehouse",
     "logs": "Logs",
     "plans": "Plans",
+    "transactions": "Transactions",
     "billingProfile": "Billing profile",
     "groups": {
       "overview": "Overview",
@@ -97,7 +98,11 @@
           "updated": "Edited the {{name}} plan"
         },
         "billing": {
-          "profile_updated": "Edited the billing profile"
+          "profile_updated": "Edited the billing profile",
+          "quotation_created": "Created quotation {{number}} for {{name}}",
+          "quotation_updated": "Edited quotation {{number}}",
+          "quotation_voided": "Voided quotation {{number}}",
+          "paid": "{{name}} paid: invoice {{invoice}}"
         }
       },
       "lookup": {
@@ -354,7 +359,9 @@
       "noUnpaid": "No unpaid quotations",
       "resetPick": "Reset editable project",
       "resetPickHint": "The company admin picks the project Free keeps editable again",
-      "resetPickDone": "The company admin will pick again."
+      "resetPickDone": "The company admin will pick again.",
+      "unpaidCount_one": "{{count}} quotation",
+      "unpaidCount_other": "{{count}} quotations"
     }
   },
   "usersPage": {
@@ -606,5 +613,138 @@
       "cr": "CR {{value}}",
       "note": "Updates as you type. A document already issued keeps the details it was issued with."
     }
+  },
+  "quotation": {
+    "new": "New quotation",
+    "title": "New quotation",
+    "editTitle": "Edit {{number}}",
+    "description": "A quotation for {{company}}. It is saved as a numbered draft; the plan changes only when it is paid.",
+    "plan": "Plan",
+    "seats": "Seats",
+    "seatsBelowUsers": "The company has {{count}} users: quote at least that many seats.",
+    "duration": "Duration",
+    "months_one": "{{count}} month",
+    "months_other": "{{count}} months",
+    "annual": "12 months use the plan's annual price.",
+    "annualSaving": "12 months use the annual price: saves {{percent}} % against monthly.",
+    "monthlyTimes_one": "Monthly price × {{count}}.",
+    "monthlyTimes_other": "Monthly price × {{count}}.",
+    "startsOn": "Starts",
+    "startHint": "The day after the current end, or the payment day if ended",
+    "endsOn": "Ends",
+    "endHint": "23:59 Cairo time; editable",
+    "validUntil": "Valid until",
+    "validHint": "14 days by default; can't be paid after",
+    "rate": "Rate (EGP per 1 {{currency}})",
+    "rateToday": "Today's rate; printed and frozen on the quotation.",
+    "rateLastKnown": "The rate service is down: last known rate from {{date}}. Check it.",
+    "rateLoading": "Getting today's rate…",
+    "rateNone": "No rate available: type it.",
+    "price": "Price ({{currency}})",
+    "priceHint": "The plan's price for the period; you can change it",
+    "discount": "Discount",
+    "discountKind": "Discount kind",
+    "discountNone": "None",
+    "vat": "VAT %",
+    "vatHint": "The company's rate is {{rate}} %",
+    "note": "Note (printed)",
+    "totals": {
+      "subtotal": "Subtotal",
+      "discount": "Discount",
+      "vat": "VAT {{rate}} %",
+      "total": "Total",
+      "inEgp": "In EGP at the frozen rate"
+    },
+    "cancel": "Cancel",
+    "save": "Save quotation",
+    "saved": "Quotation {{number}} saved.",
+    "errors": {
+      "field": "Check this field.",
+      "seats": "1 to 50 seats.",
+      "endsOn": "The end is before the start.",
+      "fxRate": "A rate is needed for any currency but EGP.",
+      "discountValue": "Check the discount (a percent is at most 100).",
+      "save": "Couldn’t save the quotation. Try again.",
+      "noBillingProfile": "Fill in Billing › Billing profile first: it prints as the seller."
+    }
+  },
+  "markPaid": {
+    "title": "Mark {{number}} as paid",
+    "description": "The money arrived outside the app: record it here.",
+    "paidOn": "Paid on",
+    "amount": "Amount received ({{currency}})",
+    "method": "Method",
+    "reference": "Transaction reference no.",
+    "referenceHint": "From the bank, InstaPay or receipt — printed on the invoice",
+    "methods": {
+      "bank_transfer": "Bank transfer",
+      "instapay": "InstaPay",
+      "cash": "Cash",
+      "cheque": "Cheque"
+    },
+    "onConfirm": "On confirm",
+    "invoiceCreated": "An invoice is created from this quotation (same lines, marked paid)",
+    "renewed": "Plan {{plan}}, {{seats}} seats · {{start}} → {{end}}",
+    "startNote": "If the current plan is still running, the period starts the day after it ends instead.",
+    "confirm": "Confirm payment",
+    "done": "Paid: invoice {{number}} created.",
+    "errors": {
+      "reference": "Required: it prints on the invoice.",
+      "save": "Couldn’t record the payment. Try again.",
+      "quotation_expired": "This quotation has expired: issue a new one.",
+      "seats_below_users": "The company has more users than this quotation's seats."
+    }
+  },
+  "documents": {
+    "number": "Number",
+    "total": "Total",
+    "created": "Created",
+    "loadError": "Couldn’t load the documents.",
+    "kind": {
+      "quotation": "Quotation",
+      "invoice": "Invoice"
+    },
+    "status": {
+      "label": "Status",
+      "draft": "Draft",
+      "sent": "Sent",
+      "expired": "Expired",
+      "paid": "Paid",
+      "void": "Void"
+    },
+    "actions": {
+      "edit": "Edit",
+      "markPaid": "Mark paid",
+      "void": "Void",
+      "voided": "{{number}} voided.",
+      "error": "That didn’t work. Try again."
+    }
+  },
+  "transactions": {
+    "title": "Transactions",
+    "subtitle": "Every quotation and invoice of every company, newest first.",
+    "export": "Export CSV",
+    "exportError": "Couldn’t export. Try again.",
+    "kpis": {
+      "label": "Totals",
+      "month": "Received this month",
+      "year": "Received this year",
+      "unpaid": "Unpaid (sent)",
+      "unpaidCount_one": "{{count}} quotation",
+      "unpaidCount_other": "{{count}} quotations",
+      "drafts": "Drafts"
+    },
+    "kind": "Type",
+    "kinds": {
+      "all": "All",
+      "invoice": "Invoices",
+      "quotation": "Quotations"
+    },
+    "allStatuses": "All statuses",
+    "company": "Company",
+    "allCompanies": "All companies",
+    "search": "Search number or company",
+    "error": "Couldn’t load transactions.",
+    "empty": "No quotations or invoices yet."
   }
 }

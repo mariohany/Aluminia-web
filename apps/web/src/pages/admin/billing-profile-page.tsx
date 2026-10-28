@@ -65,7 +65,7 @@ export function BillingProfilePage() {
     reset,
     setValue,
     handleSubmit,
-    formState: { errors, isDirty },
+    formState: { errors, isDirty, dirtyFields },
   } = useForm<UpdateBillingProfileInput>({
     resolver: zodResolver(updateBillingProfileSchema),
   })
@@ -109,8 +109,15 @@ export function BillingProfilePage() {
   }
 
   async function onSubmit(input: UpdateBillingProfileInput) {
+    // Only a changed next number is sent: one issued meanwhile must not
+    // make a details-only save fail.
+    const { nextQuotation, nextInvoice, ...details } = input
     try {
-      const saved = await update.mutateAsync(input)
+      const saved = await update.mutateAsync({
+        ...details,
+        ...(dirtyFields.nextQuotation ? { nextQuotation } : {}),
+        ...(dirtyFields.nextInvoice ? { nextInvoice } : {}),
+      })
       reset(toForm(saved))
       toast.success(t('billingProfile.saved'))
     } catch (err) {

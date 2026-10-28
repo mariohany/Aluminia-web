@@ -95,8 +95,14 @@ function describe(entry: AuditLogEntry, t: Translate, tLookups: Translate, exist
     return { ...fallback, icon: Phone }
   }
 
-  if (entry.action === 'billing.profile_updated') {
-    return { icon: Receipt, tone: 'info', text: t('dashboardPage.activity.actions.billing.profile_updated') }
+  if (area === 'billing') {
+    const key = `dashboardPage.activity.actions.billing.${verb}`
+    if (!exists(key)) return fallback
+    return {
+      icon: Receipt,
+      tone: verb === 'paid' ? 'primary' : verb === 'quotation_voided' ? 'danger' : 'info',
+      text: t(key, { name: text(meta.name), number: text(meta.number), invoice: text(meta.invoice) }),
+    }
   }
 
   if (entry.action === 'plan.updated') {

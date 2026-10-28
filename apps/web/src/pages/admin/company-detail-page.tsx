@@ -34,6 +34,8 @@ import {
   SubscriptionTag,
 } from '@/components/admin/companies/company-badges'
 import { EditSubscriptionDialog } from '@/components/admin/companies/edit-subscription-dialog'
+import { CompanyDocumentsCard } from '@/components/admin/billing/company-documents-card'
+import { useCompanyDocumentsQuery } from '@/lib/billing-queries'
 import { RequiredMark } from '@/components/ui/required-mark'
 import { CreateUserDialog } from '@/components/admin/users/create-user-dialog'
 import { useUserRowActions } from '@/components/admin/users/user-row-actions'
@@ -342,14 +344,7 @@ function CompanyView({ company, language }: { company: CompanyDetail; language: 
         <div role="tabpanel" className="flex flex-col gap-4">
           <BillingStrip company={company} language={language} onEdit={() => setEditOpen(true)} />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22.5rem] lg:items-start">
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>{t('companyDetail.documents.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="py-6 text-center text-sm text-muted-foreground">{t('companyDetail.documents.empty')}</p>
-              </CardContent>
-            </Card>
+            <CompanyDocumentsCard company={company} />
             <BillingCard company={company} language={language} />
           </div>
           <EditSubscriptionDialog company={company} open={editOpen} onOpenChange={setEditOpen} />
@@ -449,6 +444,11 @@ function BillingStrip({
   const state = subscriptionState({ planKey: company.plan.key, endsAt: company.endsAt, isTrial: company.isTrial }, new Date())
   const numberFormatter = new Intl.NumberFormat(language)
   const endFormatter = new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeZone: BILLING_TIME_ZONE })
+  // Unpaid = quotations still payable (draft or sent, not expired), in the
+  // company's currency.
+  const { data: documents } = useCompanyDocumentsQuery(company.id)
+  const unpaid = (documents ?? []).filter((d) => d.kind === 'quotation' && (d.status === 'draft' || d.status === 'sent'))
+  const money = new Intl.NumberFormat(language, { style: 'currency', currency: unpaid[0]?.currency ?? company.currency })
 
   const endsCaption =
     state.kind === 'free'
@@ -479,7 +479,13 @@ function BillingStrip({
       value: company.endsAt ? endFormatter.format(new Date(company.endsAt)) : '—',
       caption: endsCaption,
     },
-    { label: t('companyDetail.strip.unpaid'), value: '—', caption: t('companyDetail.strip.noUnpaid') },
+    {
+      label: t('companyDetail.strip.unpaid'),
+      value: unpaid.length ? money.format(unpaid.reduce((sum, d) => sum + d.totals.total, 0)) : '—',
+      caption: unpaid.length
+        ? t('companyDetail.strip.unpaidCount', { count: unpaid.length })
+        : t('companyDetail.strip.noUnpaid'),
+    },
   ]
 
   return (

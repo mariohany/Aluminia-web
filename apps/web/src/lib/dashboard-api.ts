@@ -1,4 +1,4 @@
-import type { CompaniesPerMonthPoint, DashboardSummary } from '@repo/types/dashboard'
+import type { CompaniesPerMonthPoint, DashboardBilling, DashboardSummary } from '@repo/types/dashboard'
 import { apiFetch } from '@/lib/api-client'
 
 export function getDashboardSummary(): Promise<DashboardSummary> {
@@ -16,4 +16,9 @@ export function getCompaniesPerMonth(range: CompaniesPerMonthRange): Promise<Com
   if (range.to) params.set('to', range.to)
   const qs = params.toString()
   return apiFetch<CompaniesPerMonthPoint[]>(`/admin/dashboard/companies-per-month${qs ? `?${qs}` : ''}`)
+}
+
+/** The Leads card's Ending soon / Unpaid quotations / Expired tabs (B22). */
+export function getDashboardBilling(): Promise<DashboardBilling> {
+  return apiFetch<DashboardBilling>('/admin/dashboard/billing')
 }

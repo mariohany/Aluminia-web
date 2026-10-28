@@ -47,8 +47,9 @@
       },
       "revenue": {
         "title": "Subscription revenue",
-        "unavailable": "Not available yet — billing doesn't record a price.",
-        "soon": "Soon"
+        "thisMonth": "Invoices paid this month",
+        "up": "+{{percent}} % vs last month",
+        "down": "−{{percent}} % vs last month"
       }
     },
     "chart": {
@@ -116,6 +117,25 @@
         "bulk_duplicated_other": "Duplicated {{count}} rows in {{table}}",
         "imported": "Imported {{table}} from Excel",
         "systemsImported": "Imported systems from Excel"
+      }
+    },
+    "lists": {
+      "label": "Lists",
+      "leads": "Leads",
+      "endingSoon": "Ending soon",
+      "unpaid": "Unpaid quotations",
+      "expired": "Expired",
+      "error": "Couldn’t load the list.",
+      "endDate": "Ends",
+      "when": "When",
+      "daysLeft_one": "in {{count}} day",
+      "daysLeft_other": "in {{count}} days",
+      "expiredAgo_one": "{{count}} day ago",
+      "expiredAgo_other": "{{count}} days ago",
+      "empty": {
+        "endingSoon": "No paid plan ends in the next 30 days.",
+        "unpaid": "No sent quotation is waiting for payment.",
+        "expired": "No company's plan has ended."
       }
     }
   },

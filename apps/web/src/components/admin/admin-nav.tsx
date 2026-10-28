@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { LayoutDashboard, Building2, Users, Database, ScrollText, Layers, Receipt, ArrowLeftRight } from 'lucide-react'
+import { ChartLine, Building2, Users, Database, ScrollText, Layers, Receipt, ArrowLeftRight } from 'lucide-react'
 import { useDashboardSummaryQuery } from '@/lib/dashboard-queries'
 import { useUsersQuery } from '@/lib/users-queries'
 import { cn } from '@/lib/utils'
@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 // Grouped as in the admin redesign (docs/admin_redesign_planing.md §1).
 // `count` names which total, if any, sits at the end of the link.
 const navGroups = [
-  { key: 'overview', items: [{ to: '/app', key: 'nav.dashboard', icon: LayoutDashboard, end: true, count: null }] },
+  { key: 'overview', items: [{ to: '/app', key: 'nav.dashboard', icon: ChartLine, end: true, count: null }] },
   {
     key: 'tenants',
     items: [

@@ -47,8 +47,9 @@
       },
       "revenue": {
         "title": "إيرادات الاشتراكات",
-        "unavailable": "غير متاح لسه — سجل الفوترة مفيهوش سعر.",
-        "soon": "قريبًا"
+        "thisMonth": "الفواتير المدفوعة هذا الشهر",
+        "up": "+{{percent}} % عن الشهر الماضي",
+        "down": "−{{percent}} % عن الشهر الماضي"
       }
     },
     "chart": {
@@ -128,6 +129,33 @@
         "bulk_duplicated_other": "كرر {{count}} صف في {{table}}",
         "imported": "استورد {{table}} من Excel",
         "systemsImported": "استورد الأنظمة من Excel"
+      }
+    },
+    "lists": {
+      "label": "القوائم",
+      "leads": "العملاء المحتملون",
+      "endingSoon": "تنتهي قريبًا",
+      "unpaid": "عروض أسعار غير مدفوعة",
+      "expired": "منتهية",
+      "error": "تعذّر تحميل القائمة.",
+      "endDate": "تنتهي",
+      "when": "متى",
+      "daysLeft_zero": "اليوم",
+      "daysLeft_one": "بعد يوم",
+      "daysLeft_two": "بعد يومين",
+      "daysLeft_few": "بعد {{count}} أيام",
+      "daysLeft_many": "بعد {{count}} يومًا",
+      "daysLeft_other": "بعد {{count}} يوم",
+      "expiredAgo_zero": "اليوم",
+      "expiredAgo_one": "منذ يوم",
+      "expiredAgo_two": "منذ يومين",
+      "expiredAgo_few": "منذ {{count}} أيام",
+      "expiredAgo_many": "منذ {{count}} يومًا",
+      "expiredAgo_other": "منذ {{count}} يوم",
+      "empty": {
+        "endingSoon": "لا توجد باقة مدفوعة تنتهي خلال 30 يومًا.",
+        "unpaid": "لا يوجد عرض سعر مُرسل بانتظار الدفع.",
+        "expired": "لا توجد شركة انتهت باقتها."
       }
     }
   },

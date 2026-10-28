@@ -14,3 +14,7 @@ export function useCompaniesPerMonthQuery(range: CompaniesPerMonthRange) {
     queryFn: () => dashboardApi.getCompaniesPerMonth(range),
   })
 }
+
+export function useDashboardBillingQuery(enabled: boolean) {
+  return useQuery({ queryKey: ['dashboard', 'billing'] as const, queryFn: dashboardApi.getDashboardBilling, enabled })
+}

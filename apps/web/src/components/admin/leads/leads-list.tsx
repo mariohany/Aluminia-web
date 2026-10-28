@@ -24,7 +24,9 @@ function telHref(phone: string): string {
  * `className` lets the dashboard size the card; the table scrolls inside
  * it once there are more leads than fit.
  */
-export function LeadsList({ className }: { className?: string }) {
+/** `tabs`, when given, replaces the title: the dashboard's Leads card tabs
+ * (docs/subscriptions_planing.md B22). */
+export function LeadsList({ className, tabs }: { className?: string; tabs?: React.ReactNode }) {
   const { t, i18n } = useTranslation('admin')
   const { data, isLoading, isError } = useLeadsQuery()
   const markContacted = useMarkLeadContactedMutation()
@@ -66,7 +68,7 @@ export function LeadsList({ className }: { className?: string }) {
     <Card size="sm" className={cn('flex flex-col', className)}>
       <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
         <div className="flex items-center gap-2">
-          <CardTitle>{t('leadsSection.title')}</CardTitle>
+          {tabs ?? <CardTitle>{t('leadsSection.title')}</CardTitle>}
           {newCount > 0 && (
             <Badge className="h-5 bg-primary/10 px-2 text-[11px] text-primary">{t('leadsSection.newCount', { count: newCount })}</Badge>
           )}

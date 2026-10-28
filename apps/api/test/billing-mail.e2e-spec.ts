@@ -7,6 +7,7 @@ import { App } from 'supertest/types';
 import { UserRole } from '@repo/types/auth';
 import type { LoginResponse } from '@repo/types/auth';
 import type { CompanyAlerts } from '@repo/types/alerts';
+import type { DashboardBilling, DashboardSummary } from '@repo/types/dashboard';
 import {
   periodEnd,
   type BillingDocumentSummary,
@@ -288,5 +289,31 @@ describe('Billing email (e2e)', () => {
       .get('/company/billing/documents')
       .set(as(userToken))
       .expect(403);
+  });
+
+  it('lists the ending company and its unpaid quotation on the dashboard (B22)', async () => {
+    const summary = await request(server())
+      .get('/admin/dashboard/summary')
+      .set(as(superToken))
+      .expect(200);
+    const body = summary.body as DashboardSummary;
+    expect(body.billing.endingSoon).toBeGreaterThan(0);
+    expect(body.billing.unpaid).toBeGreaterThan(0);
+    expect(typeof body.revenue.thisMonthEgp).toBe('number');
+
+    const lists = (
+      await request(server())
+        .get('/admin/dashboard/billing')
+        .set(as(superToken))
+        .expect(200)
+    ).body as DashboardBilling;
+    expect(
+      lists.endingSoon.find((c) => c.companyId === companyId),
+    ).toMatchObject({
+      companyName,
+      planEn: 'Pro',
+    });
+    expect(lists.unpaid.some((q) => q.companyId === companyId)).toBe(true);
+    expect(lists.expired.some((c) => c.companyId === companyId)).toBe(false);
   });
 });

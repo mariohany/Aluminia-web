@@ -35,6 +35,10 @@ export function useCompanySubscriptionQuery() {
   return useQuery({ queryKey: companySubscriptionKey, queryFn: companyApi.getCompanySubscription })
 }
 
+export function useCompanyBillingDocumentsQuery() {
+  return useQuery({ queryKey: ['company', 'billing', 'documents'] as const, queryFn: companyApi.getCompanyBillingDocuments })
+}
+
 export function invalidateCompanySubscription(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: companySubscriptionKey })
 }

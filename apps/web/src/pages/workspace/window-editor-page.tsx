@@ -1975,7 +1975,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // issues panel lists false errors.
   if (!formReady || lookupsStatus === 'loading') {
     return (
-      <div className="flex h-svh flex-col items-center justify-center gap-3 bg-background text-muted-foreground">
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-background text-muted-foreground">
         <Loader2 className="size-6 animate-spin" aria-hidden="true" />
         <p>{t('windowDialog.loading')}</p>
       </div>
@@ -1984,7 +1984,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
 
   return (
     <>
-      <div className="flex h-svh flex-col bg-background">
+      <div className="flex h-full flex-col bg-background">
         <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate className="flex min-h-0 flex-1 flex-col">
           {/* Blueprint layout (docs/window_editor_redesign_planing.md §2):
               structure tree | drawing | options, full height — no header

@@ -16,9 +16,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { DocumentPdfDialog } from './document-pdf-dialog'
+import { DocumentPdfDialog } from '@/components/billing/document-pdf-dialog'
 import { EmailDocumentDialog } from './email-document-dialog'
-import { DocumentStatusPill } from './document-status'
+import { DocumentStatusPill } from '@/components/billing/document-status'
 import { MarkPaidDialog } from './mark-paid-dialog'
 import { QuotationDialog } from './quotation-dialog'
 

@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Building2, ChevronRight, ListChecks, Users, type LucideIcon } from 'lucide-react'
+import { Building2, ChevronRight, CreditCard, ListChecks, Users, type LucideIcon } from 'lucide-react'
 import type { PlanFeature } from '@repo/types/plans'
 import { useCompanyOverviewQuery } from '@/lib/company-queries'
 import { planName } from '@/lib/bilingual'
@@ -19,6 +19,7 @@ const SECTIONS: { key: string; to: string; icon: LucideIcon; feature?: PlanFeatu
   { key: 'users', to: '/workspace/config/users', icon: Users },
   { key: 'company', to: '/workspace/config/company', icon: Building2 },
   { key: 'projects', to: '/workspace/config/projects', icon: ListChecks, feature: 'project_settings' },
+  { key: 'subscription', to: '/workspace/config/subscription', icon: CreditCard },
 ]
 
 export function ConfigPage() {

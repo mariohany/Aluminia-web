@@ -25,6 +25,8 @@ import { BillingProfilePage } from '@/pages/admin/billing-profile-page'
 import { TransactionsPage } from '@/pages/admin/transactions-page'
 import { FeatureGate } from '@/components/workspace/plan/feature-gate'
 import { WorkspaceLayout } from '@/pages/workspace/workspace-layout'
+import { ConfigSubscriptionPage } from '@/pages/workspace/config-subscription-page'
+import { ExpiryFrame } from '@/components/workspace/plan/expiry-bar'
 import { CanvasPage } from '@/pages/workspace/canvas-page'
 import { DataPage } from '@/pages/workspace/data-page'
 import { ConfigPage } from '@/pages/workspace/config-page'
@@ -194,6 +196,14 @@ function App() {
                   </RoleRoute>
                 }
               />
+              <Route
+                path="config/subscription"
+                element={
+                  <RoleRoute allow={[UserRole.COMPANY_ADMIN]}>
+                    <ConfigSubscriptionPage />
+                  </RoleRoute>
+                }
+              />
               {/* Old bookmarks of the users page. */}
               <Route path="manage" element={<Navigate to="/workspace/config/users" replace />} />
             </Route>
@@ -210,7 +220,9 @@ function App() {
               element={
                 <ProtectedRoute>
                   <RoleRoute allow={[UserRole.COMPANY_ADMIN, UserRole.USER]}>
-                    <WindowEditorPage />
+                    <ExpiryFrame>
+                      <WindowEditorPage />
+                    </ExpiryFrame>
                   </RoleRoute>
                 </ProtectedRoute>
               }
@@ -220,7 +232,9 @@ function App() {
               element={
                 <ProtectedRoute>
                   <RoleRoute allow={[UserRole.COMPANY_ADMIN, UserRole.USER]}>
-                    <WindowEditorPage />
+                    <ExpiryFrame>
+                      <WindowEditorPage />
+                    </ExpiryFrame>
                   </RoleRoute>
                 </ProtectedRoute>
               }

@@ -94,6 +94,10 @@
       "projects": {
         "title": "Project settings",
         "description": "Defaults for new projects, and the steps a project goes through."
+      },
+      "subscription": {
+        "title": "Subscription",
+        "description": "Your plan, its end date, and the quotations and invoices from Aluminia."
       }
     },
     "users": {
@@ -854,7 +858,8 @@
         "projects": "The Free plan has one project"
       },
       "body": "Your company is on the Free plan. Contact Aluminia to upgrade and unlock everything.",
-      "close": "OK"
+      "close": "OK",
+      "goToSubscription": "Go to subscription"
     },
     "readOnly": {
       "pill": "Read-only on Free",
@@ -899,5 +904,40 @@
     "missingTitle": "Complete the company profile to print",
     "missingBody": "Reports and other PDFs need the fields marked * (a phone or an email is enough).",
     "missingField": "Required"
+  },
+  "subscription": {
+    "description": "What {{company}} pays for. Changes are made by Aluminia.",
+    "planName": "{{plan}} plan",
+    "badge": {
+      "free": "Free",
+      "trial": "Trial",
+      "ending": "Ending soon",
+      "active": "Active"
+    },
+    "billedIn": "{{company}} · billed in {{currency}}",
+    "ends": "Ends",
+    "neverEnds": "Never",
+    "freeCaption": "The Free plan doesn't end",
+    "daysLeft_one": "{{count}} day left · 23:59 Cairo time",
+    "daysLeft_other": "{{count}} days left · 23:59 Cairo time",
+    "seats": "Seats",
+    "seatsUsed": "{{used}} of {{max}} used",
+    "renewal": "Renewal",
+    "quotationSent": "Quotation sent {{date}}",
+    "howToRenew": "To renew, pay the quotation and send the transfer reference to",
+    "howToRenewAfter": "Your end date moves as soon as it's confirmed.",
+    "howToRenewNoEmail": "To renew, ask Aluminia for a quotation. Your end date moves as soon as the payment is confirmed.",
+    "documents": "Quotations & invoices",
+    "noDocuments": "Nothing yet: quotations and invoices from Aluminia show here.",
+    "inYourPlan": "In your plan"
+  },
+  "expiryBar": {
+    "title_one": "{{company}}'s subscription ends in {{count}} day",
+    "title_other": "{{company}}'s subscription ends in {{count}} days",
+    "on": "on {{date}}. After that nobody can sign in.",
+    "admin": "Renew it from your subscription page.",
+    "user": "Ask your company admin to renew it.",
+    "go": "Go to subscription",
+    "close": "Hide until tomorrow"
   }
 }

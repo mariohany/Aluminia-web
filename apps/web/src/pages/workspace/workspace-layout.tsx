@@ -16,10 +16,10 @@ import { useAuth } from '@/lib/auth-context'
 import { usePlanGate } from '@/lib/plan-gate'
 import { usePlanLock } from '@/lib/plan-lock'
 import { PlanLockProvider } from '@/components/workspace/plan/plan-lock'
+import { ExpiryFrame } from '@/components/workspace/plan/expiry-bar'
 import { ProfileRequiredProvider } from '@/components/workspace/plan/profile-required'
 import { FreeProjectDialog } from '@/components/workspace/plan/free-project-dialog'
 import { useProjectQuery } from '@/lib/projects-queries'
-import { useCompanyAlertsQuery } from '@/lib/company-queries'
 import { isRtlLanguage } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -92,17 +92,17 @@ function readLastSelection(): LastSelection | null {
 // rail, the tree and the pages can all open it (B12).
 export function WorkspaceLayout() {
   return (
-    <PlanLockProvider>
-      <ProfileRequiredProvider>
-        <WorkspaceShell />
-      </ProfileRequiredProvider>
-    </PlanLockProvider>
+    <ExpiryFrame>
+      <PlanLockProvider>
+        <ProfileRequiredProvider>
+          <WorkspaceShell />
+        </ProfileRequiredProvider>
+      </PlanLockProvider>
+    </ExpiryFrame>
   )
 }
 
 function WorkspaceShell() {
-  // Once per app open (Q2): the expiry bar's data, and any warning email due.
-  useCompanyAlertsQuery()
   const { t, i18n } = useTranslation('workspace')
   const language = i18n.resolvedLanguage ?? 'en'
   const rtl = isRtlLanguage(language)
@@ -383,7 +383,7 @@ function WorkspaceShell() {
   )
 
   return (
-    <div className="flex h-svh overflow-hidden bg-shell">
+    <div className="flex h-full overflow-hidden bg-shell">
       {/* No top bar — the rail is the whole persistent chrome, at every
           breakpoint. Below `lg` it also carries the tree's only access
           point, via `onOpenTree`'s Sheet below. */}

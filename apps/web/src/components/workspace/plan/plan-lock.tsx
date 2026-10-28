@@ -1,6 +1,9 @@
 import { useCallback, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Lock } from 'lucide-react'
+import { ArrowRight, Lock } from 'lucide-react'
+import { UserRole } from '@repo/types/auth'
+import { useAuth } from '@/lib/auth-context'
 import { PlanLockContext, type PlanLockReason } from '@/lib/plan-lock'
 import { Button } from '@/components/ui/button'
 import {
@@ -15,10 +18,14 @@ import {
 /**
  * The one "needs a paid plan" dialog of the workspace (B12): a dimmed
  * rail item, Config card or create button opens it instead of going on.
+ * A company admin also gets "Go to subscription".
  */
 export function PlanLockProvider({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation('workspace')
   const [reason, setReason] = useState<PlanLockReason | null>(null)
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const isAdmin = user?.role === UserRole.COMPANY_ADMIN
   const show = useCallback((next: PlanLockReason) => setReason(next), [])
 
   const title =
@@ -44,7 +51,21 @@ export function PlanLockProvider({ children }: { children: React.ReactNode }) {
             <DialogDescription>{body}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button onClick={() => setReason(null)}>{t('plan.locked.close')}</Button>
+            <Button variant={isAdmin ? 'outline' : 'default'} onClick={() => setReason(null)}>
+              {t('plan.locked.close')}
+            </Button>
+            {/* Admins can see the plan and how to renew (B12, B24). */}
+            {isAdmin && (
+              <Button
+                onClick={() => {
+                  setReason(null)
+                  void navigate('/workspace/config/subscription')
+                }}
+              >
+                {t('plan.locked.goToSubscription')}
+                <ArrowRight className="rtl:rotate-180" aria-hidden="true" />
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

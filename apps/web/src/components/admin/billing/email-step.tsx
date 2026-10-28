@@ -12,7 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { DialogFooter } from '@/components/ui/dialog'
-import { DocumentPdfDialog } from './document-pdf-dialog'
+import { DocumentPdfDialog } from '@/components/billing/document-pdf-dialog'
 
 const isEmail = (value: string) => z.email().safeParse(value).success
 

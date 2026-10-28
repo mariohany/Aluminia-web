@@ -22,9 +22,9 @@ import { Label } from '@/components/ui/label'
 import { SearchInput } from '@/components/ui/search-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { VirtualizedLogTable, type LogColumn } from '@/components/admin/admin-logs/virtualized-log-table'
-import { DocumentStatusPill } from '@/components/admin/billing/document-status'
+import { DocumentStatusPill } from '@/components/billing/document-status'
 import { MarkPaidDialog } from '@/components/admin/billing/mark-paid-dialog'
-import { DocumentPdfDialog } from '@/components/admin/billing/document-pdf-dialog'
+import { DocumentPdfDialog } from '@/components/billing/document-pdf-dialog'
 import { EmailDocumentDialog } from '@/components/admin/billing/email-document-dialog'
 
 const KINDS = ['all', 'invoice', 'quotation'] as const

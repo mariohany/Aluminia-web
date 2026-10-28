@@ -58,6 +58,11 @@ export class User {
   // company archived) adds 1, and JwtAuthGuard refuses a token whose
   // `ver` is behind — so the change takes effect on the next request,
   // not when the token expires (stability S3, AuthVersionService).
+  // Deactivated by the company's drop to Free (B13); a paid plan
+  // reactivates exactly these (B14). Any manual (de)activation clears it.
+  @Column({ name: 'plan_deactivated', type: 'boolean', default: false })
+  planDeactivated: boolean;
+
   @Column({ name: 'auth_version', type: 'int', default: 0 })
   authVersion: number;
 

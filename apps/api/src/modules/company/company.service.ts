@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import type { CompanyOverview } from '@repo/types/users';
 import { Company } from '../../database/control-plane/entities/company.entity';
 import { User } from '../../database/control-plane/entities/user.entity';
+import { toPlanRef } from '../plans/plans.service';
 
 /**
  * The caller's own company, as the workspace needs to see it.
@@ -20,7 +21,10 @@ export class CompanyService {
   ) {}
 
   async overview(companyId: string): Promise<CompanyOverview> {
-    const company = await this.companies.findOne({ where: { id: companyId } });
+    const company = await this.companies.findOne({
+      where: { id: companyId },
+      relations: { plan: true },
+    });
     if (!company) throw new NotFoundException('Company not found.');
 
     // Read-only, so a plain count is fine — unlike the seat check in
@@ -32,7 +36,7 @@ export class CompanyService {
     return {
       id: company.id,
       name: company.name,
-      plan: company.plan,
+      plan: toPlanRef(company.plan!),
       seatsUsed,
       maxUsers: company.maxUsers,
     };

@@ -306,6 +306,7 @@ export class UsersService {
       }
 
       user.status = UserStatus.INACTIVE;
+      user.planDeactivated = false;
       await queryRunner.manager.save(user);
 
       // Logged out immediately, same as archiving a company: the session
@@ -357,6 +358,8 @@ export class UsersService {
       }
 
       user.status = UserStatus.ACTIVE;
+      // A manual reactivate settles it: a later paid plan has nothing to bring back.
+      user.planDeactivated = false;
       await queryRunner.manager.save(user);
 
       await this.auditLog.record(queryRunner.manager, {

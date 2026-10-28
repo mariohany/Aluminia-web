@@ -9,6 +9,7 @@ import type {
 } from '@repo/types/logs';
 import { AdminAuditLog } from '../../database/control-plane/entities/admin-audit-log.entity';
 import { BillingRecord } from '../../database/control-plane/entities/billing-record.entity';
+import { toPlanRef } from '../plans/plans.service';
 
 export interface LogsDateRange {
   from?: string;
@@ -64,6 +65,7 @@ export class LogsService {
     const query = this.billing
       .createQueryBuilder('record')
       .innerJoinAndSelect('record.company', 'company')
+      .innerJoinAndSelect('record.plan', 'plan')
       .orderBy('record.createdAt', 'DESC')
       .skip((page - 1) * pageSize)
       .take(pageSize);
@@ -82,7 +84,7 @@ export class LogsService {
         id: record.id,
         companyId: record.companyId,
         companyName: record.company!.name,
-        plan: record.plan,
+        plan: toPlanRef(record.plan!),
         maxUsers: record.maxUsers,
         notes: record.notes,
         effectiveFrom: record.effectiveFrom.toISOString(),

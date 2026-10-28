@@ -57,13 +57,13 @@ describe('TenantConnectionService (e2e)', () => {
     // are only meaningful against genuinely distinct schemas.
     const one = await provisioning.provision({
       name: companyOneName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: adminOneEmail, password: 'TestPassword123!' },
     });
     const two = await provisioning.provision({
       name: companyTwoName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: adminTwoEmail, password: 'TestPassword123!' },
     });

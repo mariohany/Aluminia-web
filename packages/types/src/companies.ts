@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import type { UserRole, UserStatus } from './auth'
+import type { PlanRef } from './plans'
+import type { BillingCurrency, BillingReason } from './subscriptions'
 
 // Same rationale as UserRole in auth.ts: a const object, not a TS `enum`,
 // so it survives erasable-syntax-only TypeScript stripping.
@@ -14,15 +16,13 @@ export type CompanyStatus = (typeof CompanyStatus)[keyof typeof CompanyStatus]
 // for now: the admin sidebar's capacity bar. Nothing enforces it yet.
 export const PLATFORM_COMPANY_LIMIT = 250
 
-// `maxUsers` is a plain number, not `z.coerce.number()`: coercion gives
-// the schema a different input type than output type, which conflicts
-// with typing `useForm` by the schema's output (`CreateCompanyInput`).
-// The string-to-number conversion happens at the form layer instead
-// (`register('maxUsers', { valueAsNumber: true })`).
+// A new company starts on Free (docs/subscriptions_planing.md B12, B20):
+// no plan or seats here; the Billing tab's Edit subscription sets them.
+// Both names are required (B20); the printed letterhead names are the
+// company profile's own.
 export const createCompanySchema = z.object({
   name: z.string().trim().min(1).max(255),
-  plan: z.string().trim().min(1).max(100),
-  maxUsers: z.number().int().positive(),
+  nameAr: z.string().trim().min(1).max(255),
   admin: z.object({
     email: z.email(),
     password: z.string().min(8),
@@ -30,13 +30,11 @@ export const createCompanySchema = z.object({
 })
 export type CreateCompanyInput = z.infer<typeof createCompanySchema>
 
-// All optional: the same endpoint handles a name-only rename and a
-// plan/seat change, and the backend only writes a new `billing` row when
-// plan or maxUsers actually changes.
+// The Overview tab's names. Plan, seats, end date, currency and VAT go
+// through `PATCH …/subscription` (@repo/types/subscriptions).
 export const updateCompanySchema = z.object({
   name: z.string().trim().min(1).max(255).optional(),
-  plan: z.string().trim().min(1).max(100).optional(),
-  maxUsers: z.number().int().positive().optional(),
+  nameAr: z.string().trim().min(1).max(255).optional(),
 })
 export type UpdateCompanyInput = z.infer<typeof updateCompanySchema>
 
@@ -53,9 +51,17 @@ export type DeleteCompanyInput = z.infer<typeof deleteCompanySchema>
 export interface CompanySummary {
   id: string
   name: string
+  // Null only on companies made before the Arabic name existed.
+  nameAr: string | null
   status: CompanyStatus
-  plan: string
+  plan: PlanRef
   maxUsers: number
+  // Null on Free. 23:59:59 Cairo of the end date (B9); the state
+  // (`subscriptionState`) is computed from it, never stored.
+  endsAt: string | null
+  isTrial: boolean
+  currency: BillingCurrency
+  vatRate: number
   userCount: number
   createdAt: string
 }
@@ -68,12 +74,18 @@ export interface CompanyListItem extends CompanySummary {
   projectCount: number | null
 }
 
+// One row of the append-only billing history (§3c).
 export interface BillingRecordSummary {
   id: string
-  plan: string
+  plan: PlanRef
   maxUsers: number
-  effectiveFrom: string
+  endsAt: string | null
+  isTrial: boolean
+  reason: BillingReason
   notes: string | null
+  // Null for the system (a trial ending) or a removed account.
+  actorEmail: string | null
+  effectiveFrom: string
   createdAt: string
 }
 
@@ -82,6 +94,9 @@ export interface CompanyUserSummary {
   email: string
   role: UserRole
   status: UserStatus
+  // Deactivated by the company's drop to Free (B13); a paid plan brings
+  // exactly these back (B14).
+  planDeactivated: boolean
   createdAt: string
 }
 

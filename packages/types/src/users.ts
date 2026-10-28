@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { PlanRef } from './plans'
 // Type-only, like companies.ts's import from './auth' — erased entirely
 // at compile time, so it never needs runtime module resolution. The
 // role values below are written as literal strings rather than
@@ -78,7 +79,7 @@ export type CreateCompanyUserInput = z.infer<typeof createCompanyUserSchema>
 export interface CompanyOverview {
   id: string
   name: string
-  plan: string
+  plan: PlanRef
   seatsUsed: number
   maxUsers: number
 }

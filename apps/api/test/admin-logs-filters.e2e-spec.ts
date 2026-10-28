@@ -50,7 +50,7 @@ describe('Admin logs filters (e2e)', () => {
 
     const company = await provisioning.provision({
       name: companyName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: `e2e-lf-admin-${token}@test.local`, password },
     });

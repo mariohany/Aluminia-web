@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { PlanRef } from './plans'
 
 // Page-based, not cursor-based: both logs are ordered by a single
 // monotonic timestamp column with no concurrent-insert-at-the-boundary
@@ -38,7 +39,7 @@ export interface ActivityLogEntry {
   id: string
   companyId: string
   companyName: string
-  plan: string
+  plan: PlanRef
   maxUsers: number
   notes: string | null
   effectiveFrom: string

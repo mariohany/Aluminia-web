@@ -11,6 +11,9 @@ import {
   UserStatus,
 } from '../../database/control-plane/entities/user.entity';
 import { BillingRecord } from '../../database/control-plane/entities/billing-record.entity';
+import { Plan } from '../../database/control-plane/entities/plan.entity';
+import { FREE_PLAN_LIMITS, type PlanKey } from '@repo/types/plans';
+import { addDays, cairoDateOf, endOfCairoDay } from '@repo/types/subscriptions';
 import {
   assertValidSchemaName,
   deriveUniqueSchemaName,
@@ -25,8 +28,13 @@ import { rollbackQuietly } from '../../database/rollback';
 
 export interface ProvisionCompanyInput {
   name: string;
-  plan: string;
-  maxUsers: number;
+  nameAr?: string | null;
+  // A new company starts on Free (B12). Scripts and tests may start one
+  // on a paid plan: it then runs until `endsAt`, a year from today by
+  // default, with the plan's seats unless `maxUsers` says otherwise.
+  planKey?: PlanKey;
+  maxUsers?: number;
+  endsAt?: Date;
   admin: { email: string; password: string };
 }
 
@@ -67,22 +75,39 @@ export class TenantProvisioningService {
         this.schemaNameTaken(queryRunner, candidate),
       );
 
+      const plan = await queryRunner.manager.findOneOrFail(Plan, {
+        where: { key: input.planKey ?? 'free' },
+      });
+      const free = plan.key === 'free';
+      const maxUsers = free
+        ? FREE_PLAN_LIMITS.seats
+        : (input.maxUsers ?? plan.seats);
+      const endsAt = free
+        ? null
+        : (input.endsAt ??
+          endOfCairoDay(addDays(cairoDateOf(new Date()), 365)));
+
       const company = await queryRunner.manager.save(
         queryRunner.manager.create(Company, {
           name: input.name,
-          plan: input.plan,
-          maxUsers: input.maxUsers,
+          nameAr: input.nameAr ?? null,
+          planId: plan.id,
+          maxUsers,
+          endsAt,
           schemaName,
           status: CompanyStatus.ACTIVE,
         }),
       );
+      company.plan = plan;
 
       await queryRunner.manager.save(
         queryRunner.manager.create(BillingRecord, {
           companyId: company.id,
-          plan: input.plan,
-          maxUsers: input.maxUsers,
-          notes: 'Initial plan set at provisioning.',
+          planId: plan.id,
+          maxUsers,
+          endsAt,
+          reason: 'created',
+          notes: null,
         }),
       );
 

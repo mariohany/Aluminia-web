@@ -54,7 +54,7 @@ describe('Project settings (e2e)', () => {
     ]) {
       await provisioning.provision({
         name,
-        plan: 'starter',
+        planKey: 'pro',
         maxUsers: 5,
         admin: { email, password },
       });

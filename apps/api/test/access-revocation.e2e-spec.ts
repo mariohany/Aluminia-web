@@ -51,7 +51,7 @@ describe('Access revocation (e2e)', () => {
     for (const name of ['E2E Revoke A', 'E2E Revoke B']) {
       const { company } = await provisioning.provision({
         name,
-        plan: 'starter',
+        planKey: 'pro',
         maxUsers: 5,
         admin: {
           email: `e2e-revoke-${companyIds.length}@test.local`,

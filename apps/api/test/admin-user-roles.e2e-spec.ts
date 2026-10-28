@@ -44,7 +44,7 @@ describe('Admin user roles (e2e)', () => {
 
     const company = await provisioning.provision({
       name: 'E2E UR Aluminium',
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: companyAdminEmail, password },
     });

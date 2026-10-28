@@ -54,13 +54,13 @@ describe('Company-admin user management (e2e)', () => {
 
     const one = await provisioning.provision({
       name: companyOneName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: adminOneEmail, password },
     });
     const two = await provisioning.provision({
       name: companyTwoName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: adminTwoEmail, password },
     });
@@ -68,7 +68,7 @@ describe('Company-admin user management (e2e)', () => {
     // which is what the concurrency test races for.
     await provisioning.provision({
       name: seatCompanyName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 3,
       admin: { email: seatAdminEmail, password },
     });

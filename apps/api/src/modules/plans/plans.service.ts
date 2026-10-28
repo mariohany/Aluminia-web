@@ -4,6 +4,7 @@ import { DataSource, In, Repository } from 'typeorm';
 import {
   PLAN_FEATURES,
   type PaidPlanInput,
+  type PlanRef,
   type PlanSummary,
 } from '@repo/types/plans';
 import { Plan } from '../../database/control-plane/entities/plan.entity';
@@ -110,5 +111,14 @@ export function toPlanSummary(plan: Plan): PlanSummary {
     annualEgp: plan.annualEgp,
     features: plan.features,
     updatedAt: plan.updatedAt.toISOString(),
+  };
+}
+
+export function toPlanRef(plan: Plan): PlanRef {
+  return {
+    id: plan.id,
+    key: plan.key,
+    nameEn: plan.nameEn,
+    nameAr: plan.nameAr,
   };
 }

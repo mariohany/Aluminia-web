@@ -37,6 +37,15 @@ export interface PlanSummary {
   updatedAt: string
 }
 
+// How a company, a history row or a log line names its plan: both
+// names, so each side picks its language.
+export interface PlanRef {
+  id: string
+  key: PlanKey
+  nameEn: string
+  nameAr: string
+}
+
 const price = z.number().positive().max(9_999_999_999.99)
 
 // One paid plan as the Plans page saves it. `key` picks the row; it is

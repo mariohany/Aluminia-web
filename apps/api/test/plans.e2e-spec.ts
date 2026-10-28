@@ -46,7 +46,7 @@ describe('Admin plans (e2e)', () => {
 
     const company = await provisioning.provision({
       name: companyName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: companyAdminEmail, password },
     });

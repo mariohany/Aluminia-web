@@ -106,7 +106,8 @@
           "quotation_created": "أنشأ عرض السعر {{number}} لـ {{name}}",
           "quotation_updated": "عدّل عرض السعر {{number}}",
           "quotation_voided": "ألغى عرض السعر {{number}}",
-          "paid": "دفعت {{name}}: الفاتورة {{invoice}}"
+          "paid": "دفعت {{name}}: الفاتورة {{invoice}}",
+          "document_sent": "أرسل {{number}} إلى {{name}}"
         }
       },
       "lookup": {
@@ -711,6 +712,12 @@
       "discountValue": "راجع الخصم (النسبة 100 كحد أقصى).",
       "save": "تعذّر حفظ عرض السعر. حاول مرة أخرى.",
       "noBillingProfile": "املأ الفوترة › بيانات الفوترة أولًا: تُطبع كبيانات البائع."
+    },
+    "next": "التالي",
+    "steps": {
+      "label": "الخطوات",
+      "quotation": "عرض السعر",
+      "email": "البريد"
     }
   },
   "markPaid": {
@@ -738,7 +745,8 @@
       "save": "تعذّر تسجيل الدفع. حاول مرة أخرى.",
       "quotation_expired": "انتهت صلاحية عرض السعر: أصدر عرضًا جديدًا.",
       "seats_below_users": "عدد مستخدمي الشركة أكبر من مقاعد عرض السعر."
-    }
+    },
+    "emailNow": "أرسل الفاتورة بالبريد الآن"
   },
   "documents": {
     "number": "الرقم",
@@ -763,7 +771,8 @@
       "void": "إلغاء",
       "voided": "أُلغي {{number}}.",
       "error": "لم ينجح ذلك. حاول مرة أخرى.",
-      "pdf": "PDF"
+      "pdf": "PDF",
+      "email": "إرسال بالبريد"
     },
     "pdf": {
       "download": "تنزيل",
@@ -772,7 +781,12 @@
       "error": "تعذّر رسم ملف PDF.",
       "retry": "حاول مرة أخرى",
       "drawing": "جارٍ رسم ملف PDF…"
-    }
+    },
+    "emailed_one": "أُرسل {{date}} · شخص واحد",
+    "emailed_two": "أُرسل {{date}} · شخصان",
+    "emailed_few": "أُرسل {{date}} · {{count}} أشخاص",
+    "emailed_many": "أُرسل {{date}} · {{count}} شخصًا",
+    "emailed_other": "أُرسل {{date}} · {{count}} شخص"
   },
   "transactions": {
     "title": "المعاملات",
@@ -803,5 +817,27 @@
     "search": "ابحث بالرقم أو الشركة",
     "error": "تعذّر تحميل المعاملات.",
     "empty": "لا توجد عروض أسعار أو فواتير بعد."
+  },
+  "email": {
+    "title": "إرسال {{number}} بالبريد",
+    "description": "ملف PDF مرفق. يُرسل بالإنجليزية والعربية.",
+    "to": "إلى",
+    "toPlaceholder": "name@company.com",
+    "toHint": "Enter أو الفاصلة تضيف عنوانًا",
+    "invalid": "هذا ليس بريدًا إلكترونيًا.",
+    "remove": "حذف {{email}}",
+    "subject": "الموضوع",
+    "copyMe": "أرسل لي نسخة",
+    "attachment": "PDF · {{size}} ك.ب",
+    "preview": "معاينة ملف PDF",
+    "back": "رجوع",
+    "send": "إرسال",
+    "sent_one": "أُرسل {{number}} إلى شخص واحد.",
+    "sent_two": "أُرسل {{number}} إلى شخصين.",
+    "sent_few": "أُرسل {{number}} إلى {{count}} أشخاص.",
+    "sent_many": "أُرسل {{number}} إلى {{count}} شخصًا.",
+    "sent_other": "أُرسل {{number}} إلى {{count}} شخص.",
+    "failed": "لم يُرسل البريد (رفضته خدمة البريد). حاول لاحقًا.",
+    "error": "تعذّر إرسال البريد. حاول مرة أخرى."
   }
 }

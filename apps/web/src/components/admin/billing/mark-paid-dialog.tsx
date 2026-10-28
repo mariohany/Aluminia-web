@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
@@ -15,6 +15,7 @@ import { apiErrorCode, apiErrorMessage } from '@/lib/api-client'
 import { planName } from '@/lib/bilingual'
 import { useMarkPaidMutation } from '@/lib/billing-queries'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PriceInput } from '@/components/ui/price-input'
@@ -26,17 +27,21 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
  * Mark paid (docs/subscriptions_planing.md B4, boards `bill-q-paid`,
  * `bill-tx-paid`): the money arrived outside the app, so every field is
  * required, the transaction reference too (it prints on the invoice). On
- * confirm the invoice is created and the company renewed (B8).
+ * confirm the invoice is created and the company renewed (B8); "Email the
+ * invoice now" hands the invoice to `onEmail` (the email step alone).
  */
 export function MarkPaidDialog({
   document,
   onOpenChange,
+  onEmail,
 }: {
   document: BillingDocumentSummary | null
   onOpenChange: (open: boolean) => void
+  onEmail?: (invoice: BillingDocumentSummary) => void
 }) {
   const { t, i18n } = useTranslation('admin')
   const pay = useMarkPaidMutation()
+  const [emailNow, setEmailNow] = useState(true)
   const {
     control,
     register,
@@ -66,6 +71,7 @@ export function MarkPaidDialog({
       const invoice = await pay.mutateAsync({ id: document.id, input })
       toast.success(t('markPaid.done', { number: invoice.number }))
       onOpenChange(false)
+      if (emailNow && onEmail) onEmail(invoice)
     } catch (err) {
       const code = apiErrorCode(err)
       toast.error(
@@ -163,6 +169,13 @@ export function MarkPaidDialog({
             </span>
             <span className="text-xs text-muted-foreground">{t('markPaid.startNote')}</span>
           </div>
+
+          {onEmail && (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={emailNow} onCheckedChange={(checked) => setEmailNow(checked === true)} />
+              {t('markPaid.emailNow')}
+            </label>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

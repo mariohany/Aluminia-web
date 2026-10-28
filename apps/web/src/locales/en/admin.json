@@ -102,7 +102,8 @@
           "quotation_created": "Created quotation {{number}} for {{name}}",
           "quotation_updated": "Edited quotation {{number}}",
           "quotation_voided": "Voided quotation {{number}}",
-          "paid": "{{name}} paid: invoice {{invoice}}"
+          "paid": "{{name}} paid: invoice {{invoice}}",
+          "document_sent": "Emailed {{number}} to {{name}}"
         }
       },
       "lookup": {
@@ -666,6 +667,12 @@
       "discountValue": "Check the discount (a percent is at most 100).",
       "save": "Couldn’t save the quotation. Try again.",
       "noBillingProfile": "Fill in Billing › Billing profile first: it prints as the seller."
+    },
+    "next": "Next",
+    "steps": {
+      "label": "Steps",
+      "quotation": "Quotation",
+      "email": "Email"
     }
   },
   "markPaid": {
@@ -693,7 +700,8 @@
       "save": "Couldn’t record the payment. Try again.",
       "quotation_expired": "This quotation has expired: issue a new one.",
       "seats_below_users": "The company has more users than this quotation's seats."
-    }
+    },
+    "emailNow": "Email the invoice now"
   },
   "documents": {
     "number": "Number",
@@ -718,7 +726,8 @@
       "void": "Void",
       "voided": "{{number}} voided.",
       "error": "That didn’t work. Try again.",
-      "pdf": "PDF"
+      "pdf": "PDF",
+      "email": "Email"
     },
     "pdf": {
       "download": "Download",
@@ -727,7 +736,9 @@
       "error": "Couldn’t draw the PDF.",
       "retry": "Try again",
       "drawing": "Drawing the PDF…"
-    }
+    },
+    "emailed_one": "Emailed {{date}} · {{count}} person",
+    "emailed_other": "Emailed {{date}} · {{count}} people"
   },
   "transactions": {
     "title": "Transactions",
@@ -755,5 +766,24 @@
     "search": "Search number or company",
     "error": "Couldn’t load transactions.",
     "empty": "No quotations or invoices yet."
+  },
+  "email": {
+    "title": "Email {{number}}",
+    "description": "The PDF is attached. Sent in English and Arabic.",
+    "to": "To",
+    "toPlaceholder": "name@company.com",
+    "toHint": "Enter or comma adds an address",
+    "invalid": "That isn’t an email address.",
+    "remove": "Remove {{email}}",
+    "subject": "Subject",
+    "copyMe": "Send me a copy",
+    "attachment": "PDF · {{size}} KB",
+    "preview": "Preview the PDF",
+    "back": "Back",
+    "send": "Send",
+    "sent_one": "{{number}} emailed to {{count}} person.",
+    "sent_other": "{{number}} emailed to {{count}} people.",
+    "failed": "The email wasn’t sent (the mail service refused it). Try again later.",
+    "error": "Couldn’t send the email. Try again."
   }
 }

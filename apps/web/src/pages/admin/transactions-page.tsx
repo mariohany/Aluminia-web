@@ -25,6 +25,7 @@ import { VirtualizedLogTable, type LogColumn } from '@/components/admin/admin-lo
 import { DocumentStatusPill } from '@/components/admin/billing/document-status'
 import { MarkPaidDialog } from '@/components/admin/billing/mark-paid-dialog'
 import { DocumentPdfDialog } from '@/components/admin/billing/document-pdf-dialog'
+import { EmailDocumentDialog } from '@/components/admin/billing/email-document-dialog'
 
 const KINDS = ['all', 'invoice', 'quotation'] as const
 
@@ -45,6 +46,7 @@ export function TransactionsPage() {
   const debouncedSearch = useDebouncedValue(search.trim())
   const [paying, setPaying] = useState<BillingDocumentSummary | null>(null)
   const [viewing, setViewing] = useState<BillingDocumentSummary | null>(null)
+  const [emailing, setEmailing] = useState<{ document: BillingDocumentSummary; to: string[] } | null>(null)
   const [exporting, setExporting] = useState(false)
 
   const filters: TransactionsFilters = {
@@ -278,7 +280,16 @@ export function TransactionsPage() {
         )}
       </div>
 
-      <MarkPaidDialog document={paying} onOpenChange={(open) => !open && setPaying(null)} />
+      <MarkPaidDialog
+        document={paying}
+        onOpenChange={(open) => !open && setPaying(null)}
+        onEmail={(invoice) => paying && setEmailing({ document: invoice, to: paying.lastSent?.to ?? [] })}
+      />
+      <EmailDocumentDialog
+        document={emailing?.document ?? null}
+        recipients={emailing?.to ?? []}
+        onOpenChange={(open) => !open && setEmailing(null)}
+      />
       <DocumentPdfDialog document={viewing} onOpenChange={(open) => !open && setViewing(null)} />
     </div>
   )

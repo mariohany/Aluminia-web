@@ -19,6 +19,7 @@ import { PlanLockProvider } from '@/components/workspace/plan/plan-lock'
 import { ProfileRequiredProvider } from '@/components/workspace/plan/profile-required'
 import { FreeProjectDialog } from '@/components/workspace/plan/free-project-dialog'
 import { useProjectQuery } from '@/lib/projects-queries'
+import { useCompanyAlertsQuery } from '@/lib/company-queries'
 import { isRtlLanguage } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -100,6 +101,8 @@ export function WorkspaceLayout() {
 }
 
 function WorkspaceShell() {
+  // Once per app open (Q2): the expiry bar's data, and any warning email due.
+  useCompanyAlertsQuery()
   const { t, i18n } = useTranslation('workspace')
   const language = i18n.resolvedLanguage ?? 'en'
   const rtl = isRtlLanguage(language)

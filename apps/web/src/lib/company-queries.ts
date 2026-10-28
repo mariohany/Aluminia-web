@@ -3,6 +3,17 @@ import * as companyApi from '@/lib/company-api'
 
 export const companyOverviewKey = ['company', 'me'] as const
 
+/** Once per app open (Q2): never refetched on focus or a timer. */
+export function useCompanyAlertsQuery() {
+  return useQuery({
+    queryKey: ['company', 'alerts'] as const,
+    queryFn: companyApi.getCompanyAlerts,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    retry: false,
+  })
+}
+
 export function useCompanyOverviewQuery() {
   return useQuery({ queryKey: companyOverviewKey, queryFn: companyApi.getCompanyOverview })
 }

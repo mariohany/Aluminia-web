@@ -1,5 +1,5 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { MarkPaidInput, QuotationInput } from '@repo/types/billing-documents'
+import type { MarkPaidInput, QuotationInput, SendDocumentInput } from '@repo/types/billing-documents'
 import type { BillingCurrency } from '@repo/types/subscriptions'
 import * as billingApi from '@/lib/billing-api'
 import type { TransactionsFilters } from '@/lib/billing-api'
@@ -70,6 +70,22 @@ export function useMarkPaidMutation() {
   const invalidate = useInvalidateBilling()
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: MarkPaidInput }) => billingApi.markPaid(id, input),
+    onSuccess: () => invalidate(),
+  })
+}
+
+export function useSendDefaultsQuery(id: string | null) {
+  return useQuery({
+    queryKey: [...billingKey, 'send-defaults', id] as const,
+    queryFn: () => billingApi.getSendDefaults(id!),
+    enabled: !!id,
+  })
+}
+
+export function useSendDocumentMutation() {
+  const invalidate = useInvalidateBilling()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: SendDocumentInput }) => billingApi.sendDocument(id, input),
     onSuccess: () => invalidate(),
   })
 }

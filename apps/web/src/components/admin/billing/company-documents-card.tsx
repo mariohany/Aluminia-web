@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Ban, Banknote, FileText, FilePlus2, MoreHorizontal, Pencil } from 'lucide-react'
+import { Ban, Banknote, FileText, FilePlus2, Mail, MoreHorizontal, Pencil } from 'lucide-react'
+import { UserRole } from '@repo/types/auth'
 import type { CompanyDetail } from '@repo/types/companies'
 import type { BillingDocumentSummary } from '@repo/types/billing-documents'
 import { apiErrorMessage } from '@/lib/api-client'
@@ -16,6 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { DocumentPdfDialog } from './document-pdf-dialog'
+import { EmailDocumentDialog } from './email-document-dialog'
 import { DocumentStatusPill } from './document-status'
 import { MarkPaidDialog } from './mark-paid-dialog'
 import { QuotationDialog } from './quotation-dialog'
@@ -32,6 +34,15 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
   const [editing, setEditing] = useState<{ document?: BillingDocumentSummary } | null>(null)
   const [paying, setPaying] = useState<BillingDocumentSummary | null>(null)
   const [viewing, setViewing] = useState<BillingDocumentSummary | null>(null)
+  const [emailing, setEmailing] = useState<{ document: BillingDocumentSummary; to: string[] } | null>(null)
+  const admins = company.users
+    .filter((u) => u.role === UserRole.COMPANY_ADMIN && u.status === 'active')
+    .map((u) => u.email)
+  // Whoever got the quotation gets its invoice; else the company admins.
+  const recipientsOf = (doc: BillingDocumentSummary) => {
+    const quotation = documents?.find((d) => d.id === doc.quotationId)
+    return doc.lastSent?.to ?? quotation?.lastSent?.to ?? admins
+  }
   const dateFormatter = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' })
 
   const money = (doc: BillingDocumentSummary) =>
@@ -78,7 +89,17 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <DocumentStatusPill status={doc.status} />
+                      <span className="flex flex-col items-start gap-0.5">
+                        <DocumentStatusPill status={doc.status} />
+                        {doc.lastSent && (
+                          <span className="text-xs text-muted-foreground">
+                            {t('documents.emailed', {
+                              date: dateFormatter.format(new Date(doc.lastSent.at)),
+                              count: doc.lastSent.to.length,
+                            })}
+                          </span>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="text-end font-mono text-[13px]">{money(doc)}</TableCell>
                     <TableCell className="text-[13px] text-muted-foreground">
@@ -96,6 +117,12 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                             <FileText aria-hidden="true" />
                             {t('documents.actions.pdf')}
                           </DropdownMenuItem>
+                          {doc.status !== 'void' && (
+                            <DropdownMenuItem onSelect={() => setEmailing({ document: doc, to: recipientsOf(doc) })}>
+                              <Mail aria-hidden="true" />
+                              {t('documents.actions.email')}
+                            </DropdownMenuItem>
+                          )}
                           {doc.status === 'draft' && (
                             <DropdownMenuItem onSelect={() => setEditing({ document: doc })}>
                               <Pencil aria-hidden="true" />
@@ -133,12 +160,22 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
         )}
       </CardContent>
       <QuotationDialog
+        key={editing ? (editing.document?.id ?? 'new') : 'closed'}
         company={company}
         document={editing?.document}
         open={editing !== null}
         onOpenChange={(open) => !open && setEditing(null)}
       />
-      <MarkPaidDialog document={paying} onOpenChange={(open) => !open && setPaying(null)} />
+      <MarkPaidDialog
+        document={paying}
+        onOpenChange={(open) => !open && setPaying(null)}
+        onEmail={(invoice) => paying && setEmailing({ document: invoice, to: recipientsOf(paying) })}
+      />
+      <EmailDocumentDialog
+        document={emailing?.document ?? null}
+        recipients={emailing?.to ?? []}
+        onOpenChange={(open) => !open && setEmailing(null)}
+      />
       <DocumentPdfDialog document={viewing} onOpenChange={(open) => !open && setViewing(null)} />
     </Card>
   )

@@ -3,6 +3,7 @@ import type {
   FxQuote,
   MarkPaidInput,
   QuotationInput,
+  SendDocumentInput,
   TransactionsPage,
   TransactionsQuery,
   TransactionsSummary,
@@ -64,4 +65,12 @@ export function exportTransactionsCsv(filters: TransactionsFilters): Promise<Blo
   return apiFetch<Blob>(`/admin/billing/transactions.csv?${filterParams(filters).toString()}`, {
     responseType: 'blob',
   })
+}
+
+export function getSendDefaults(id: string): Promise<{ subject: string }> {
+  return apiFetch<{ subject: string }>(`/admin/billing/documents/${id}/send-defaults`)
+}
+
+export function sendDocument(id: string, input: SendDocumentInput): Promise<BillingDocumentSummary> {
+  return apiFetch<BillingDocumentSummary>(`/admin/billing/documents/${id}/send`, { method: 'POST', body: input })
 }

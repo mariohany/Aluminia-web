@@ -586,10 +586,10 @@ export class BillingDocumentsService {
           [ids, quotationIds],
         )
       : [];
-    const sends: Array<{ document_id: string; sent_at: Date; count: number }> =
+    const sends: Array<{ document_id: string; sent_at: Date; to: string[] }> =
       ids.length
         ? await this.dataSource.query(
-            `SELECT DISTINCT ON (document_id) document_id, sent_at, cardinality("to") AS count
+            `SELECT DISTINCT ON (document_id) document_id, sent_at, "to"
              FROM billing_sends WHERE document_id = ANY($1) AND error IS NULL
              ORDER BY document_id, sent_at DESC`,
             [ids],
@@ -795,11 +795,9 @@ async function takeNumber(
 }
 
 function lastSentOf(
-  row: { sent_at: Date; count: number } | undefined,
+  row: { sent_at: Date; to: string[] } | undefined,
 ): BillingDocumentSummary['lastSent'] {
-  return row
-    ? { at: new Date(row.sent_at).toISOString(), count: Number(row.count) }
-    : null;
+  return row ? { at: new Date(row.sent_at).toISOString(), to: row.to } : null;
 }
 
 function encodeCursor(at: Date, id: string): string {

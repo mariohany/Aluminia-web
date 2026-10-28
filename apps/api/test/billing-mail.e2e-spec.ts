@@ -229,7 +229,7 @@ describe('Billing email (e2e)', () => {
       .expect(200);
     const sent = res.body as BillingDocumentSummary;
     expect(sent.status).toBe('sent');
-    expect(sent.lastSent?.count).toBe(2);
+    expect(sent.lastSent?.to).toEqual([adminEmail, 'accounts@test.local']);
     const mail = mailer.sent[before];
     expect(mail.to).toEqual([adminEmail, 'accounts@test.local']);
     expect(mail.bcc).toEqual([superEmail]);

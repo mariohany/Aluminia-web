@@ -187,7 +187,7 @@ export interface BillingDocumentSummary {
   createdByEmail: string | null
   createdAt: string
   /** The last email of it ("Emailed 25 Oct · 2 people"); failed sends aside. */
-  lastSent: { at: string; count: number } | null
+  lastSent: { at: string; to: string[] } | null
 }
 
 /** GET /admin/billing/fx?currency=… (B6). `source` says where the rate came

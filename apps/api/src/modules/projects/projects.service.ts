@@ -27,6 +27,8 @@ import {
   resolveScopedRefPair,
   toScopedRef,
 } from '../company-lookups/scoped-ref.util';
+import { PlanAccess } from '../subscriptions/plan-access.service';
+import { Company } from '../../database/control-plane/entities/company.entity';
 
 /**
  * Projects — manufacturing jobs — inside one manufacturer's schema.
@@ -45,6 +47,7 @@ export class ProjectsService {
   constructor(
     private readonly tenantContext: TenantContextService,
     @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly planAccess: PlanAccess,
   ) {}
 
   detail(id: string): Promise<ProjectDetail> {
@@ -89,6 +92,7 @@ export class ProjectsService {
       if (!clientExists) {
         throw new BadRequestException('That client does not exist.');
       }
+      await this.planAccess.assertCanCreate(manager, 'projects');
 
       const brandPair = resolveScopedRefPair(input.defaultSystemBrand);
       const catalogPair = resolveScopedRefPair(input.defaultSystemCatalog);
@@ -135,6 +139,7 @@ export class ProjectsService {
   update(id: string, input: UpdateProjectInput): Promise<ProjectDetail> {
     return this.tenantContext.run(async (manager) => {
       const project = await this.findOrFail(manager, id);
+      await this.planAccess.assertProjectsEditable(manager, [id]);
 
       // `undefined` means "absent from this request" and must leave the
       // column alone; `null` means "clear this field". Collapsing them
@@ -191,8 +196,8 @@ export class ProjectsService {
    * unknown number of window designs, so the typed-name friction
    * applies here too now, not just to the client cascade.
    */
-  remove(id: string, confirmName: string): Promise<void> {
-    return this.tenantContext.run(async (manager) => {
+  async remove(id: string, confirmName: string): Promise<void> {
+    await this.tenantContext.run(async (manager) => {
       const project = await this.findOrFail(manager, id);
 
       if (confirmName.trim() !== project.enName) {
@@ -203,6 +208,13 @@ export class ProjectsService {
 
       await manager.remove(project);
     });
+    // Deleting the project Free kept clears the pick (B13): with one
+    // project left it is editable, with more the admin picks again.
+    await this.users.manager.update(
+      Company,
+      { freeProjectId: id },
+      { freeProjectId: null },
+    );
   }
 
   private async findOrFail(

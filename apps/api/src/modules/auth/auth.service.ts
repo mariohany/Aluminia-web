@@ -23,6 +23,11 @@ import { REFRESH_GRACE_DEPTH, REFRESH_GRACE_MS } from './auth.constants';
 import type { JwtPayload } from './jwt-payload';
 import { PasswordService } from './password.service';
 import { LoginAttemptsService } from './login-attempts.service';
+import { subscriptionState } from '@repo/types/subscriptions';
+import {
+  PLAN_DEACTIVATED_MESSAGE,
+  SUBSCRIPTION_ENDED_MESSAGE,
+} from '../subscriptions/subscription-access';
 
 interface TokenPair {
   accessToken: string;
@@ -64,6 +69,14 @@ export class AuthService {
     const passwordOk = user
       ? await this.passwordService.verify(user.passwordHash, password)
       : await this.passwordService.verifyDummy(password);
+    // Only with the right password: the account was switched off by the
+    // company's drop to Free (B13), not by anyone's choice, so say so.
+    if (user && passwordOk && user.planDeactivated) {
+      throw new UnauthorizedException({
+        message: PLAN_DEACTIVATED_MESSAGE,
+        code: 'plan_deactivated',
+      });
+    }
     if (!user || !passwordOk || user.status !== UserStatus.ACTIVE) {
       await this.loginAttempts.recordFailure(email, ip);
       // Deliberately the same error for "no such user" and "wrong
@@ -79,10 +92,12 @@ export class AuthService {
     if (user.companyId) {
       const company = await this.companies.findOne({
         where: { id: user.companyId },
+        relations: { plan: true },
       });
       if (!company || company.status !== CompanyStatus.ACTIVE) {
         throw new UnauthorizedException('This company is not active.');
       }
+      assertSubscriptionOpen(company);
     }
 
     return this.issueTokens(user, this.sessions.manager, null);
@@ -138,6 +153,16 @@ export class AuthService {
       if (!user || user.status !== UserStatus.ACTIVE) {
         await manager.delete(Session, { id: session.id });
         throw new UnauthorizedException('User no longer active.');
+      }
+      if (user.companyId) {
+        const company = await manager.findOne(Company, {
+          where: { id: user.companyId },
+          relations: { plan: true },
+        });
+        if (company && isSubscriptionEnded(company)) {
+          await manager.delete(Session, { id: session.id });
+          assertSubscriptionOpen(company);
+        }
       }
 
       return this.issueTokens(user, manager, session);
@@ -231,4 +256,27 @@ function nextGraceTokens(rotatingFrom: Session): GraceToken[] {
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+function isSubscriptionEnded(company: Company): boolean {
+  if (!company.plan) return false;
+  const state = subscriptionState(
+    {
+      planKey: company.plan.key,
+      endsAt: company.endsAt,
+      isTrial: company.isTrial,
+    },
+    new Date(),
+  );
+  return state.kind === 'expired';
+}
+
+/** B10: a paid plan past its end blocks every user of the company. */
+function assertSubscriptionOpen(company: Company): void {
+  if (isSubscriptionEnded(company)) {
+    throw new UnauthorizedException({
+      message: SUBSCRIPTION_ENDED_MESSAGE,
+      code: 'subscription_ended',
+    });
+  }
 }

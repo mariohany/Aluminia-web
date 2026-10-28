@@ -114,6 +114,7 @@ export class CompaniesService {
           ? (projectCounts.get(company.id) ?? 0)
           : null,
       schemaName: company.schemaName,
+      freeProjectId: company.freeProjectId,
       updatedAt: company.updatedAt.toISOString(),
       users: users.map(toCompanyUserSummary),
       billing: billing.map(toBillingSummary),
@@ -323,6 +324,25 @@ export class CompaniesService {
       await queryRunner.release();
     }
     if (bumped.length > 0) await this.authVersions.publish(bumped);
+    return this.detail(id);
+  }
+
+  /** Clears the project Free keeps editable; the company admin picks again (Q5). */
+  async resetFreeProject(id: string, actorId: string): Promise<CompanyDetail> {
+    await this.dataSource.transaction(async (manager) => {
+      const company = await manager.findOne(Company, { where: { id } });
+      if (!company) throw new NotFoundException('Company not found.');
+      if (company.freeProjectId === null) return;
+      company.freeProjectId = null;
+      await manager.save(company);
+      await this.auditLog.record(manager, {
+        actorUserId: actorId,
+        action: 'company.free_project_reset',
+        targetType: 'company',
+        targetId: id,
+        metadata: { name: company.name },
+      });
+    });
     return this.detail(id);
   }
 

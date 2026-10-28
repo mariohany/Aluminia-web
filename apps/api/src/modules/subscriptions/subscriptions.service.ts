@@ -1,6 +1,18 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { In, type EntityManager } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, In, type EntityManager } from 'typeorm';
 import { UserRole } from '@repo/types/auth';
+import {
+  FREE_PLAN_LIMITS,
+  type PlanFeature,
+  type PlanKey,
+} from '@repo/types/plans';
+import { subscriptionState } from '@repo/types/subscriptions';
+import { Company } from '../../database/control-plane/entities/company.entity';
+import { Plan } from '../../database/control-plane/entities/plan.entity';
+import { BillingRecord } from '../../database/control-plane/entities/billing-record.entity';
+import { rollbackQuietly } from '../../database/rollback';
+import type { SubscriptionAccess } from './subscription-access';
 import {
   User,
   UserStatus,
@@ -25,7 +37,121 @@ export interface FreeSeatChange {
  */
 @Injectable()
 export class SubscriptionsService {
-  constructor(private readonly authVersions: AuthVersionService) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly authVersions: AuthVersionService,
+  ) {}
+
+  /**
+   * The company's plan right now, for SubscriptionGuard. A trial past its
+   * end is settled first (B11: it drops to Free, `endTrial`), so every
+   * caller sees the plan the company is really on. Null for an unknown
+   * company (the guards after this one refuse it).
+   */
+  async access(
+    companyId: string,
+  ): Promise<{ access: SubscriptionAccess; deactivated: string[] } | null> {
+    let facts = await this.facts(companyId);
+    if (!facts) return null;
+    let deactivated: string[] = [];
+    if (facts.isTrial && facts.endsAt && facts.endsAt.getTime() < Date.now()) {
+      deactivated = await this.endTrial(companyId);
+      facts = (await this.facts(companyId))!;
+    }
+    const state = subscriptionState(facts, new Date());
+    const free = state.kind === 'free';
+    return {
+      access: {
+        companyId,
+        planKey: facts.planKey,
+        state,
+        free,
+        // Free has none (B12); an expired plan is blocked outright anyway.
+        features: free ? [] : facts.features,
+        freeProjectId: facts.freeProjectId,
+      },
+      deactivated,
+    };
+  }
+
+  private async facts(companyId: string): Promise<{
+    planKey: PlanKey;
+    features: PlanFeature[];
+    endsAt: Date | null;
+    isTrial: boolean;
+    freeProjectId: string | null;
+  } | null> {
+    const company = await this.dataSource.getRepository(Company).findOne({
+      where: { id: companyId },
+      relations: { plan: true },
+    });
+    if (!company?.plan) return null;
+    return {
+      planKey: company.plan.key,
+      features: company.plan.features,
+      endsAt: company.endsAt,
+      isTrial: company.isTrial,
+      freeProjectId: company.freeProjectId,
+    };
+  }
+
+  /**
+   * A trial ended unpaid (B11, B13): the company drops to Free, the oldest
+   * active admin stays and everyone else is deactivated. Idempotent under
+   * the company row lock: a second request that sees the same lapse finds
+   * it already settled. Returns who was deactivated.
+   */
+  async endTrial(companyId: string): Promise<string[]> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    let change: FreeSeatChange | null = null;
+    try {
+      const manager = queryRunner.manager;
+      const company = await manager.findOne(Company, {
+        where: { id: companyId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const lapsed =
+        company?.isTrial &&
+        company.endsAt !== null &&
+        company.endsAt.getTime() < Date.now();
+      if (company && lapsed) {
+        const free = await manager.findOneOrFail(Plan, {
+          where: { key: 'free' },
+        });
+        change = await this.dropToFree(manager, companyId, null);
+        Object.assign(company, {
+          planId: free.id,
+          maxUsers: FREE_PLAN_LIMITS.seats,
+          endsAt: null,
+          isTrial: false,
+          freeProjectId: null,
+        });
+        await manager.save(company);
+        await manager.insert(BillingRecord, {
+          companyId,
+          planId: free.id,
+          maxUsers: FREE_PLAN_LIMITS.seats,
+          endsAt: null,
+          isTrial: false,
+          reason: 'trial_ended',
+          notes: null,
+          actorId: null,
+        });
+      }
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await rollbackQuietly(queryRunner);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+    if (change && change.bumped.length > 0) {
+      await this.authVersions.publish(change.bumped);
+    }
+    return change?.deactivated ?? [];
+  }
 
   /**
    * Free has one seat: ONE company admin stays active and every other

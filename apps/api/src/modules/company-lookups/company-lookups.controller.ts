@@ -59,6 +59,7 @@ import { CreateCompanySystemProfileDto } from './dto/create-company-system-profi
 import { UpdateCompanySystemProfileDto } from './dto/update-company-system-profile.dto';
 import { BulkDuplicateCompanySystemProfilesDto } from './dto/bulk-duplicate-company-system-profiles.dto';
 import { BulkIdsDto } from '../lookups/dto/bulk-ids.dto';
+import { RequiresFeature } from '../../common/decorators/requires-feature.decorator';
 
 // A company's own rows in the same 8 lookup categories as the platform
 // catalogue (GET /lookups/:slice) — see
@@ -75,6 +76,9 @@ import { BulkIdsDto } from '../lookups/dto/bulk-ids.dto';
 // members' versions, and GET version all of them.
 @Roles(UserRole.COMPANY_ADMIN, UserRole.USER)
 @TenantScoped()
+// The company's own catalogue needs a paid plan to change (B12); the
+// editor reads it on every plan.
+@RequiresFeature('data', { writesOnly: true })
 @Controller('company/lookups')
 export class CompanyLookupsController {
   constructor(

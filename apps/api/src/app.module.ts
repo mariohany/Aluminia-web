@@ -12,6 +12,7 @@ import { TenantDatabaseModule } from './database/tenant/typeorm.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenancyModule } from './modules/tenancy/tenancy.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { UsersModule } from './modules/users/users.module';
@@ -43,6 +44,8 @@ import { FilesModule } from './modules/files/files.module';
     // After AuthModule: its guard keys the limit on request.user.
     RateLimitModule,
     TenancyModule,
+    // After TenancyModule: its guard (SubscriptionGuard) needs request.user.
+    SubscriptionsModule,
     AuditLogModule,
     CompaniesModule,
     UsersModule,

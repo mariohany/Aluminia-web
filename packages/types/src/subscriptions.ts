@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { MAX_PLAN_SEATS, PLAN_KEYS, type PlanKey } from './plans.ts'
+import { MAX_PLAN_SEATS, PLAN_KEYS, type PlanFeature, type PlanKey, type PlanRef } from './plans.ts'
 
 // A company's subscription (docs/subscriptions_planing.md §3b, B2, B9,
 // B11). Pure and shared: the API enforces with it, the web shows it.
@@ -153,3 +153,22 @@ export const updateSubscriptionSchema = z
     }
   })
 export type UpdateSubscriptionInput = z.infer<typeof updateSubscriptionSchema>
+
+// GET /company/subscription (every company user): what the workspace
+// shows and dims (B12, B13, B15). `limits` null = unlimited (paid plans).
+export interface CompanySubscription {
+  state: SubscriptionState
+  plan: PlanRef
+  features: PlanFeature[]
+  limits: { clients: number | null; projects: number | null }
+  counts: { clients: number; projects: number }
+  maxUsers: number
+  seatsUsed: number
+  freeProjectId: string | null
+  // B13: on Free with more than one project and none picked yet, the
+  // company admin picks the one that stays editable.
+  needsProjectPick: boolean
+}
+
+export const pickFreeProjectSchema = z.object({ projectId: z.uuid() }).strict()
+export type PickFreeProjectInput = z.infer<typeof pickFreeProjectSchema>

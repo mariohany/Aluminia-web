@@ -28,6 +28,7 @@ import {
   StopSolveDto,
 } from './dto/solve.dto';
 import { ReportsService } from './reports.service';
+import { RequiresFeature } from '../../common/decorators/requires-feature.decorator';
 
 /**
  * The Reports section's API (docs/reports_planing.md §7,
@@ -37,6 +38,8 @@ import { ReportsService } from './reports.service';
  */
 @Roles(UserRole.COMPANY_ADMIN, UserRole.USER)
 @TenantScoped()
+// Every report, cutting settings included, needs a paid plan (B12).
+@RequiresFeature('reports')
 @Controller()
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}

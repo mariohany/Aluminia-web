@@ -102,6 +102,8 @@ export interface CompanyUserSummary {
 
 export interface CompanyDetail extends CompanyListItem {
   schemaName: string
+  // B13: the project Free keeps editable, once the company admin picked it.
+  freeProjectId: string | null
   updatedAt: string
   billing: BillingRecordSummary[]
   users: CompanyUserSummary[]

@@ -65,6 +65,16 @@ export class CompaniesController {
     return this.companies.updateSubscription(id, dto, actor.id);
   }
 
+  // Free (Q5): the company admin picks the editable project once; only
+  // the super admin clears the pick so they can pick again.
+  @Delete(':id/free-project')
+  resetFreeProject(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<CompanyDetail> {
+    return this.companies.resetFreeProject(id, actor.id);
+  }
+
   @Post(':id/archive')
   @HttpCode(200)
   archive(

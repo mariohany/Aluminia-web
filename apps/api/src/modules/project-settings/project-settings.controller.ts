@@ -24,6 +24,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantScoped } from '../../common/decorators/tenant-scoped.decorator';
 import { ProjectSettingsService } from './project-settings.service';
 import { ProjectStatusesService } from './project-statuses.service';
+import { RequiresFeature } from '../../common/decorators/requires-feature.decorator';
 
 class UpdateProjectSettingsDto extends createZodDto(
   updateProjectSettingsSchema,
@@ -42,6 +43,7 @@ class ReorderProjectStatusesDto extends createZodDto(
  */
 @Roles(UserRole.COMPANY_ADMIN, UserRole.USER)
 @TenantScoped()
+@RequiresFeature('project_settings', { writesOnly: true })
 @Controller('project-settings')
 export class ProjectSettingsController {
   constructor(private readonly settings: ProjectSettingsService) {}
@@ -60,6 +62,7 @@ export class ProjectSettingsController {
 
 @Roles(UserRole.COMPANY_ADMIN, UserRole.USER)
 @TenantScoped()
+@RequiresFeature('project_settings', { writesOnly: true })
 @Controller('project-statuses')
 export class ProjectStatusesController {
   constructor(private readonly statuses: ProjectStatusesService) {}

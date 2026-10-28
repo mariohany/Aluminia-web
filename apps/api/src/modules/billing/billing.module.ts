@@ -1,13 +1,31 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { FxRate } from '../../database/control-plane/entities/fx-rate.entity';
 import { AuditLogModule } from '../audit-log/audit-log.module';
 import { FilesModule } from '../files/files.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { TenancyModule } from '../tenancy/tenancy.module';
+import { AdminBillingController } from './admin-billing.controller';
 import { AdminBillingProfileController } from './admin-billing-profile.controller';
+import { BillingDocumentsService } from './billing-documents.service';
 import { BillingProfileService } from './billing-profile.service';
+import { FX_SOURCE, FxService, openErApiSource } from './fx.service';
 
 @Module({
-  imports: [AuditLogModule, FilesModule],
-  controllers: [AdminBillingProfileController],
-  providers: [BillingProfileService],
-  exports: [BillingProfileService],
+  imports: [
+    TypeOrmModule.forFeature([FxRate]),
+    AuditLogModule,
+    FilesModule,
+    SubscriptionsModule,
+    TenancyModule,
+  ],
+  controllers: [AdminBillingProfileController, AdminBillingController],
+  providers: [
+    BillingProfileService,
+    BillingDocumentsService,
+    FxService,
+    { provide: FX_SOURCE, useValue: openErApiSource },
+  ],
+  exports: [BillingProfileService, BillingDocumentsService],
 })
 export class BillingModule {}

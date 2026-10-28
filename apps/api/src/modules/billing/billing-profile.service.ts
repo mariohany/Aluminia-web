@@ -103,6 +103,7 @@ export class BillingProfileService {
         ['quotation', nextQuotation],
         ['invoice', nextInvoice],
       ] as const) {
+        if (next === undefined) continue;
         const from = await moveCounter(manager, kind, year, next);
         if (from !== next) {
           changes[`next_${kind}`] = { from, to: next };

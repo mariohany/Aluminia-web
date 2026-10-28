@@ -17,8 +17,8 @@ import { PasswordService } from './../src/modules/auth/password.service';
 /**
  * Billing › Billing profile (docs/subscriptions_planing.md B17, §3e): the
  * seller details, the platform's own logo (a file owned by no company),
- * and this year's next numbers, which only go up. The profile row and the
- * counters are shared by every suite, so this one puts back what it found.
+ * and this year's next numbers, which only go up. The profile row is
+ * shared by every suite, so this one puts back what it found.
  */
 describe('Admin billing profile (e2e)', () => {
   let app: INestApplication<App>;
@@ -39,7 +39,6 @@ describe('Admin billing profile (e2e)', () => {
   let superToken: string;
   let superId: string;
   let originalProfile: Array<Record<string, unknown>>;
-  let originalCounters: Array<{ kind: string; year: number; last: number }>;
   let original: BillingProfile;
 
   beforeAll(async () => {
@@ -67,9 +66,6 @@ describe('Admin billing profile (e2e)', () => {
     );
     superId = rows[0].id;
     originalProfile = await controlPlane.query(`SELECT * FROM billing_profile`);
-    originalCounters = await controlPlane.query(
-      `SELECT kind, year, last FROM billing_counters`,
-    );
 
     companyAdminToken = await loginAs(companyAdminEmail);
     superToken = await loginAs(superAdminEmail);
@@ -78,22 +74,22 @@ describe('Admin billing profile (e2e)', () => {
 
   afterAll(async () => {
     try {
-      await controlPlane.query(`DELETE FROM billing_profile`);
+      // Put back the profile it found (the billing-documents suite needs
+      // one, so a fresh database keeps this suite's). The counters are
+      // left: numbers only go up, and another suite may be issuing some.
       for (const row of originalProfile ?? []) {
         const columns = Object.keys(row);
         await controlPlane.query(
           `INSERT INTO billing_profile (${columns.map((c) => `"${c}"`).join(', ')})
-           VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')})`,
+           VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')})
+           ON CONFLICT (id) DO UPDATE SET ${columns.map((c) => `"${c}" = EXCLUDED."${c}"`).join(', ')}`,
           columns.map((c) => row[c]),
         );
       }
-      await controlPlane.query(`DELETE FROM billing_counters`);
-      for (const c of originalCounters ?? []) {
-        await controlPlane.query(
-          `INSERT INTO billing_counters (kind, year, last) VALUES ($1, $2, $3)`,
-          [c.kind, c.year, c.last],
-        );
-      }
+      await controlPlane.query(
+        `UPDATE billing_profile SET logo_file_id = NULL, updated_by = NULL WHERE updated_by = $1`,
+        [superId],
+      );
       await controlPlane.query(
         `DELETE FROM files WHERE company_id IS NULL AND uploaded_by_user_id = $1`,
         [superId],
@@ -224,11 +220,12 @@ describe('Admin billing profile (e2e)', () => {
     );
     expect(audit.map((a) => a.action)).toContain('billing.profile_updated');
 
-    // A logo replaced by none is released.
+    // A logo replaced by none is released. The numbers left out stay as
+    // they are (another suite may have issued some since).
     await request(app.getHttpServer())
       .put('/admin/billing-profile')
       .set(as(superToken))
-      .send(input(next))
+      .send(input({ nextQuotation: undefined, nextInvoice: undefined }))
       .expect(200);
     await request(app.getHttpServer())
       .get(`/files/${logoFileId}`)
@@ -249,6 +246,9 @@ describe('Admin billing profile (e2e)', () => {
       )
       .expect(400);
     expect((res.body as { code?: string }).code).toBe('number_too_low');
-    expect((await get()).numbering).toEqual(current);
+    // Unchanged by the refused save (another suite may issue numbers meanwhile).
+    const after = (await get()).numbering;
+    expect(after.nextQuotation).toBeGreaterThanOrEqual(current.nextQuotation);
+    expect(after.nextInvoice).toBeGreaterThanOrEqual(current.nextInvoice);
   });
 });

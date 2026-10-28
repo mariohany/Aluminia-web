@@ -46,9 +46,11 @@ export const updateBillingProfileSchema = z
     instapay: optionalText(BILLING_PROFILE_LIMITS.instapay),
     /** An id from `POST /files` (purpose `billing_logo`); null = none. */
     logoFileId: z.uuid().nullable(),
-    /** This year's next numbers; they can only go up (B17: no gaps, never reused). */
-    nextQuotation: z.number().int().min(1).max(999_999),
-    nextInvoice: z.number().int().min(1).max(999_999),
+    /** This year's next numbers; they can only go up (B17: no gaps, never
+     * reused). Sent only when changed, so saving the details never trips on
+     * a number issued meanwhile. */
+    nextQuotation: z.number().int().min(1).max(999_999).optional(),
+    nextInvoice: z.number().int().min(1).max(999_999).optional(),
   })
   .strict()
 export type UpdateBillingProfileInput = z.infer<typeof updateBillingProfileSchema>

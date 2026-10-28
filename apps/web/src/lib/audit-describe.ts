@@ -2,7 +2,7 @@
 // activity" card and the Logs page). Plain module so the hook and the
 // AuditIcon component (components/admin/audit-entry.tsx) live apart.
 import { useTranslation } from 'react-i18next'
-import { Building2, Database, Phone, UserRound, type LucideIcon } from 'lucide-react'
+import { Building2, Database, Layers, Phone, UserRound, type LucideIcon } from 'lucide-react'
 import type { AuditLogEntry } from '@repo/types/logs'
 
 type Tone = 'primary' | 'danger' | 'warn' | 'info' | 'neutral'
@@ -93,6 +93,10 @@ function describe(entry: AuditLogEntry, t: Translate, tLookups: Translate, exist
       }
     }
     return { ...fallback, icon: Phone }
+  }
+
+  if (entry.action === 'plan.updated') {
+    return { icon: Layers, tone: 'info', text: t('dashboardPage.activity.actions.plan.updated', { name: text(meta.name) }) }
   }
 
   if (area === 'lookup') {

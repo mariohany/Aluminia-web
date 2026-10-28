@@ -5,11 +5,13 @@
     "users": "Users",
     "dataWarehouse": "Data warehouse",
     "logs": "Logs",
+    "plans": "Plans",
     "groups": {
       "overview": "Overview",
       "tenants": "Tenants",
       "catalogue": "Catalogue",
-      "system": "System"
+      "system": "System",
+      "billing": "Billing"
     }
   },
   "sidebar": {
@@ -87,6 +89,9 @@
           "deleted": "Deleted the lead from {{name}}",
           "deletedBulk_one": "Deleted {{count}} lead",
           "deletedBulk_other": "Deleted {{count}} leads"
+        },
+        "plan": {
+          "updated": "Edited the {{name}} plan"
         }
       },
       "lookup": {
@@ -113,7 +118,8 @@
         "company": "Companies",
         "user": "Users",
         "lookup": "Catalogue",
-        "lead": "Leads"
+        "lead": "Leads",
+        "plan": "Plans"
       },
       "allActors": "All admins",
       "clearAll": "Clear filters",
@@ -409,5 +415,39 @@
     "confirmAction": "End session",
     "success": "Session ended for {{email}}.",
     "error": "That didn't work. Try again."
+  },
+  "plansPage": {
+    "title": "Plans",
+    "subtitle": "A feature switched off hides it for every company on that plan at their next request. Prices are in EGP; a quotation in another currency converts at that day's rate.",
+    "free": "Free is fixed: 1 seat, 1 client, 1 project, window editing only. New companies start on it.",
+    "nameEn": "Name (English)",
+    "nameAr": "Name (Arabic)",
+    "seats": "Seats",
+    "seatsHint": "Default for new companies; each company can differ",
+    "price": "Price",
+    "monthly": "Monthly",
+    "monthlySuffix": "EGP / mo",
+    "monthlyHint": "1, 3 and 6 months",
+    "annual": "Annual",
+    "annualSuffix": "EGP / yr",
+    "annualSaves": "12 months · saves {{percent}} %",
+    "annualDearer": "12 months · costs more than 12 × monthly",
+    "annualSame": "12 months · same as 12 × monthly",
+    "features": "Features",
+    "featureNames": {
+      "reports": "Reports (bar optimiser)",
+      "data": "Own catalogue (Data)",
+      "project_settings": "Project settings"
+    },
+    "save": "Save",
+    "discard": "Discard",
+    "saved": "Plans saved.",
+    "saveError": "Couldn't save the plans. Try again.",
+    "loadError": "Couldn't load the plans. Try again.",
+    "errors": {
+      "required": "Required",
+      "seats": "1 to {{max}}",
+      "price": "Enter a price above 0"
+    }
   }
 }

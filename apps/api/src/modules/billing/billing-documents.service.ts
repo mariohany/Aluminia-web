@@ -11,6 +11,7 @@ import {
   documentTotals,
   type BillingDocumentSummary,
   type DocumentParty,
+  type DocumentSeller,
   type MarkPaidInput,
   type QuotationInput,
   type TransactionsPage,
@@ -479,16 +480,22 @@ export class BillingDocumentsService {
   private async summaries(
     rows: BillingDocument[],
   ): Promise<BillingDocumentSummary[]> {
-    const quotationIds = rows
-      .filter((r) => r.kind === 'quotation')
-      .map((r) => r.id);
-    const invoices: Array<{ id: string; quotation_id: string }> =
-      quotationIds.length
-        ? await this.dataSource.query(
-            `SELECT id, quotation_id FROM billing_documents WHERE quotation_id = ANY($1)`,
-            [quotationIds],
-          )
-        : [];
+    // Each quotation's invoice, and each invoice's quotation number.
+    const ids = rows.map((r) => r.id);
+    const quotationIds = rows.flatMap((r) =>
+      r.quotationId ? [r.quotationId] : [],
+    );
+    const linked: Array<{
+      id: string;
+      number: string;
+      quotation_id: string | null;
+    }> = ids.length
+      ? await this.dataSource.query(
+          `SELECT id, number, quotation_id FROM billing_documents
+             WHERE quotation_id = ANY($1) OR id = ANY($2)`,
+          [ids, quotationIds],
+        )
+      : [];
     const today = cairoDateOf(new Date());
     return rows.map((doc) => ({
       id: doc.id,
@@ -500,8 +507,12 @@ export class BillingDocumentsService {
         name: doc.company!.name,
         nameAr: doc.company!.nameAr,
       },
+      quotationNumber:
+        linked.find((l) => l.id === doc.quotationId)?.number ?? null,
+      seller: doc.seller,
+      buyer: doc.buyer,
       quotationId: doc.quotationId,
-      invoiceId: invoices.find((i) => i.quotation_id === doc.id)?.id ?? null,
+      invoiceId: linked.find((l) => l.quotation_id === doc.id)?.id ?? null,
       plan: {
         ...toPlanRef(doc.plan!),
         nameEn: doc.planNameEn,
@@ -644,9 +655,7 @@ async function lockDocument(
 
 /** The seller as issued (B17). Nothing is issued before the Billing
  * profile is saved: 409 `billing_profile_missing`. */
-async function sellerOf(
-  manager: EntityManager,
-): Promise<DocumentParty & Record<string, unknown>> {
+async function sellerOf(manager: EntityManager): Promise<DocumentSeller> {
   const row = await manager.findOne(BillingProfileRow, { where: { id: 1 } });
   if (!row) {
     throw new ConflictException({

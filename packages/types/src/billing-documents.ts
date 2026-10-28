@@ -143,10 +143,24 @@ export interface DocumentParty {
   commercialRegister: string | null
 }
 
+/** The seller as issued (B17): the Billing profile at that moment. */
+export interface DocumentSeller extends DocumentParty {
+  billingEmail: string
+  phone: string | null
+  bankAccount: string
+  instapay: string | null
+  /** A platform file (purpose billing_logo). */
+  logoFileId: string | null
+}
+
 export interface BillingDocumentSummary {
   id: string
   kind: BillingDocumentKind
   number: string
+  /** The invoice's quotation number (printed "From quotation"). */
+  quotationNumber: string | null
+  seller: DocumentSeller
+  buyer: DocumentParty
   status: DocumentStatus
   company: { id: string; name: string; nameAr: string | null }
   /** The invoice's quotation, or the quotation's invoice. */

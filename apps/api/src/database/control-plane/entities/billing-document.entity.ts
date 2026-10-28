@@ -11,6 +11,7 @@ import type { BillingDocumentKind } from '@repo/types/billing-profile';
 import type {
   DiscountKind,
   DocumentParty,
+  DocumentSeller,
   PaymentMethod,
   QuotationMonths,
   StoredDocumentStatus,
@@ -127,7 +128,7 @@ export class BillingDocument {
   note: string | null;
 
   @Column({ type: 'jsonb' })
-  seller: DocumentParty & Record<string, unknown>;
+  seller: DocumentSeller;
 
   @Column({ type: 'jsonb' })
   buyer: DocumentParty;

@@ -296,6 +296,10 @@ describe('Billing documents (e2e)', () => {
       paymentReference: 'SNB-55120931',
     });
     expect(invoice.number).toMatch(/^INV-\d{4}-\d{4,}$/);
+    // What the PDF prints (§5): its quotation's number and the snapshots.
+    expect(invoice.quotationNumber).toBe(q.number);
+    expect(invoice.seller.bankAccount).toBeTruthy();
+    expect(invoice.buyer.nameEn).toBe(companyName);
     expect((await company()).key).toBe('pro');
     expect((await company()).max_users).toBe(5);
 

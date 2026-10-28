@@ -16,6 +16,7 @@ import { useAuth } from '@/lib/auth-context'
 import { usePlanGate } from '@/lib/plan-gate'
 import { usePlanLock } from '@/lib/plan-lock'
 import { PlanLockProvider } from '@/components/workspace/plan/plan-lock'
+import { ProfileRequiredProvider } from '@/components/workspace/plan/profile-required'
 import { FreeProjectDialog } from '@/components/workspace/plan/free-project-dialog'
 import { useProjectQuery } from '@/lib/projects-queries'
 import { isRtlLanguage } from '@/lib/i18n'
@@ -91,7 +92,9 @@ function readLastSelection(): LastSelection | null {
 export function WorkspaceLayout() {
   return (
     <PlanLockProvider>
-      <WorkspaceShell />
+      <ProfileRequiredProvider>
+        <WorkspaceShell />
+      </ProfileRequiredProvider>
     </PlanLockProvider>
   )
 }

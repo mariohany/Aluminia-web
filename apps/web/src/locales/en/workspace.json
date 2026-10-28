@@ -877,6 +877,27 @@
   "planErrors": {
     "feature_locked": "That needs a paid plan.",
     "plan_limit": "The Free plan doesn’t allow more.",
-    "project_read_only": "This project is read-only on the Free plan."
+    "project_read_only": "This project is read-only on the Free plan.",
+    "profile_incomplete": "Complete the company profile first."
+  },
+  "profileRequired": {
+    "adminTitle": "Complete your company profile",
+    "adminBody": "Reports and other PDFs print your company’s details, so they can’t be made until these are filled in. Everything else works as usual.",
+    "userTitle": "Company profile incomplete",
+    "userBody": "Reports and other PDFs can’t be made until the company profile is complete. Contact your company admin ({{email}}) to complete it.",
+    "userBodyNoAdmin": "Reports and other PDFs can’t be made until the company profile is complete. Contact your company admin to complete it.",
+    "fields": {
+      "enName": "Company name (English)",
+      "arName": "Company name (Arabic)",
+      "taxId": "Tax ID",
+      "commercialRegister": "Commercial register",
+      "phoneOrEmail": "Phone or email"
+    },
+    "later": "Later",
+    "ok": "OK",
+    "goToProfile": "Go to Company profile",
+    "missingTitle": "Complete the company profile to print",
+    "missingBody": "Reports and other PDFs need the fields marked * (a phone or an email is enough).",
+    "missingField": "Required"
   }
 }

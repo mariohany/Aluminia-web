@@ -31,7 +31,7 @@ function codeOf(body: unknown): string | undefined {
 // The plan says no (docs/subscriptions_planing.md §4b): the screens dim
 // these actions up front, so this only fires after a race; it still reads
 // as a sentence in the user's language, not the API's English.
-const PLAN_ERROR_CODES = ['feature_locked', 'plan_limit', 'project_read_only'] as const
+const PLAN_ERROR_CODES = ['feature_locked', 'plan_limit', 'project_read_only', 'profile_incomplete'] as const
 
 // The global exception filter always shapes error bodies as
 // `{ message, ... }`. Surfacing that message (a validation failure, a

@@ -27,6 +27,7 @@ import { WindowsModule } from './modules/windows/windows.module';
 import { CompanyModule } from './modules/company/company.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { PlansModule } from './modules/plans/plans.module';
+import { MailModule } from './mail/mail.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { StorageModule } from './storage/storage.module';
@@ -40,6 +41,7 @@ import { FilesModule } from './modules/files/files.module';
     ControlPlaneDatabaseModule,
     TenantDatabaseModule,
     StorageModule,
+    MailModule,
     HealthModule,
     AuthModule,
     // After AuthModule: its guard keys the limit on request.user.

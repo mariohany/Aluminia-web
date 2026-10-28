@@ -53,6 +53,13 @@ export const envSchema = z.object({
   SENTRY_DSN: z.url().optional(),
   SENTRY_ENVIRONMENT: z.enum(['test', 'production']).optional(),
   SENTRY_RELEASE: z.string().min(1).optional(),
+
+  // Email (docs/subscriptions_planing.md §6a): Brevo's transactional API.
+  // No key = the log mailer (laptops, CI, e2e never send). MAIL_FROM must
+  // be a sender verified in Brevo.
+  BREVO_API_KEY: z.string().min(1).optional(),
+  MAIL_FROM: z.email().optional(),
+  MAIL_FROM_NAME: z.string().min(1).default('Aluminia'),
 });
 
 export type Env = z.infer<typeof envSchema>;

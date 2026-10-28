@@ -10,12 +10,14 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { UserRole } from '@repo/types/auth';
 import {
   markPaidSchema,
   quotationInputSchema,
+  sendDocumentSchema,
   transactionsQuerySchema,
   type BillingDocumentSummary,
   type FxQuote,
@@ -28,9 +30,11 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/jwt-payload';
 import { BillingDocumentsService } from './billing-documents.service';
 import { FxService } from './fx.service';
+import { defaultSubject } from '../../mail/templates';
 
 class QuotationDto extends createZodDto(quotationInputSchema) {}
 class MarkPaidDto extends createZodDto(markPaidSchema) {}
+class SendDocumentDto extends createZodDto(sendDocumentSchema) {}
 class TransactionsQueryDto extends createZodDto(transactionsQuerySchema) {}
 class FxQueryDto extends createZodDto(
   z.object({ currency: z.enum(BILLING_CURRENCIES) }),
@@ -109,6 +113,26 @@ export class AdminBillingController {
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<BillingDocumentSummary> {
     return this.documents.voidQuotation(id, actor.id);
+  }
+
+  /** Emails it with the PDF the browser drew (B16, Q1). */
+  @Post('billing/documents/:id/send')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  send(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SendDocumentDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<BillingDocumentSummary> {
+    return this.documents.send(id, dto, actor.id);
+  }
+
+  /** The prefilled subject of the send step. */
+  @Get('billing/documents/:id/send-defaults')
+  async sendDefaults(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<{ subject: string }> {
+    return { subject: defaultSubject(await this.documents.get(id)) };
   }
 
   @Post('billing/documents/:id/pay')

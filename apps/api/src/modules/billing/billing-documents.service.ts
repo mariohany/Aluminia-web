@@ -1,6 +1,8 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -14,6 +16,7 @@ import {
   type DocumentSeller,
   type MarkPaidInput,
   type QuotationInput,
+  type SendDocumentInput,
   type TransactionsPage,
   type TransactionsQuery,
   type TransactionsSummary,
@@ -29,6 +32,7 @@ import {
   endOfCairoDay,
 } from '@repo/types/subscriptions';
 import { BillingDocument } from '../../database/control-plane/entities/billing-document.entity';
+import { BillingSend } from '../../database/control-plane/entities/billing-send.entity';
 import { BillingProfileRow } from '../../database/control-plane/entities/billing-profile.entity';
 import { BillingRecord } from '../../database/control-plane/entities/billing-record.entity';
 import { Company } from '../../database/control-plane/entities/company.entity';
@@ -36,6 +40,8 @@ import { Plan } from '../../database/control-plane/entities/plan.entity';
 import { User } from '../../database/control-plane/entities/user.entity';
 import { CompanyProfileRow } from '../../database/tenant/entities/company-profile.entity';
 import { rollbackQuietly } from '../../database/rollback';
+import { MAILER, type Mailer } from '../../mail/mailer';
+import { documentEmail } from '../../mail/templates';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { toPlanRef } from '../plans/plans.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
@@ -66,6 +72,7 @@ export class BillingDocumentsService {
     private readonly tenants: TenantConnectionService,
     private readonly subscriptions: SubscriptionsService,
     private readonly auditLog: AuditLogService,
+    @Inject(MAILER) private readonly mailer: Mailer,
   ) {}
 
   async listForCompany(companyId: string): Promise<BillingDocumentSummary[]> {
@@ -320,6 +327,89 @@ export class BillingDocumentsService {
     return this.get(invoiceId);
   }
 
+  /**
+   * Emails a quotation or invoice (B16, §6b) with the PDF the browser drew
+   * (Q1). Every attempt is recorded in `billing_sends`, a failure too, and
+   * a failure is answered 502 `mail_failed`, never retried silently. A
+   * draft quotation becomes `sent`.
+   */
+  async send(
+    id: string,
+    input: SendDocumentInput,
+    actorId: string,
+  ): Promise<BillingDocumentSummary> {
+    const doc = await this.get(id);
+    if (doc.status === 'void') {
+      throw new ConflictException({
+        message: 'A void quotation is not sent.',
+        code: 'not_sendable',
+      });
+    }
+    const pdf = Buffer.from(input.pdfBase64, 'base64');
+    if (pdf.subarray(0, 5).toString('latin1') !== '%PDF-') {
+      throw new BadRequestException('The attachment is not a PDF.');
+    }
+    const to = [...new Set(input.to.map((e) => e.toLowerCase()))];
+    const actor = await this.dataSource.manager.findOne(User, {
+      where: { id: actorId },
+    });
+    const copy =
+      input.copyMe && actor && !to.includes(actor.email.toLowerCase())
+        ? [actor.email]
+        : [];
+
+    let messageId: string | null = null;
+    let error: string | null = null;
+    try {
+      ({ messageId } = await this.mailer.send({
+        to,
+        bcc: copy,
+        ...documentEmail(doc, input.subject),
+        attachments: [
+          { name: `${doc.number}.pdf`, contentBase64: pdf.toString('base64') },
+        ],
+      }));
+    } catch (err) {
+      error = (err as Error).message.slice(0, 1000);
+    }
+
+    await this.inTransaction(async (manager) => {
+      await manager.insert(BillingSend, {
+        documentId: id,
+        to,
+        subject: input.subject,
+        copyToMe: input.copyMe,
+        providerMessageId: messageId,
+        error,
+        sentBy: actorId,
+      });
+      if (error) return;
+      await manager.update(
+        BillingDocument,
+        { id, kind: 'quotation', status: 'draft' },
+        { status: 'sent' },
+      );
+      await this.auditLog.record(manager, {
+        actorUserId: actorId,
+        action: 'billing.document_sent',
+        targetType: 'company',
+        targetId: doc.company.id,
+        metadata: {
+          name: doc.company.name,
+          number: doc.number,
+          count: to.length,
+        },
+      });
+    });
+    if (error) {
+      throw new BadGatewayException({
+        message: `The email was not sent: ${error}`,
+        code: 'mail_failed',
+      });
+    }
+    return this.get(id);
+  }
+
   // ---- Transactions (B21) ----
 
   async transactions(query: TransactionsQuery): Promise<TransactionsPage> {
@@ -496,6 +586,15 @@ export class BillingDocumentsService {
           [ids, quotationIds],
         )
       : [];
+    const sends: Array<{ document_id: string; sent_at: Date; count: number }> =
+      ids.length
+        ? await this.dataSource.query(
+            `SELECT DISTINCT ON (document_id) document_id, sent_at, cardinality("to") AS count
+             FROM billing_sends WHERE document_id = ANY($1) AND error IS NULL
+             ORDER BY document_id, sent_at DESC`,
+            [ids],
+          )
+        : [];
     const today = cairoDateOf(new Date());
     return rows.map((doc) => ({
       id: doc.id,
@@ -543,6 +642,7 @@ export class BillingDocumentsService {
       paymentReference: doc.paymentReference,
       createdByEmail: doc.creator?.email ?? null,
       createdAt: doc.createdAt.toISOString(),
+      lastSent: lastSentOf(sends.find((x) => x.document_id === doc.id)),
     }));
   }
 
@@ -692,6 +792,14 @@ async function takeNumber(
     [kind, year],
   );
   return documentNumber(kind, year, row.last);
+}
+
+function lastSentOf(
+  row: { sent_at: Date; count: number } | undefined,
+): BillingDocumentSummary['lastSent'] {
+  return row
+    ? { at: new Date(row.sent_at).toISOString(), count: Number(row.count) }
+    : null;
 }
 
 function encodeCursor(at: Date, id: string): string {

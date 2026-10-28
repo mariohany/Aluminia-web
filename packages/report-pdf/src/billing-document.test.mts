@@ -62,6 +62,7 @@ const quotation: BillingDocumentSummary = {
   paymentReference: null,
   createdByEmail: null,
   createdAt: '2026-10-25T09:00:00.000Z',
+  lastSent: null,
 }
 
 const invoice: BillingDocumentSummary = {

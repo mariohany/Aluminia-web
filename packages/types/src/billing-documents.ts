@@ -186,6 +186,8 @@ export interface BillingDocumentSummary {
   paymentReference: string | null
   createdByEmail: string | null
   createdAt: string
+  /** The last email of it ("Emailed 25 Oct · 2 people"); failed sends aside. */
+  lastSent: { at: string; count: number } | null
 }
 
 /** GET /admin/billing/fx?currency=… (B6). `source` says where the rate came
@@ -223,3 +225,17 @@ export interface TransactionsSummary {
   unpaidCount: number
   draftCount: number
 }
+
+/** POST /admin/billing/documents/:id/send (B16, §6b). The PDF is drawn in
+ * the browser and sent along; the server only attaches it (Q1). */
+export const sendDocumentSchema = z
+  .object({
+    to: z.array(z.email().max(255)).min(1).max(10),
+    subject: z.string().trim().min(1).max(255),
+    /** A hidden copy to the sender. */
+    copyMe: z.boolean(),
+    /** The PDF, base64; ~1.5 MB at most. */
+    pdfBase64: z.string().min(8).max(2_000_000),
+  })
+  .strict()
+export type SendDocumentInput = z.infer<typeof sendDocumentSchema>

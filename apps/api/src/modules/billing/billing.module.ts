@@ -9,6 +9,8 @@ import { AdminBillingController } from './admin-billing.controller';
 import { AdminBillingProfileController } from './admin-billing-profile.controller';
 import { BillingDocumentsService } from './billing-documents.service';
 import { BillingProfileService } from './billing-profile.service';
+import { CompanyAlertsController } from './company-alerts.controller';
+import { CompanyAlertsService } from './company-alerts.service';
 import { FX_SOURCE, FxService, openErApiSource } from './fx.service';
 
 @Module({
@@ -19,11 +21,16 @@ import { FX_SOURCE, FxService, openErApiSource } from './fx.service';
     SubscriptionsModule,
     TenancyModule,
   ],
-  controllers: [AdminBillingProfileController, AdminBillingController],
+  controllers: [
+    AdminBillingProfileController,
+    AdminBillingController,
+    CompanyAlertsController,
+  ],
   providers: [
     BillingProfileService,
     BillingDocumentsService,
     FxService,
+    CompanyAlertsService,
     { provide: FX_SOURCE, useValue: openErApiSource },
   ],
   exports: [BillingProfileService, BillingDocumentsService],

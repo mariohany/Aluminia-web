@@ -176,18 +176,22 @@ describe('Admin plans (e2e)', () => {
   });
 
   it('saves the paid plans and logs only the ones that changed', async () => {
+    // Ultimate, not Pro: every other suite runs its companies on Pro, in
+    // parallel, and a feature switched off here would lock them out.
     const input = paidInput(original);
-    const pro = input.find((plan) => plan.key === 'pro')!;
-    pro.nameEn = 'Pro E2E';
-    pro.seats = 7;
-    pro.monthlyEgp = 6123.45;
-    pro.annualEgp = 66000;
-    pro.features = ['data', 'reports']; // stored in PLAN_FEATURES order
+    const ultimate = input.find((plan) => plan.key === 'ultimate')!;
+    ultimate.nameEn = 'Ultimate E2E';
+    ultimate.seats = 7;
+    ultimate.monthlyEgp = 6123.45;
+    ultimate.annualEgp = 66000;
+    ultimate.features = ['data', 'reports']; // stored in PLAN_FEATURES order
 
     const res = await put(input).expect(200);
-    const saved = (res.body as PlanSummary[]).find((p) => p.key === 'pro')!;
+    const saved = (res.body as PlanSummary[]).find(
+      (p) => p.key === 'ultimate',
+    )!;
     expect(saved).toMatchObject({
-      nameEn: 'Pro E2E',
+      nameEn: 'Ultimate E2E',
       seats: 7,
       monthlyEgp: 6123.45,
       annualEgp: 66000,
@@ -206,7 +210,7 @@ describe('Admin plans (e2e)', () => {
     expect(audit).toHaveLength(1);
     expect(audit[0].target_id).toBe(saved.id);
     expect(audit[0].metadata.changes.seats).toEqual({
-      from: original.find((p) => p.key === 'pro')!.seats,
+      from: original.find((p) => p.key === 'ultimate')!.seats,
       to: 7,
     });
 

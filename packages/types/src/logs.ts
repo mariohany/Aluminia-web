@@ -6,9 +6,9 @@ import { z } from 'zod'
 // `from`/`to` are calendar dates (YYYY-MM-DD, matching an <input type="date">),
 // inclusive on both ends — the service widens them to day boundaries.
 // Audit actions are namespaced `<area>.<…>` (company.created,
-// user.password_reset, lookup.glass.updated, lead.deleted) — the Logs
+// user.password_reset, lookup.glass.updated, lead.deleted, plan.updated) — the Logs
 // page filters by area rather than by every single action.
-export const AUDIT_AREAS = ['company', 'user', 'lookup', 'lead'] as const
+export const AUDIT_AREAS = ['company', 'user', 'lookup', 'lead', 'plan'] as const
 export type AuditArea = (typeof AUDIT_AREAS)[number]
 
 export const logsQuerySchema = z.object({

@@ -25,6 +25,7 @@ import { ProjectSettingsModule } from './modules/project-settings/project-settin
 import { WindowsModule } from './modules/windows/windows.module';
 import { CompanyModule } from './modules/company/company.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { PlansModule } from './modules/plans/plans.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { StorageModule } from './storage/storage.module';
 import { FilesModule } from './modules/files/files.module';
@@ -55,6 +56,7 @@ import { FilesModule } from './modules/files/files.module';
     WindowsModule,
     CompanyModule,
     LeadsModule,
+    PlansModule,
     ReportsModule,
     FilesModule,
   ],

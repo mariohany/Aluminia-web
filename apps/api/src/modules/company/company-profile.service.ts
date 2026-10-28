@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { FilePurpose } from '@repo/types/files';
-import type {
-  CompanyProfile,
-  UpdateCompanyProfileInput,
+import {
+  missingProfileFields,
+  type CompanyProfile,
+  type UpdateCompanyProfileInput,
 } from '@repo/types/company-profile';
 import { CompanyProfileRow } from '../../database/tenant/entities/company-profile.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
@@ -75,6 +76,26 @@ export class CompanyProfileService {
 
     if (replaced) await this.files.release(companyId, replaced);
     return profile;
+  }
+}
+
+/**
+ * Nothing prints until the profile is complete (B23, Mario 2026-10-28:
+ * only PDFs are blocked, every page stays usable): 403
+ * `profile_incomplete`, with the missing fields.
+ */
+export async function assertProfileComplete(
+  manager: EntityManager,
+  accountName: string,
+): Promise<void> {
+  const missing = missingProfileFields(
+    toProfile(await findRow(manager), accountName),
+  );
+  if (missing.length) {
+    throw new ForbiddenException({
+      message: 'Complete the company profile first.',
+      code: 'profile_incomplete',
+    });
   }
 }
 

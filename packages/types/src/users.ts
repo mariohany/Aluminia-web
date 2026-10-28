@@ -82,4 +82,7 @@ export interface CompanyOverview {
   plan: PlanRef
   seatsUsed: number
   maxUsers: number
+  /** The oldest active company admin, named in "contact your company
+   * admin" messages (docs/subscriptions_planing.md B23). */
+  adminEmail: string | null
 }

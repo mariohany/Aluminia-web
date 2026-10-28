@@ -41,6 +41,7 @@ import { User } from '../../database/control-plane/entities/user.entity';
 import { CuttingSettingsRow } from '../../database/tenant/entities/cutting-settings.entity';
 import { ReportSolve } from '../../database/tenant/entities/report-solve.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
+import { assertProfileComplete } from '../company/company-profile.service';
 import {
   buildProjectPieces,
   changedWindowCount,
@@ -125,6 +126,7 @@ export class ReportsService {
     const { companyName } = this.tenantContext.tenant;
     return this.tenantContext.run(async (manager) => {
       const inputs = await this.inputs(manager, projectId);
+      await assertProfileComplete(manager, companyName);
       const solve = await findSolve(manager, projectId);
       if (!solve?.report) {
         throw new NotFoundException('No report generated yet.');
@@ -189,6 +191,10 @@ export class ReportsService {
     assertOptimiser(optimiserVersion);
     return this.tenantContext.run(async (manager) => {
       const inputs = await this.inputs(manager, projectId);
+      await assertProfileComplete(
+        manager,
+        this.tenantContext.tenant.companyName,
+      );
       const solve = await lockSolve(manager, projectId, true);
       if (isSolving(solve)) {
         throw new ConflictException({

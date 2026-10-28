@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { UserRole } from '@repo/types/auth';
 import type { CompanyOverview } from '@repo/types/users';
 import { Company } from '../../database/control-plane/entities/company.entity';
-import { User } from '../../database/control-plane/entities/user.entity';
+import {
+  User,
+  UserStatus,
+} from '../../database/control-plane/entities/user.entity';
 import { toPlanRef } from '../plans/plans.service';
 
 /**
@@ -32,6 +36,14 @@ export class CompanyService {
     // lock precisely because it is about to act on the result. This
     // number is for display; that one is enforcement.
     const seatsUsed = await this.users.count({ where: { companyId } });
+    const admin = await this.users.findOne({
+      where: {
+        companyId,
+        role: UserRole.COMPANY_ADMIN,
+        status: UserStatus.ACTIVE,
+      },
+      order: { createdAt: 'ASC' },
+    });
 
     return {
       id: company.id,
@@ -39,6 +51,7 @@ export class CompanyService {
       plan: toPlanRef(company.plan!),
       seatsUsed,
       maxUsers: company.maxUsers,
+      adminEmail: admin?.email ?? null,
     };
   }
 }

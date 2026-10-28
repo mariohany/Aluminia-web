@@ -369,6 +369,28 @@ describe('Reports (e2e)', () => {
     await api().put('/reports/cutting-settings', body).expect(400);
   });
 
+  it('prints nothing until the company profile is complete (B23)', async () => {
+    await clearUserRateLimits(app, 'ReportsController.startSolve', adminId);
+    const refused = await api()
+      .post(solvePath(), { optimiserVersion: OPTIMISER_VERSION })
+      .expect(403);
+    expect((refused.body as { code?: string }).code).toBe('profile_incomplete');
+    await api().get(`${basePath()}/report`).expect(403);
+    // Pages stay usable: the status still reads.
+    expect((await status()).state).toBe('none');
+
+    await request(app.getHttpServer())
+      .patch('/company/profile')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        arName: 'تقارير',
+        taxId: '123-456-789',
+        commercialRegister: 'CR 2024',
+        email: 'office@reports.test',
+      })
+      .expect(200);
+  });
+
   it('has no report before the first Generate', async () => {
     expect(await status()).toEqual({
       state: 'none',
@@ -517,10 +539,10 @@ describe('Reports (e2e)', () => {
     expect(Math.abs(bars - report.summary.total.wasteKg!)).toBeLessThanOrEqual(
       report.plans.length * 0.05,
     );
-    // No company profile saved: the account name, no logo.
+    // The printed EN name was never typed: the account name, no logo.
     expect(company).toEqual({
       enName: companyName,
-      arName: null,
+      arName: 'تقارير',
       logoFileId: null,
     });
   });

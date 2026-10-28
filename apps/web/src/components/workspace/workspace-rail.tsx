@@ -19,6 +19,7 @@ import { LanguageToggle } from '@/components/language-switcher'
 import { ThemeToggle } from '@/components/theme-switch'
 import { isBusy, useLocalSolves } from '@/lib/solve/solve-manager'
 import { cn } from '@/lib/utils'
+import { planName } from '@/lib/bilingual'
 
 /**
  * The workspace's top-level navigation: an icon rail, not a sidebar.
@@ -41,7 +42,7 @@ export function WorkspaceRail({
   onNavigate?: () => void
   onOpenTree?: () => void
 }) {
-  const { t } = useTranslation('workspace')
+  const { t, i18n } = useTranslation('workspace')
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   // Open to plain users too (CompanyController) — the company's name and
@@ -191,7 +192,7 @@ export function WorkspaceRail({
               <span className="text-xs text-muted-foreground">{roleLabel}</span>
               {company && (
                 <span className="truncate text-xs text-muted-foreground">
-                  {t('rail.companyPlan', { company: company.name, plan: company.plan })}
+                  {t('rail.companyPlan', { company: company.name, plan: planName(company.plan, i18n.language) })}
                 </span>
               )}
             </DropdownMenuLabel>

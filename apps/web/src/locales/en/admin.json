@@ -74,7 +74,8 @@
           "plan_changed": "Moved {{name}} to {{plan}}, {{maxUsers}} seats",
           "archived": "Archived {{name}}",
           "reactivated": "Reactivated {{name}}",
-          "deleted": "Permanently deleted {{name}}"
+          "deleted": "Permanently deleted {{name}}",
+          "subscription_changed": "Changed the subscription of {{name}} · {{plan}}, {{maxUsers}} seats"
         },
         "user": {
           "created": "Added {{email}}",
@@ -217,18 +218,19 @@
     "title": "Create company",
     "description": "Provisions a dedicated schema and creates the company's first admin.",
     "fields": {
-      "name": "Company name",
-      "plan": "Plan",
-      "maxUsers": "Seat limit",
+      "name": "Company name (English)",
       "adminEmail": "Admin email",
-      "adminPassword": "Admin password"
+      "adminPassword": "Admin password",
+      "nameAr": "Company name (Arabic)"
     },
     "submit": {
       "idle": "Create company",
       "submitting": "Creating…"
     },
     "success": "{{name}} created.",
-    "error": "Couldn't create the company. Try again."
+    "error": "Couldn't create the company. Try again.",
+    "required": "Required",
+    "startsOnFree": "The company starts on Free (1 seat, 1 client, 1 project). Set its plan in the Billing tab."
   },
   "companyDetail": {
     "back": "Back to companies",
@@ -239,16 +241,26 @@
       "saving": "Saving…",
       "success": "Company updated.",
       "error": "Couldn't save changes.",
-      "maxUsersBelowCount": "This company has {{count}} users. Remove some before lowering the limit below that."
+      "billingHint": "Plan, seat limit, end date, currency and VAT are edited in the Billing tab."
     },
     "billingSection": {
       "title": "Billing history",
       "empty": "No billing history yet.",
-      "entry_one": "{{plan}} · {{count}} seat",
-      "entry_other": "{{plan}} · {{count}} seats",
-      "from": "From {{date}}",
       "changes_one": "{{count}} change",
-      "changes_other": "{{count}} changes"
+      "changes_other": "{{count}} changes",
+      "reasons": {
+        "created_one": "Created · {{plan}} · {{count}} seat",
+        "created_other": "Created · {{plan}} · {{count}} seats",
+        "edited_one": "{{plan}} · {{count}} seat",
+        "edited_other": "{{plan}} · {{count}} seats",
+        "trial_started_one": "Trial · {{plan}} · {{count}} seat",
+        "trial_started_other": "Trial · {{plan}} · {{count}} seats",
+        "paid_one": "Paid · {{plan}} · {{count}} seat",
+        "paid_other": "Paid · {{plan}} · {{count}} seats",
+        "dropped_to_free": "Moved to Free",
+        "trial_ended": "Trial ended → Free"
+      },
+      "endsOn": "Ends {{date}}"
     },
     "usersSection": {
       "title": "Users",
@@ -257,7 +269,8 @@
       "status": "Status",
       "add": "Add user",
       "seatsUsed": "{{used}} of {{max}} seats",
-      "seatLimitReached": "Seat limit reached — raise it in Details"
+      "seatLimitReached": "Seat limit reached — raise it in the Billing tab",
+      "byFreePlan": "by the Free plan"
     },
     "actions": {
       "archive": "Archive company",
@@ -296,6 +309,43 @@
       "sinceNew": "New this month",
       "sinceMonths_one": "{{count}} month",
       "sinceMonths_other": "{{count}} months"
+    },
+    "tabs": {
+      "label": "Company sections",
+      "overview": "Overview",
+      "billing": "Billing"
+    },
+    "tag": {
+      "ends_zero": "Ends today",
+      "ends_one": "Ends in {{count}} day",
+      "ends_other": "Ends in {{count}} days",
+      "trial_zero": "Trial ends today",
+      "trial_one": "Trial · {{count}} day left",
+      "trial_other": "Trial · {{count}} days left",
+      "expired": "Expired"
+    },
+    "documents": {
+      "title": "Quotations & invoices",
+      "empty": "No quotations or invoices yet."
+    },
+    "strip": {
+      "label": "Subscription",
+      "plan": "Plan",
+      "trial": "Trial",
+      "planCaption": "{{currency}} · VAT {{vat}} %",
+      "seats": "Seat limit",
+      "seatsDefault_one": "Plan default · {{count}} user",
+      "seatsDefault_other": "Plan default · {{count}} users",
+      "seatsCustom_one": "Plan default {{seats}} · {{count}} user",
+      "seatsCustom_other": "Plan default {{seats}} · {{count}} users",
+      "ends": "Ends",
+      "neverEnds": "Free never ends",
+      "expired": "Expired",
+      "daysLeft_zero": "Ends today · 23:59 Cairo",
+      "daysLeft_one": "{{count}} day left · 23:59 Cairo",
+      "daysLeft_other": "{{count}} days left · 23:59 Cairo",
+      "unpaid": "Unpaid",
+      "noUnpaid": "No unpaid quotations"
     }
   },
   "usersPage": {
@@ -449,5 +499,45 @@
       "seats": "1 to {{max}}",
       "price": "Enter a price above 0"
     }
+  },
+  "subscription": {
+    "title": "Edit subscription",
+    "plan": "Plan",
+    "planOption_one": "{{name}} · {{count}} seat",
+    "planOption_other": "{{name}} · {{count}} seats",
+    "seats": "Seat limit",
+    "seatsHint_one": "Plan default {{seats}} · can’t go below the {{count}} user",
+    "seatsHint_other": "Plan default {{seats}} · can’t go below the {{count}} users",
+    "seatsBelowUsers_one": "{{count}} user in the company — remove {{remove}} before going down to {{max}}.",
+    "seatsBelowUsers_other": "{{count}} users in the company — remove {{remove}} before going down to {{max}}.",
+    "freeFixed": "Free is fixed: 1 seat, 1 client, 1 project, and it never ends.",
+    "freeDeactivates_one": "Free has 1 seat: the admin below stays active and {{count}} other user is deactivated and logged out. Nothing is deleted; a paid plan brings them back.",
+    "freeDeactivates_other": "Free has 1 seat: the admin below stays active and the {{count}} other users are deactivated and logged out. Nothing is deleted; a paid plan brings them back.",
+    "keepAdmin": "Stays active",
+    "trial": "Trial: no quotation; drops to Free if not paid by the end",
+    "trialEnds": "Trial ends",
+    "ends": "Subscription ends",
+    "endOfDay": "23:59 Cairo",
+    "endRequired": "Pick the end date",
+    "trialHint": "14 days from today unless you change it",
+    "endsHint": "A paid quotation moves it for you; edit it here only to correct it",
+    "trialDays": "Days",
+    "currency": "Currency",
+    "currencies": {
+      "EGP": "Egyptian pound",
+      "SAR": "Saudi riyal",
+      "AED": "UAE dirham",
+      "USD": "US dollar",
+      "EUR": "Euro"
+    },
+    "vat": "VAT",
+    "vatInvalid": "0 to 100",
+    "currencyHint": "Currency and VAT are used by new quotations; issued ones keep theirs.",
+    "note": "Note (optional)",
+    "notePlaceholder": "e.g. Asked for two more designers",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saved": "Subscription saved.",
+    "saveError": "Couldn’t save the subscription. Try again."
   }
 }

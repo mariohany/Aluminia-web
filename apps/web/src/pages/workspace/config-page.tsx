@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { Building2, ChevronRight, ListChecks, Users, type LucideIcon } from 'lucide-react'
 import { useCompanyOverviewQuery } from '@/lib/company-queries'
+import { planName } from '@/lib/bilingual'
 
 /**
  * The Config home (was Manage): one card per section, each opening its
@@ -17,7 +18,7 @@ const SECTIONS: { key: string; to: string; icon: LucideIcon }[] = [
 ]
 
 export function ConfigPage() {
-  const { t } = useTranslation('workspace')
+  const { t, i18n } = useTranslation('workspace')
   const overview = useCompanyOverviewQuery()
 
   return (
@@ -28,7 +29,7 @@ export function ConfigPage() {
           <p className="truncate text-sm text-muted-foreground">
             {t('rail.companyPlan', {
               company: overview.data.name,
-              plan: overview.data.plan,
+              plan: planName(overview.data.plan, i18n.language),
             })}
           </p>
         )}

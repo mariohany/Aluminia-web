@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
+import { RequiredMark } from '@/components/ui/required-mark'
 import {
   Dialog,
   DialogContent,
@@ -33,7 +34,7 @@ export function CreateCompanyDialog() {
     formState: { errors, isSubmitting },
   } = useForm<CreateCompanyInput>({
     resolver: zodResolver(createCompanySchema),
-    defaultValues: { name: '', plan: '', maxUsers: 5, admin: { email: '', password: '' } },
+    defaultValues: { name: '', nameAr: '', admin: { email: '', password: '' } },
   })
 
   const onSubmit = async (data: CreateCompanyInput) => {
@@ -69,41 +70,29 @@ export function CreateCompanyDialog() {
           </DialogHeader>
 
           <div className="flex flex-col gap-3">
-            <div>
-              <Label htmlFor="company-name">{t('createCompany.fields.name')}</Label>
-              <Input
-                id="company-name"
-                className="mt-1.5"
-                aria-invalid={!!errors.name}
-                {...register('name')}
-              />
-              {errors.name && <p className="mt-1 text-xs text-destructive">{errors.name.message}</p>}
-            </div>
-
-            <div>
-              <Label htmlFor="company-plan">{t('createCompany.fields.plan')}</Label>
-              <Input
-                id="company-plan"
-                className="mt-1.5"
-                aria-invalid={!!errors.plan}
-                {...register('plan')}
-              />
-              {errors.plan && <p className="mt-1 text-xs text-destructive">{errors.plan.message}</p>}
-            </div>
-
-            <div>
-              <Label htmlFor="company-max-users">{t('createCompany.fields.maxUsers')}</Label>
-              <Input
-                id="company-max-users"
-                type="number"
-                min={1}
-                className="mt-1.5"
-                aria-invalid={!!errors.maxUsers}
-                {...register('maxUsers', { valueAsNumber: true })}
-              />
-              {errors.maxUsers && (
-                <p className="mt-1 text-xs text-destructive">{errors.maxUsers.message}</p>
-              )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="company-name">
+                  {t('createCompany.fields.name')}
+                  <RequiredMark />
+                </Label>
+                <Input id="company-name" className="mt-1.5" aria-invalid={!!errors.name} {...register('name')} />
+                {errors.name && <p className="mt-1 text-xs text-destructive">{t('createCompany.required')}</p>}
+              </div>
+              <div>
+                <Label htmlFor="company-name-ar">
+                  {t('createCompany.fields.nameAr')}
+                  <RequiredMark />
+                </Label>
+                <Input
+                  id="company-name-ar"
+                  dir="rtl"
+                  className="mt-1.5"
+                  aria-invalid={!!errors.nameAr}
+                  {...register('nameAr')}
+                />
+                {errors.nameAr && <p className="mt-1 text-xs text-destructive">{t('createCompany.required')}</p>}
+              </div>
             </div>
 
             <div>
@@ -135,6 +124,8 @@ export function CreateCompanyDialog() {
               )}
             </div>
           </div>
+
+          <p className="text-xs text-muted-foreground">{t('createCompany.startsOnFree')}</p>
 
           <DialogFooter>
             <Button type="submit" disabled={isSubmitting}>

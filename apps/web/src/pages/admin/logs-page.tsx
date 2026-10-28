@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { VirtualizedLogTable, type LogColumn } from '@/components/admin/admin-logs/virtualized-log-table'
 import { AuditIcon } from '@/components/admin/audit-entry'
 import { useDescribeAudit } from '@/lib/audit-describe'
+import { planName } from '@/lib/bilingual'
 
 const TABS = ['audit', 'activity'] as const
 type Tab = (typeof TABS)[number]
@@ -296,7 +297,7 @@ function ActivityLogTab() {
 
   const columns: LogColumn<ActivityLogEntry>[] = [
     { key: 'company', header: t('logsPage.activityTab.table.company'), width: '2fr', cell: (r) => r.companyName, className: 'font-medium text-foreground' },
-    { key: 'plan', header: t('logsPage.activityTab.table.plan'), width: '1fr', cell: (r) => r.plan },
+    { key: 'plan', header: t('logsPage.activityTab.table.plan'), width: '1fr', cell: (r) => planName(r.plan, i18n.language) },
     { key: 'seats', header: t('logsPage.activityTab.table.seats'), width: '0.6fr', cell: (r) => r.maxUsers },
     { key: 'notes', header: t('logsPage.activityTab.table.notes'), width: '2fr', cell: (r) => r.notes ?? '—', className: 'text-muted-foreground' },
     {

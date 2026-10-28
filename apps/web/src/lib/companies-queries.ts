@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CreateCompanyInput, UpdateCompanyInput } from '@repo/types/companies'
+import type { UpdateSubscriptionInput } from '@repo/types/subscriptions'
 import * as companiesApi from '@/lib/companies-api'
 
 const companiesKey = ['companies'] as const
@@ -35,6 +36,21 @@ export function useUpdateCompanyMutation(id: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: companiesKey })
       void queryClient.invalidateQueries({ queryKey: companyKey(id) })
+    },
+  })
+}
+
+// Edit subscription. A drop to Free deactivates users and leaving it
+// brings them back, so the users lists and the sidebar counts refetch.
+export function useUpdateSubscriptionMutation(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateSubscriptionInput) => companiesApi.updateSubscription(id, input),
+    onSuccess: (detail) => {
+      queryClient.setQueryData(companyKey(id), detail)
+      void queryClient.invalidateQueries({ queryKey: companiesKey })
+      void queryClient.invalidateQueries({ queryKey: dashboardKey })
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
     },
   })
 }

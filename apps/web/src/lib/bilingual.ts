@@ -24,3 +24,8 @@ export function displayName(entity: Bilingual, language: string): string {
   if (isRtlLanguage(language)) return entity.arName?.trim() || entity.enName
   return entity.enName
 }
+
+/** A plan's name (PlanRef / PlanSummary) in the active language. */
+export function planName(plan: { nameEn: string; nameAr: string }, language: string): string {
+  return displayName({ enName: plan.nameEn, arName: plan.nameAr }, language)
+}

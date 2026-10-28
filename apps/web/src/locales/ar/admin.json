@@ -74,7 +74,8 @@
           "plan_changed": "نقل {{name}} إلى {{plan}}، {{maxUsers}} مقاعد",
           "archived": "أرشف {{name}}",
           "reactivated": "أعاد تفعيل {{name}}",
-          "deleted": "حذف {{name}} نهائيًا"
+          "deleted": "حذف {{name}} نهائيًا",
+          "subscription_changed": "غيّر اشتراك {{name}} · {{plan}}، {{maxUsers}} مستخدم"
         },
         "user": {
           "created": "أضاف {{email}}",
@@ -233,18 +234,19 @@
     "title": "إنشاء شركة",
     "description": "بينشئ سكيمة مخصصة ويعمل أول حساب أدمن للشركة.",
     "fields": {
-      "name": "اسم الشركة",
-      "plan": "الباقة",
-      "maxUsers": "حد المقاعد",
+      "name": "اسم الشركة (إنجليزي)",
       "adminEmail": "بريد الأدمن الإلكتروني",
-      "adminPassword": "كلمة مرور الأدمن"
+      "adminPassword": "كلمة مرور الأدمن",
+      "nameAr": "اسم الشركة (عربي)"
     },
     "submit": {
       "idle": "إنشاء الشركة",
       "submitting": "جاري الإنشاء…"
     },
     "success": "تم إنشاء {{name}}.",
-    "error": "حصل خطأ أثناء إنشاء الشركة. حاول تاني."
+    "error": "حصل خطأ أثناء إنشاء الشركة. حاول تاني.",
+    "required": "مطلوب",
+    "startsOnFree": "الشركة بتبدأ على الباقة المجانية (مستخدم واحد، عميل واحد، مشروع واحد). اختار باقتها من تبويب الاشتراك."
   },
   "companyDetail": {
     "back": "العودة للشركات",
@@ -255,24 +257,34 @@
       "saving": "جاري الحفظ…",
       "success": "تم تحديث الشركة.",
       "error": "حصل خطأ أثناء الحفظ.",
-      "maxUsersBelowCount": "الشركة دي فيها {{count}} مستخدم. امسح بعضهم الأول قبل ما تقلل الحد عن كده."
+      "billingHint": "الباقة وعدد المستخدمين وتاريخ الانتهاء والعملة والضريبة بتتعدّل من تبويب الاشتراك."
     },
     "billingSection": {
       "title": "سجل الفوترة",
       "empty": "لا يوجد سجل فوترة بعد.",
       "entry_zero": "{{plan}} · {{count}} مقعدًا",
-      "entry_one": "{{plan}} · مقعد واحد",
       "entry_two": "{{plan}} · مقعدان",
       "entry_few": "{{plan}} · {{count}} مقاعد",
       "entry_many": "{{plan}} · {{count}} مقعدًا",
-      "entry_other": "{{plan}} · {{count}} مقعدًا",
-      "from": "من {{date}}",
       "changes_zero": "{{count}} تغييرًا",
       "changes_one": "تغيير واحد",
       "changes_two": "تغييران",
       "changes_few": "{{count}} تغييرات",
       "changes_many": "{{count}} تغييرًا",
-      "changes_other": "{{count}} تغييرًا"
+      "changes_other": "{{count}} تغييرًا",
+      "reasons": {
+        "created_one": "اتعملت · {{plan}} · مستخدم واحد",
+        "created_other": "اتعملت · {{plan}} · {{count}} مستخدم",
+        "edited_one": "{{plan}} · مستخدم واحد",
+        "edited_other": "{{plan}} · {{count}} مستخدم",
+        "trial_started_one": "تجربة · {{plan}} · مستخدم واحد",
+        "trial_started_other": "تجربة · {{plan}} · {{count}} مستخدم",
+        "paid_one": "اتدفع · {{plan}} · مستخدم واحد",
+        "paid_other": "اتدفع · {{plan}} · {{count}} مستخدم",
+        "dropped_to_free": "اتحوّلت للمجانية",
+        "trial_ended": "التجربة خلصت ← المجانية"
+      },
+      "endsOn": "بينتهي {{date}}"
     },
     "usersSection": {
       "title": "المستخدمون",
@@ -281,7 +293,8 @@
       "status": "الحالة",
       "add": "إضافة مستخدم",
       "seatsUsed": "{{used}} من {{max}} مقاعد",
-      "seatLimitReached": "تم الوصول للحد الأقصى للمقاعد — زوّده من التفاصيل"
+      "seatLimitReached": "وصلت للحد الأقصى — زوّده من تبويب الاشتراك",
+      "byFreePlan": "بسبب الباقة المجانية"
     },
     "actions": {
       "archive": "أرشفة الشركة",
@@ -328,6 +341,43 @@
       "sinceMonths_few": "{{count}} أشهر",
       "sinceMonths_many": "{{count}} شهرًا",
       "sinceMonths_other": "{{count}} شهرًا"
+    },
+    "tabs": {
+      "label": "أقسام الشركة",
+      "overview": "نظرة عامة",
+      "billing": "الاشتراك"
+    },
+    "tag": {
+      "ends_zero": "بينتهي النهارده",
+      "ends_one": "بينتهي بعد يوم",
+      "ends_other": "بينتهي بعد {{count}} يوم",
+      "trial_zero": "التجربة بتنتهي النهارده",
+      "trial_one": "تجربة · فاضل يوم",
+      "trial_other": "تجربة · فاضل {{count}} يوم",
+      "expired": "منتهي"
+    },
+    "documents": {
+      "title": "عروض الأسعار والفواتير",
+      "empty": "لسه مفيش عروض أسعار أو فواتير."
+    },
+    "strip": {
+      "label": "الاشتراك",
+      "plan": "الباقة",
+      "trial": "تجربة",
+      "planCaption": "{{currency}} · ضريبة {{vat}} ٪",
+      "seats": "عدد المستخدمين",
+      "seatsDefault_one": "افتراضي الباقة · مستخدم واحد",
+      "seatsDefault_other": "افتراضي الباقة · {{count}} مستخدم",
+      "seatsCustom_one": "افتراضي الباقة {{seats}} · مستخدم واحد",
+      "seatsCustom_other": "افتراضي الباقة {{seats}} · {{count}} مستخدم",
+      "ends": "بينتهي",
+      "neverEnds": "المجانية مبتنتهيش",
+      "expired": "منتهي",
+      "daysLeft_zero": "بينتهي النهارده · ١١:٥٩ م بتوقيت القاهرة",
+      "daysLeft_one": "فاضل يوم · ١١:٥٩ م بتوقيت القاهرة",
+      "daysLeft_other": "فاضل {{count}} يوم · ١١:٥٩ م بتوقيت القاهرة",
+      "unpaid": "غير مدفوع",
+      "noUnpaid": "مفيش عروض أسعار مستنية الدفع"
     }
   },
   "usersPage": {
@@ -485,5 +535,45 @@
       "seats": "من ١ لـ {{max}}",
       "price": "اكتب سعر أكبر من ٠"
     }
+  },
+  "subscription": {
+    "title": "تعديل الاشتراك",
+    "plan": "الباقة",
+    "planOption_one": "{{name}} · مستخدم واحد",
+    "planOption_other": "{{name}} · {{count}} مستخدم",
+    "seats": "عدد المستخدمين",
+    "seatsHint_one": "افتراضي الباقة {{seats}} · ميقلّش عن المستخدم الموجود",
+    "seatsHint_other": "افتراضي الباقة {{seats}} · ميقلّش عن الـ {{count}} مستخدم الموجودين",
+    "seatsBelowUsers_one": "في الشركة مستخدم واحد — امسح {{remove}} قبل ما تنزل لـ {{max}}.",
+    "seatsBelowUsers_other": "في الشركة {{count}} مستخدم — امسح {{remove}} قبل ما تنزل لـ {{max}}.",
+    "freeFixed": "المجانية ثابتة: مستخدم واحد، عميل واحد، مشروع واحد، ومبتنتهيش.",
+    "freeDeactivates_one": "المجانية ليها مستخدم واحد: الأدمن اللي تحت هيفضل شغال، ومستخدم تاني هيتوقف ويخرج. مفيش حاجة هتتمسح؛ والباقة المدفوعة بترجّعه.",
+    "freeDeactivates_other": "المجانية ليها مستخدم واحد: الأدمن اللي تحت هيفضل شغال، والـ {{count}} مستخدم التانيين هيتوقفوا ويخرجوا. مفيش حاجة هتتمسح؛ والباقة المدفوعة بترجّعهم.",
+    "keepAdmin": "هيفضل شغال",
+    "trial": "تجربة: من غير عرض سعر؛ بتتحوّل للمجانية لو متدفعتش لحد آخرها",
+    "trialEnds": "التجربة بتنتهي",
+    "ends": "الاشتراك بينتهي",
+    "endOfDay": "١١:٥٩ م القاهرة",
+    "endRequired": "اختار تاريخ الانتهاء",
+    "trialHint": "١٤ يوم من النهارده لو مغيّرتهوش",
+    "endsHint": "عرض السعر لما يتدفع بيحرّكه لوحده؛ عدّله هنا بس للتصحيح",
+    "trialDays": "أيام",
+    "currency": "العملة",
+    "currencies": {
+      "EGP": "جنيه مصري",
+      "SAR": "ريال سعودي",
+      "AED": "درهم إماراتي",
+      "USD": "دولار أمريكي",
+      "EUR": "يورو"
+    },
+    "vat": "الضريبة",
+    "vatInvalid": "من ٠ لـ ١٠٠",
+    "currencyHint": "العملة والضريبة بيتاخدوا في عروض الأسعار الجديدة؛ اللي اتعملت بتفضل على حالها.",
+    "note": "ملاحظة (اختياري)",
+    "notePlaceholder": "مثلاً: طلبوا مصممين زيادة",
+    "cancel": "إلغاء",
+    "save": "حفظ",
+    "saved": "اتحفظ الاشتراك.",
+    "saveError": "معرفناش نحفظ الاشتراك. جرّب تاني."
   }
 }

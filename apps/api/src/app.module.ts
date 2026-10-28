@@ -27,6 +27,7 @@ import { WindowsModule } from './modules/windows/windows.module';
 import { CompanyModule } from './modules/company/company.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { PlansModule } from './modules/plans/plans.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { StorageModule } from './storage/storage.module';
 import { FilesModule } from './modules/files/files.module';
@@ -60,6 +61,7 @@ import { FilesModule } from './modules/files/files.module';
     CompanyModule,
     LeadsModule,
     PlansModule,
+    BillingModule,
     ReportsModule,
     FilesModule,
   ],

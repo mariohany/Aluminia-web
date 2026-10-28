@@ -47,3 +47,8 @@ export function assertValidStoragePrefix(prefix: string): void {
 export function companyStoragePrefix(companyId: string): string {
   return `companies/${companyId.toLowerCase()}/`;
 }
+
+/** Where the platform's own files go (owner null: the billing logo). */
+export function ownerStoragePrefix(companyId: string | null): string {
+  return companyId === null ? 'platform/' : companyStoragePrefix(companyId);
+}

@@ -9,7 +9,7 @@ import type { PlanRef } from './plans'
 // Audit actions are namespaced `<area>.<…>` (company.created,
 // user.password_reset, lookup.glass.updated, lead.deleted, plan.updated) — the Logs
 // page filters by area rather than by every single action.
-export const AUDIT_AREAS = ['company', 'user', 'lookup', 'lead', 'plan'] as const
+export const AUDIT_AREAS = ['company', 'user', 'lookup', 'lead', 'plan', 'billing'] as const
 export type AuditArea = (typeof AUDIT_AREAS)[number]
 
 export const logsQuerySchema = z.object({

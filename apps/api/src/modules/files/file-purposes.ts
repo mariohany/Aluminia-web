@@ -16,6 +16,11 @@ export const FILE_PURPOSES: Record<
     ...FILE_PURPOSE_LIMITS[FilePurpose.LOGO],
     roles: [UserRole.COMPANY_ADMIN],
   },
+  // The platform's logo on quotations and invoices: Billing profile.
+  [FilePurpose.BILLING_LOGO]: {
+    ...FILE_PURPOSE_LIMITS[FilePurpose.BILLING_LOGO],
+    roles: [UserRole.SUPER_ADMIN],
+  },
 };
 
 /** The largest any purpose accepts: multer's own cap, so a huge upload is

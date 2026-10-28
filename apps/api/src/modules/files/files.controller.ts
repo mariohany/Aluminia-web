@@ -32,10 +32,10 @@ class UploadFileDto extends createZodDto(uploadFileSchema) {}
  *
  * Not `@TenantScoped()`: `files` is control-plane data, like
  * CompanyUsersController's `users`. The boundary is `companyId` from the
- * verified JWT, applied in every query, so another company's id is a
- * 404, never a 403.
+ * verified JWT (none for a super admin = the platform's files), applied
+ * in every query, so another owner's id is a 404, never a 403.
  */
-@Roles(UserRole.COMPANY_ADMIN, UserRole.USER)
+@Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN, UserRole.USER)
 @Controller('files')
 export class FilesController {
   constructor(private readonly files: FilesService) {}
@@ -57,7 +57,7 @@ export class FilesController {
   ): Promise<UploadedFileSummary> {
     if (!file) throw new BadRequestException('No file uploaded.');
     return this.files.upload(
-      { id: actor.id, role: actor.role, companyId: companyOf(actor) },
+      { id: actor.id, role: actor.role, companyId: ownerOf(actor) },
       dto.purpose,
       file,
     );
@@ -71,7 +71,7 @@ export class FilesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<StreamableFile> {
-    const file = await this.files.read(companyOf(actor), id);
+    const file = await this.files.read(ownerOf(actor), id);
     return new StreamableFile(file.body, {
       type: file.contentType,
       length: file.sizeBytes,
@@ -80,7 +80,10 @@ export class FilesController {
   }
 }
 
-function companyOf(actor: AuthenticatedRequestUser): string {
+/** A company user's company; a super admin's files are the platform's
+ * (owner null). Which purposes each role may upload is FILE_PURPOSES'. */
+function ownerOf(actor: AuthenticatedRequestUser): string | null {
+  if (actor.role === UserRole.SUPER_ADMIN) return null;
   if (!actor.companyId) {
     throw new ForbiddenException('This route requires a company.');
   }

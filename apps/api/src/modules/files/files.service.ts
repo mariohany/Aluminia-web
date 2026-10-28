@@ -16,6 +16,7 @@ import { StoredFile } from '../../database/control-plane/entities/stored-file.en
 import {
   companyStoragePrefix,
   FILE_STORAGE,
+  ownerStoragePrefix,
   type FileStorage,
 } from '../../storage/file-storage';
 import { extensionFor, FILE_PURPOSES, sniffContentType } from './file-purposes';
@@ -26,12 +27,20 @@ export const PENDING_FILE_TTL_MS = 24 * 60 * 60 * 1000;
 export interface UploadActor {
   id: string;
   role: UserRole;
-  companyId: string;
+  /** Null = a super admin: the file is the platform's own. */
+  companyId: string | null;
 }
 
+/** Who owns a file: a company id, or null for the platform. */
+export type FileOwner = string | null;
+
+/** The owner in a where clause: `company_id = x` or `company_id IS NULL`. */
+const ownerIs = (owner: FileOwner) => owner ?? IsNull();
+
 /**
- * Files a company owns (docs/company_profile_planing.md §3b). Every
- * lookup is by id AND company: an id from another company is simply not
+ * Files a company owns (docs/company_profile_planing.md §3b), or the
+ * platform (owner null: the billing logo, subscriptions step 5). Every
+ * lookup is by id AND owner: an id from another company is simply not
  * found (404), so ids can't be probed. The bytes go through FileStorage;
  * the row says what they are.
  */
@@ -69,7 +78,7 @@ export class FilesService {
     await this.sweepPending(actor.companyId);
 
     const id = randomUUID();
-    const storageKey = `${companyStoragePrefix(actor.companyId)}${purpose}/${id}.${extensionFor(contentType)}`;
+    const storageKey = `${ownerStoragePrefix(actor.companyId)}${purpose}/${id}.${extensionFor(contentType)}`;
     await this.storage.put(storageKey, file.buffer, contentType);
     try {
       await this.files.insert({
@@ -90,12 +99,14 @@ export class FilesService {
     return { id, purpose, contentType, sizeBytes: file.buffer.length };
   }
 
-  /** The file's bytes for a user of the owning company. */
+  /** The file's bytes for a user of the owner. */
   async read(
-    companyId: string,
+    owner: FileOwner,
     id: string,
   ): Promise<{ body: Buffer; contentType: string; sizeBytes: number }> {
-    const row = await this.files.findOne({ where: { id, companyId } });
+    const row = await this.files.findOne({
+      where: { id, companyId: ownerIs(owner) },
+    });
     const body = row ? await this.storage.get(row.storageKey) : null;
     if (!row || !body) throw new NotFoundException('File not found.');
     return { body, contentType: row.contentType, sizeBytes: row.sizeBytes };
@@ -108,12 +119,12 @@ export class FilesService {
    * store.
    */
   async attach(
-    companyId: string,
+    owner: FileOwner,
     id: string,
     purpose: FilePurpose,
   ): Promise<void> {
     const result = await this.files.update(
-      { id, companyId, purpose, attachedAt: IsNull() },
+      { id, companyId: ownerIs(owner), purpose, attachedAt: IsNull() },
       { attachedAt: new Date() },
     );
     if (!result.affected) {
@@ -122,14 +133,19 @@ export class FilesService {
   }
 
   /** Undoes `attach` (the write that used the file failed). */
-  async detach(companyId: string, id: string): Promise<void> {
-    await this.files.update({ id, companyId }, { attachedAt: null });
+  async detach(owner: FileOwner, id: string): Promise<void> {
+    await this.files.update(
+      { id, companyId: ownerIs(owner) },
+      { attachedAt: null },
+    );
   }
 
   /** Deletes a file that is no longer used (a replaced or removed logo).
    * Best-effort on the bytes: a leftover blob is harmless. */
-  async release(companyId: string, id: string): Promise<void> {
-    const row = await this.files.findOne({ where: { id, companyId } });
+  async release(owner: FileOwner, id: string): Promise<void> {
+    const row = await this.files.findOne({
+      where: { id, companyId: ownerIs(owner) },
+    });
     if (!row) return;
     await this.files.delete({ id: row.id });
     await this.deleteBlobQuietly(row.storageKey);
@@ -138,10 +154,10 @@ export class FilesService {
   /** Deletes this company's uploads that nothing attached within the
    * TTL. Run on each upload rather than on a timer: a company that never
    * uploads again has at most one stale file. */
-  async sweepPending(companyId: string, now = new Date()): Promise<number> {
+  async sweepPending(owner: FileOwner, now = new Date()): Promise<number> {
     const stale = await this.files.find({
       where: {
-        companyId,
+        companyId: ownerIs(owner),
         attachedAt: IsNull(),
         createdAt: LessThan(new Date(now.getTime() - PENDING_FILE_TTL_MS)),
       },

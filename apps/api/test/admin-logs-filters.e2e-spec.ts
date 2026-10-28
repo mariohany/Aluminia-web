@@ -179,7 +179,7 @@ describe('Admin logs filters (e2e)', () => {
   it('rejects an unknown area', async () => {
     await request(app.getHttpServer())
       .get('/admin/logs/audit')
-      .query({ area: 'billing' })
+      .query({ area: 'nonsense' })
       .set({ Authorization: `Bearer ${authToken}` })
       .expect(400);
   });

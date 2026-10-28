@@ -6,9 +6,11 @@ import { z } from 'zod'
 
 export const FilePurpose = {
   LOGO: 'logo',
+  /** The platform's own logo on quotations and invoices; owned by no company. */
+  BILLING_LOGO: 'billing_logo',
 } as const
 export type FilePurpose = (typeof FilePurpose)[keyof typeof FilePurpose]
-export const filePurposeSchema = z.enum([FilePurpose.LOGO])
+export const filePurposeSchema = z.enum([FilePurpose.LOGO, FilePurpose.BILLING_LOGO])
 
 /** The multipart fields next to `file`. */
 export const uploadFileSchema = z.object({ purpose: filePurposeSchema }).strict()
@@ -19,6 +21,10 @@ export type UploadFileInput = z.infer<typeof uploadFileSchema>
  * (an SVG can carry scripts; Mario 2026-10-17, Q1). */
 export const FILE_PURPOSE_LIMITS = {
   [FilePurpose.LOGO]: {
+    contentTypes: ['image/png', 'image/jpeg', 'image/webp'],
+    maxBytes: 1024 * 1024,
+  },
+  [FilePurpose.BILLING_LOGO]: {
     contentTypes: ['image/png', 'image/jpeg', 'image/webp'],
     maxBytes: 1024 * 1024,
   },

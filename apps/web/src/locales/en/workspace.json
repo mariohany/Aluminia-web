@@ -840,5 +840,43 @@
       "loadError": "Couldn’t load the status.",
       "historyError": "Couldn’t load the history."
     }
+  },
+  "plan": {
+    "features": {
+      "reports": "Reports",
+      "data": "Your own catalogue (Data)",
+      "project_settings": "Project settings"
+    },
+    "locked": {
+      "featureTitle": "{{feature}} needs a paid plan",
+      "limitTitle": {
+        "clients": "The Free plan has one client",
+        "projects": "The Free plan has one project"
+      },
+      "body": "Your company is on the Free plan. Contact Aluminia to upgrade and unlock everything.",
+      "close": "OK"
+    },
+    "readOnly": {
+      "pill": "Read-only on Free",
+      "hint": "Read-only on the Free plan",
+      "open": "Open",
+      "title": "This project is read-only",
+      "body": "On the Free plan only one project can be edited. You can still open this one and delete it.",
+      "editor": "Read-only on the Free plan — changes can’t be saved"
+    },
+    "pick": {
+      "title": "Pick the project to keep editing",
+      "body": "Your company is on the Free plan, which keeps one project editable. The others stay here to open and delete; nothing is deleted.",
+      "once": "You pick once. Only Aluminia can change it later.",
+      "later": "Later",
+      "confirm": "Keep this project",
+      "saved": "This project stays editable.",
+      "error": "Couldn’t save your pick. Try again."
+    }
+  },
+  "planErrors": {
+    "feature_locked": "That needs a paid plan.",
+    "plan_limit": "The Free plan doesn’t allow more.",
+    "project_read_only": "This project is read-only on the Free plan."
   }
 }

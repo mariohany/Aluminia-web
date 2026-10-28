@@ -75,7 +75,8 @@
           "archived": "أرشف {{name}}",
           "reactivated": "أعاد تفعيل {{name}}",
           "deleted": "حذف {{name}} نهائيًا",
-          "subscription_changed": "غيّر اشتراك {{name}} · {{plan}}، {{maxUsers}} مستخدم"
+          "subscription_changed": "غيّر اشتراك {{name}} · {{plan}}، {{maxUsers}} مستخدم",
+          "free_project_reset": "أعاد اختيار المشروع المتاح لـ {{name}}"
         },
         "user": {
           "created": "أضاف {{email}}",
@@ -377,7 +378,10 @@
       "daysLeft_one": "فاضل يوم · ١١:٥٩ م بتوقيت القاهرة",
       "daysLeft_other": "فاضل {{count}} يوم · ١١:٥٩ م بتوقيت القاهرة",
       "unpaid": "غير مدفوع",
-      "noUnpaid": "مفيش عروض أسعار مستنية الدفع"
+      "noUnpaid": "مفيش عروض أسعار مستنية الدفع",
+      "resetPick": "إعادة اختيار المشروع",
+      "resetPickHint": "أدمن الشركة هيختار تاني المشروع اللي يتعدّل على المجانية",
+      "resetPickDone": "أدمن الشركة هيختار تاني."
     }
   },
   "usersPage": {

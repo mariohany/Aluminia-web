@@ -75,7 +75,8 @@
           "archived": "Archived {{name}}",
           "reactivated": "Reactivated {{name}}",
           "deleted": "Permanently deleted {{name}}",
-          "subscription_changed": "Changed the subscription of {{name}} · {{plan}}, {{maxUsers}} seats"
+          "subscription_changed": "Changed the subscription of {{name}} · {{plan}}, {{maxUsers}} seats",
+          "free_project_reset": "Reset the editable project of {{name}}"
         },
         "user": {
           "created": "Added {{email}}",
@@ -345,7 +346,10 @@
       "daysLeft_one": "{{count}} day left · 23:59 Cairo",
       "daysLeft_other": "{{count}} days left · 23:59 Cairo",
       "unpaid": "Unpaid",
-      "noUnpaid": "No unpaid quotations"
+      "noUnpaid": "No unpaid quotations",
+      "resetPick": "Reset editable project",
+      "resetPickHint": "The company admin picks the project Free keeps editable again",
+      "resetPickDone": "The company admin will pick again."
     }
   },
   "usersPage": {

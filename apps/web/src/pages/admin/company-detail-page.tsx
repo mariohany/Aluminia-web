@@ -16,7 +16,7 @@ import { BILLING_TIME_ZONE, subscriptionState } from '@repo/types/subscriptions'
 import { apiErrorMessage } from '@/lib/api-client'
 import { planName } from '@/lib/bilingual'
 import { usePlansQuery } from '@/lib/plans-queries'
-import { useCompanyQuery, useUpdateCompanyMutation } from '@/lib/companies-queries'
+import { useCompanyQuery, useResetFreeProjectMutation, useUpdateCompanyMutation } from '@/lib/companies-queries'
 import { useUsersQuery } from '@/lib/users-queries'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -444,6 +444,7 @@ function BillingStrip({
 }) {
   const { t } = useTranslation('admin')
   const { data: plans } = usePlansQuery()
+  const resetPick = useResetFreeProjectMutation(company.id)
   const planSeats = plans?.find((plan) => plan.key === company.plan.key)?.seats
   const state = subscriptionState({ planKey: company.plan.key, endsAt: company.endsAt, isTrial: company.isTrial }, new Date())
   const numberFormatter = new Intl.NumberFormat(language)
@@ -496,6 +497,22 @@ function BillingStrip({
         ))}
       </div>
       <div className="flex items-center gap-2 border-t border-border px-4 py-3 lg:border-s lg:border-t-0">
+        {company.plan.key === 'free' && company.freeProjectId && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={resetPick.isPending}
+            title={t('companyDetail.strip.resetPickHint')}
+            onClick={() =>
+              resetPick.mutate(undefined, {
+                onSuccess: () => toast.success(t('companyDetail.strip.resetPickDone')),
+                onError: (err) => toast.error(apiErrorMessage(err, t('companyDetail.actions.error'))),
+              })
+            }
+          >
+            {t('companyDetail.strip.resetPick')}
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={onEdit}>
           <Pencil aria-hidden="true" />
           {t('subscription.title')}

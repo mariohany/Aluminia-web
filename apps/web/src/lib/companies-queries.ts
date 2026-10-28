@@ -55,6 +55,16 @@ export function useUpdateSubscriptionMutation(id: string) {
   })
 }
 
+// Free (Q5): clears the company's editable-project pick so its admin
+// picks again.
+export function useResetFreeProjectMutation(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => companiesApi.resetFreeProject(id),
+    onSuccess: (detail) => queryClient.setQueryData(companyKey(id), detail),
+  })
+}
+
 export function useArchiveCompanyMutation(id: string) {
   const queryClient = useQueryClient()
   return useMutation({

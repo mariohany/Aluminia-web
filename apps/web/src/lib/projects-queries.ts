@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CreateProjectInput, UpdateProjectInput } from '@repo/types/projects'
 import * as projectsApi from '@/lib/projects-api'
 import { clientTreeKey } from '@/lib/clients-queries'
+import { invalidateCompanySubscription } from '@/lib/company-queries'
 
 export const projectKey = (id: string) => ['projects', id] as const
 
@@ -30,6 +31,7 @@ export function useCreateProjectMutation() {
     mutationFn: (input: CreateProjectInput) => projectsApi.createProject(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: clientTreeKey })
+      invalidateCompanySubscription(queryClient)
     },
   })
 }
@@ -51,6 +53,7 @@ export function useDeleteProjectMutation(id: string) {
     mutationFn: (confirmName: string) => projectsApi.deleteProject(id, confirmName),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: clientTreeKey })
+      invalidateCompanySubscription(queryClient)
     },
   })
 }

@@ -20,6 +20,8 @@ import { ThemeToggle } from '@/components/theme-switch'
 import { isBusy, useLocalSolves } from '@/lib/solve/solve-manager'
 import { cn } from '@/lib/utils'
 import { planName } from '@/lib/bilingual'
+import { usePlanGate } from '@/lib/plan-gate'
+import { DIMMED_CLASS, usePlanLock } from '@/lib/plan-lock'
 
 /**
  * The workspace's top-level navigation: an icon rail, not a sidebar.
@@ -48,6 +50,15 @@ export function WorkspaceRail({
   // Open to plain users too (CompanyController) — the company's name and
   // plan belong in everyone's account menu.
   const { data: company } = useCompanyOverviewQuery()
+  // Free (B12): Reports and Data stay in the rail, dimmed; a click opens
+  // "needs a paid plan" instead of the page.
+  const planGate = usePlanGate()
+  const showPlanLock = usePlanLock()
+  const locked = (feature: 'reports' | 'data') => (event: React.MouseEvent) => {
+    if (planGate.has(feature)) return onNavigate?.()
+    event.preventDefault()
+    showPlanLock({ kind: 'feature', feature })
+  }
   // Readable by plain users too (CompanyProfileController); Save in
   // Config replaces this cache, so a new logo shows here at once.
   const { data: profile } = useCompanyProfileQuery()
@@ -135,9 +146,9 @@ export function WorkspaceRail({
       {/* Every company user (docs/reports_planing.md D10). */}
       <Link
         to="/workspace/reports"
-        className={itemClass(section === 'reports')}
+        className={cn(itemClass(section === 'reports'), !planGate.has('reports') && DIMMED_CLASS)}
         aria-current={section === 'reports' ? 'page' : undefined}
-        onClick={onNavigate}
+        onClick={locked('reports')}
       >
         <ReportsIcon active={section === 'reports'} />
         {t('rail.reports')}
@@ -145,9 +156,9 @@ export function WorkspaceRail({
 
       <Link
         to="/workspace/data"
-        className={itemClass(section === 'data')}
+        className={cn(itemClass(section === 'data'), !planGate.has('data') && DIMMED_CLASS)}
         aria-current={section === 'data' ? 'page' : undefined}
-        onClick={onNavigate}
+        onClick={locked('data')}
       >
         <Database className="size-[19px]" aria-hidden="true" />
         {t('rail.data')}

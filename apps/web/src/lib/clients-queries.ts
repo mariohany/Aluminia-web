@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CreateClientInput, UpdateClientInput } from '@repo/types/clients'
 import * as clientsApi from '@/lib/clients-api'
+import { invalidateCompanySubscription } from '@/lib/company-queries'
 
 // The tree's key. Project mutations invalidate this too — a new project
 // changes the tree, not just the project.
@@ -25,6 +26,7 @@ export function useCreateClientMutation() {
     mutationFn: (input: CreateClientInput) => clientsApi.createClient(input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: clientTreeKey })
+      invalidateCompanySubscription(queryClient)
     },
   })
 }
@@ -46,6 +48,7 @@ export function useDeleteClientMutation(id: string) {
     mutationFn: (confirmName: string) => clientsApi.deleteClient(id, confirmName),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: clientTreeKey })
+      invalidateCompanySubscription(queryClient)
     },
   })
 }

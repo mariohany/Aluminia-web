@@ -1,4 +1,5 @@
 import type { LoginResponse } from '@repo/types/auth'
+import i18n from '@/lib/i18n'
 import { reportError } from '@/lib/monitoring'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
@@ -14,12 +15,34 @@ export class ApiError extends Error {
   }
 }
 
+/** The machine-readable `code` an API error body carries, if any. */
+export function apiErrorCode(err: unknown): string | undefined {
+  return codeOf(err instanceof ApiError ? err.body : undefined)
+}
+
+function codeOf(body: unknown): string | undefined {
+  if (body && typeof body === 'object' && 'code' in body) {
+    const code = (body as { code?: unknown }).code
+    if (typeof code === 'string') return code
+  }
+  return undefined
+}
+
+// The plan says no (docs/subscriptions_planing.md §4b): the screens dim
+// these actions up front, so this only fires after a race; it still reads
+// as a sentence in the user's language, not the API's English.
+const PLAN_ERROR_CODES = ['feature_locked', 'plan_limit', 'project_read_only'] as const
+
 // The global exception filter always shapes error bodies as
 // `{ message, ... }`. Surfacing that message (a validation failure, a
 // business-rule rejection like "already archived") is more useful to the
 // admin than a generic "something went wrong" — fall back to that only
 // when the body doesn't have one.
 export function apiErrorMessage(err: unknown, fallback: string): string {
+  const code = apiErrorCode(err)
+  if (code && (PLAN_ERROR_CODES as readonly string[]).includes(code)) {
+    return i18n.t(`planErrors.${code}`, { ns: 'workspace' })
+  }
   if (err instanceof ApiError && err.body && typeof err.body === 'object' && 'message' in err.body) {
     const message = (err.body as { message?: unknown }).message
     if (typeof message === 'string') return message
@@ -28,6 +51,23 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
 }
 
 let accessToken: string | null = null
+
+// The company's plan logged this user out (§4a, B10, B13): the session is
+// dropped at once and the login page says why (`takeSignOutReason`).
+export const SIGN_OUT_CODES = ['subscription_ended', 'plan_deactivated'] as const
+export type SignOutReason = (typeof SIGN_OUT_CODES)[number]
+let signOutReason: SignOutReason | null = null
+
+export function isSignOutCode(code: string | undefined): code is SignOutReason {
+  return (SIGN_OUT_CODES as readonly (string | undefined)[]).includes(code)
+}
+
+/** Why the plan signed this tab out, once; null when it didn't. */
+export function takeSignOutReason(): SignOutReason | null {
+  const reason = signOutReason
+  signOutReason = null
+  return reason
+}
 
 export function setAccessToken(token: string | null): void {
   accessToken = token
@@ -62,6 +102,8 @@ export function refreshSession(): Promise<LoginResponse | null> {
       const res = await fetch(`${API_URL}/auth/refresh`, { method: 'POST', credentials: 'include' })
       if (!res.ok) {
         if (res.status === 401) {
+          const code = codeOf(await res.json().catch(() => undefined))
+          if (isSignOutCode(code)) signOutReason = code
           setAccessToken(null)
           sessionListeners.forEach((listener) => listener(null))
         }
@@ -114,6 +156,14 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   if (!res.ok) {
     const body = await res.json().catch(() => undefined)
     const error = new ApiError(res.status, body)
+    // Login answers these itself (the page shows them); anywhere else the
+    // plan just ended this session.
+    const code = codeOf(body)
+    if (isSignOutCode(code) && !options.skipAuthRetry && accessToken) {
+      signOutReason = code
+      setAccessToken(null)
+      sessionListeners.forEach((listener) => listener(null))
+    }
     // Our API records its own failures (docs/sentry_planing.md Q10); a 5xx
     // without its error body means it couldn't answer (Render down: the
     // proxy's 502/503/504), so only the browser can tell.

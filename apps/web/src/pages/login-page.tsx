@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router'
 import { loginRequestSchema, type LoginRequestInput } from '@repo/types/auth'
 import { useAuth } from '@/lib/auth-context'
 import { homePathForRole } from '@/lib/home-path'
-import { ApiError } from '@/lib/api-client'
+import { ApiError, apiErrorCode, isSignOutCode, takeSignOutReason } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/ui/password-input'
@@ -20,7 +20,12 @@ export function LoginPage() {
   // What the alert says, or null: wrong credentials, the failed-login
   // limit (429) with the minutes left when the API says, or sign-in
   // being briefly unavailable (503, the API's Redis is down).
-  const [serverError, setServerError] = useState<string | null>(null)
+  // Also why the company's plan just signed this user out, if it did
+  // (an ended subscription, or deactivated by the drop to Free).
+  const [serverError, setServerError] = useState<string | null>(() => {
+    const reason = takeSignOutReason()
+    return reason ? t(`signedOut.${reason}`) : null
+  })
 
   const {
     register,
@@ -41,7 +46,10 @@ export function LoginPage() {
       // point in the submit handler.
       void navigate(homePathForRole(user.role), { replace: true })
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
+      const code = apiErrorCode(err)
+      if (isSignOutCode(code)) {
+        setServerError(t(`signedOut.${code}`))
+      } else if (err instanceof ApiError && err.status === 401) {
         setServerError(t('error'))
       } else if (err instanceof ApiError && err.status === 429) {
         const seconds = retryAfterSeconds(err.body)

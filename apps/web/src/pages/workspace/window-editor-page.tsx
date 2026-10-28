@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useNavigate, useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Check, Loader2 } from 'lucide-react'
+import { Check, Loader2, Lock } from 'lucide-react'
 import {
   GlassKind,
   HeadShape,
@@ -99,6 +99,7 @@ import {
 } from '@repo/geometry/panel-lights'
 import { resolveProfileMetrics } from '@repo/geometry/profile-metrics'
 import { collectPanelIssues, collectWindowIssues, computeSashWeightKg, resolveGlassWeightPerSqm, type TranslatedIssue } from '@/lib/window-weight'
+import { usePlanGate } from '@/lib/plan-gate'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -203,6 +204,9 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   const [addChoice, setAddChoice] = useState<AddChoice | null>(null)
   const [addError, setAddError] = useState<string | undefined>(undefined)
   const projectQuery = useProjectQuery(projectId)
+  // Free keeps one project editable (B13, Q5): a window of another one
+  // opens to look at, and Save stays off.
+  const readOnly = !usePlanGate().isProjectEditable(projectId)
   const project = projectQuery.data
 
   const editingWindowQuery = useWindowQuery(windowId)
@@ -1534,6 +1538,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
   // ---- Submit --------------------------------------------------------------
 
   const onSubmit = async (data: CreateWindowInput) => {
+    if (readOnly) return
     try {
       // Submits the sanitised panels, never the raw ones — a stale
       // openingType on a section whose frame is no longer hinged must
@@ -2317,11 +2322,14 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
               <span
                 className={cn(
                   'flex items-center gap-1.5 text-xs',
-                  isEdit && !isDirty ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground',
+                  isEdit && !isDirty && !readOnly ? 'text-emerald-600 dark:text-emerald-500' : 'text-muted-foreground',
                 )}
               >
-                {isEdit && !isDirty && <Check className="size-3.5" aria-hidden="true" />}
-                {!isEdit
+                {isEdit && !isDirty && !readOnly && <Check className="size-3.5" aria-hidden="true" />}
+                {readOnly && <Lock className="size-3.5" aria-hidden="true" />}
+                {readOnly
+                  ? t('plan.readOnly.editor')
+                  : !isEdit
                   ? t('windowDialog.design.saveState.new')
                   : isDirty
                     ? t('windowDialog.design.saveState.unsaved')
@@ -2331,7 +2339,7 @@ function WindowEditor({ projectId, windowId }: { projectId: string; windowId?: s
                 <Button type="button" variant="outline" className="flex-1" onClick={() => requestLeave(onDone)}>
                   {t('actions.cancel')}
                 </Button>
-                <Button type="submit" className="flex-[2]" disabled={isSubmitting}>
+                <Button type="submit" className="flex-[2]" disabled={isSubmitting || readOnly}>
                   {isEdit ? t('actions.save') : t('actions.create')}
                 </Button>
               </div>

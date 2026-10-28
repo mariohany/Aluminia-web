@@ -28,6 +28,10 @@ export function updateSubscription(id: string, input: UpdateSubscriptionInput): 
   return apiFetch<CompanyDetail>(`/admin/companies/${id}/subscription`, { method: 'PATCH', body: input })
 }
 
+export function resetFreeProject(id: string): Promise<CompanyDetail> {
+  return apiFetch<CompanyDetail>(`/admin/companies/${id}/free-project`, { method: 'DELETE' })
+}
+
 export function archiveCompany(id: string): Promise<CompanySummary> {
   return apiFetch<CompanySummary>(`/admin/companies/${id}/archive`, { method: 'POST' })
 }

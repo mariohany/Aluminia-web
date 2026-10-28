@@ -6,6 +6,7 @@
     "dataWarehouse": "Data warehouse",
     "logs": "Logs",
     "plans": "Plans",
+    "billingProfile": "Billing profile",
     "groups": {
       "overview": "Overview",
       "tenants": "Tenants",
@@ -94,6 +95,9 @@
         },
         "plan": {
           "updated": "Edited the {{name}} plan"
+        },
+        "billing": {
+          "profile_updated": "Edited the billing profile"
         }
       },
       "lookup": {
@@ -121,7 +125,8 @@
         "user": "Users",
         "lookup": "Catalogue",
         "lead": "Leads",
-        "plan": "Plans"
+        "plan": "Plans",
+        "billing": "Billing"
       },
       "allActors": "All admins",
       "clearAll": "Clear filters",
@@ -543,5 +548,63 @@
     "save": "Save",
     "saved": "Subscription saved.",
     "saveError": "Couldn’t save the subscription. Try again."
+  },
+  "billingProfile": {
+    "title": "Billing profile",
+    "subtitle": "Your business as printed on every quotation and invoice.",
+    "notSet": "Not set up yet: no quotation can be issued until this is saved.",
+    "discard": "Discard",
+    "save": "Save",
+    "saved": "Billing profile saved.",
+    "saveError": "Couldn’t save the billing profile. Try again.",
+    "loadError": "Couldn’t load the billing profile.",
+    "sections": {
+      "business": "Business",
+      "pay": "How to pay",
+      "numbering": "Numbering"
+    },
+    "fields": {
+      "legalNameEn": "Legal name (English)",
+      "legalNameAr": "Legal name (Arabic)",
+      "addressEn": "Address (English)",
+      "addressAr": "Address (Arabic)",
+      "taxId": "Tax registration no.",
+      "commercialRegister": "Commercial register",
+      "billingEmail": "Billing email",
+      "phone": "Phone",
+      "bankAccount": "Bank · IBAN",
+      "instapay": "InstaPay",
+      "nextQuotation": "Next quotation",
+      "nextInvoice": "Next invoice"
+    },
+    "hints": {
+      "billingEmail": "Quotations and invoices are sent from and reply to it",
+      "nextQuotation": "Restarts at 0001 every January; can only go up",
+      "nextInvoice": "No gaps; never reused; can only go up"
+    },
+    "errors": {
+      "required": "Required.",
+      "email": "Enter a valid email.",
+      "number": "Enter a whole number from 1.",
+      "numberTooLow": "A next number can’t go below one already issued."
+    },
+    "logo": {
+      "title": "Logo",
+      "rules": "PNG / JPEG / WebP ≤ 1 MB · optional",
+      "alt": "Billing logo",
+      "upload": "Upload",
+      "replace": "Replace",
+      "remove": "Remove",
+      "uploading": "Uploading…",
+      "wrongType": "Use a PNG, JPEG or WebP image.",
+      "tooBig": "The logo must be 1 MB or smaller.",
+      "uploadError": "Couldn’t upload the logo. Try again."
+    },
+    "preview": {
+      "title": "Preview · quotation",
+      "taxNo": "Tax no. {{value}}",
+      "cr": "CR {{value}}",
+      "note": "Updates as you type. A document already issued keeps the details it was issued with."
+    }
   }
 }

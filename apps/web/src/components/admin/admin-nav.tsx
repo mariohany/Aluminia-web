@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { LayoutDashboard, Building2, Users, Database, ScrollText, Layers } from 'lucide-react'
+import { LayoutDashboard, Building2, Users, Database, ScrollText, Layers, Receipt } from 'lucide-react'
 import { useDashboardSummaryQuery } from '@/lib/dashboard-queries'
 import { useUsersQuery } from '@/lib/users-queries'
 import { cn } from '@/lib/utils'
@@ -18,7 +18,13 @@ const navGroups = [
   },
   // Transactions and Billing profile join this group in their own steps
   // (docs/subscriptions_tasks.md steps 5 and 6).
-  { key: 'billing', items: [{ to: '/app/plans', key: 'nav.plans', icon: Layers, end: false, count: null }] },
+  {
+    key: 'billing',
+    items: [
+      { to: '/app/plans', key: 'nav.plans', icon: Layers, end: false, count: null },
+      { to: '/app/billing-profile', key: 'nav.billingProfile', icon: Receipt, end: false, count: null },
+    ],
+  },
   { key: 'catalogue', items: [{ to: '/app/data-warehouse', key: 'nav.dataWarehouse', icon: Database, end: false, count: null }] },
   { key: 'system', items: [{ to: '/app/logs', key: 'nav.logs', icon: ScrollText, end: false, count: null }] },
 ] as const

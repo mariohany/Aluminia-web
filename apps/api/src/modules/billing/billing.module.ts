@@ -10,6 +10,7 @@ import { AdminBillingProfileController } from './admin-billing-profile.controlle
 import { BillingDocumentsService } from './billing-documents.service';
 import { BillingProfileService } from './billing-profile.service';
 import { CompanyAlertsController } from './company-alerts.controller';
+import { CompanyBillingController } from './company-billing.controller';
 import { CompanyAlertsService } from './company-alerts.service';
 import { FX_SOURCE, FxService, openErApiSource } from './fx.service';
 
@@ -25,6 +26,7 @@ import { FX_SOURCE, FxService, openErApiSource } from './fx.service';
     AdminBillingProfileController,
     AdminBillingController,
     CompanyAlertsController,
+    CompanyBillingController,
   ],
   providers: [
     BillingProfileService,

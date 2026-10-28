@@ -253,5 +253,40 @@ describe('Billing email (e2e)', () => {
       [quotation.id],
     );
     expect(sends.map((s) => s.error)).toEqual([null, 'daily limit reached']);
+
+    // Its admins see it once sent, never a draft (B24); plain users don't.
+    const draft = await request(server())
+      .post(`/admin/companies/${companyId}/quotations`)
+      .set(as(superToken))
+      .send({
+        planKey: 'pro',
+        seats: 5,
+        months: 1,
+        startsOn: today,
+        endsOn: periodEnd(today, 1),
+        currency: 'EGP',
+        fxRate: null,
+        unitPrice: 500,
+        discountKind: null,
+        discountValue: null,
+        vatRate: 14,
+        validUntil: addDays(today, 14),
+        note: null,
+      })
+      .expect(201);
+    const own = (
+      await request(server())
+        .get('/company/billing/documents')
+        .set(as(adminToken))
+        .expect(200)
+    ).body as BillingDocumentSummary[];
+    expect(own.map((d) => d.id)).toEqual([quotation.id]);
+    expect(own.map((d) => d.id)).not.toContain(
+      (draft.body as BillingDocumentSummary).id,
+    );
+    await request(server())
+      .get('/company/billing/documents')
+      .set(as(userToken))
+      .expect(403);
   });
 });

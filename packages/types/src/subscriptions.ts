@@ -164,6 +164,8 @@ export interface CompanySubscription {
   counts: { clients: number; projects: number }
   maxUsers: number
   seatsUsed: number
+  /** What its quotations are in (B6). */
+  currency: BillingCurrency
   freeProjectId: string | null
   // B13: on Free with more than one project and none picked yet, the
   // company admin picks the one that stays editable.

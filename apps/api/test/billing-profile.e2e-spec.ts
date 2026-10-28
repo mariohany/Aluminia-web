@@ -180,7 +180,7 @@ describe('Admin billing profile (e2e)', () => {
       .expect(400);
   });
 
-  it('keeps the platform logo apart from company files', async () => {
+  it('lets only the super admin upload the platform logo', async () => {
     await upload(companyAdminToken, 'billing_logo').expect(403);
     await upload(superToken, 'logo').expect(403);
     const res = await upload(superToken, 'billing_logo').expect(201);
@@ -189,10 +189,11 @@ describe('Admin billing profile (e2e)', () => {
       .get(`/files/${id}`)
       .set(as(superToken))
       .expect(200);
+    // Readable by company users: it prints on their own documents (B24).
     await request(app.getHttpServer())
       .get(`/files/${id}`)
       .set(as(companyAdminToken))
-      .expect(404);
+      .expect(200);
   });
 
   it('saves the details, the logo and higher next numbers, with an audit entry', async () => {

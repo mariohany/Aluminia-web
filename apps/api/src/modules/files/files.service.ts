@@ -11,7 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { IsNull, LessThan, Repository } from 'typeorm';
 import type { UserRole } from '@repo/types/auth';
-import type { FilePurpose, UploadedFileSummary } from '@repo/types/files';
+import { FilePurpose, type UploadedFileSummary } from '@repo/types/files';
 import { StoredFile } from '../../database/control-plane/entities/stored-file.entity';
 import {
   companyStoragePrefix,
@@ -99,13 +99,18 @@ export class FilesService {
     return { id, purpose, contentType, sizeBytes: file.buffer.length };
   }
 
-  /** The file's bytes for a user of the owner. */
+  /** The file's bytes for a user of the owner. The platform's billing
+   * logo is readable by everyone signed in: it prints on every company's
+   * quotations and invoices, which their admins open (B24). */
   async read(
     owner: FileOwner,
     id: string,
   ): Promise<{ body: Buffer; contentType: string; sizeBytes: number }> {
     const row = await this.files.findOne({
-      where: { id, companyId: ownerIs(owner) },
+      where: [
+        { id, companyId: ownerIs(owner) },
+        { id, companyId: IsNull(), purpose: FilePurpose.BILLING_LOGO },
+      ],
     });
     const body = row ? await this.storage.get(row.storageKey) : null;
     if (!row || !body) throw new NotFoundException('File not found.');

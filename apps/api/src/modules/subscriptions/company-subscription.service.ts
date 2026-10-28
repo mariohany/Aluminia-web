@@ -51,6 +51,7 @@ export class CompanySubscriptionService {
       counts,
       maxUsers: company.maxUsers,
       seatsUsed,
+      currency: company.currency,
       freeProjectId: company.freeProjectId,
       needsProjectPick:
         access.free && company.freeProjectId === null && counts.projects > 1,

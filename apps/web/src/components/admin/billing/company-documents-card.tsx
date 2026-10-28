@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Ban, Banknote, FilePlus2, MoreHorizontal, Pencil } from 'lucide-react'
+import { Ban, Banknote, FileText, FilePlus2, MoreHorizontal, Pencil } from 'lucide-react'
 import type { CompanyDetail } from '@repo/types/companies'
 import type { BillingDocumentSummary } from '@repo/types/billing-documents'
 import { apiErrorMessage } from '@/lib/api-client'
@@ -15,14 +15,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { DocumentPdfDialog } from './document-pdf-dialog'
 import { DocumentStatusPill } from './document-status'
 import { MarkPaidDialog } from './mark-paid-dialog'
 import { QuotationDialog } from './quotation-dialog'
 
 /**
  * The company's quotations and invoices on its Billing tab (B19), newest
- * first, with New quotation and each document's actions: edit a draft,
- * Mark paid and Void an unpaid one.
+ * first, with New quotation and each document's actions: its PDF, edit a
+ * draft, Mark paid and Void an unpaid one.
  */
 export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
   const { t, i18n } = useTranslation('admin')
@@ -30,6 +31,7 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
   const voidMutation = useVoidQuotationMutation()
   const [editing, setEditing] = useState<{ document?: BillingDocumentSummary } | null>(null)
   const [paying, setPaying] = useState<BillingDocumentSummary | null>(null)
+  const [viewing, setViewing] = useState<BillingDocumentSummary | null>(null)
   const dateFormatter = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' })
 
   const money = (doc: BillingDocumentSummary) =>
@@ -83,26 +85,30 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                       {dateFormatter.format(new Date(doc.createdAt))}
                     </TableCell>
                     <TableCell>
-                      {(unpaid || doc.status === 'expired') && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="size-8" aria-label={t('usersPage.table.actions')}>
-                              <MoreHorizontal aria-hidden="true" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {doc.status === 'draft' && (
-                              <DropdownMenuItem onSelect={() => setEditing({ document: doc })}>
-                                <Pencil aria-hidden="true" />
-                                {t('documents.actions.edit')}
-                              </DropdownMenuItem>
-                            )}
-                            {unpaid && (
-                              <DropdownMenuItem onSelect={() => setPaying(doc)}>
-                                <Banknote aria-hidden="true" />
-                                {t('documents.actions.markPaid')}
-                              </DropdownMenuItem>
-                            )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="size-8" aria-label={t('usersPage.table.actions')}>
+                            <MoreHorizontal aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => setViewing(doc)}>
+                            <FileText aria-hidden="true" />
+                            {t('documents.actions.pdf')}
+                          </DropdownMenuItem>
+                          {doc.status === 'draft' && (
+                            <DropdownMenuItem onSelect={() => setEditing({ document: doc })}>
+                              <Pencil aria-hidden="true" />
+                              {t('documents.actions.edit')}
+                            </DropdownMenuItem>
+                          )}
+                          {unpaid && (
+                            <DropdownMenuItem onSelect={() => setPaying(doc)}>
+                              <Banknote aria-hidden="true" />
+                              {t('documents.actions.markPaid')}
+                            </DropdownMenuItem>
+                          )}
+                          {(unpaid || doc.status === 'expired') && (
                             <DropdownMenuItem
                               variant="destructive"
                               onSelect={() =>
@@ -115,9 +121,9 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                               <Ban aria-hidden="true" />
                               {t('documents.actions.void')}
                             </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 )
@@ -133,6 +139,7 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
         onOpenChange={(open) => !open && setEditing(null)}
       />
       <MarkPaidDialog document={paying} onOpenChange={(open) => !open && setPaying(null)} />
+      <DocumentPdfDialog document={viewing} onOpenChange={(open) => !open && setViewing(null)} />
     </Card>
   )
 }

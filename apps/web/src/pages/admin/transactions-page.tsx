@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Banknote, Download } from 'lucide-react'
+import { Banknote, Download, FileText } from 'lucide-react'
 import {
   DOCUMENT_VIEW_STATUSES,
   type BillingDocumentSummary,
@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { VirtualizedLogTable, type LogColumn } from '@/components/admin/admin-logs/virtualized-log-table'
 import { DocumentStatusPill } from '@/components/admin/billing/document-status'
 import { MarkPaidDialog } from '@/components/admin/billing/mark-paid-dialog'
+import { DocumentPdfDialog } from '@/components/admin/billing/document-pdf-dialog'
 
 const KINDS = ['all', 'invoice', 'quotation'] as const
 
@@ -43,6 +44,7 @@ export function TransactionsPage() {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search.trim())
   const [paying, setPaying] = useState<BillingDocumentSummary | null>(null)
+  const [viewing, setViewing] = useState<BillingDocumentSummary | null>(null)
   const [exporting, setExporting] = useState(false)
 
   const filters: TransactionsFilters = {
@@ -120,14 +122,27 @@ export function TransactionsPage() {
     {
       key: 'actions',
       header: '',
-      width: '7.5rem',
-      cell: (d) =>
-        d.kind === 'quotation' && (d.status === 'draft' || d.status === 'sent') ? (
-          <Button variant="ghost" size="sm" className="h-7" onClick={() => setPaying(d)}>
-            <Banknote aria-hidden="true" />
-            {t('documents.actions.markPaid')}
+      width: '10rem',
+      cell: (d) => (
+        <span className="flex items-center justify-end gap-1">
+          {d.kind === 'quotation' && (d.status === 'draft' || d.status === 'sent') && (
+            <Button variant="ghost" size="sm" className="h-7" onClick={() => setPaying(d)}>
+              <Banknote aria-hidden="true" />
+              {t('documents.actions.markPaid')}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            aria-label={t('documents.actions.pdf')}
+            title={t('documents.actions.pdf')}
+            onClick={() => setViewing(d)}
+          >
+            <FileText aria-hidden="true" />
           </Button>
-        ) : null,
+        </span>
+      ),
     },
   ]
 
@@ -264,6 +279,7 @@ export function TransactionsPage() {
       </div>
 
       <MarkPaidDialog document={paying} onOpenChange={(open) => !open && setPaying(null)} />
+      <DocumentPdfDialog document={viewing} onOpenChange={(open) => !open && setViewing(null)} />
     </div>
   )
 }

@@ -717,7 +717,16 @@
       "markPaid": "Mark paid",
       "void": "Void",
       "voided": "{{number}} voided.",
-      "error": "That didn’t work. Try again."
+      "error": "That didn’t work. Try again.",
+      "pdf": "PDF"
+    },
+    "pdf": {
+      "download": "Download",
+      "print": "Print",
+      "printError": "Couldn’t open the print dialog.",
+      "error": "Couldn’t draw the PDF.",
+      "retry": "Try again",
+      "drawing": "Drawing the PDF…"
     }
   },
   "transactions": {

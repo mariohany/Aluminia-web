@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { barOptimiserPdfBytes, warmUpPdfBytes } from '@repo/report-pdf/bar-optimiser-document'
+import { billingPdfBytes } from '@repo/report-pdf/billing-document'
 import { registerFonts, type FontFile } from '@repo/report-pdf/fonts'
 import arabicRegular from '@repo/report-pdf/fonts/IBMPlexSansArabic-Regular.ttf?url'
 import arabicSemiBold from '@repo/report-pdf/fonts/IBMPlexSansArabic-SemiBold.ttf?url'
@@ -34,7 +35,12 @@ self.onmessage = async (event: MessageEvent<DrawRequest>) => {
   const request = event.data
   const { id } = request
   try {
-    const bytes = 'warm' in request ? await warmUpPdfBytes() : await barOptimiserPdfBytes(request.input)
+    const bytes =
+      'warm' in request
+        ? await warmUpPdfBytes()
+        : 'billing' in request
+          ? await billingPdfBytes(request.billing)
+          : await barOptimiserPdfBytes(request.input)
     const reply: DrawReply = { id, ok: true, bytes }
     self.postMessage(reply, [bytes])
   } catch (error) {

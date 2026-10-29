@@ -227,8 +227,10 @@ export function sectionLetter(index: number): string {
  * exactly as stored. Every dimension callout on the drawing (assembly
  * H/W, per-panel column/row chains) goes through this, not a bare
  * `Math.round`, so a gridded panel's own fractional pitch (see
- * `insertColumn`/`insertRow`'s own rounding) never looks truncated. */
+ * `insertColumn`/`insertRow`'s own rounding) never looks truncated.
+ * A size nobody typed yet (a new panel's NaN) reads "—", not "NaN". */
 export function formatDimensionMm(mm: number): string {
+  if (!Number.isFinite(mm)) return '—'
   const rounded = Math.round(mm * 10) / 10
   return Number.isInteger(rounded)
     ? rounded.toLocaleString('en-US')

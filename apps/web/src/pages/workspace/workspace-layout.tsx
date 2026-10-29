@@ -209,6 +209,9 @@ export function WorkspaceLayout() {
   const [projectDialogOpen, setProjectDialogOpen] = useState(false)
   const [editingProject, setEditingProject] = useState(false)
   const [projectDialogInitialStep, setProjectDialogInitialStep] = useState<1 | 2>(1)
+  // A new form on every open: the dialog's reset-on-open alone let the
+  // last project's name show again in New project.
+  const [projectDialogKey, setProjectDialogKey] = useState(0)
   const [deletingClient, setDeletingClient] = useState<ClientWithProjects | undefined>()
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
   const [deletingWindows, setDeletingWindows] = useState<{ id: string; name: string }[] | undefined>()
@@ -282,6 +285,7 @@ export function WorkspaceLayout() {
   const openNewProject = () => {
     setEditingProject(false)
     setProjectDialogInitialStep(1)
+    setProjectDialogKey((key) => key + 1)
     setProjectDialogOpen(true)
   }
 
@@ -289,6 +293,7 @@ export function WorkspaceLayout() {
     if (!selectedProjectId) return
     setEditingProject(true)
     setProjectDialogInitialStep(1)
+    setProjectDialogKey((key) => key + 1)
     setProjectDialogOpen(true)
   }
 
@@ -299,6 +304,7 @@ export function WorkspaceLayout() {
     if (!selectedProjectId) return
     setEditingProject(true)
     setProjectDialogInitialStep(2)
+    setProjectDialogKey((key) => key + 1)
     setProjectDialogOpen(true)
   }
 
@@ -446,6 +452,7 @@ export function WorkspaceLayout() {
       />
 
       <ProjectDialog
+        key={projectDialogKey}
         open={projectDialogOpen}
         onOpenChange={setProjectDialogOpen}
         clients={clients}

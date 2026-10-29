@@ -2,7 +2,10 @@ import { SystemType } from '@repo/types/lookups';
 import { GlassKind, HeadShape, SectionKind } from '@repo/types/windows';
 import type { WindowPanelInput } from '@repo/types/windows';
 import { panelLayoutInput } from '@repo/geometry/panel-geometry';
-import { buildAssemblyLayout } from '@repo/geometry/window-geometry';
+import {
+  buildAssemblyLayout,
+  formatDimensionMm,
+} from '@repo/geometry/window-geometry';
 import { PLACEHOLDER_METRICS } from '@repo/geometry/profile-metrics';
 
 // The API builds windows with the same geometry the editor draws with
@@ -75,5 +78,11 @@ describe('@repo/geometry on the API', () => {
     );
 
     expect(parts.filter((p) => p.kind === 'glass')).toHaveLength(2);
+  });
+
+  it('prints a size nobody typed yet as a dash, not NaN', () => {
+    expect(formatDimensionMm(NaN)).toBe('—');
+    expect(formatDimensionMm(2200)).toBe('2,200');
+    expect(formatDimensionMm(882.14)).toBe('882.1');
   });
 });

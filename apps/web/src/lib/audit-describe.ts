@@ -77,6 +77,8 @@ function describe(entry: AuditLogEntry, t: Translate, tLookups: Translate, exist
         email: text(meta.email),
         plan: text(meta.plan),
         maxUsers: text(meta.maxUsers),
+        // The seat sentences are plural forms ("1 seat", "5 seats").
+        count: Number(meta.maxUsers) || 0,
       }),
     }
   }

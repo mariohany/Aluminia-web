@@ -207,10 +207,10 @@ export function QuotationDialog({
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {saved
+            {step === 2 && saved
               ? t('email.title', { number: saved.number })
-              : document
-                ? t('quotation.editTitle', { number: document.number })
+              : (saved ?? document)
+                ? t('quotation.editTitle', { number: (saved ?? document)?.number })
                 : t('quotation.title')}
           </DialogTitle>
           <DialogDescription>{t('quotation.description', { company: company.name })}</DialogDescription>

@@ -148,7 +148,11 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
   let res = await doFetch(accessToken)
 
-  if (res.status === 401 && !options.skipAuthRetry) {
+  // A 401 that already says the plan ended this session isn't retried: the
+  // drop to Free deleted the session too, so the refresh would fail, clear
+  // the token and lose the reason the login page shows.
+  const signOutCode = res.status === 401 ? codeOf(await res.clone().json().catch(() => undefined)) : undefined
+  if (res.status === 401 && !options.skipAuthRetry && !isSignOutCode(signOutCode)) {
     const refreshed = await refreshSession()
     if (refreshed) res = await doFetch(refreshed.accessToken)
   }

@@ -72,13 +72,16 @@
       "removedActor": "A removed account",
       "actions": {
         "company": {
-          "created": "Created {{name}} · {{plan}}, {{maxUsers}} seats",
+          "created_one": "Created {{name}} · {{plan}}, 1 seat",
+          "created_other": "Created {{name}} · {{plan}}, {{count}} seats",
           "updated": "Updated {{name}}",
-          "plan_changed": "Moved {{name}} to {{plan}}, {{maxUsers}} seats",
+          "plan_changed_one": "Moved {{name}} to {{plan}}, 1 seat",
+          "plan_changed_other": "Moved {{name}} to {{plan}}, {{count}} seats",
           "archived": "Archived {{name}}",
           "reactivated": "Reactivated {{name}}",
           "deleted": "Permanently deleted {{name}}",
-          "subscription_changed": "Changed the subscription of {{name}} · {{plan}}, {{maxUsers}} seats",
+          "subscription_changed_one": "Changed the subscription of {{name}} · {{plan}}, 1 seat",
+          "subscription_changed_other": "Changed the subscription of {{name}} · {{plan}}, {{count}} seats",
           "free_project_reset": "Reset the editable project of {{name}}"
         },
         "user": {

@@ -104,7 +104,10 @@ export function billingDocument(input: BillingPdfInput): ReactElement<DocumentPr
     col(
       { flex: 1, gap: px(2) },
       en(seller.nameEn, { fontSize: px(16), fontWeight: 700 }),
-      en([seller.addressEn, seller.billingEmail].filter(Boolean).join(' · '), { fontSize: px(10.5), color: C.mute }),
+      en([seller.addressEn, seller.billingEmail, seller.phone].filter(Boolean).join(' · '), {
+        fontSize: px(10.5),
+        color: C.mute,
+      }),
       registration(seller) ? en(registration(seller), { fontSize: px(10.5), color: C.mute }) : null,
     ),
     col(
@@ -175,7 +178,10 @@ export function billingDocument(input: BillingPdfInput): ReactElement<DocumentPr
         row(
           { justifyContent: 'space-between', gap: px(8) },
           en(`Aluminia ${doc.plan.nameEn} — ${doc.months} ${doc.months === 1 ? 'month' : 'months'}`, { fontSize: px(11.5), fontWeight: 700 }),
-          ar(`باقة ${doc.plan.nameAr} — ${doc.months} ${doc.months === 1 ? 'شهر' : doc.months === 12 ? 'شهرًا' : 'أشهر'}`, { fontSize: px(11.5), fontWeight: 600 }),
+          ar(
+            `باقة ${doc.plan.nameAr} — ${doc.months === 1 ? 'شهر واحد' : `${doc.months} ${doc.months === 12 ? 'شهرًا' : 'أشهر'}`}`,
+            { fontSize: px(11.5), fontWeight: 600 },
+          ),
         ),
         en(`${startEn} – ${endEn}`, { fontSize: px(10.5), color: C.mute }),
       ),

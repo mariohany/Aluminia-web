@@ -26,7 +26,7 @@ const quotation: BillingDocumentSummary = {
     taxId: '512-884-901',
     commercialRegister: '184522',
     billingEmail: 'billing@aluminia.app',
-    phone: null,
+    phone: '+20 2 2345 6789',
     bankAccount: 'CIB · EG38 0019 0005 0000 0000 2631 8000 2',
     instapay: 'aluminia@instapay',
     logoFileId: null,
@@ -115,6 +115,10 @@ describe('quotation PDF', () => {
     has(drawn.lines, 'Quotation')
     has(drawn.lines, 'عرض سعر')
     has(drawn.lines, 'QUO-2026-0042')
+  })
+
+  it("prints the seller's address, email and phone", () => {
+    has(drawn.lines, '12 Tahrir St, Cairo · billing@aluminia.app · +20 2 2345 6789')
   })
 
   it('prints the totals, the discount and the frozen rate', () => {

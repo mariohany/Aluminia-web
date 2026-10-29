@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { LayoutDashboard, Building2, Users, Database, ScrollText } from 'lucide-react'
+import { ChartLine, Building2, Users, Database, ScrollText, Layers, Receipt, ArrowLeftRight } from 'lucide-react'
 import { useDashboardSummaryQuery } from '@/lib/dashboard-queries'
 import { useUsersQuery } from '@/lib/users-queries'
 import { cn } from '@/lib/utils'
@@ -8,12 +8,22 @@ import { cn } from '@/lib/utils'
 // Grouped as in the admin redesign (docs/admin_redesign_planing.md §1).
 // `count` names which total, if any, sits at the end of the link.
 const navGroups = [
-  { key: 'overview', items: [{ to: '/app', key: 'nav.dashboard', icon: LayoutDashboard, end: true, count: null }] },
+  { key: 'overview', items: [{ to: '/app', key: 'nav.dashboard', icon: ChartLine, end: true, count: null }] },
   {
     key: 'tenants',
     items: [
       { to: '/app/companies', key: 'nav.companies', icon: Building2, end: false, count: 'companies' },
       { to: '/app/users', key: 'nav.users', icon: Users, end: false, count: 'users' },
+    ],
+  },
+  // Transactions and Billing profile join this group in their own steps
+  // (docs/subscriptions_tasks.md steps 5 and 6).
+  {
+    key: 'billing',
+    items: [
+      { to: '/app/plans', key: 'nav.plans', icon: Layers, end: false, count: null },
+      { to: '/app/transactions', key: 'nav.transactions', icon: ArrowLeftRight, end: false, count: null },
+      { to: '/app/billing-profile', key: 'nav.billingProfile', icon: Receipt, end: false, count: null },
     ],
   },
   { key: 'catalogue', items: [{ to: '/app/data-warehouse', key: 'nav.dataWarehouse', icon: Database, end: false, count: null }] },

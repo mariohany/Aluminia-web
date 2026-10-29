@@ -79,13 +79,13 @@ describe('Company lookups (e2e)', () => {
 
     const { company } = await provisioning.provision({
       name: companyOneName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: adminEmail, password },
     });
     await provisioning.provision({
       name: companyTwoName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: adminTwoEmail, password },
     });

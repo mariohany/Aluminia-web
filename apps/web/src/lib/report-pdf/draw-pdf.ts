@@ -1,4 +1,5 @@
 import type { BarOptimiserPdfInput } from '@repo/report-pdf/bar-optimiser-document'
+import type { BillingPdfInput } from '@repo/report-pdf/billing-document'
 import { reportError } from '@/lib/monitoring'
 import type { DrawReply, DrawRequest } from './draw-messages'
 
@@ -39,13 +40,21 @@ function getWorker(): Worker {
   return worker
 }
 
-export function drawBarOptimiserPdf(input: BarOptimiserPdfInput): Promise<Blob> {
-  const id = nextId++
+function draw(request: DrawRequest): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    waiting.set(id, { resolve, reject })
-    const request: DrawRequest = { id, input }
+    waiting.set(request.id, { resolve, reject })
     getWorker().postMessage(request)
   })
+}
+
+export function drawBarOptimiserPdf(input: BarOptimiserPdfInput): Promise<Blob> {
+  return draw({ id: nextId++, input })
+}
+
+/** A quotation or invoice (docs/subscriptions_planing.md §5), drawn from
+ * its snapshot by the same worker. */
+export function drawBillingPdf(billing: BillingPdfInput): Promise<Blob> {
+  return draw({ id: nextId++, billing })
 }
 
 let warmed = false

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { PlanRef } from './plans'
 // Type-only, like companies.ts's import from './auth' — erased entirely
 // at compile time, so it never needs runtime module resolution. The
 // role values below are written as literal strings rather than
@@ -54,6 +55,8 @@ export interface UserSummary {
   email: string
   role: UserRole
   status: UserStatus
+  // Deactivated by the company's drop to Free (B13); still holds a seat.
+  planDeactivated: boolean
   companyId: string | null
   companyName: string | null
   createdAt: string
@@ -78,7 +81,15 @@ export type CreateCompanyUserInput = z.infer<typeof createCompanyUserSchema>
 export interface CompanyOverview {
   id: string
   name: string
-  plan: string
+  // The super admin's Arabic name, for Arabic UI text (the expiry bar).
+  nameAr: string | null
+  plan: PlanRef
+  // Every user holds a seat, deactivated ones too; `activeUsers` is
+  // shown next to it ("3 active · 5 of 5 seats").
   seatsUsed: number
+  activeUsers: number
   maxUsers: number
+  /** The oldest active company admin, named in "contact your company
+   * admin" messages (docs/subscriptions_planing.md B23). */
+  adminEmail: string | null
 }

@@ -5,6 +5,7 @@ import type {
   CreateCompanyInput,
   UpdateCompanyInput,
 } from '@repo/types/companies'
+import type { UpdateSubscriptionInput } from '@repo/types/subscriptions'
 import { apiFetch } from '@/lib/api-client'
 
 export function listCompanies(): Promise<CompanyListItem[]> {
@@ -21,6 +22,14 @@ export function createCompany(input: CreateCompanyInput): Promise<CompanySummary
 
 export function updateCompany(id: string, input: UpdateCompanyInput): Promise<CompanySummary> {
   return apiFetch<CompanySummary>(`/admin/companies/${id}`, { method: 'PATCH', body: input })
+}
+
+export function updateSubscription(id: string, input: UpdateSubscriptionInput): Promise<CompanyDetail> {
+  return apiFetch<CompanyDetail>(`/admin/companies/${id}/subscription`, { method: 'PATCH', body: input })
+}
+
+export function resetFreeProject(id: string): Promise<CompanyDetail> {
+  return apiFetch<CompanyDetail>(`/admin/companies/${id}/free-project`, { method: 'DELETE' })
 }
 
 export function archiveCompany(id: string): Promise<CompanySummary> {

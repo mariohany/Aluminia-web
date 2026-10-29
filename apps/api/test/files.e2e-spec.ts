@@ -76,7 +76,7 @@ describe('Files (e2e)', () => {
     const make = (name: string, email: string) =>
       provisioning.provision({
         name,
-        plan: 'starter',
+        planKey: 'pro',
         maxUsers: 5,
         admin: { email, password },
       });

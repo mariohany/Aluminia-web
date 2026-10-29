@@ -49,13 +49,13 @@ describe('Clients & projects tenant isolation (e2e)', () => {
 
     await provisioning.provision({
       name: companyOneName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: adminOneEmail, password },
     });
     await provisioning.provision({
       name: companyTwoName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: adminTwoEmail, password },
     });

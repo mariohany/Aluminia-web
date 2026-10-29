@@ -4,8 +4,13 @@ import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { Building2, Trash2, Upload } from 'lucide-react'
-import { updateCompanyProfileSchema, type CompanyProfile } from '@repo/types/company-profile'
+import { Building2, Trash2, TriangleAlert, Upload } from 'lucide-react'
+import {
+  missingProfileFields,
+  updateCompanyProfileSchema,
+  type CompanyProfile,
+  type RequiredProfileField,
+} from '@repo/types/company-profile'
 import { FILE_PURPOSE_LIMITS, FilePurpose } from '@repo/types/files'
 import { apiErrorMessage } from '@/lib/api-client'
 import { optionalTextField } from '@/lib/form-fields'
@@ -133,28 +138,50 @@ export function ConfigCompanyPage() {
   }
 
   const values = useWatch({ control })
+  // What still stops printing (B23), as typed: every required label has a
+  // red asterisk, and an empty one turns red.
+  const missing = missingProfileFields({
+    enName: values.enName ?? '',
+    arName: values.arName ?? null,
+    taxId: values.taxId ?? null,
+    commercialRegister: values.commercialRegister ?? null,
+    phone: values.phone ?? null,
+    email: values.email ?? null,
+  })
+  const requiredFor = (name: keyof ProfileForm): RequiredProfileField | null =>
+    name === 'phone' || name === 'email'
+      ? 'phoneOrEmail'
+      : (['enName', 'arName', 'taxId', 'commercialRegister'] as const).find((f) => f === name) ?? null
   const hasLogo = !!logoUrl || (logo.kind === 'unchanged' && !!profile?.logoFileId)
 
   const field = (
     name: keyof ProfileForm,
     label: string,
-    opts: { dir?: 'ltr' | 'rtl'; mono?: boolean; type?: string; optional?: boolean } = {},
-  ) => (
-    <div className="min-w-0">
-      <FieldLabel htmlFor={`company-${name}`} optional={opts.optional ?? true}>
-        {label}
-      </FieldLabel>
-      <Input
-        id={`company-${name}`}
-        type={opts.type}
-        dir={opts.dir}
-        className={opts.mono ? 'mt-1.5 font-mono' : 'mt-1.5'}
-        aria-invalid={!!errors[name]}
-        {...register(name, name === 'enName' ? undefined : optionalTextField)}
-      />
-      {errors[name] && <p className="mt-1 text-xs text-destructive">{errors[name].message}</p>}
-    </div>
-  )
+    opts: { dir?: 'ltr' | 'rtl'; mono?: boolean; type?: string } = {},
+  ) => {
+    const required = requiredFor(name)
+    const empty = required !== null && missing.includes(required)
+    return (
+      <div className="min-w-0">
+        <FieldLabel htmlFor={`company-${name}`} optional={required === null} required={required !== null}>
+          {label}
+        </FieldLabel>
+        <Input
+          id={`company-${name}`}
+          type={opts.type}
+          dir={opts.dir}
+          className={opts.mono ? 'mt-1.5 font-mono' : 'mt-1.5'}
+          aria-invalid={!!errors[name] || empty}
+          {...register(name, name === 'enName' ? undefined : optionalTextField)}
+        />
+        {errors[name] ? (
+          <p className="mt-1 text-xs text-destructive">{errors[name].message}</p>
+        ) : (
+          empty && <p className="mt-1 text-xs text-destructive">{t('profileRequired.missingField')}</p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4 md:px-9 md:py-6">
@@ -186,6 +213,18 @@ export function ConfigCompanyPage() {
 
         {profile && (
           <>
+            {missing.length > 0 && (
+              <div
+                role="status"
+                className="flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 py-3 text-amber-800 dark:text-amber-300"
+              >
+                <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-sm font-medium">{t('profileRequired.missingTitle')}</p>
+                  <p className="text-[12.5px]">{t('profileRequired.missingBody')}</p>
+                </div>
+              </div>
+            )}
             <div className="flex flex-col">
               <ConfigRow title={t('config.company.rows.logo.title')} hint={t('config.company.rows.logo.hint')}>
                 <div className="flex flex-wrap items-center gap-3.5">
@@ -236,7 +275,7 @@ export function ConfigCompanyPage() {
 
               <ConfigRow title={t('config.company.rows.name.title')} hint={t('config.company.rows.name.hint')}>
                 <ConfigGrid2>
-                  {field('enName', t('config.company.fields.english'), { dir: 'ltr', optional: false })}
+                  {field('enName', t('config.company.fields.english'), { dir: 'ltr' })}
                   {field('arName', t('config.company.fields.arabic'), { dir: 'rtl' })}
                 </ConfigGrid2>
               </ConfigRow>

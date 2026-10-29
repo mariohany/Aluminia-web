@@ -25,10 +25,55 @@ export interface ProjectsSummary {
   count: number
 }
 
+/** Invoices paid in a Cairo calendar month, in EGP at each one's frozen
+ * rate (docs/subscriptions_planing.md B22). */
+export interface RevenueSummary {
+  thisMonthEgp: number
+  lastMonthEgp: number
+}
+
+/** The counts on the Leads card's billing tabs (B22). */
+export interface BillingCounts {
+  endingSoon: number
+  unpaid: number
+  expired: number
+}
+
 export interface DashboardSummary {
   companies: CompanyStatusCounts
   liveSessions: LiveSessionsSummary
   projects: ProjectsSummary
+  revenue: RevenueSummary
+  billing: BillingCounts
+}
+
+/** A company in the Ending soon / Expired tabs: a paid plan (no trial). */
+export interface DashboardBillingCompany {
+  companyId: string
+  companyName: string
+  planEn: string
+  planAr: string
+  endDate: string
+  /** Negative once expired. */
+  daysLeft: number
+}
+
+/** A sent, still payable quotation in the Unpaid tab. */
+export interface DashboardUnpaidQuotation {
+  documentId: string
+  number: string
+  companyId: string
+  companyName: string
+  currency: string
+  total: number
+  validUntil: string | null
+}
+
+/** GET /admin/dashboard/billing: the three billing tabs, 50 rows each. */
+export interface DashboardBilling {
+  endingSoon: DashboardBillingCompany[]
+  unpaid: DashboardUnpaidQuotation[]
+  expired: DashboardBillingCompany[]
 }
 
 // `from`/`to` are calendar dates (YYYY-MM-DD), same convention as

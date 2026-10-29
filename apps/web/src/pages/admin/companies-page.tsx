@@ -10,8 +10,10 @@ import {
 } from '@tanstack/react-table'
 import { ArrowUpDown, MoreHorizontal } from 'lucide-react'
 import { CompanyStatus, PLATFORM_COMPANY_LIMIT, type CompanyListItem } from '@repo/types/companies'
+import { PLAN_KEYS } from '@repo/types/plans'
 import { useCompaniesQuery } from '@/lib/companies-queries'
 import { cn } from '@/lib/utils'
+import { planName } from '@/lib/bilingual'
 import { Button } from '@/components/ui/button'
 import { SearchInput } from '@/components/ui/search-input'
 import {
@@ -86,9 +88,10 @@ export function CompaniesPage() {
 
   const companies = useMemo(() => data ?? [], [data])
 
+  // The plans companies are on, in the plans' own order (Free first).
   const plans = useMemo(() => {
-    const unique = new Set(companies.map((company) => company.plan))
-    return Array.from(unique).sort()
+    const byKey = new Map(companies.map((company) => [company.plan.key, company.plan]))
+    return PLAN_KEYS.flatMap((key) => byKey.get(key) ?? [])
   }, [companies])
 
   const statusCounts = useMemo(
@@ -105,7 +108,7 @@ export function CompaniesPage() {
     return companies.filter((company) => {
       if (query && !company.name.toLowerCase().includes(query)) return false
       if (statusFilter !== 'all' && company.status !== statusFilter) return false
-      if (planFilter !== 'all' && company.plan !== planFilter) return false
+      if (planFilter !== 'all' && company.plan.key !== planFilter) return false
       return true
     })
   }, [companies, search, statusFilter, planFilter])
@@ -142,7 +145,7 @@ export function CompaniesPage() {
         }),
         columnHelper.accessor('plan', {
           header: t('companiesPage.table.plan'),
-          cell: (info) => <NeutralPill>{info.getValue()}</NeutralPill>,
+          cell: (info) => <NeutralPill>{planName(info.getValue(), i18n.language)}</NeutralPill>,
         }),
         columnHelper.display({
           id: 'seats',
@@ -208,7 +211,7 @@ export function CompaniesPage() {
           },
         }),
       ]),
-    [t, dateFormatter, numberFormatter, navigate, menuAlign],
+    [t, i18n.language, dateFormatter, numberFormatter, navigate, menuAlign],
   )
 
   const table = useTable({
@@ -278,8 +281,8 @@ export function CompaniesPage() {
           <SelectContent>
             <SelectItem value="all">{t('companiesPage.filters.allPlans')}</SelectItem>
             {plans.map((plan) => (
-              <SelectItem key={plan} value={plan}>
-                {plan}
+              <SelectItem key={plan.key} value={plan.key}>
+                {planName(plan, i18n.language)}
               </SelectItem>
             ))}
           </SelectContent>

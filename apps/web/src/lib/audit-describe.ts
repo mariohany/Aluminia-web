@@ -2,7 +2,7 @@
 // activity" card and the Logs page). Plain module so the hook and the
 // AuditIcon component (components/admin/audit-entry.tsx) live apart.
 import { useTranslation } from 'react-i18next'
-import { Building2, Database, Phone, UserRound, type LucideIcon } from 'lucide-react'
+import { Building2, Database, Layers, Phone, Receipt, UserRound, type LucideIcon } from 'lucide-react'
 import type { AuditLogEntry } from '@repo/types/logs'
 
 type Tone = 'primary' | 'danger' | 'warn' | 'info' | 'neutral'
@@ -77,6 +77,8 @@ function describe(entry: AuditLogEntry, t: Translate, tLookups: Translate, exist
         email: text(meta.email),
         plan: text(meta.plan),
         maxUsers: text(meta.maxUsers),
+        // The seat sentences are plural forms ("1 seat", "5 seats").
+        count: Number(meta.maxUsers) || 0,
       }),
     }
   }
@@ -93,6 +95,20 @@ function describe(entry: AuditLogEntry, t: Translate, tLookups: Translate, exist
       }
     }
     return { ...fallback, icon: Phone }
+  }
+
+  if (area === 'billing') {
+    const key = `dashboardPage.activity.actions.billing.${verb}`
+    if (!exists(key)) return fallback
+    return {
+      icon: Receipt,
+      tone: verb === 'paid' ? 'primary' : verb === 'quotation_voided' ? 'danger' : 'info',
+      text: t(key, { name: text(meta.name), number: text(meta.number), invoice: text(meta.invoice) }),
+    }
+  }
+
+  if (entry.action === 'plan.updated') {
+    return { icon: Layers, tone: 'info', text: t('dashboardPage.activity.actions.plan.updated', { name: text(meta.name) }) }
   }
 
   if (area === 'lookup') {

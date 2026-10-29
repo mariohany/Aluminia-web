@@ -2,7 +2,10 @@
   "extends": "@repo/typescript-config/base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    // A value import between these files carries its `.ts` extension, as in
+    // @repo/geometry: the API loads them through Node's type stripping.
+    "allowImportingTsExtensions": true
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

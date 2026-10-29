@@ -1,9 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { UserRole } from '@repo/types/auth';
 import type { CompanyOverview } from '@repo/types/users';
 import { Company } from '../../database/control-plane/entities/company.entity';
-import { User } from '../../database/control-plane/entities/user.entity';
+import {
+  User,
+  UserStatus,
+} from '../../database/control-plane/entities/user.entity';
+import { toPlanRef } from '../plans/plans.service';
 
 /**
  * The caller's own company, as the workspace needs to see it.
@@ -20,21 +25,38 @@ export class CompanyService {
   ) {}
 
   async overview(companyId: string): Promise<CompanyOverview> {
-    const company = await this.companies.findOne({ where: { id: companyId } });
+    const company = await this.companies.findOne({
+      where: { id: companyId },
+      relations: { plan: true },
+    });
     if (!company) throw new NotFoundException('Company not found.');
 
     // Read-only, so a plain count is fine — unlike the seat check in
     // UsersService, which counts inside a transaction holding a row
     // lock precisely because it is about to act on the result. This
     // number is for display; that one is enforcement.
-    const seatsUsed = await this.users.count({ where: { companyId } });
+    const [seatsUsed, activeUsers] = await Promise.all([
+      this.users.count({ where: { companyId } }),
+      this.users.count({ where: { companyId, status: UserStatus.ACTIVE } }),
+    ]);
+    const admin = await this.users.findOne({
+      where: {
+        companyId,
+        role: UserRole.COMPANY_ADMIN,
+        status: UserStatus.ACTIVE,
+      },
+      order: { createdAt: 'ASC' },
+    });
 
     return {
       id: company.id,
       name: company.name,
-      plan: company.plan,
+      nameAr: company.nameAr,
+      plan: toPlanRef(company.plan!),
       seatsUsed,
+      activeUsers,
       maxUsers: company.maxUsers,
+      adminEmail: admin?.email ?? null,
     };
   }
 }

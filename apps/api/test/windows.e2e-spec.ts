@@ -76,13 +76,13 @@ describe('Windows (e2e)', () => {
 
     await provisioning.provision({
       name: companyName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: adminEmail, password },
     });
     await provisioning.provision({
       name: otherCompanyName,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: { email: otherAdminEmail, password },
     });

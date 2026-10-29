@@ -61,6 +61,7 @@ export function ConfigUsersPage() {
   const onlineCount = team.filter((u) => u.online).length
 
   const seatsUsed = overview.data?.seatsUsed
+  const activeUsers = overview.data?.activeUsers
   const maxUsers = overview.data?.maxUsers
   // Disabled rather than hidden at the limit: the button explains the
   // constraint (see the seats card) instead of the user discovering it
@@ -98,8 +99,15 @@ export function ConfigUsersPage() {
             <div className="flex w-64 max-w-full flex-col gap-2">
               <div className="flex items-baseline justify-between gap-2">
                 <h2 className="text-[13px] font-semibold text-foreground">{t('manage.seatsTitle')}</h2>
-                <span className="font-mono text-[13px] text-foreground" dir="ltr">
-                  {seatsUsed} / {maxUsers}
+                <span className="flex items-baseline gap-1.5">
+                  {activeUsers !== undefined && (
+                    <span className="text-xs text-muted-foreground">
+                      {t('manage.activeCount', { count: activeUsers })} ·
+                    </span>
+                  )}
+                  <span className="font-mono text-[13px] text-foreground" dir="ltr">
+                    {seatsUsed} / {maxUsers}
+                  </span>
                 </span>
               </div>
               <div
@@ -225,7 +233,12 @@ export function ConfigUsersPage() {
                         </Chip>
                       </TableCell>
                       <TableCell>
-                        <Chip tone={isActive ? 'ok' : 'muted'}>{t(`manage.status.${user.status}`)}</Chip>
+                        <span className="flex items-center gap-1.5">
+                          <Chip tone={isActive ? 'ok' : 'muted'}>{t(`manage.status.${user.status}`)}</Chip>
+                          {user.planDeactivated && (
+                            <span className="text-xs text-muted-foreground">{t('manage.byFreePlan')}</span>
+                          )}
+                        </span>
                       </TableCell>
                       <TableCell>
                         {user.online ? (

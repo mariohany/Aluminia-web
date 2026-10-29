@@ -36,7 +36,7 @@ describe('Tenant migration drift (e2e)', () => {
 
     const { company } = await app.get(TenantProvisioningService).provision({
       name: `E2E Drift ${Date.now()}`,
-      plan: 'starter',
+      planKey: 'pro',
       maxUsers: 5,
       admin: {
         email: `e2e-drift-${Date.now()}@test.local`,

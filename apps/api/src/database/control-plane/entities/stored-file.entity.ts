@@ -9,8 +9,9 @@ export class StoredFile {
   @PrimaryColumn('uuid')
   id: string;
 
-  @Column({ name: 'company_id', type: 'uuid' })
-  companyId: string;
+  // Null = the platform's own (purpose billing_logo, super admin only).
+  @Column({ name: 'company_id', type: 'uuid', nullable: true })
+  companyId: string | null;
 
   @Column({ type: 'varchar', length: 30 })
   purpose: FilePurpose;

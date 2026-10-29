@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TenancyModule } from '../tenancy/tenancy.module';
 import { ClientsController } from './clients.controller';
 import { ClientsService } from './clients.service';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 /**
  * No `TypeOrmModule.forFeature([Client])` here, unlike the control-plane
@@ -11,7 +12,7 @@ import { ClientsService } from './clients.service';
  * out by `TenantContextService`.
  */
 @Module({
-  imports: [TenancyModule],
+  imports: [TenancyModule, SubscriptionsModule],
   controllers: [ClientsController],
   providers: [ClientsService],
   exports: [ClientsService],

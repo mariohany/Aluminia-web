@@ -5,11 +5,15 @@
     "users": "Users",
     "dataWarehouse": "Data warehouse",
     "logs": "Logs",
+    "plans": "Plans",
+    "transactions": "Transactions",
+    "billingProfile": "Billing profile",
     "groups": {
       "overview": "Overview",
       "tenants": "Tenants",
       "catalogue": "Catalogue",
-      "system": "System"
+      "system": "System",
+      "billing": "Billing"
     }
   },
   "sidebar": {
@@ -43,8 +47,9 @@
       },
       "revenue": {
         "title": "Subscription revenue",
-        "unavailable": "Not available yet — billing doesn't record a price.",
-        "soon": "Soon"
+        "thisMonth": "Invoices paid this month",
+        "up": "+{{percent}} % vs last month",
+        "down": "−{{percent}} % vs last month"
       }
     },
     "chart": {
@@ -67,12 +72,17 @@
       "removedActor": "A removed account",
       "actions": {
         "company": {
-          "created": "Created {{name}} · {{plan}}, {{maxUsers}} seats",
+          "created_one": "Created {{name}} · {{plan}}, 1 seat",
+          "created_other": "Created {{name}} · {{plan}}, {{count}} seats",
           "updated": "Updated {{name}}",
-          "plan_changed": "Moved {{name}} to {{plan}}, {{maxUsers}} seats",
+          "plan_changed_one": "Moved {{name}} to {{plan}}, 1 seat",
+          "plan_changed_other": "Moved {{name}} to {{plan}}, {{count}} seats",
           "archived": "Archived {{name}}",
           "reactivated": "Reactivated {{name}}",
-          "deleted": "Permanently deleted {{name}}"
+          "deleted": "Permanently deleted {{name}}",
+          "subscription_changed_one": "Changed the subscription of {{name}} · {{plan}}, 1 seat",
+          "subscription_changed_other": "Changed the subscription of {{name}} · {{plan}}, {{count}} seats",
+          "free_project_reset": "Reset the editable project of {{name}}"
         },
         "user": {
           "created": "Added {{email}}",
@@ -87,6 +97,17 @@
           "deleted": "Deleted the lead from {{name}}",
           "deletedBulk_one": "Deleted {{count}} lead",
           "deletedBulk_other": "Deleted {{count}} leads"
+        },
+        "plan": {
+          "updated": "Edited the {{name}} plan"
+        },
+        "billing": {
+          "profile_updated": "Edited the billing profile",
+          "quotation_created": "Created quotation {{number}} for {{name}}",
+          "quotation_updated": "Edited quotation {{number}}",
+          "quotation_voided": "Voided quotation {{number}}",
+          "paid": "{{name}} paid: invoice {{invoice}}",
+          "document_sent": "Emailed {{number}} to {{name}}"
         }
       },
       "lookup": {
@@ -99,6 +120,25 @@
         "bulk_duplicated_other": "Duplicated {{count}} rows in {{table}}",
         "imported": "Imported {{table}} from Excel",
         "systemsImported": "Imported systems from Excel"
+      }
+    },
+    "lists": {
+      "label": "Lists",
+      "leads": "Leads",
+      "endingSoon": "Ending soon",
+      "unpaid": "Unpaid quotations",
+      "expired": "Expired",
+      "error": "Couldn’t load the list.",
+      "endDate": "Ends",
+      "when": "When",
+      "daysLeft_one": "in {{count}} day",
+      "daysLeft_other": "in {{count}} days",
+      "expiredAgo_one": "{{count}} day ago",
+      "expiredAgo_other": "{{count}} days ago",
+      "empty": {
+        "endingSoon": "No paid plan ends in the next 30 days.",
+        "unpaid": "No sent quotation is waiting for payment.",
+        "expired": "No company's plan has ended."
       }
     }
   },
@@ -113,7 +153,9 @@
         "company": "Companies",
         "user": "Users",
         "lookup": "Catalogue",
-        "lead": "Leads"
+        "lead": "Leads",
+        "plan": "Plans",
+        "billing": "Billing"
       },
       "allActors": "All admins",
       "clearAll": "Clear filters",
@@ -211,18 +253,19 @@
     "title": "Create company",
     "description": "Provisions a dedicated schema and creates the company's first admin.",
     "fields": {
-      "name": "Company name",
-      "plan": "Plan",
-      "maxUsers": "Seat limit",
+      "name": "Company name (English)",
       "adminEmail": "Admin email",
-      "adminPassword": "Admin password"
+      "adminPassword": "Admin password",
+      "nameAr": "Company name (Arabic)"
     },
     "submit": {
       "idle": "Create company",
       "submitting": "Creating…"
     },
     "success": "{{name}} created.",
-    "error": "Couldn't create the company. Try again."
+    "error": "Couldn't create the company. Try again.",
+    "required": "Required",
+    "startsOnFree": "The company starts on Free (1 seat, 1 client, 1 project). Set its plan in the Billing tab."
   },
   "companyDetail": {
     "back": "Back to companies",
@@ -233,16 +276,26 @@
       "saving": "Saving…",
       "success": "Company updated.",
       "error": "Couldn't save changes.",
-      "maxUsersBelowCount": "This company has {{count}} users. Remove some before lowering the limit below that."
+      "billingHint": "Plan, seat limit, end date, currency and VAT are edited in the Billing tab."
     },
     "billingSection": {
       "title": "Billing history",
       "empty": "No billing history yet.",
-      "entry_one": "{{plan}} · {{count}} seat",
-      "entry_other": "{{plan}} · {{count}} seats",
-      "from": "From {{date}}",
       "changes_one": "{{count}} change",
-      "changes_other": "{{count}} changes"
+      "changes_other": "{{count}} changes",
+      "reasons": {
+        "created_one": "Created · {{plan}} · {{count}} seat",
+        "created_other": "Created · {{plan}} · {{count}} seats",
+        "edited_one": "{{plan}} · {{count}} seat",
+        "edited_other": "{{plan}} · {{count}} seats",
+        "trial_started_one": "Trial · {{plan}} · {{count}} seat",
+        "trial_started_other": "Trial · {{plan}} · {{count}} seats",
+        "paid_one": "Paid · {{plan}} · {{count}} seat",
+        "paid_other": "Paid · {{plan}} · {{count}} seats",
+        "dropped_to_free": "Moved to Free",
+        "trial_ended": "Trial ended → Free"
+      },
+      "endsOn": "Ends {{date}}"
     },
     "usersSection": {
       "title": "Users",
@@ -250,8 +303,9 @@
       "role": "Role",
       "status": "Status",
       "add": "Add user",
-      "seatsUsed": "{{used}} of {{max}} seats",
-      "seatLimitReached": "Seat limit reached — raise it in Details"
+      "seatsUsed": "{{active}} active · {{used}} of {{max}} seats",
+      "seatLimitReached": "Seat limit reached — raise it in the Billing tab",
+      "byFreePlan": "by the Free plan"
     },
     "actions": {
       "archive": "Archive company",
@@ -280,6 +334,7 @@
       "label": "At a glance",
       "seats": "Seats",
       "seatsValue": "{{used}} / {{max}}",
+      "activeCount": "{{count}} active",
       "projects": "Projects",
       "projectsCaption": "All time",
       "projectsArchived": "Not counted while archived",
@@ -290,6 +345,48 @@
       "sinceNew": "New this month",
       "sinceMonths_one": "{{count}} month",
       "sinceMonths_other": "{{count}} months"
+    },
+    "tabs": {
+      "label": "Company sections",
+      "overview": "Overview",
+      "billing": "Billing"
+    },
+    "tag": {
+      "ends_zero": "Ends today",
+      "ends_one": "Ends in {{count}} day",
+      "ends_other": "Ends in {{count}} days",
+      "trial_zero": "Trial ends today",
+      "trial_one": "Trial · {{count}} day left",
+      "trial_other": "Trial · {{count}} days left",
+      "expired": "Expired"
+    },
+    "documents": {
+      "title": "Quotations & invoices",
+      "empty": "No quotations or invoices yet."
+    },
+    "strip": {
+      "label": "Subscription",
+      "plan": "Plan",
+      "trial": "Trial",
+      "planCaption": "{{currency}} · VAT {{vat}} %",
+      "seats": "Seat limit",
+      "seatsDefault_one": "Plan default · {{count}} user",
+      "seatsDefault_other": "Plan default · {{count}} users",
+      "seatsCustom_one": "Plan default {{seats}} · {{count}} user",
+      "seatsCustom_other": "Plan default {{seats}} · {{count}} users",
+      "ends": "Ends",
+      "neverEnds": "Free never ends",
+      "expired": "Expired",
+      "daysLeft_zero": "Ends today · 23:59 Cairo",
+      "daysLeft_one": "{{count}} day left · 23:59 Cairo",
+      "daysLeft_other": "{{count}} days left · 23:59 Cairo",
+      "unpaid": "Unpaid",
+      "noUnpaid": "No unpaid quotations",
+      "resetPick": "Reset editable project",
+      "resetPickHint": "The company admin picks the project Free keeps editable again",
+      "resetPickDone": "The company admin will pick again.",
+      "unpaidCount_one": "{{count}} quotation",
+      "unpaidCount_other": "{{count}} quotations"
     }
   },
   "usersPage": {
@@ -409,5 +506,312 @@
     "confirmAction": "End session",
     "success": "Session ended for {{email}}.",
     "error": "That didn't work. Try again."
+  },
+  "plansPage": {
+    "title": "Plans",
+    "subtitle": "A feature switched off hides it for every company on that plan at their next request. Prices are in EGP; a quotation in another currency converts at that day's rate.",
+    "free": "Free is fixed: 1 seat, 1 client, 1 project, window editing only. New companies start on it.",
+    "nameEn": "Name (English)",
+    "nameAr": "Name (Arabic)",
+    "seats": "Seats",
+    "seatsHint": "Default for new companies; each company can differ",
+    "price": "Price",
+    "monthly": "Monthly",
+    "monthlySuffix": "EGP / mo",
+    "monthlyHint": "1, 3 and 6 months",
+    "annual": "Annual",
+    "annualSuffix": "EGP / yr",
+    "annualSaves": "12 months · saves {{percent}} %",
+    "annualDearer": "12 months · costs more than 12 × monthly",
+    "annualSame": "12 months · same as 12 × monthly",
+    "features": "Features",
+    "featureNames": {
+      "reports": "Reports (bar optimiser)",
+      "data": "Own catalogue (Data)",
+      "project_settings": "Project settings"
+    },
+    "save": "Save",
+    "discard": "Discard",
+    "saved": "Plans saved.",
+    "saveError": "Couldn't save the plans. Try again.",
+    "loadError": "Couldn't load the plans. Try again.",
+    "errors": {
+      "required": "Required",
+      "seats": "1 to {{max}}",
+      "price": "Enter a price above 0"
+    }
+  },
+  "subscription": {
+    "title": "Edit subscription",
+    "plan": "Plan",
+    "planOption_one": "{{name}} · {{count}} seat",
+    "planOption_other": "{{name}} · {{count}} seats",
+    "seats": "Seat limit",
+    "seatsHint_one": "Plan default {{seats}} · can’t go below the {{count}} user",
+    "seatsHint_other": "Plan default {{seats}} · can’t go below the {{count}} users",
+    "seatsBelowUsers_one": "{{count}} user in the company — remove {{remove}} before going down to {{max}}.",
+    "seatsBelowUsers_other": "{{count}} users in the company — remove {{remove}} before going down to {{max}}.",
+    "freeFixed": "Free is fixed: 1 seat, 1 client, 1 project, and it never ends.",
+    "freeDeactivates_one": "Free has 1 seat: the admin below stays active and {{count}} other user is deactivated and logged out. Nothing is deleted; a paid plan brings them back.",
+    "freeDeactivates_other": "Free has 1 seat: the admin below stays active and the {{count}} other users are deactivated and logged out. Nothing is deleted; a paid plan brings them back.",
+    "keepAdmin": "Stays active",
+    "trial": "Trial: no quotation; drops to Free if not paid by the end",
+    "trialEnds": "Trial ends",
+    "ends": "Subscription ends",
+    "endOfDay": "23:59 Cairo",
+    "endRequired": "Pick the end date",
+    "trialHint": "14 days from today unless you change it",
+    "endsHint": "A paid quotation moves it for you; edit it here only to correct it",
+    "trialDays": "Days",
+    "currency": "Currency",
+    "currencies": {
+      "EGP": "Egyptian pound",
+      "SAR": "Saudi riyal",
+      "AED": "UAE dirham",
+      "USD": "US dollar",
+      "EUR": "Euro"
+    },
+    "vat": "VAT",
+    "vatInvalid": "0 to 100",
+    "currencyHint": "Currency and VAT are used by new quotations; issued ones keep theirs.",
+    "note": "Note (optional)",
+    "notePlaceholder": "e.g. Asked for two more designers",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saved": "Subscription saved.",
+    "saveError": "Couldn’t save the subscription. Try again."
+  },
+  "billingProfile": {
+    "title": "Billing profile",
+    "subtitle": "Your business as printed on every quotation and invoice.",
+    "notSet": "Not set up yet: no quotation can be issued until this is saved.",
+    "discard": "Discard",
+    "save": "Save",
+    "saved": "Billing profile saved.",
+    "saveError": "Couldn’t save the billing profile. Try again.",
+    "loadError": "Couldn’t load the billing profile.",
+    "sections": {
+      "business": "Business",
+      "pay": "How to pay",
+      "numbering": "Numbering"
+    },
+    "fields": {
+      "legalNameEn": "Legal name (English)",
+      "legalNameAr": "Legal name (Arabic)",
+      "addressEn": "Address (English)",
+      "addressAr": "Address (Arabic)",
+      "taxId": "Tax registration no.",
+      "commercialRegister": "Commercial register",
+      "billingEmail": "Billing email",
+      "phone": "Phone",
+      "bankAccount": "Bank · IBAN",
+      "instapay": "InstaPay",
+      "nextQuotation": "Next quotation",
+      "nextInvoice": "Next invoice"
+    },
+    "hints": {
+      "billingEmail": "Quotations and invoices are sent from and reply to it",
+      "nextQuotation": "Restarts at 0001 every January; can only go up",
+      "nextInvoice": "No gaps; never reused; can only go up"
+    },
+    "errors": {
+      "required": "Required.",
+      "email": "Enter a valid email.",
+      "number": "Enter a whole number from 1.",
+      "numberTooLow": "A next number can’t go below one already issued."
+    },
+    "logo": {
+      "title": "Logo",
+      "rules": "PNG / JPEG / WebP ≤ 1 MB · optional",
+      "alt": "Billing logo",
+      "upload": "Upload",
+      "replace": "Replace",
+      "remove": "Remove",
+      "uploading": "Uploading…",
+      "wrongType": "Use a PNG, JPEG or WebP image.",
+      "tooBig": "The logo must be 1 MB or smaller.",
+      "uploadError": "Couldn’t upload the logo. Try again."
+    },
+    "preview": {
+      "title": "Preview · quotation",
+      "taxNo": "Tax no. {{value}}",
+      "cr": "CR {{value}}",
+      "note": "Updates as you type. A document already issued keeps the details it was issued with."
+    }
+  },
+  "quotation": {
+    "new": "New quotation",
+    "title": "New quotation",
+    "editTitle": "Edit {{number}}",
+    "description": "A quotation for {{company}}. It is saved as a numbered draft; the plan changes only when it is paid.",
+    "plan": "Plan",
+    "seats": "Seats",
+    "seatsBelowUsers": "The company has {{count}} users: quote at least that many seats.",
+    "duration": "Duration",
+    "months_one": "{{count}} month",
+    "months_other": "{{count}} months",
+    "annual": "12 months use the plan's annual price.",
+    "annualSaving": "12 months use the annual price: saves {{percent}} % against monthly.",
+    "monthlyTimes_one": "Monthly price × {{count}}.",
+    "monthlyTimes_other": "Monthly price × {{count}}.",
+    "startsOn": "Starts",
+    "startHint": "The day after the current end, or the payment day if ended",
+    "endsOn": "Ends",
+    "endHint": "23:59 Cairo time; editable",
+    "validUntil": "Valid until",
+    "validHint": "14 days by default; can't be paid after",
+    "rate": "Rate (EGP per 1 {{currency}})",
+    "rateToday": "Today's rate; printed and frozen on the quotation.",
+    "rateLastKnown": "The rate service is down: last known rate from {{date}}. Check it.",
+    "rateLoading": "Getting today's rate…",
+    "rateNone": "No rate available: type it.",
+    "price": "Price ({{currency}})",
+    "priceHint": "The plan's price for the period; you can change it",
+    "discount": "Discount",
+    "discountKind": "Discount kind",
+    "discountNone": "None",
+    "vat": "VAT %",
+    "vatHint": "The company's rate is {{rate}} %",
+    "note": "Note (printed)",
+    "totals": {
+      "subtotal": "Subtotal",
+      "discount": "Discount",
+      "vat": "VAT {{rate}} %",
+      "total": "Total",
+      "inEgp": "In EGP at the frozen rate"
+    },
+    "cancel": "Cancel",
+    "save": "Save quotation",
+    "saved": "Quotation {{number}} saved.",
+    "errors": {
+      "field": "Check this field.",
+      "seats": "1 to 50 seats.",
+      "endsOn": "The end is before the start.",
+      "fxRate": "A rate is needed for any currency but EGP.",
+      "discountValue": "Check the discount (a percent is at most 100).",
+      "save": "Couldn’t save the quotation. Try again.",
+      "noBillingProfile": "Fill in Billing › Billing profile first: it prints as the seller."
+    },
+    "next": "Next",
+    "steps": {
+      "label": "Steps",
+      "quotation": "Quotation",
+      "email": "Email"
+    }
+  },
+  "markPaid": {
+    "title": "Mark {{number}} as paid",
+    "description": "The money arrived outside the app: record it here.",
+    "paidOn": "Paid on",
+    "amount": "Amount received ({{currency}})",
+    "method": "Method",
+    "reference": "Transaction reference no.",
+    "referenceHint": "From the bank, InstaPay or receipt — printed on the invoice",
+    "methods": {
+      "bank_transfer": "Bank transfer",
+      "instapay": "InstaPay",
+      "cash": "Cash",
+      "cheque": "Cheque"
+    },
+    "onConfirm": "On confirm",
+    "invoiceCreated": "An invoice is created from this quotation (same lines, marked paid)",
+    "renewed": "Plan {{plan}}, {{seats}} seats · {{start}} → {{end}}",
+    "startNote": "If the current plan is still running, the period starts the day after it ends instead.",
+    "confirm": "Confirm payment",
+    "done": "Paid: invoice {{number}} created.",
+    "errors": {
+      "reference": "Required: it prints on the invoice.",
+      "save": "Couldn’t record the payment. Try again.",
+      "quotation_expired": "This quotation has expired: issue a new one.",
+      "seats_below_users": "The company has more users than this quotation's seats."
+    },
+    "emailNow": "Email the invoice now"
+  },
+  "documents": {
+    "number": "Number",
+    "total": "Total",
+    "created": "Created",
+    "loadError": "Couldn’t load the documents.",
+    "kind": {
+      "quotation": "Quotation",
+      "invoice": "Invoice"
+    },
+    "status": {
+      "label": "Status",
+      "draft": "Draft",
+      "sent": "Sent",
+      "expired": "Expired",
+      "paid": "Paid",
+      "void": "Void"
+    },
+    "actions": {
+      "edit": "Edit",
+      "markPaid": "Mark paid",
+      "void": "Void",
+      "voided": "{{number}} voided.",
+      "voidTitle": "Void {{number}}?",
+      "voidDescription": "It can’t be paid or emailed after this, and it can’t be undone.",
+      "voidReason": "Reason (optional)",
+      "voidReasonPlaceholder": "e.g. the customer changed plan",
+      "error": "That didn’t work. Try again.",
+      "pdf": "PDF",
+      "email": "Email"
+    },
+    "pdf": {
+      "download": "Download",
+      "print": "Print",
+      "printError": "Couldn’t open the print dialog.",
+      "error": "Couldn’t draw the PDF.",
+      "retry": "Try again",
+      "drawing": "Drawing the PDF…"
+    },
+    "emailed_one": "Emailed {{date}} · {{count}} person",
+    "emailed_other": "Emailed {{date}} · {{count}} people"
+  },
+  "transactions": {
+    "title": "Transactions",
+    "subtitle": "Every quotation and invoice of every company, newest first.",
+    "export": "Export CSV",
+    "exportError": "Couldn’t export. Try again.",
+    "kpis": {
+      "label": "Totals",
+      "month": "Received this month",
+      "year": "Received this year",
+      "unpaid": "Unpaid (sent)",
+      "unpaidCount_one": "{{count}} quotation",
+      "unpaidCount_other": "{{count}} quotations",
+      "drafts": "Drafts"
+    },
+    "kind": "Type",
+    "kinds": {
+      "all": "All",
+      "invoice": "Invoices",
+      "quotation": "Quotations"
+    },
+    "allStatuses": "All statuses",
+    "company": "Company",
+    "allCompanies": "All companies",
+    "search": "Search number or company",
+    "error": "Couldn’t load transactions.",
+    "empty": "No quotations or invoices yet."
+  },
+  "email": {
+    "title": "Email {{number}}",
+    "description": "The PDF is attached. Sent in English and Arabic.",
+    "to": "To",
+    "toPlaceholder": "name@company.com",
+    "toHint": "Enter or comma adds an address",
+    "invalid": "That isn’t an email address.",
+    "remove": "Remove {{email}}",
+    "subject": "Subject",
+    "copyMe": "Send me a copy",
+    "attachment": "PDF · {{size}} KB",
+    "preview": "Preview the PDF",
+    "back": "Back",
+    "send": "Send",
+    "sent_one": "{{number}} emailed to {{count}} person.",
+    "sent_other": "{{number}} emailed to {{count}} people.",
+    "failed": "The email wasn’t sent (the mail service refused it). Try again later.",
+    "error": "Couldn’t send the email. Try again."
   }
 }

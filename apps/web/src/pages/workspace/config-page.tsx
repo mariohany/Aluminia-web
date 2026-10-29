@@ -1,7 +1,12 @@
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Building2, ChevronRight, ListChecks, Users, type LucideIcon } from 'lucide-react'
+import { Building2, ChevronRight, CreditCard, ListChecks, Users, type LucideIcon } from 'lucide-react'
+import type { PlanFeature } from '@repo/types/plans'
 import { useCompanyOverviewQuery } from '@/lib/company-queries'
+import { planName } from '@/lib/bilingual'
+import { usePlanGate } from '@/lib/plan-gate'
+import { cn } from '@/lib/utils'
+import { DIMMED_CLASS, usePlanLock } from '@/lib/plan-lock'
 
 /**
  * The Config home (was Manage): one card per section, each opening its
@@ -10,15 +15,18 @@ import { useCompanyOverviewQuery } from '@/lib/company-queries'
  * only (the route's RoleRoute). Add a section = an entry here + a route
  * + `config.sections.<key>` en/ar keys.
  */
-const SECTIONS: { key: string; to: string; icon: LucideIcon }[] = [
+const SECTIONS: { key: string; to: string; icon: LucideIcon; feature?: PlanFeature }[] = [
   { key: 'users', to: '/workspace/config/users', icon: Users },
   { key: 'company', to: '/workspace/config/company', icon: Building2 },
-  { key: 'projects', to: '/workspace/config/projects', icon: ListChecks },
+  { key: 'projects', to: '/workspace/config/projects', icon: ListChecks, feature: 'project_settings' },
+  { key: 'subscription', to: '/workspace/config/subscription', icon: CreditCard },
 ]
 
 export function ConfigPage() {
-  const { t } = useTranslation('workspace')
+  const { t, i18n } = useTranslation('workspace')
   const overview = useCompanyOverviewQuery()
+  const planGate = usePlanGate()
+  const showPlanLock = usePlanLock()
 
   return (
     <div className="flex flex-col gap-5 p-4 md:px-9 md:py-7">
@@ -28,7 +36,7 @@ export function ConfigPage() {
           <p className="truncate text-sm text-muted-foreground">
             {t('rail.companyPlan', {
               company: overview.data.name,
-              plan: overview.data.plan,
+              plan: planName(overview.data.plan, i18n.language),
             })}
           </p>
         )}
@@ -36,11 +44,23 @@ export function ConfigPage() {
 
       {/* `auto-rows-fr` + `h-full`: every card the height of the tallest, so the grid reads as equal tiles whatever the description length. */}
       <ul className="grid auto-rows-fr gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {SECTIONS.map(({ key, to, icon: Icon }) => (
+        {SECTIONS.map(({ key, to, icon: Icon, feature }) => {
+          // Free (B12): Project settings is shown dimmed and opens "needs a
+          // paid plan"; Company profile and Users & seats stay usable.
+          const locked = feature !== undefined && !planGate.has(feature)
+          return (
           <li key={key}>
             <Link
               to={to}
-              className="flex h-full items-center gap-3.5 rounded-[14px] border border-border bg-card p-5 shadow-xs transition-colors outline-none hover:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              onClick={(event) => {
+                if (!locked || !feature) return
+                event.preventDefault()
+                showPlanLock({ kind: 'feature', feature })
+              }}
+              className={cn(
+                'flex h-full items-center gap-3.5 rounded-[14px] border border-border bg-card p-5 shadow-xs transition-colors outline-none hover:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                locked && DIMMED_CLASS,
+              )}
             >
               <span className="flex size-11 shrink-0 items-center justify-center rounded-[10px] bg-primary/10 text-primary">
                 <Icon className="size-5" aria-hidden="true" />
@@ -54,7 +74,8 @@ export function ConfigPage() {
               <ChevronRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" aria-hidden="true" />
             </Link>
           </li>
-        ))}
+          )
+        })}
       </ul>
     </div>
   )

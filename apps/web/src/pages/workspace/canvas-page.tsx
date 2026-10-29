@@ -13,6 +13,7 @@ import {
   Fan,
   Folder,
   FolderInput,
+  Lock,
   Pencil,
   Plus,
   Search,
@@ -35,6 +36,7 @@ import { useBoardSelection } from '@/lib/use-board-selection'
 import { useLookupsStatus, useMergedGlassCombinationsQuery, useMergedGlassQuery, useMergedSystemProfilesQuery } from '@/lib/lookup-merge'
 import { useWindowIssues } from '@/lib/window-render'
 import { displayName } from '@/lib/bilingual'
+import { usePlanGate } from '@/lib/plan-gate'
 import { apiErrorMessage } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -108,6 +110,10 @@ export function CanvasPage() {
   const { projectId, clientId } = useParams()
   const language = i18n.resolvedLanguage ?? 'en'
   const { openNewWindow, openEditWindow, openDeleteWindows } = useOutletContext<CanvasOutletContext>()
+  // Free keeps one project editable (B13, Q5): the others open and delete,
+  // nothing else.
+  const planGate = usePlanGate()
+  const readOnly = !planGate.isProjectEditable(projectId)
 
   // Same query key as the tree in WorkspaceLayout, so this reads the
   // existing cache rather than firing a second network request — just
@@ -255,7 +261,15 @@ export function CanvasPage() {
           {projectClient && (
             <span className="text-xs text-muted-foreground">{displayName(projectClient, language)}</span>
           )}
-          <span className="text-base font-semibold text-foreground">{displayName(project, language)}</span>
+          <span className="flex items-center gap-2 text-base font-semibold text-foreground">
+            {displayName(project, language)}
+            {readOnly && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                <Lock className="size-3" aria-hidden="true" />
+                {t('plan.readOnly.pill')}
+              </span>
+            )}
+          </span>
           {hasWindows && (
             <span className="text-xs text-muted-foreground">
               {t('canvas.windowCount', { count: windows.length })} · {t('canvas.unitCount', { count: units })}
@@ -271,7 +285,13 @@ export function CanvasPage() {
       <div
         data-no-marquee
         className="absolute start-1/2 top-3.5 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-[10px] border border-border bg-card p-1 shadow-lg rtl:translate-x-1/2">
-        <Button size="sm" className="h-8" disabled={!projectId} onClick={openNewWindow}>
+        <Button
+          size="sm"
+          className="h-8"
+          disabled={!projectId || readOnly}
+          title={readOnly ? t('plan.readOnly.hint') : undefined}
+          onClick={openNewWindow}
+        >
           <Plus className="size-4" aria-hidden="true" />
           {t('actions.newWindow')}
         </Button>
@@ -365,6 +385,8 @@ export function CanvasPage() {
                 currentProjectId={projectId}
                 onCopyTo={(target) => onCopyTo(menuIds, target)}
                 onMoveTo={(target) => onMoveTo(menuIds, target)}
+                readOnly={readOnly}
+                isTargetEditable={planGate.isProjectEditable}
               />
             )
           })}
@@ -405,6 +427,8 @@ function WindowCard({
   currentProjectId,
   onCopyTo,
   onMoveTo,
+  readOnly,
+  isTargetEditable,
 }: {
   window: WindowSummary
   selected: boolean
@@ -421,6 +445,9 @@ function WindowCard({
   currentProjectId: string | undefined
   onCopyTo: (target: ProjectTarget) => void
   onMoveTo: (target: ProjectTarget) => void
+  /** The board's project is read-only on Free: open and delete only. */
+  readOnly: boolean
+  isTargetEditable: (projectId: string) => boolean
 }) {
   const { t } = useTranslation('workspace')
   const profilesQuery = useMergedSystemProfilesQuery()
@@ -455,6 +482,8 @@ function WindowCard({
         clients={clients}
         currentProjectId={currentProjectId}
         onPick={onCopyTo}
+        disabled={readOnly}
+        isTargetEditable={isTargetEditable}
       />
       <ProjectTargetsSub
         icon={FolderInput}
@@ -462,6 +491,8 @@ function WindowCard({
         clients={clients}
         currentProjectId={currentProjectId}
         onPick={onMoveTo}
+        disabled={readOnly}
+        isTargetEditable={isTargetEditable}
       />
     </>
   )
@@ -553,7 +584,7 @@ function WindowCard({
       <ContextMenuContent>
         {menuCount > 1 ? (
           <>
-            <ContextMenuItem onSelect={onDuplicateMenu}>
+            <ContextMenuItem disabled={readOnly} onSelect={onDuplicateMenu}>
               <Copy aria-hidden="true" />
               {t('canvas.duplicateMany', { windows })}
             </ContextMenuItem>
@@ -568,9 +599,9 @@ function WindowCard({
           <>
             <ContextMenuItem onSelect={onEdit}>
               <Pencil aria-hidden="true" />
-              {t('actions.edit')}
+              {t(readOnly ? 'plan.readOnly.open' : 'actions.edit')}
             </ContextMenuItem>
-            <ContextMenuItem onSelect={onDuplicate}>
+            <ContextMenuItem disabled={readOnly} onSelect={onDuplicate}>
               <Copy aria-hidden="true" />
               {t('actions.duplicate')}
             </ContextMenuItem>
@@ -603,18 +634,22 @@ function ProjectTargetsSub({
   clients,
   currentProjectId,
   onPick,
+  disabled,
+  isTargetEditable,
 }: {
   icon: typeof Copy
   label: string
   clients: ClientWithProjects[]
   currentProjectId: string | undefined
   onPick: (target: ProjectTarget) => void
+  disabled: boolean
+  isTargetEditable: (projectId: string) => boolean
 }) {
   const { i18n } = useTranslation('workspace')
   const language = i18n.resolvedLanguage ?? 'en'
   return (
     <ContextMenuSub>
-      <ContextMenuSubTrigger>
+      <ContextMenuSubTrigger disabled={disabled}>
         <Icon aria-hidden="true" />
         {label}
       </ContextMenuSubTrigger>
@@ -632,7 +667,7 @@ function ProjectTargetsSub({
                 return (
                   <ContextMenuItem
                     key={project.id}
-                    disabled={isCurrent}
+                    disabled={isCurrent || !isTargetEditable(project.id)}
                     onSelect={() => onPick({ id: project.id, name })}
                   >
                     <span className="truncate">{name}</span>

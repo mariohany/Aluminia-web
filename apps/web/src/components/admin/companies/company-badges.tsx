@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { CompanyStatus } from '@repo/types/companies'
+import type { PlanKey } from '@repo/types/plans'
+import { subscriptionState } from '@repo/types/subscriptions'
 import { cn } from '@/lib/utils'
 
 /** "Gulf Facades" → "GF". */
@@ -58,6 +60,50 @@ export function NeutralPill({ children, className }: { children: React.ReactNode
       )}
     >
       {children}
+    </span>
+  )
+}
+
+const TONE_PILL = {
+  yellow: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  red: 'bg-destructive/10 text-destructive',
+} as const
+
+/**
+ * The header tag next to the name and plan (B19, boards `bill-cd-b-*`):
+ * "Ends in N days" only in the last 30 days, yellow, red from 5;
+ * "Expired" once a paid plan ran out; a trial always says so.
+ */
+export function SubscriptionTag({
+  company,
+}: {
+  company: { plan: { key: PlanKey }; endsAt: string | null; isTrial: boolean }
+}) {
+  const { t } = useTranslation('admin')
+  const state = subscriptionState({ planKey: company.plan.key, endsAt: company.endsAt, isTrial: company.isTrial }, new Date())
+
+  let text: string | null = null
+  let tone: keyof typeof TONE_PILL | null = null
+  if (state.kind === 'expired') {
+    text = t('companyDetail.tag.expired')
+    tone = 'red'
+  } else if (state.kind === 'trial') {
+    text = t('companyDetail.tag.trial', { count: state.daysLeft })
+    tone = state.tone
+  } else if (state.kind === 'ending') {
+    text = t('companyDetail.tag.ends', { count: state.daysLeft })
+    tone = state.tone
+  }
+  if (!text) return null
+  return (
+    <span
+      className={cn(
+        'inline-flex h-5.5 items-center gap-1.5 rounded-full px-2 text-xs font-medium',
+        tone ? TONE_PILL[tone] : 'bg-sky-500/15 text-sky-700 dark:text-sky-400',
+      )}
+    >
+      <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />
+      {text}
     </span>
   )
 }

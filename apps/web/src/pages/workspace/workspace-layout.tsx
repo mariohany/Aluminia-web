@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation, useMatch, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
+import { UserRole } from '@repo/types/auth'
 import type { ClientWithProjects } from '@repo/types/clients'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { WorkspaceRail } from '@/components/workspace/workspace-rail'
@@ -11,6 +12,13 @@ import { ClientDialog } from '@/components/workspace/client-dialog'
 import { ProjectDialog } from '@/components/workspace/project-dialog'
 import { DeleteClientDialog, DeleteProjectDialog, DeleteWindowDialog } from '@/components/workspace/delete-dialogs'
 import { useClientTreeQuery } from '@/lib/clients-queries'
+import { useAuth } from '@/lib/auth-context'
+import { usePlanGate } from '@/lib/plan-gate'
+import { usePlanLock } from '@/lib/plan-lock'
+import { PlanLockProvider } from '@/components/workspace/plan/plan-lock'
+import { ExpiryFrame } from '@/components/workspace/plan/expiry-bar'
+import { ProfileRequiredProvider } from '@/components/workspace/plan/profile-required'
+import { FreeProjectDialog } from '@/components/workspace/plan/free-project-dialog'
 import { useProjectQuery } from '@/lib/projects-queries'
 import { isRtlLanguage } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
@@ -80,11 +88,29 @@ function readLastSelection(): LastSelection | null {
  * rather than left/right, so Arabic mirrors the whole layout
  * structurally: rail to the right edge, tree beside it, canvas last.
  */
+// The plan's "needs a paid plan" dialog wraps the whole workspace, so the
+// rail, the tree and the pages can all open it (B12).
 export function WorkspaceLayout() {
+  return (
+    <ExpiryFrame>
+      <PlanLockProvider>
+        <ProfileRequiredProvider>
+          <WorkspaceShell />
+        </ProfileRequiredProvider>
+      </PlanLockProvider>
+    </ExpiryFrame>
+  )
+}
+
+function WorkspaceShell() {
   const { t, i18n } = useTranslation('workspace')
   const language = i18n.resolvedLanguage ?? 'en'
   const rtl = isRtlLanguage(language)
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const isCompanyAdmin = user?.role === UserRole.COMPANY_ADMIN
+  const planGate = usePlanGate()
+  const showPlanLock = usePlanLock()
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const [treeWidth, setTreeWidth] = useState(readStoredTreeWidth)
@@ -280,6 +306,7 @@ export function WorkspaceLayout() {
   const contextClientId = selectedClientId ?? (selectedProjectId ? projectQuery.data?.clientId : undefined)
 
   const openNewProject = () => {
+    if (!planGate.canCreate('projects')) return showPlanLock({ kind: 'limit', what: 'projects' })
     setEditingProject(false)
     setProjectDialogInitialStep(1)
     setProjectDialogOpen(true)
@@ -287,6 +314,7 @@ export function WorkspaceLayout() {
 
   const openEditProject = () => {
     if (!selectedProjectId) return
+    if (!planGate.isProjectEditable(selectedProjectId)) return showPlanLock({ kind: 'readOnly' })
     setEditingProject(true)
     setProjectDialogInitialStep(1)
     setProjectDialogOpen(true)
@@ -297,6 +325,7 @@ export function WorkspaceLayout() {
   // of which should make the user click through step 1 again.
   const openEditProjectPreferences = () => {
     if (!selectedProjectId) return
+    if (!planGate.isProjectEditable(selectedProjectId)) return showPlanLock({ kind: 'readOnly' })
     setEditingProject(true)
     setProjectDialogInitialStep(2)
     setProjectDialogOpen(true)
@@ -306,6 +335,7 @@ export function WorkspaceLayout() {
   // not a dialog this shell owns — these just navigate there.
   const openNewWindow = () => {
     if (!selectedProjectId) return
+    if (!planGate.isProjectEditable(selectedProjectId)) return showPlanLock({ kind: 'readOnly' })
     void navigate(`/workspace/projects/${selectedProjectId}/windows/new`)
   }
 
@@ -329,6 +359,7 @@ export function WorkspaceLayout() {
   }
 
   const openNewClient = () => {
+    if (!planGate.canCreate('clients')) return showPlanLock({ kind: 'limit', what: 'clients' })
     setEditingClient(undefined)
     setClientDialogOpen(true)
   }
@@ -352,13 +383,17 @@ export function WorkspaceLayout() {
   )
 
   return (
-    <div className="flex h-svh overflow-hidden bg-shell">
+    <div className="flex h-full overflow-hidden bg-shell">
       {/* No top bar — the rail is the whole persistent chrome, at every
           breakpoint. Below `lg` it also carries the tree's only access
           point, via `onOpenTree`'s Sheet below. */}
       <WorkspaceRail onOpenTree={() => setMobileOpen(true)} />
       {/* How this tab's background reports ended (docs/browser_solve_planing.md Q2). */}
       <SolveNotices />
+      {/* Free with several projects: the admin picks the editable one (B13). */}
+      {isCompanyAdmin && planGate.subscription?.needsProjectPick && treeQuery.data && (
+        <FreeProjectDialog clients={treeQuery.data} />
+      )}
 
       {/* The tree panel: flush against the rail and canvas, divided by a
           border rather than floating as an inset card — matching the

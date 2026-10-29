@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { useDashboardSummaryQuery } from '@/lib/dashboard-queries'
 import { Card, CardContent } from '@/components/ui/card'
@@ -6,42 +7,55 @@ import { Badge } from '@/components/ui/badge'
 import { LeadsList } from '@/components/admin/leads/leads-list'
 import { CompaniesPerMonthChart } from '@/components/admin/dashboard/companies-per-month-chart'
 import { RecentActivityCard } from '@/components/admin/dashboard/recent-activity-card'
+import {
+  BillingListsCard,
+  DashboardListTabs,
+  type DashboardListTab,
+} from '@/components/admin/dashboard/billing-lists-card'
 
 // One headline number, kept short so the leads table gets the room
-// (Mario, 2026-10-03). Fixed-height title row (the Revenue badge can't
-// make one tile taller) and `h-full`, so the four line up.
+// (Mario, 2026-10-03). Fixed-height title row (a badge can't make one
+// tile taller) and `h-full`, so the four line up. Every tile is a link
+// to where its number comes from (B22).
 function StatTile({
   title,
   badge,
   value,
   caption,
   loading,
+  to,
 }: {
   title: string
   badge?: string
   value: string
   caption: string
   loading?: boolean
+  to: string
 }) {
   return (
-    <Card size="sm" className="h-full">
-      <CardContent className="flex h-full flex-col gap-1">
-        <span className="flex h-5 items-center gap-2 text-xs text-muted-foreground">
-          {title}
-          {badge && (
-            <Badge variant="secondary" className="h-4.5 px-1.5 text-[10px] font-medium">
-              {badge}
-            </Badge>
+    <Link
+      to={to}
+      className="block h-full rounded-xl outline-none hover:ring-2 hover:ring-primary/30 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+    >
+      <Card size="sm" className="h-full">
+        <CardContent className="flex h-full flex-col gap-1">
+          <span className="flex h-5 items-center gap-2 text-xs text-muted-foreground">
+            {title}
+            {badge && (
+              <Badge variant="secondary" className="h-4.5 px-1.5 text-[10px] font-medium">
+                {badge}
+              </Badge>
+            )}
+          </span>
+          {loading ? (
+            <div className="h-7 w-16 animate-pulse rounded bg-muted" />
+          ) : (
+            <span className="font-heading text-2xl leading-7 font-semibold tracking-tight text-foreground">{value}</span>
           )}
-        </span>
-        {loading ? (
-          <div className="h-7 w-16 animate-pulse rounded bg-muted" />
-        ) : (
-          <span className="font-heading text-2xl leading-7 font-semibold tracking-tight text-foreground">{value}</span>
-        )}
-        <span className="truncate text-xs text-muted-foreground">{caption}</span>
-      </CardContent>
-    </Card>
+          <span className="truncate text-xs text-muted-foreground">{caption}</span>
+        </CardContent>
+      </Card>
+    </Link>
   )
 }
 
@@ -60,6 +74,7 @@ function greetingKey(hour: number): 'morning' | 'afternoon' | 'evening' {
 export function DashboardPage() {
   const { t, i18n } = useTranslation('admin')
   const { data, isLoading, isError } = useDashboardSummaryQuery()
+  const [listTab, setListTab] = useState<DashboardListTab>('leads')
 
   const numberFormatter = useMemo(() => new Intl.NumberFormat(i18n.language), [i18n.language])
   const now = new Date()
@@ -67,6 +82,23 @@ export function DashboardPage() {
 
   const loading = isLoading || !data
   const companies = data ? data.companies.active + data.companies.archived : 0
+  const egp = new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'EGP', maximumFractionDigits: 0 })
+  const revenue = data?.revenue
+  const change =
+    revenue && revenue.lastMonthEgp > 0
+      ? Math.round(((revenue.thisMonthEgp - revenue.lastMonthEgp) / revenue.lastMonthEgp) * 100)
+      : null
+  const listTabs = (
+    <DashboardListTabs
+      tab={listTab}
+      onChange={setListTab}
+      counts={{
+        endingSoon: data?.billing.endingSoon,
+        unpaid: data?.billing.unpaid,
+        expired: data?.billing.expired,
+      }}
+    />
+  )
 
   return (
     // From lg up the page fills the viewport-bounded <main> (admin-layout)
@@ -85,6 +117,7 @@ export function DashboardPage() {
         <>
           <div className="grid shrink-0 grid-cols-2 gap-4 lg:grid-cols-4">
             <StatTile
+              to="/app/companies"
               title={t('dashboardPage.tiles.companies.title')}
               loading={loading}
               value={numberFormatter.format(companies)}
@@ -94,22 +127,31 @@ export function DashboardPage() {
               })}
             />
             <StatTile
+              to="/app/users"
               title={t('dashboardPage.tiles.liveSessions.title')}
               loading={loading}
               value={numberFormatter.format(data?.liveSessions.count ?? 0)}
               caption={t('dashboardPage.tiles.liveSessions.description')}
             />
             <StatTile
+              to="/app/companies"
               title={t('dashboardPage.tiles.projects.title')}
               loading={loading}
               value={numberFormatter.format(data?.projects.count ?? 0)}
               caption={t('dashboardPage.tiles.projects.description')}
             />
             <StatTile
+              to="/app/transactions"
               title={t('dashboardPage.tiles.revenue.title')}
-              badge={t('dashboardPage.tiles.revenue.soon')}
-              value="—"
-              caption={t('dashboardPage.tiles.revenue.unavailable')}
+              loading={loading}
+              value={egp.format(revenue?.thisMonthEgp ?? 0)}
+              caption={
+                change === null
+                  ? t('dashboardPage.tiles.revenue.thisMonth')
+                  : t(change >= 0 ? 'dashboardPage.tiles.revenue.up' : 'dashboardPage.tiles.revenue.down', {
+                      percent: Math.abs(change),
+                    })
+              }
             />
           </div>
 
@@ -118,7 +160,11 @@ export function DashboardPage() {
             <RecentActivityCard />
           </div>
 
-          <LeadsList className="lg:min-h-64 lg:flex-1" />
+          {listTab === 'leads' ? (
+            <LeadsList className="lg:min-h-64 lg:flex-1" tabs={listTabs} />
+          ) : (
+            <BillingListsCard tab={listTab} tabs={listTabs} className="lg:min-h-64 lg:flex-1" />
+          )}
         </>
       )}
     </div>

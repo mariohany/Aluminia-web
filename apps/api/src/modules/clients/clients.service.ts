@@ -14,6 +14,7 @@ import type {
 import { Client } from '../../database/tenant/entities/client.entity';
 import { Project } from '../../database/tenant/entities/project.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
+import { PlanAccess } from '../subscriptions/plan-access.service';
 
 /**
  * A manufacturer's clients, inside that manufacturer's own schema.
@@ -26,7 +27,10 @@ import { TenantContextService } from '../tenancy/tenant-context.service';
  */
 @Injectable()
 export class ClientsService {
-  constructor(private readonly tenantContext: TenantContextService) {}
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    private readonly planAccess: PlanAccess,
+  ) {}
 
   /**
    * The navigation tree: every client with its projects nested.
@@ -69,6 +73,7 @@ export class ClientsService {
 
   create(input: CreateClientInput): Promise<ClientSummary> {
     return this.tenantContext.run(async (manager) => {
+      await this.planAccess.assertCanCreate(manager, 'clients');
       const client = manager.create(Client, {
         enName: input.enName,
         arName: input.arName ?? null,

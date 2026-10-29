@@ -8,6 +8,7 @@ import { TenancyModule } from '../tenancy/tenancy.module';
 import { ProjectCountsModule } from '../project-counts/project-counts.module';
 import { AuthModule } from '../auth/auth.module';
 import { FilesModule } from '../files/files.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { CompaniesController } from './companies.controller';
 import { CompaniesService } from './companies.service';
 
@@ -19,6 +20,7 @@ import { CompaniesService } from './companies.service';
     ProjectCountsModule,
     AuthModule,
     FilesModule,
+    SubscriptionsModule,
   ],
   controllers: [CompaniesController],
   providers: [CompaniesService],

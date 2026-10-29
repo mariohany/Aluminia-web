@@ -113,5 +113,10 @@
     "status": "Couldn't load the report.",
     "generate": "Couldn't start the report. Try again.",
     "print": "Couldn't open the print dialog."
+  },
+  "profileRequired": {
+    "title": "Company profile incomplete",
+    "body": "Reports print your company’s details, so they can’t be generated or opened until the company profile is complete.",
+    "details": "What’s missing?"
   }
 }

@@ -12,6 +12,7 @@ import { TenantDatabaseModule } from './database/tenant/typeorm.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenancyModule } from './modules/tenancy/tenancy.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { UsersModule } from './modules/users/users.module';
@@ -25,6 +26,9 @@ import { ProjectSettingsModule } from './modules/project-settings/project-settin
 import { WindowsModule } from './modules/windows/windows.module';
 import { CompanyModule } from './modules/company/company.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { PlansModule } from './modules/plans/plans.module';
+import { MailModule } from './mail/mail.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { StorageModule } from './storage/storage.module';
 import { FilesModule } from './modules/files/files.module';
@@ -37,11 +41,14 @@ import { FilesModule } from './modules/files/files.module';
     ControlPlaneDatabaseModule,
     TenantDatabaseModule,
     StorageModule,
+    MailModule,
     HealthModule,
     AuthModule,
     // After AuthModule: its guard keys the limit on request.user.
     RateLimitModule,
     TenancyModule,
+    // After TenancyModule: its guard (SubscriptionGuard) needs request.user.
+    SubscriptionsModule,
     AuditLogModule,
     CompaniesModule,
     UsersModule,
@@ -55,6 +62,8 @@ import { FilesModule } from './modules/files/files.module';
     WindowsModule,
     CompanyModule,
     LeadsModule,
+    PlansModule,
+    BillingModule,
     ReportsModule,
     FilesModule,
   ],

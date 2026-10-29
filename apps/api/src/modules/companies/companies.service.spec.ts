@@ -7,6 +7,8 @@ import {
 import { User } from '../../database/control-plane/entities/user.entity';
 import { BillingRecord } from '../../database/control-plane/entities/billing-record.entity';
 import type { BumpedVersion } from '../auth/auth-version.service';
+import type { Plan } from '../../database/control-plane/entities/plan.entity';
+import type { UpdateSubscriptionInput } from '@repo/types/subscriptions';
 
 /**
  * Stability S21: the guards in front of companies.service's destructive
@@ -19,14 +21,38 @@ import type { BumpedVersion } from '../auth/auth-version.service';
 
 const ACTOR = 'actor-1';
 
+const PLANS: Record<string, Plan> = Object.fromEntries(
+  (['free', 'pro'] as const).map((key) => [
+    key,
+    {
+      id: `plan-${key}`,
+      key,
+      nameEn: key,
+      nameAr: key,
+      seats: key === 'free' ? 1 : 5,
+      monthlyEgp: null,
+      annualEgp: null,
+      features: [],
+      position: 0,
+      updatedAt: new Date(),
+    },
+  ]),
+);
+
 function makeCompany(overrides: Partial<Company> = {}): Company {
   return {
     id: 'company-a',
     name: 'Acme',
     schemaName: 'tenant_acme',
     status: CompanyStatus.SUSPENDED,
-    plan: 'starter',
+    nameAr: null,
+    planId: 'plan-pro',
     maxUsers: 5,
+    endsAt: new Date('2027-01-16T21:59:59Z'),
+    isTrial: false,
+    currency: 'EGP',
+    vatRate: 14,
+    freeProjectId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -35,8 +61,13 @@ function makeCompany(overrides: Partial<Company> = {}): Company {
 
 function makeService(company: Company | null, userCount = 0) {
   const events: string[] = [];
+  const planOf = (where: { key?: string; id?: string }) =>
+    Object.values(PLANS).find((p) => p.key === where.key || p.id === where.id);
   const manager = {
     findOne: jest.fn(() => Promise.resolve(company)),
+    findOneOrFail: jest.fn((_entity: unknown, options: { where: object }) =>
+      Promise.resolve(planOf(options.where)),
+    ),
     find: jest.fn(() =>
       Promise.resolve(
         Array.from({ length: userCount }, (_, i) => ({ id: `user-${i}` })),
@@ -85,7 +116,34 @@ function makeService(company: Company | null, userCount = 0) {
     }),
   };
   const dataSource = { createQueryRunner: () => queryRunner };
-  const users = { count: jest.fn(() => Promise.resolve(userCount)) };
+  const users = {
+    count: jest.fn(() => Promise.resolve(userCount)),
+    find: jest.fn(() => Promise.resolve([])),
+  };
+  const withPlan = () =>
+    company && { ...company, plan: planOf({ id: company.planId }) };
+  const companies = {
+    findOne: jest.fn(() => Promise.resolve(withPlan())),
+    findOneOrFail: jest.fn(() => Promise.resolve(withPlan())),
+  };
+  const billing = { find: jest.fn(() => Promise.resolve([])) };
+  const projectCounts = {
+    byCompany: jest.fn(() => Promise.resolve(new Map())),
+  };
+  const subscriptions = {
+    dropToFree: jest.fn(() => {
+      events.push('drop-to-free');
+      return Promise.resolve({
+        keptUserId: 'user-0',
+        deactivated: ['user-1'],
+        bumped: [{ userId: 'user-1', version: 2 }],
+      });
+    }),
+    restoreFromFree: jest.fn(() => {
+      events.push('restore-from-free');
+      return Promise.resolve(['user-1']);
+    }),
+  };
   const authVersions = {
     bump: jest.fn((): Promise<BumpedVersion[]> => {
       events.push('bump');
@@ -110,16 +168,17 @@ function makeService(company: Company | null, userCount = 0) {
 
   const service = new CompaniesService(
     dataSource as never,
-    {} as never,
+    companies as never,
     users as never,
-    {} as never,
+    billing as never,
     {} as never,
     auditLog,
-    {} as never,
+    projectCounts as never,
     authVersions as never,
     files as never,
+    subscriptions as never,
   );
-  return { service, events, manager, authVersions, files };
+  return { service, events, manager, authVersions, files, subscriptions };
 }
 
 describe('CompaniesService.remove: guards before DROP SCHEMA', () => {
@@ -201,39 +260,142 @@ describe('CompaniesService.archive', () => {
   });
 });
 
-describe('CompaniesService.update: the seat limit (S13)', () => {
-  const active = (maxUsers: number) =>
-    makeCompany({ status: CompanyStatus.ACTIVE, maxUsers });
+describe('CompaniesService.updateSubscription', () => {
+  const active = (overrides: Partial<Company> = {}) =>
+    makeCompany({ status: CompanyStatus.ACTIVE, ...overrides });
+  const input = (
+    overrides: Partial<UpdateSubscriptionInput> = {},
+  ): UpdateSubscriptionInput => ({
+    planKey: 'pro',
+    maxUsers: 5,
+    endDate: '2027-01-16',
+    isTrial: false,
+    currency: 'EGP',
+    vatRate: 14,
+    note: null,
+    keepAdminId: null,
+    ...overrides,
+  });
 
-  it('refuses to lower the limit below the users the company has', async () => {
-    const { service, events } = makeService(active(5), 4);
+  // B3 / S13: seats never go below the company's users.
+  it('refuses a seat limit below the users the company has', async () => {
+    const { service, events } = makeService(active(), 4);
     await expect(
-      service.update('company-a', { maxUsers: 3 }, ACTOR),
+      service.updateSubscription('company-a', input({ maxUsers: 3 }), ACTOR),
     ).rejects.toThrow(
-      '"Acme" has 4 users; remove some before lowering the limit to 3.',
+      '"Acme" has 4 users; remove some before lowering the seat limit to 3.',
     );
     expect(events).toEqual(['rollback']);
   });
 
   it('lowers the limit to exactly the number of users', async () => {
-    const { service, events } = makeService(active(5), 4);
-    const result = await service.update('company-a', { maxUsers: 4 }, ACTOR);
-    expect(result.maxUsers).toBe(4);
+    const { service, events } = makeService(active(), 4);
+    await service.updateSubscription(
+      'company-a',
+      input({ maxUsers: 4 }),
+      ACTOR,
+    );
     expect(events).toEqual(['billing', 'commit']);
   });
 
-  // Data from before S13 can already be over its limit; raising it (or
-  // saving an unrelated change) must not be blocked by that.
-  it('lets an over-limit company raise its limit or change its name', async () => {
-    const { service, manager } = makeService(active(2), 5);
-    await service.update('company-a', { maxUsers: 3 }, ACTOR);
-    await service.update('company-a', { name: 'Acme Ltd' }, ACTOR);
+  // Data from before S13 can already be over its limit; raising it must
+  // not be blocked by that.
+  it('lets an over-limit company raise its limit', async () => {
+    const { service, manager } = makeService(active({ maxUsers: 2 }), 5);
+    await service.updateSubscription(
+      'company-a',
+      input({ maxUsers: 3 }),
+      ACTOR,
+    );
     expect(manager.count).not.toHaveBeenCalled();
   });
 
-  it('writes a billing row only when the plan or the limit changes', async () => {
-    const { service, events } = makeService(active(5), 1);
-    await service.update('company-a', { name: 'Acme Ltd', maxUsers: 5 }, ACTOR);
+  it('writes no history when nothing changed', async () => {
+    const { service, events } = makeService(active(), 1);
+    await service.updateSubscription('company-a', input(), ACTOR);
     expect(events).toEqual(['commit']);
+  });
+
+  it('writes a history row for a note alone', async () => {
+    const { service, events } = makeService(active(), 1);
+    await service.updateSubscription(
+      'company-a',
+      input({ note: 'Asked for a call' }),
+      ACTOR,
+    );
+    expect(events).toEqual(['billing', 'commit']);
+  });
+
+  // B13: one admin stays, the rest are deactivated and logged out after
+  // the commit; Free is one seat whatever the input says.
+  it('drops to Free keeping the picked admin and publishes after the commit', async () => {
+    const { service, events, manager, subscriptions } = makeService(
+      active(),
+      3,
+    );
+    await service.updateSubscription(
+      'company-a',
+      input({
+        planKey: 'free',
+        maxUsers: 5,
+        endDate: null,
+        keepAdminId: 'u-2',
+      }),
+      ACTOR,
+    );
+    expect(subscriptions.dropToFree).toHaveBeenCalledWith(
+      manager,
+      'company-a',
+      'u-2',
+    );
+    expect(events).toEqual(['drop-to-free', 'billing', 'commit', 'publish']);
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planId: 'plan-free',
+        maxUsers: 1,
+        endsAt: null,
+        isTrial: false,
+      }),
+    );
+    expect(manager.insert).toHaveBeenCalledWith(
+      BillingRecord,
+      expect.objectContaining({ reason: 'dropped_to_free', actorId: ACTOR }),
+    );
+  });
+
+  // B14: leaving Free brings back exactly who it deactivated, and every
+  // one of them needs a seat.
+  it('restores the users Free deactivated, after checking their seats', async () => {
+    const free = active({ planId: 'plan-free', maxUsers: 1, endsAt: null });
+    const refused = makeService(free, 4);
+    await expect(
+      refused.service.updateSubscription(
+        'company-a',
+        input({ maxUsers: 3 }),
+        ACTOR,
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(refused.subscriptions.restoreFromFree).not.toHaveBeenCalled();
+
+    const { service, events } = makeService(free, 4);
+    await service.updateSubscription(
+      'company-a',
+      input({ maxUsers: 4 }),
+      ACTOR,
+    );
+    expect(events).toEqual(['restore-from-free', 'billing', 'commit']);
+  });
+
+  it('starts a trial on a paid plan', async () => {
+    const { service, manager } = makeService(active(), 1);
+    await service.updateSubscription(
+      'company-a',
+      input({ isTrial: true, endDate: '2026-11-11' }),
+      ACTOR,
+    );
+    expect(manager.insert).toHaveBeenCalledWith(
+      BillingRecord,
+      expect.objectContaining({ reason: 'trial_started', isTrial: true }),
+    );
   });
 });

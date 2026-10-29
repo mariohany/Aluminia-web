@@ -54,6 +54,10 @@
     --color-status-sky: var(--status-sky);
     --color-status-emerald: var(--status-emerald);
     --color-status-red: var(--status-red);
+    --color-expiry-warn: var(--expiry-warn);
+    --color-expiry-warn-foreground: var(--expiry-warn-foreground);
+    --color-expiry-danger: var(--expiry-danger);
+    --color-expiry-danger-foreground: var(--expiry-danger-foreground);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -130,6 +134,13 @@
     --status-sky: #0b93c9;
     --status-emerald: #0f9a74;
     --status-red: #d93f3a;
+    /* The subscription expiry bar (docs/subscriptions_planing.md B15):
+       the same strong yellow / red in both themes, so it reads as a
+       warning whatever the theme. */
+    --expiry-warn: #f5c842;
+    --expiry-warn-foreground: #1a1400;
+    --expiry-danger: #c8102e;
+    --expiry-danger-foreground: #ffffff;
 }
 
 /*
@@ -186,6 +197,13 @@
     --status-sky: #3db8e8;
     --status-emerald: #34c39a;
     --status-red: #f2706b;
+    /* The subscription expiry bar (docs/subscriptions_planing.md B15):
+       the same strong yellow / red in both themes, so it reads as a
+       warning whatever the theme. */
+    --expiry-warn: #f5c842;
+    --expiry-warn-foreground: #1a1400;
+    --expiry-danger: #c8102e;
+    --expiry-danger-foreground: #ffffff;
     color-scheme: dark;
 }
 

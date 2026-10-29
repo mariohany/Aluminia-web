@@ -1,11 +1,19 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, MoreThan, QueryRunner, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  MoreThan,
+  QueryRunner,
+  Repository,
+} from 'typeorm';
+import { FREE_PLAN_LIMITS } from '@repo/types/plans';
 import { UserRole } from '@repo/types/auth';
 import type {
   CreateUserInput,
@@ -306,6 +314,7 @@ export class UsersService {
       }
 
       user.status = UserStatus.INACTIVE;
+      user.planDeactivated = false;
       await queryRunner.manager.save(user);
 
       // Logged out immediately, same as archiving a company: the session
@@ -355,8 +364,13 @@ export class UsersService {
       if (user.status === UserStatus.ACTIVE) {
         throw new BadRequestException('User is already active.');
       }
+      if (user.companyId) {
+        await this.assertFreeSeat(queryRunner.manager, user.companyId);
+      }
 
       user.status = UserStatus.ACTIVE;
+      // A manual reactivate settles it: a later paid plan has nothing to bring back.
+      user.planDeactivated = false;
       await queryRunner.manager.save(user);
 
       await this.auditLog.record(queryRunner.manager, {
@@ -506,6 +520,33 @@ export class UsersService {
   // the second transaction blocks here until the first releases the
   // lock, by which point the count reflects the first insert. A
   // client-side check alone is not enforcement; this is.
+  /**
+   * Free has one seat for everyone (B13): reactivating a user while
+   * someone is already active would make two. Deactivated users still
+   * hold a seat, so the usual seat check never fires here; this does.
+   */
+  private async assertFreeSeat(
+    manager: EntityManager,
+    companyId: string,
+  ): Promise<void> {
+    const rows: Array<{ key: string }> = await manager.query(
+      `SELECT p.key FROM companies c JOIN plans p ON p.id = c.plan_id
+       WHERE c.id = $1 FOR UPDATE OF c`,
+      [companyId],
+    );
+    if (rows[0]?.key !== 'free') return;
+    const active = await manager.count(User, {
+      where: { companyId, status: UserStatus.ACTIVE },
+    });
+    if (active >= FREE_PLAN_LIMITS.seats) {
+      throw new ConflictException({
+        message:
+          'The Free plan has one active user. Upgrade the plan to reactivate more.',
+        code: 'plan_limit',
+      });
+    }
+  }
+
   private async lockCompanyForSeatCheck(
     queryRunner: QueryRunner,
     companyId: string,
@@ -544,6 +585,7 @@ function toUserSummary(
     email: user.email,
     role: user.role,
     status: user.status,
+    planDeactivated: user.planDeactivated,
     companyId: user.companyId,
     companyName,
     createdAt: user.createdAt.toISOString(),

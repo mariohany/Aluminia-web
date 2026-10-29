@@ -57,3 +57,35 @@ export interface CompanyProfile {
   /** Null until the first save (then `enName` is the account name). */
   updatedAt: string | null
 }
+
+/** What a company profile must hold before anything prints
+ * (docs/subscriptions_planing.md B23): both printed names, tax ID,
+ * commercial register, and a phone or an email. The logo is optional. */
+export const REQUIRED_PROFILE_FIELDS = [
+  'enName',
+  'arName',
+  'taxId',
+  'commercialRegister',
+  'phoneOrEmail',
+] as const
+export type RequiredProfileField = (typeof REQUIRED_PROFILE_FIELDS)[number]
+
+type ProfileFacts = Pick<
+  CompanyProfile,
+  'enName' | 'arName' | 'taxId' | 'commercialRegister' | 'phone' | 'email'
+>
+
+const filled = (value: string | null | undefined) => !!value?.trim()
+
+/** The required fields still empty, in form order. */
+export function missingProfileFields(profile: ProfileFacts): RequiredProfileField[] {
+  return REQUIRED_PROFILE_FIELDS.filter((field) =>
+    field === 'phoneOrEmail'
+      ? !filled(profile.phone) && !filled(profile.email)
+      : !filled(profile[field]),
+  )
+}
+
+export function isProfileComplete(profile: ProfileFacts): boolean {
+  return missingProfileFields(profile).length === 0
+}

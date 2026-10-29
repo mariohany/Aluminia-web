@@ -24,6 +24,7 @@ import {
 import { dismissSolve, isBusy, solveErrorKey, startSolve, stopSolve, useLocalSolve } from '@/lib/solve/solve-manager'
 import { MAX_ZOOM, MIN_ZOOM, usePinchZoom } from '@/lib/use-pinch-zoom'
 import { cn } from '@/lib/utils'
+import { useProfileGate, useProfileRequired } from '@/lib/profile-gate'
 import { CuttingSettingsPopover } from './cutting-settings-popover'
 import { ReportProgressCard, type ReportProgress } from './report-progress-card'
 
@@ -74,20 +75,26 @@ export function BarOptimiserView({
   // A server-side failure stays on the row until the next start; the user
   // can hide it here (keyed by when that attempt started).
   const [hiddenFailure, setHiddenFailure] = useState<string | null>(null)
+  // Nothing prints until the company profile is complete (B23): no
+  // Generate, no PDF; the status and settings still show.
+  const profileGate = useProfileGate()
+  const showProfileRequired = useProfileRequired()
+  const blocked = !profileGate.complete
   // Drawn in this browser from the saved snapshot (docs/browser_pdf_planing.md).
-  const drawing = useBarOptimiserPdf(projectId, lang, !!status && status.state !== 'none')
-  const pdf = drawing.pdf
+  const drawing = useBarOptimiserPdf(projectId, lang, !!status && status.state !== 'none' && !blocked)
+  const pdf = blocked ? undefined : drawing.pdf
 
   // Only the project or client was renamed: refresh the names, no solve
   // (docs/browser_pdf_planing.md P8); otherwise solve in this browser.
   const startGenerate = useCallback(() => {
+    if (blocked) return showProfileRequired()
     dismissSolve(projectId)
     if (status?.staleBecause === 'names') {
       refresh.mutate(undefined, { onError: () => toast.error(t('errors.generate')) })
     } else {
       void startSolve(projectId, projectName)
     }
-  }, [status?.staleBecause, refresh, projectId, projectName, t])
+  }, [blocked, showProfileRequired, status?.staleBecause, refresh, projectId, projectName, t])
 
   function progressOf(): ReportProgress | null {
     if (solvingHere && localSolve) {
@@ -246,6 +253,16 @@ export function BarOptimiserView({
         ) : !status ? (
           <Centered>
             <LoaderCircle className="size-5 animate-spin text-muted-foreground" aria-hidden="true" />
+          </Centered>
+        ) : blocked ? (
+          <Centered>
+            <div className="flex max-w-sm flex-col items-center gap-3 rounded-xl border border-border bg-card p-6 text-center shadow-sm">
+              <p className="text-sm font-semibold">{t('profileRequired.title')}</p>
+              <p className="text-[13px] text-muted-foreground">{t('profileRequired.body')}</p>
+              <Button variant="outline" onClick={showProfileRequired}>
+                {t('profileRequired.details')}
+              </Button>
+            </div>
           </Centered>
         ) : (
           <>

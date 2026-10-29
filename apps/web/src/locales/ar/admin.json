@@ -5,11 +5,15 @@
     "users": "المستخدمون",
     "dataWarehouse": "مستودع البيانات",
     "logs": "السجلات",
+    "plans": "الباقات",
+    "transactions": "المعاملات",
+    "billingProfile": "بيانات الفوترة",
     "groups": {
       "overview": "نظرة عامة",
       "tenants": "الحسابات",
       "catalogue": "الكتالوج",
-      "system": "النظام"
+      "system": "النظام",
+      "billing": "الاشتراكات"
     }
   },
   "sidebar": {
@@ -43,8 +47,9 @@
       },
       "revenue": {
         "title": "إيرادات الاشتراكات",
-        "unavailable": "غير متاح لسه — سجل الفوترة مفيهوش سعر.",
-        "soon": "قريبًا"
+        "thisMonth": "الفواتير المدفوعة هذا الشهر",
+        "up": "+{{percent}} % عن الشهر الماضي",
+        "down": "−{{percent}} % عن الشهر الماضي"
       }
     },
     "chart": {
@@ -67,12 +72,29 @@
       "removedActor": "حساب محذوف",
       "actions": {
         "company": {
-          "created": "أنشأ {{name}} · {{plan}}، {{maxUsers}} مقاعد",
+          "created_zero": "أنشأ {{name}} · {{plan}}، {{count}} مقعد",
+          "created_one": "أنشأ {{name}} · {{plan}}، مقعد واحد",
+          "created_two": "أنشأ {{name}} · {{plan}}، مقعدان",
+          "created_few": "أنشأ {{name}} · {{plan}}، {{count}} مقاعد",
+          "created_many": "أنشأ {{name}} · {{plan}}، {{count}} مقعدًا",
+          "created_other": "أنشأ {{name}} · {{plan}}، {{count}} مقعد",
           "updated": "عدّل {{name}}",
-          "plan_changed": "نقل {{name}} إلى {{plan}}، {{maxUsers}} مقاعد",
+          "plan_changed_zero": "نقل {{name}} إلى {{plan}}، {{count}} مقعد",
+          "plan_changed_one": "نقل {{name}} إلى {{plan}}، مقعد واحد",
+          "plan_changed_two": "نقل {{name}} إلى {{plan}}، مقعدان",
+          "plan_changed_few": "نقل {{name}} إلى {{plan}}، {{count}} مقاعد",
+          "plan_changed_many": "نقل {{name}} إلى {{plan}}، {{count}} مقعدًا",
+          "plan_changed_other": "نقل {{name}} إلى {{plan}}، {{count}} مقعد",
           "archived": "أرشف {{name}}",
           "reactivated": "أعاد تفعيل {{name}}",
-          "deleted": "حذف {{name}} نهائيًا"
+          "deleted": "حذف {{name}} نهائيًا",
+          "subscription_changed_zero": "غيّر اشتراك {{name}} · {{plan}}، {{count}} مقعد",
+          "subscription_changed_one": "غيّر اشتراك {{name}} · {{plan}}، مقعد واحد",
+          "subscription_changed_two": "غيّر اشتراك {{name}} · {{plan}}، مقعدان",
+          "subscription_changed_few": "غيّر اشتراك {{name}} · {{plan}}، {{count}} مقاعد",
+          "subscription_changed_many": "غيّر اشتراك {{name}} · {{plan}}، {{count}} مقعدًا",
+          "subscription_changed_other": "غيّر اشتراك {{name}} · {{plan}}، {{count}} مقعد",
+          "free_project_reset": "أعاد اختيار المشروع المتاح لـ {{name}}"
         },
         "user": {
           "created": "أضاف {{email}}",
@@ -91,6 +113,17 @@
           "deletedBulk_few": "حذف {{count}} عملاء محتملين",
           "deletedBulk_many": "حذف {{count}} عميل محتمل",
           "deletedBulk_other": "حذف {{count}} عميل محتمل"
+        },
+        "plan": {
+          "updated": "عدّل باقة {{name}}"
+        },
+        "billing": {
+          "profile_updated": "عدّل بيانات الفوترة",
+          "quotation_created": "أنشأ عرض السعر {{number}} لـ {{name}}",
+          "quotation_updated": "عدّل عرض السعر {{number}}",
+          "quotation_voided": "ألغى عرض السعر {{number}}",
+          "paid": "دفعت {{name}}: الفاتورة {{invoice}}",
+          "document_sent": "أرسل {{number}} إلى {{name}}"
         }
       },
       "lookup": {
@@ -112,6 +145,33 @@
         "imported": "استورد {{table}} من Excel",
         "systemsImported": "استورد الأنظمة من Excel"
       }
+    },
+    "lists": {
+      "label": "القوائم",
+      "leads": "العملاء المحتملون",
+      "endingSoon": "تنتهي قريبًا",
+      "unpaid": "عروض أسعار غير مدفوعة",
+      "expired": "منتهية",
+      "error": "تعذّر تحميل القائمة.",
+      "endDate": "تنتهي",
+      "when": "متى",
+      "daysLeft_zero": "اليوم",
+      "daysLeft_one": "بعد يوم",
+      "daysLeft_two": "بعد يومين",
+      "daysLeft_few": "بعد {{count}} أيام",
+      "daysLeft_many": "بعد {{count}} يومًا",
+      "daysLeft_other": "بعد {{count}} يوم",
+      "expiredAgo_zero": "اليوم",
+      "expiredAgo_one": "منذ يوم",
+      "expiredAgo_two": "منذ يومين",
+      "expiredAgo_few": "منذ {{count}} أيام",
+      "expiredAgo_many": "منذ {{count}} يومًا",
+      "expiredAgo_other": "منذ {{count}} يوم",
+      "empty": {
+        "endingSoon": "لا توجد باقة مدفوعة تنتهي خلال 30 يومًا.",
+        "unpaid": "لا يوجد عرض سعر مُرسل بانتظار الدفع.",
+        "expired": "لا توجد شركة انتهت باقتها."
+      }
     }
   },
   "logsPage": {
@@ -125,7 +185,9 @@
         "company": "الشركات",
         "user": "المستخدمون",
         "lookup": "الكتالوج",
-        "lead": "العملاء المحتملون"
+        "lead": "العملاء المحتملون",
+        "plan": "الباقات",
+        "billing": "الفوترة"
       },
       "allActors": "كل المشرفين",
       "clearAll": "مسح الفلاتر",
@@ -227,18 +289,19 @@
     "title": "إنشاء شركة",
     "description": "بينشئ سكيمة مخصصة ويعمل أول حساب أدمن للشركة.",
     "fields": {
-      "name": "اسم الشركة",
-      "plan": "الباقة",
-      "maxUsers": "حد المقاعد",
+      "name": "اسم الشركة (إنجليزي)",
       "adminEmail": "بريد الأدمن الإلكتروني",
-      "adminPassword": "كلمة مرور الأدمن"
+      "adminPassword": "كلمة مرور الأدمن",
+      "nameAr": "اسم الشركة (عربي)"
     },
     "submit": {
       "idle": "إنشاء الشركة",
       "submitting": "جاري الإنشاء…"
     },
     "success": "تم إنشاء {{name}}.",
-    "error": "حصل خطأ أثناء إنشاء الشركة. حاول تاني."
+    "error": "حصل خطأ أثناء إنشاء الشركة. حاول تاني.",
+    "required": "مطلوب",
+    "startsOnFree": "الشركة بتبدأ على الباقة المجانية (مستخدم واحد، عميل واحد، مشروع واحد). اختار باقتها من تبويب الاشتراك."
   },
   "companyDetail": {
     "back": "العودة للشركات",
@@ -249,24 +312,34 @@
       "saving": "جاري الحفظ…",
       "success": "تم تحديث الشركة.",
       "error": "حصل خطأ أثناء الحفظ.",
-      "maxUsersBelowCount": "الشركة دي فيها {{count}} مستخدم. امسح بعضهم الأول قبل ما تقلل الحد عن كده."
+      "billingHint": "الباقة وعدد المستخدمين وتاريخ الانتهاء والعملة والضريبة بتتعدّل من تبويب الاشتراك."
     },
     "billingSection": {
       "title": "سجل الفوترة",
       "empty": "لا يوجد سجل فوترة بعد.",
       "entry_zero": "{{plan}} · {{count}} مقعدًا",
-      "entry_one": "{{plan}} · مقعد واحد",
       "entry_two": "{{plan}} · مقعدان",
       "entry_few": "{{plan}} · {{count}} مقاعد",
       "entry_many": "{{plan}} · {{count}} مقعدًا",
-      "entry_other": "{{plan}} · {{count}} مقعدًا",
-      "from": "من {{date}}",
       "changes_zero": "{{count}} تغييرًا",
       "changes_one": "تغيير واحد",
       "changes_two": "تغييران",
       "changes_few": "{{count}} تغييرات",
       "changes_many": "{{count}} تغييرًا",
-      "changes_other": "{{count}} تغييرًا"
+      "changes_other": "{{count}} تغييرًا",
+      "reasons": {
+        "created_one": "اتعملت · {{plan}} · مستخدم واحد",
+        "created_other": "اتعملت · {{plan}} · {{count}} مستخدم",
+        "edited_one": "{{plan}} · مستخدم واحد",
+        "edited_other": "{{plan}} · {{count}} مستخدم",
+        "trial_started_one": "تجربة · {{plan}} · مستخدم واحد",
+        "trial_started_other": "تجربة · {{plan}} · {{count}} مستخدم",
+        "paid_one": "اتدفع · {{plan}} · مستخدم واحد",
+        "paid_other": "اتدفع · {{plan}} · {{count}} مستخدم",
+        "dropped_to_free": "اتحوّلت للمجانية",
+        "trial_ended": "التجربة خلصت ← المجانية"
+      },
+      "endsOn": "بينتهي {{date}}"
     },
     "usersSection": {
       "title": "المستخدمون",
@@ -274,8 +347,9 @@
       "role": "الدور",
       "status": "الحالة",
       "add": "إضافة مستخدم",
-      "seatsUsed": "{{used}} من {{max}} مقاعد",
-      "seatLimitReached": "تم الوصول للحد الأقصى للمقاعد — زوّده من التفاصيل"
+      "seatsUsed": "{{active}} نشط · {{used}} من {{max}} مقاعد",
+      "seatLimitReached": "وصلت للحد الأقصى — زوّده من تبويب الاشتراك",
+      "byFreePlan": "بسبب الباقة المجانية"
     },
     "actions": {
       "archive": "أرشفة الشركة",
@@ -304,6 +378,7 @@
       "label": "نظرة سريعة",
       "seats": "المقاعد",
       "seatsValue": "{{used}} / {{max}}",
+      "activeCount": "{{count}} نشط",
       "projects": "المشاريع",
       "projectsCaption": "الإجمالي",
       "projectsArchived": "لا تُحسب أثناء الأرشفة",
@@ -322,6 +397,51 @@
       "sinceMonths_few": "{{count}} أشهر",
       "sinceMonths_many": "{{count}} شهرًا",
       "sinceMonths_other": "{{count}} شهرًا"
+    },
+    "tabs": {
+      "label": "أقسام الشركة",
+      "overview": "نظرة عامة",
+      "billing": "الاشتراك"
+    },
+    "tag": {
+      "ends_zero": "بينتهي النهارده",
+      "ends_one": "بينتهي بعد يوم",
+      "ends_other": "بينتهي بعد {{count}} يوم",
+      "trial_zero": "التجربة بتنتهي النهارده",
+      "trial_one": "تجربة · فاضل يوم",
+      "trial_other": "تجربة · فاضل {{count}} يوم",
+      "expired": "منتهي"
+    },
+    "documents": {
+      "title": "عروض الأسعار والفواتير",
+      "empty": "لسه مفيش عروض أسعار أو فواتير."
+    },
+    "strip": {
+      "label": "الاشتراك",
+      "plan": "الباقة",
+      "trial": "تجربة",
+      "planCaption": "{{currency}} · ضريبة {{vat}} ٪",
+      "seats": "عدد المستخدمين",
+      "seatsDefault_one": "افتراضي الباقة · مستخدم واحد",
+      "seatsDefault_other": "افتراضي الباقة · {{count}} مستخدم",
+      "seatsCustom_one": "افتراضي الباقة {{seats}} · مستخدم واحد",
+      "seatsCustom_other": "افتراضي الباقة {{seats}} · {{count}} مستخدم",
+      "ends": "بينتهي",
+      "neverEnds": "المجانية مبتنتهيش",
+      "expired": "منتهي",
+      "daysLeft_zero": "بينتهي النهارده · ١١:٥٩ م بتوقيت القاهرة",
+      "daysLeft_one": "فاضل يوم · ١١:٥٩ م بتوقيت القاهرة",
+      "daysLeft_other": "فاضل {{count}} يوم · ١١:٥٩ م بتوقيت القاهرة",
+      "unpaid": "غير مدفوع",
+      "noUnpaid": "مفيش عروض أسعار مستنية الدفع",
+      "resetPick": "إعادة اختيار المشروع",
+      "resetPickHint": "أدمن الشركة هيختار تاني المشروع اللي يتعدّل على المجانية",
+      "resetPickDone": "أدمن الشركة هيختار تاني.",
+      "unpaidCount_one": "عرض سعر واحد",
+      "unpaidCount_two": "عرضا سعر",
+      "unpaidCount_few": "{{count}} عروض أسعار",
+      "unpaidCount_many": "{{count}} عرض سعر",
+      "unpaidCount_other": "{{count}} عرض سعر"
     }
   },
   "usersPage": {
@@ -445,5 +565,327 @@
     "confirmAction": "إنهاء الجلسة",
     "success": "تم إنهاء جلسة {{email}}.",
     "error": "حصل خطأ. حاول تاني."
+  },
+  "plansPage": {
+    "title": "الباقات",
+    "subtitle": "لو قفلت ميزة، بتختفي عند كل الشركات اللي على الباقة دي من أول طلب بعدها. الأسعار بالجنيه المصري؛ عرض السعر بعملة تانية بيتحوّل بسعر اليوم.",
+    "free": "الباقة المجانية ثابتة: مستخدم واحد، عميل واحد، مشروع واحد، وتصميم الشبابيك بس. كل شركة جديدة بتبدأ عليها.",
+    "nameEn": "الاسم (إنجليزي)",
+    "nameAr": "الاسم (عربي)",
+    "seats": "عدد المستخدمين",
+    "seatsHint": "الافتراضي للشركات الجديدة؛ كل شركة ممكن تختلف",
+    "price": "السعر",
+    "monthly": "شهري",
+    "monthlySuffix": "ج.م / شهر",
+    "monthlyHint": "١ و٣ و٦ شهور",
+    "annual": "سنوي",
+    "annualSuffix": "ج.م / سنة",
+    "annualSaves": "١٢ شهر · بيوفّر {{percent}} ٪",
+    "annualDearer": "١٢ شهر · أغلى من ١٢ × الشهري",
+    "annualSame": "١٢ شهر · نفس ١٢ × الشهري",
+    "features": "المميزات",
+    "featureNames": {
+      "reports": "التقارير (تقطيع القطاعات)",
+      "data": "الكتالوج الخاص (البيانات)",
+      "project_settings": "إعدادات المشاريع"
+    },
+    "save": "حفظ",
+    "discard": "تجاهل",
+    "saved": "اتحفظت الباقات.",
+    "saveError": "معرفناش نحفظ الباقات. جرّب تاني.",
+    "loadError": "معرفناش نحمّل الباقات. جرّب تاني.",
+    "errors": {
+      "required": "مطلوب",
+      "seats": "من ١ لـ {{max}}",
+      "price": "اكتب سعر أكبر من ٠"
+    }
+  },
+  "subscription": {
+    "title": "تعديل الاشتراك",
+    "plan": "الباقة",
+    "planOption_one": "{{name}} · مستخدم واحد",
+    "planOption_other": "{{name}} · {{count}} مستخدم",
+    "seats": "عدد المستخدمين",
+    "seatsHint_one": "افتراضي الباقة {{seats}} · ميقلّش عن المستخدم الموجود",
+    "seatsHint_other": "افتراضي الباقة {{seats}} · ميقلّش عن الـ {{count}} مستخدم الموجودين",
+    "seatsBelowUsers_one": "في الشركة مستخدم واحد — امسح {{remove}} قبل ما تنزل لـ {{max}}.",
+    "seatsBelowUsers_other": "في الشركة {{count}} مستخدم — امسح {{remove}} قبل ما تنزل لـ {{max}}.",
+    "freeFixed": "المجانية ثابتة: مستخدم واحد، عميل واحد، مشروع واحد، ومبتنتهيش.",
+    "freeDeactivates_one": "المجانية ليها مستخدم واحد: الأدمن اللي تحت هيفضل شغال، ومستخدم تاني هيتوقف ويخرج. مفيش حاجة هتتمسح؛ والباقة المدفوعة بترجّعه.",
+    "freeDeactivates_other": "المجانية ليها مستخدم واحد: الأدمن اللي تحت هيفضل شغال، والـ {{count}} مستخدم التانيين هيتوقفوا ويخرجوا. مفيش حاجة هتتمسح؛ والباقة المدفوعة بترجّعهم.",
+    "keepAdmin": "هيفضل شغال",
+    "trial": "تجربة: من غير عرض سعر؛ بتتحوّل للمجانية لو متدفعتش لحد آخرها",
+    "trialEnds": "التجربة بتنتهي",
+    "ends": "الاشتراك بينتهي",
+    "endOfDay": "١١:٥٩ م القاهرة",
+    "endRequired": "اختار تاريخ الانتهاء",
+    "trialHint": "١٤ يوم من النهارده لو مغيّرتهوش",
+    "endsHint": "عرض السعر لما يتدفع بيحرّكه لوحده؛ عدّله هنا بس للتصحيح",
+    "trialDays": "أيام",
+    "currency": "العملة",
+    "currencies": {
+      "EGP": "جنيه مصري",
+      "SAR": "ريال سعودي",
+      "AED": "درهم إماراتي",
+      "USD": "دولار أمريكي",
+      "EUR": "يورو"
+    },
+    "vat": "الضريبة",
+    "vatInvalid": "من ٠ لـ ١٠٠",
+    "currencyHint": "العملة والضريبة بيتاخدوا في عروض الأسعار الجديدة؛ اللي اتعملت بتفضل على حالها.",
+    "note": "ملاحظة (اختياري)",
+    "notePlaceholder": "مثلاً: طلبوا مصممين زيادة",
+    "cancel": "إلغاء",
+    "save": "حفظ",
+    "saved": "اتحفظ الاشتراك.",
+    "saveError": "معرفناش نحفظ الاشتراك. جرّب تاني."
+  },
+  "billingProfile": {
+    "title": "بيانات الفوترة",
+    "subtitle": "بيانات نشاطك كما تُطبع على كل عرض سعر وفاتورة.",
+    "notSet": "لم تُضبط بعد: لا يمكن إصدار أي عرض سعر قبل حفظها.",
+    "discard": "تجاهل",
+    "save": "حفظ",
+    "saved": "تم حفظ بيانات الفوترة.",
+    "saveError": "تعذّر حفظ بيانات الفوترة. حاول مرة أخرى.",
+    "loadError": "تعذّر تحميل بيانات الفوترة.",
+    "sections": {
+      "business": "النشاط",
+      "pay": "طريقة الدفع",
+      "numbering": "الترقيم"
+    },
+    "fields": {
+      "legalNameEn": "الاسم القانوني (إنجليزي)",
+      "legalNameAr": "الاسم القانوني (عربي)",
+      "addressEn": "العنوان (إنجليزي)",
+      "addressAr": "العنوان (عربي)",
+      "taxId": "رقم التسجيل الضريبي",
+      "commercialRegister": "السجل التجاري",
+      "billingEmail": "بريد الفوترة",
+      "phone": "الهاتف",
+      "bankAccount": "البنك · IBAN",
+      "instapay": "InstaPay",
+      "nextQuotation": "عرض السعر التالي",
+      "nextInvoice": "الفاتورة التالية"
+    },
+    "hints": {
+      "billingEmail": "تُرسل عروض الأسعار والفواتير منه ويُرد عليه",
+      "nextQuotation": "يبدأ من 0001 كل يناير؛ يزيد فقط",
+      "nextInvoice": "بلا فجوات ولا يتكرر؛ يزيد فقط"
+    },
+    "errors": {
+      "required": "مطلوب.",
+      "email": "أدخل بريدًا صحيحًا.",
+      "number": "أدخل رقمًا صحيحًا من 1.",
+      "numberTooLow": "لا يمكن أن يقل الرقم التالي عن رقم صدر بالفعل."
+    },
+    "logo": {
+      "title": "الشعار",
+      "rules": "PNG / JPEG / WebP حتى 1 ميجابايت · اختياري",
+      "alt": "شعار الفوترة",
+      "upload": "رفع",
+      "replace": "استبدال",
+      "remove": "حذف",
+      "uploading": "جارٍ الرفع…",
+      "wrongType": "استخدم صورة PNG أو JPEG أو WebP.",
+      "tooBig": "يجب ألا يزيد الشعار عن 1 ميجابايت.",
+      "uploadError": "تعذّر رفع الشعار. حاول مرة أخرى."
+    },
+    "preview": {
+      "title": "معاينة · عرض سعر",
+      "taxNo": "Tax no. {{value}}",
+      "cr": "CR {{value}}",
+      "note": "تتحدث أثناء الكتابة. المستند الصادر يحتفظ بالبيانات التي صدر بها."
+    }
+  },
+  "quotation": {
+    "new": "عرض سعر جديد",
+    "title": "عرض سعر جديد",
+    "editTitle": "تعديل {{number}}",
+    "description": "عرض سعر لـ {{company}}. يُحفظ كمسودة برقم؛ لا تتغير الباقة إلا عند الدفع.",
+    "plan": "الباقة",
+    "seats": "المقاعد",
+    "seatsBelowUsers": "لدى الشركة {{count}} مستخدمين: اعرض هذا العدد من المقاعد على الأقل.",
+    "duration": "المدة",
+    "months_one": "شهر",
+    "months_two": "شهران",
+    "months_few": "{{count}} أشهر",
+    "months_many": "{{count}} شهرًا",
+    "months_other": "{{count}} شهر",
+    "annual": "12 شهرًا تستخدم السعر السنوي للباقة.",
+    "annualSaving": "12 شهرًا بالسعر السنوي: توفير {{percent}} % مقارنة بالشهري.",
+    "monthlyTimes_one": "السعر الشهري × {{count}}.",
+    "monthlyTimes_two": "السعر الشهري × {{count}}.",
+    "monthlyTimes_few": "السعر الشهري × {{count}}.",
+    "monthlyTimes_many": "السعر الشهري × {{count}}.",
+    "monthlyTimes_other": "السعر الشهري × {{count}}.",
+    "startsOn": "البداية",
+    "startHint": "اليوم التالي لنهاية الاشتراك الحالي، أو يوم الدفع إن كان منتهيًا",
+    "endsOn": "النهاية",
+    "endHint": "23:59 بتوقيت القاهرة؛ قابلة للتعديل",
+    "validUntil": "صالح حتى",
+    "validHint": "14 يومًا افتراضيًا؛ لا يُدفع بعدها",
+    "rate": "سعر الصرف (جنيه لكل 1 {{currency}})",
+    "rateToday": "سعر اليوم؛ يُطبع ويُثبت على عرض السعر.",
+    "rateLastKnown": "خدمة الأسعار متوقفة: آخر سعر معروف من {{date}}. راجعه.",
+    "rateLoading": "جارٍ جلب سعر اليوم…",
+    "rateNone": "لا يوجد سعر: اكتبه.",
+    "price": "السعر ({{currency}})",
+    "priceHint": "سعر الباقة للمدة؛ يمكنك تغييره",
+    "discount": "الخصم",
+    "discountKind": "نوع الخصم",
+    "discountNone": "بدون",
+    "vat": "ضريبة القيمة المضافة %",
+    "vatHint": "نسبة الشركة {{rate}} %",
+    "note": "ملاحظة (تُطبع)",
+    "totals": {
+      "subtotal": "المجموع الفرعي",
+      "discount": "الخصم",
+      "vat": "الضريبة {{rate}} %",
+      "total": "الإجمالي",
+      "inEgp": "بالجنيه بالسعر المثبت"
+    },
+    "cancel": "إلغاء",
+    "save": "حفظ عرض السعر",
+    "saved": "تم حفظ عرض السعر {{number}}.",
+    "errors": {
+      "field": "راجع هذا الحقل.",
+      "seats": "من 1 إلى 50 مقعدًا.",
+      "endsOn": "النهاية قبل البداية.",
+      "fxRate": "سعر الصرف مطلوب لأي عملة غير الجنيه.",
+      "discountValue": "راجع الخصم (النسبة 100 كحد أقصى).",
+      "save": "تعذّر حفظ عرض السعر. حاول مرة أخرى.",
+      "noBillingProfile": "املأ الفوترة › بيانات الفوترة أولًا: تُطبع كبيانات البائع."
+    },
+    "next": "التالي",
+    "steps": {
+      "label": "الخطوات",
+      "quotation": "عرض السعر",
+      "email": "البريد"
+    }
+  },
+  "markPaid": {
+    "title": "تسجيل دفع {{number}}",
+    "description": "وصل المبلغ خارج البرنامج: سجّله هنا.",
+    "paidOn": "تاريخ الدفع",
+    "amount": "المبلغ المستلم ({{currency}})",
+    "method": "الطريقة",
+    "reference": "رقم مرجع المعاملة",
+    "referenceHint": "من البنك أو InstaPay أو الإيصال — يُطبع على الفاتورة",
+    "methods": {
+      "bank_transfer": "تحويل بنكي",
+      "instapay": "InstaPay",
+      "cash": "نقدًا",
+      "cheque": "شيك"
+    },
+    "onConfirm": "عند التأكيد",
+    "invoiceCreated": "تُنشأ فاتورة من عرض السعر هذا (نفس البنود، مدفوعة)",
+    "renewed": "الباقة {{plan}}، {{seats}} مقاعد · {{start}} ← {{end}}",
+    "startNote": "إن كانت الباقة الحالية سارية، تبدأ المدة في اليوم التالي لنهايتها.",
+    "confirm": "تأكيد الدفع",
+    "done": "تم الدفع: أُنشئت الفاتورة {{number}}.",
+    "errors": {
+      "reference": "مطلوب: يُطبع على الفاتورة.",
+      "save": "تعذّر تسجيل الدفع. حاول مرة أخرى.",
+      "quotation_expired": "انتهت صلاحية عرض السعر: أصدر عرضًا جديدًا.",
+      "seats_below_users": "عدد مستخدمي الشركة أكبر من مقاعد عرض السعر."
+    },
+    "emailNow": "أرسل الفاتورة بالبريد الآن"
+  },
+  "documents": {
+    "number": "الرقم",
+    "total": "الإجمالي",
+    "created": "الإنشاء",
+    "loadError": "تعذّر تحميل المستندات.",
+    "kind": {
+      "quotation": "عرض سعر",
+      "invoice": "فاتورة"
+    },
+    "status": {
+      "label": "الحالة",
+      "draft": "مسودة",
+      "sent": "مُرسل",
+      "expired": "منتهي",
+      "paid": "مدفوع",
+      "void": "ملغى"
+    },
+    "actions": {
+      "edit": "تعديل",
+      "markPaid": "تسجيل الدفع",
+      "void": "إلغاء",
+      "voided": "أُلغي {{number}}.",
+      "voidTitle": "إلغاء {{number}}؟",
+      "voidDescription": "لن يمكن دفعه أو إرساله بعد ذلك، ولا يمكن التراجع عن الإلغاء.",
+      "voidReason": "السبب (اختياري)",
+      "voidReasonPlaceholder": "مثلًا: العميل غيّر الباقة",
+      "error": "لم ينجح ذلك. حاول مرة أخرى.",
+      "pdf": "PDF",
+      "email": "إرسال بالبريد"
+    },
+    "pdf": {
+      "download": "تنزيل",
+      "print": "طباعة",
+      "printError": "تعذّر فتح نافذة الطباعة.",
+      "error": "تعذّر رسم ملف PDF.",
+      "retry": "حاول مرة أخرى",
+      "drawing": "جارٍ رسم ملف PDF…"
+    },
+    "emailed_one": "أُرسل {{date}} · شخص واحد",
+    "emailed_two": "أُرسل {{date}} · شخصان",
+    "emailed_few": "أُرسل {{date}} · {{count}} أشخاص",
+    "emailed_many": "أُرسل {{date}} · {{count}} شخصًا",
+    "emailed_other": "أُرسل {{date}} · {{count}} شخص"
+  },
+  "transactions": {
+    "title": "المعاملات",
+    "subtitle": "كل عروض الأسعار والفواتير لكل الشركات، الأحدث أولًا.",
+    "export": "تصدير CSV",
+    "exportError": "تعذّر التصدير. حاول مرة أخرى.",
+    "kpis": {
+      "label": "الإجماليات",
+      "month": "المستلم هذا الشهر",
+      "year": "المستلم هذا العام",
+      "unpaid": "غير مدفوع (مُرسل)",
+      "unpaidCount_one": "عرض سعر واحد",
+      "unpaidCount_two": "عرضا سعر",
+      "unpaidCount_few": "{{count}} عروض أسعار",
+      "unpaidCount_many": "{{count}} عرض سعر",
+      "unpaidCount_other": "{{count}} عرض سعر",
+      "drafts": "المسودات"
+    },
+    "kind": "النوع",
+    "kinds": {
+      "all": "الكل",
+      "invoice": "الفواتير",
+      "quotation": "عروض الأسعار"
+    },
+    "allStatuses": "كل الحالات",
+    "company": "الشركة",
+    "allCompanies": "كل الشركات",
+    "search": "ابحث بالرقم أو الشركة",
+    "error": "تعذّر تحميل المعاملات.",
+    "empty": "لا توجد عروض أسعار أو فواتير بعد."
+  },
+  "email": {
+    "title": "إرسال {{number}} بالبريد",
+    "description": "ملف PDF مرفق. يُرسل بالإنجليزية والعربية.",
+    "to": "إلى",
+    "toPlaceholder": "name@company.com",
+    "toHint": "Enter أو الفاصلة تضيف عنوانًا",
+    "invalid": "هذا ليس بريدًا إلكترونيًا.",
+    "remove": "حذف {{email}}",
+    "subject": "الموضوع",
+    "copyMe": "أرسل لي نسخة",
+    "attachment": "PDF · {{size}} ك.ب",
+    "preview": "معاينة ملف PDF",
+    "back": "رجوع",
+    "send": "إرسال",
+    "sent_one": "أُرسل {{number}} إلى شخص واحد.",
+    "sent_two": "أُرسل {{number}} إلى شخصين.",
+    "sent_few": "أُرسل {{number}} إلى {{count}} أشخاص.",
+    "sent_many": "أُرسل {{number}} إلى {{count}} شخصًا.",
+    "sent_other": "أُرسل {{number}} إلى {{count}} شخص.",
+    "failed": "لم يُرسل البريد (رفضته خدمة البريد). حاول لاحقًا.",
+    "error": "تعذّر إرسال البريد. حاول مرة أخرى."
   }
 }

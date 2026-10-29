@@ -6,7 +6,8 @@
     "./strings": "./src/strings.ts",
     "./fonts": "./src/fonts.mts",
     "./bar-optimiser-document": "./src/bar-optimiser-document.mts",
-    "./fonts/*": "./fonts/*"
+    "./fonts/*": "./fonts/*",
+    "./billing-document": "./src/billing-document.mts"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",

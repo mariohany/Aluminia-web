@@ -30,13 +30,13 @@ const SUPER_ADMIN = { email: 'admin@aluminia.local', password: 'ChangeMe123!' };
 const COMPANIES = [
   {
     name: 'Cairo Aluminium Works',
-    plan: 'starter',
+    planKey: 'pro' as const,
     maxUsers: 5,
     admin: { email: 'admin@cairo-alu.local', password: 'ChangeMe123!' },
   },
   {
     name: 'Delta Window Systems',
-    plan: 'starter',
+    planKey: 'pro' as const,
     maxUsers: 3,
     admin: { email: 'admin@delta-windows.local', password: 'ChangeMe123!' },
   },

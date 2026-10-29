@@ -20,7 +20,13 @@ import { CompanyDetailPage } from '@/pages/admin/company-detail-page'
 import { UsersPage } from '@/pages/admin/users-page'
 import { DataWarehousePage } from '@/pages/admin/data-warehouse-page'
 import { LogsPage } from '@/pages/admin/logs-page'
+import { PlansPage } from '@/pages/admin/plans-page'
+import { BillingProfilePage } from '@/pages/admin/billing-profile-page'
+import { TransactionsPage } from '@/pages/admin/transactions-page'
+import { FeatureGate } from '@/components/workspace/plan/feature-gate'
 import { WorkspaceLayout } from '@/pages/workspace/workspace-layout'
+import { ConfigSubscriptionPage } from '@/pages/workspace/config-subscription-page'
+import { ExpiryFrame } from '@/components/workspace/plan/expiry-bar'
 import { CanvasPage } from '@/pages/workspace/canvas-page'
 import { DataPage } from '@/pages/workspace/data-page'
 import { ConfigPage } from '@/pages/workspace/config-page'
@@ -90,6 +96,9 @@ function App() {
               <Route path="users" element={<UsersPage />} />
               <Route path="data-warehouse" element={<DataWarehousePage />} />
               <Route path="logs" element={<LogsPage />} />
+              <Route path="plans" element={<PlansPage />} />
+              <Route path="transactions" element={<TransactionsPage />} />
+              <Route path="billing-profile" element={<BillingProfilePage />} />
             </Route>
 
             {/* The manufacturer's application. A super admin is refused
@@ -115,13 +124,41 @@ function App() {
               {/* No RoleRoute — both COMPANY_ADMIN and USER get the
                   platform catalogue read-only in Phase 1 (see
                   docs/company_lookups_planing.md). */}
-              <Route path="data" element={<DataPage />} />
+              <Route
+                path="data"
+                element={
+                  <FeatureGate feature="data">
+                    <DataPage />
+                  </FeatureGate>
+                }
+              />
               {/* Reports (docs/reports_planing.md §9): the project and
                   the open report live in the URL, like the canvas's
                   selection, so both survive a refresh. */}
-              <Route path="reports" element={<ReportsPage />} />
-              <Route path="reports/projects/:projectId" element={<ReportsPage />} />
-              <Route path="reports/projects/:projectId/:report" element={<ReportsPage />} />
+              <Route
+                path="reports"
+                element={
+                  <FeatureGate feature="reports">
+                    <ReportsPage />
+                  </FeatureGate>
+                }
+              />
+              <Route
+                path="reports/projects/:projectId"
+                element={
+                  <FeatureGate feature="reports">
+                    <ReportsPage />
+                  </FeatureGate>
+                }
+              />
+              <Route
+                path="reports/projects/:projectId/:report"
+                element={
+                  <FeatureGate feature="reports">
+                    <ReportsPage />
+                  </FeatureGate>
+                }
+              />
               {/* Config (was Manage): a home of section cards, each
                   card its own page so a section survives a refresh.
                   Company admins only. */}
@@ -153,7 +190,17 @@ function App() {
                 path="config/projects"
                 element={
                   <RoleRoute allow={[UserRole.COMPANY_ADMIN]}>
-                    <ConfigProjectsPage />
+                    <FeatureGate feature="project_settings">
+                      <ConfigProjectsPage />
+                    </FeatureGate>
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="config/subscription"
+                element={
+                  <RoleRoute allow={[UserRole.COMPANY_ADMIN]}>
+                    <ConfigSubscriptionPage />
                   </RoleRoute>
                 }
               />
@@ -173,7 +220,9 @@ function App() {
               element={
                 <ProtectedRoute>
                   <RoleRoute allow={[UserRole.COMPANY_ADMIN, UserRole.USER]}>
-                    <WindowEditorPage />
+                    <ExpiryFrame>
+                      <WindowEditorPage />
+                    </ExpiryFrame>
                   </RoleRoute>
                 </ProtectedRoute>
               }
@@ -183,7 +232,9 @@ function App() {
               element={
                 <ProtectedRoute>
                   <RoleRoute allow={[UserRole.COMPANY_ADMIN, UserRole.USER]}>
-                    <WindowEditorPage />
+                    <ExpiryFrame>
+                      <WindowEditorPage />
+                    </ExpiryFrame>
                   </RoleRoute>
                 </ProtectedRoute>
               }

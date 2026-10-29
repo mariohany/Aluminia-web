@@ -21,6 +21,7 @@ import type { AuthenticatedRequestUser } from '../auth/jwt-payload';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
+import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { DeleteCompanyDto } from './dto/delete-company.dto';
 
 @Roles(UserRole.SUPER_ADMIN)
@@ -53,6 +54,25 @@ export class CompaniesController {
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<CompanySummary> {
     return this.companies.update(id, dto, actor.id);
+  }
+
+  @Patch(':id/subscription')
+  updateSubscription(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateSubscriptionDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<CompanyDetail> {
+    return this.companies.updateSubscription(id, dto, actor.id);
+  }
+
+  // Free (Q5): the company admin picks the editable project once; only
+  // the super admin clears the pick so they can pick again.
+  @Delete(':id/free-project')
+  resetFreeProject(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<CompanyDetail> {
+    return this.companies.resetFreeProject(id, actor.id);
   }
 
   @Post(':id/archive')

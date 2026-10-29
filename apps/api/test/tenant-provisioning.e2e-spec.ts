@@ -62,7 +62,7 @@ describe('TenantProvisioning (e2e)', () => {
 
   const input = () => ({
     name: testCompanyName,
-    plan: 'starter',
+    planKey: 'pro' as const,
     maxUsers: 5,
     admin: { email: testAdminEmail, password: 'TestPassword123!' },
   });
@@ -154,13 +154,14 @@ describe('TenantProvisioning (e2e)', () => {
     );
 
     // The initial plan is recorded in the append-only billing history.
-    const billing: Array<{ plan: string; max_users: number }> =
+    const billing: Array<{ key: string; max_users: number; reason: string }> =
       await dataSource.query(
-        `SELECT plan, max_users FROM billing WHERE company_id = $1`,
+        `SELECT p.key, b.max_users, b.reason FROM billing b
+         JOIN plans p ON p.id = b.plan_id WHERE b.company_id = $1`,
         [company.id],
       );
     expect(billing).toHaveLength(1);
-    expect(billing[0].plan).toBe('starter');
+    expect(billing[0]).toMatchObject({ key: 'pro', reason: 'created' });
   });
 
   it('gives two companies with the same name distinct schemas', async () => {

@@ -35,6 +35,7 @@ import { WindowSection } from '../../database/tenant/entities/window-section.ent
 import { TenantContextService } from '../tenancy/tenant-context.service';
 import { resolveScopedRef } from '../company-lookups/scoped-ref.util';
 import { translatePostgresError } from '../lookups/pg-error.util';
+import { PlanAccess } from '../subscriptions/plan-access.service';
 
 /**
  * Window assemblies — one manufacturing job's individual designs —
@@ -50,7 +51,10 @@ import { translatePostgresError } from '../lookups/pg-error.util';
  */
 @Injectable()
 export class WindowsService {
-  constructor(private readonly tenantContext: TenantContextService) {}
+  constructor(
+    private readonly tenantContext: TenantContextService,
+    private readonly planAccess: PlanAccess,
+  ) {}
 
   list(projectId: string): Promise<WindowSummary[]> {
     return this.tenantContext.run(async (manager) => {
@@ -80,6 +84,7 @@ export class WindowsService {
       if (!projectExists) {
         throw new BadRequestException('That project does not exist.');
       }
+      await this.planAccess.assertProjectsEditable(manager, [input.projectId]);
 
       const panels = prepareAssembly(input.panels);
       const outer = boundingSize(panels);
@@ -109,6 +114,7 @@ export class WindowsService {
   update(id: string, input: UpdateWindowInput): Promise<WindowDetail> {
     return this.tenantContext.run(async (manager) => {
       const window = await this.findOrFail(manager, id);
+      await this.planAccess.assertProjectsEditable(manager, [window.projectId]);
 
       if (input.name !== undefined) window.name = input.name;
       if (input.quantity !== undefined) window.quantity = input.quantity;
@@ -175,6 +181,11 @@ export class WindowsService {
       if (!projectExists) {
         throw new BadRequestException('That project does not exist.');
       }
+      // Free (B13): moving out of or into a read-only project is an edit.
+      await this.planAccess.assertProjectsEditable(manager, [
+        input.projectId,
+        ...found.map((w) => w.projectId),
+      ]);
 
       const byId = new Map(found.map((w) => [w.id, w]));
       const incoming = ids

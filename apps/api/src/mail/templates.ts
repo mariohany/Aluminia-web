@@ -118,6 +118,15 @@ export function defaultSubject(doc: BillingDocumentSummary): string {
     : `Quotation ${doc.number} from Aluminia · عرض سعر`;
 }
 
+/** "n days" after خلال: the counted noun follows Arabic number agreement
+ * (2 = dual, 3–10 = plural, 11 and up = singular). */
+export function arabicDays(n: number): string {
+  if (n === 1) return 'يوم واحد';
+  if (n === 2) return 'يومين';
+  if (n >= 3 && n <= 10) return `${n} أيام`;
+  return `${n} يومًا`;
+}
+
 /** The warning before the end (B15): 30 / 15 / 5 / 1 days. */
 export function reminderEmail(p: {
   companyEn: string;
@@ -130,7 +139,7 @@ export function reminderEmail(p: {
 }): MailContent {
   const [endEn, endAr] = day(p.endsOn);
   const days = p.daysLeft === 1 ? '1 day' : `${p.daysLeft} days`;
-  const daysAr = p.daysLeft === 1 ? 'يوم واحد' : `${p.daysLeft} يومًا`;
+  const daysAr = arabicDays(p.daysLeft);
   return compose(
     `Your Aluminia subscription ends in ${days} · اشتراكك ينتهي خلال ${daysAr}`,
     `<h1 style="margin:0 0 10px;font-size:22px">Your subscription ends in ${days}</h1>

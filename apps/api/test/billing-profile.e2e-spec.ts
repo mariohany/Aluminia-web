@@ -66,6 +66,11 @@ describe('Admin billing profile (e2e)', () => {
     );
     superId = rows[0].id;
     originalProfile = await controlPlane.query(`SELECT * FROM billing_profile`);
+    // Unhook the real logo while this suite saves its own: a save that
+    // replaces a logo releases (deletes) the old file, which would lose a
+    // laptop's own logo and leave afterAll restoring a missing file. The
+    // file stays attached, so no sweep takes it, and afterAll puts it back.
+    await controlPlane.query(`UPDATE billing_profile SET logo_file_id = NULL`);
 
     companyAdminToken = await loginAs(companyAdminEmail);
     superToken = await loginAs(superAdminEmail);

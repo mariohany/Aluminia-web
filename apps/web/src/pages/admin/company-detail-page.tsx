@@ -222,6 +222,9 @@ function CompanyView({ company, language }: { company: CompanyDetail; language: 
           <div className="pt-1">
             <SeatMeter used={company.userCount} max={company.maxUsers} label={t('companyDetail.stats.seats')} />
           </div>
+          <span className="text-xs text-muted-foreground">
+            {t('companyDetail.stats.activeCount', { count: company.activeUserCount })}
+          </span>
         </Stat>
         <Stat
           label={t('companyDetail.stats.projects')}
@@ -278,6 +281,7 @@ function CompanyView({ company, language }: { company: CompanyDetail; language: 
               <CardAction className="flex items-center gap-3">
                 <span className="text-xs text-muted-foreground">
                   {t('companyDetail.usersSection.seatsUsed', {
+                    active: numberFormatter.format(company.activeUserCount),
                     used: numberFormatter.format(company.userCount),
                     max: numberFormatter.format(company.maxUsers),
                   })}

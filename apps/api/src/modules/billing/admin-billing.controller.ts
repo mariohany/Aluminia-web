@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { UserRole } from '@repo/types/auth';
 import {
   markPaidSchema,
+  voidQuotationSchema,
   quotationInputSchema,
   sendDocumentSchema,
   transactionsQuerySchema,
@@ -34,6 +35,7 @@ import { defaultSubject } from '../../mail/templates';
 
 class QuotationDto extends createZodDto(quotationInputSchema) {}
 class MarkPaidDto extends createZodDto(markPaidSchema) {}
+class VoidQuotationDto extends createZodDto(voidQuotationSchema) {}
 class SendDocumentDto extends createZodDto(sendDocumentSchema) {}
 class TransactionsQueryDto extends createZodDto(transactionsQuerySchema) {}
 class FxQueryDto extends createZodDto(
@@ -110,9 +112,10 @@ export class AdminBillingController {
   @HttpCode(200)
   void(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: VoidQuotationDto,
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<BillingDocumentSummary> {
-    return this.documents.voidQuotation(id, actor.id);
+    return this.documents.voidQuotation(id, dto, actor.id);
   }
 
   /** Emails it with the PDF the browser drew (B16, Q1). */

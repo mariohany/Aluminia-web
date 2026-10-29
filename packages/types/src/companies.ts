@@ -62,7 +62,9 @@ export interface CompanySummary {
   isTrial: boolean
   currency: BillingCurrency
   vatRate: number
+  // Every user holds a seat, deactivated ones too (`userCount`).
   userCount: number
+  activeUserCount: number
   createdAt: string
 }
 

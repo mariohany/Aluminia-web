@@ -155,6 +155,9 @@ export class BillingDocument {
   })
   paymentReference: string | null;
 
+  @Column({ name: 'void_reason', type: 'varchar', length: 200, nullable: true })
+  voidReason: string | null;
+
   @Column({ name: 'created_by', type: 'uuid', nullable: true })
   createdBy: string | null;
 

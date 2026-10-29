@@ -1,12 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { Ban, Banknote, FileText, FilePlus2, Mail, MoreHorizontal, Pencil } from 'lucide-react'
 import { UserRole } from '@repo/types/auth'
 import type { CompanyDetail } from '@repo/types/companies'
 import type { BillingDocumentSummary } from '@repo/types/billing-documents'
-import { apiErrorMessage } from '@/lib/api-client'
-import { useCompanyDocumentsQuery, useVoidQuotationMutation } from '@/lib/billing-queries'
+import { useCompanyDocumentsQuery } from '@/lib/billing-queries'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -21,6 +19,7 @@ import { EmailDocumentDialog } from './email-document-dialog'
 import { DocumentStatusPill } from '@/components/billing/document-status'
 import { MarkPaidDialog } from './mark-paid-dialog'
 import { QuotationDialog } from './quotation-dialog'
+import { VoidQuotationDialog } from './void-quotation-dialog'
 
 /**
  * The company's quotations and invoices on its Billing tab (B19), newest
@@ -30,10 +29,10 @@ import { QuotationDialog } from './quotation-dialog'
 export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
   const { t, i18n } = useTranslation('admin')
   const { data: documents, isPending, isError } = useCompanyDocumentsQuery(company.id)
-  const voidMutation = useVoidQuotationMutation()
   const [editing, setEditing] = useState<{ document?: BillingDocumentSummary } | null>(null)
   const [paying, setPaying] = useState<BillingDocumentSummary | null>(null)
   const [viewing, setViewing] = useState<BillingDocumentSummary | null>(null)
+  const [voiding, setVoiding] = useState<BillingDocumentSummary | null>(null)
   const [emailing, setEmailing] = useState<{ document: BillingDocumentSummary; to: string[] } | null>(null)
   const admins = company.users
     .filter((u) => u.role === UserRole.COMPANY_ADMIN && u.status === 'active')
@@ -99,6 +98,9 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                             })}
                           </span>
                         )}
+                        {doc.voidReason && (
+                          <span className="max-w-56 text-xs break-words text-muted-foreground">{doc.voidReason}</span>
+                        )}
                       </span>
                     </TableCell>
                     <TableCell className="text-end font-mono text-[13px]">{money(doc)}</TableCell>
@@ -138,12 +140,7 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                           {(unpaid || doc.status === 'expired') && (
                             <DropdownMenuItem
                               variant="destructive"
-                              onSelect={() =>
-                                voidMutation.mutate(doc.id, {
-                                  onSuccess: () => toast.success(t('documents.actions.voided', { number: doc.number })),
-                                  onError: (err) => toast.error(apiErrorMessage(err, t('documents.actions.error'))),
-                                })
-                              }
+                              onSelect={() => setVoiding(doc)}
                             >
                               <Ban aria-hidden="true" />
                               {t('documents.actions.void')}
@@ -177,6 +174,7 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
         onOpenChange={(open) => !open && setEmailing(null)}
       />
       <DocumentPdfDialog document={viewing} onOpenChange={(open) => !open && setViewing(null)} />
+      <VoidQuotationDialog document={voiding} onOpenChange={(open) => !open && setVoiding(null)} />
     </Card>
   )
 }

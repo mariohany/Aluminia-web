@@ -7,6 +7,7 @@ import type {
   TransactionsPage,
   TransactionsQuery,
   TransactionsSummary,
+  VoidQuotationInput,
 } from '@repo/types/billing-documents'
 import type { BillingCurrency } from '@repo/types/subscriptions'
 import { apiFetch } from '@/lib/api-client'
@@ -37,8 +38,8 @@ export function updateQuotation(id: string, input: QuotationInput): Promise<Bill
   return apiFetch<BillingDocumentSummary>(`/admin/billing/documents/${id}`, { method: 'PATCH', body: input })
 }
 
-export function voidQuotation(id: string): Promise<BillingDocumentSummary> {
-  return apiFetch<BillingDocumentSummary>(`/admin/billing/documents/${id}/void`, { method: 'POST' })
+export function voidQuotation(id: string, input: VoidQuotationInput): Promise<BillingDocumentSummary> {
+  return apiFetch<BillingDocumentSummary>(`/admin/billing/documents/${id}/void`, { method: 'POST', body: input })
 }
 
 export function markPaid(id: string, input: MarkPaidInput): Promise<BillingDocumentSummary> {

@@ -306,6 +306,7 @@ describe('Company-admin user management (e2e)', () => {
       .set('Authorization', `Bearer ${seatToken}`)
       .expect(200);
     expect((after.body as CompanyOverview).seatsUsed).toBe(3);
+    expect((after.body as CompanyOverview).activeUsers).toBe(3);
   });
 
   it('lets a super admin create several company admins for one company', async () => {

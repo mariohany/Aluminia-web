@@ -164,6 +164,7 @@ export interface CompanySubscription {
   counts: { clients: number; projects: number }
   maxUsers: number
   seatsUsed: number
+  activeUsers: number
   /** What its quotations are in (B6). */
   currency: BillingCurrency
   freeProjectId: string | null

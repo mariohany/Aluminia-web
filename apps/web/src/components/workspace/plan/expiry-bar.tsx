@@ -60,7 +60,7 @@ function ExpiryBar() {
       <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
       <span>
         <b>
-          {t('expiryBar.title', { company: company?.name ?? '', count: ending.daysLeft })}
+          {t('expiryBar.title', { company: (i18n.language === 'ar' ? company?.nameAr : null) ?? company?.name ?? '', count: ending.daysLeft })}
         </b>{' '}
         — {t('expiryBar.on', { date })} {t(ending.canRenew ? 'expiryBar.admin' : 'expiryBar.user')}
       </span>

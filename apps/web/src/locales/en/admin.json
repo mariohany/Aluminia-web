@@ -303,7 +303,7 @@
       "role": "Role",
       "status": "Status",
       "add": "Add user",
-      "seatsUsed": "{{used}} of {{max}} seats",
+      "seatsUsed": "{{active}} active · {{used}} of {{max}} seats",
       "seatLimitReached": "Seat limit reached — raise it in the Billing tab",
       "byFreePlan": "by the Free plan"
     },
@@ -334,6 +334,7 @@
       "label": "At a glance",
       "seats": "Seats",
       "seatsValue": "{{used}} / {{max}}",
+      "activeCount": "{{count}} active",
       "projects": "Projects",
       "projectsCaption": "All time",
       "projectsArchived": "Not counted while archived",
@@ -748,6 +749,10 @@
       "markPaid": "Mark paid",
       "void": "Void",
       "voided": "{{number}} voided.",
+      "voidTitle": "Void {{number}}?",
+      "voidDescription": "It can’t be paid or emailed after this, and it can’t be undone.",
+      "voidReason": "Reason (optional)",
+      "voidReasonPlaceholder": "e.g. the customer changed plan",
       "error": "That didn’t work. Try again.",
       "pdf": "PDF",
       "email": "Email"

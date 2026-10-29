@@ -273,6 +273,8 @@ describe('Company subscription (e2e)', () => {
       endsAt: null,
       isTrial: false,
     });
+    // Deactivated users still hold a seat; the active count is shown beside it.
+    expect(detail).toMatchObject({ userCount: 4, activeUserCount: 1 });
     expect(detail.billing[0].reason).toBe('dropped_to_free');
 
     expect(await userRows()).toEqual({

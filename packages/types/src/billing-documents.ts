@@ -87,6 +87,12 @@ export const markPaidSchema = z
   .strict()
 export type MarkPaidInput = z.infer<typeof markPaidSchema>
 
+/** Void (Mario 2026-10-29): confirmed in a dialog, the reason optional. */
+export const voidQuotationSchema = z
+  .object({ reason: z.string().trim().max(200).nullable().optional() })
+  .strict()
+export type VoidQuotationInput = z.infer<typeof voidQuotationSchema>
+
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
 export interface DocumentTotals {
@@ -184,6 +190,7 @@ export interface BillingDocumentSummary {
   amountReceived: number | null
   paymentMethod: PaymentMethod | null
   paymentReference: string | null
+  voidReason: string | null
   createdByEmail: string | null
   createdAt: string
   /** The last email of it ("Emailed 25 Oct · 2 people"); failed sends aside. */

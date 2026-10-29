@@ -294,6 +294,8 @@
       "onlineNow": "Online now"
     },
     "seatsTitle": "Seats",
+    "activeCount": "{{count}} active",
+    "byFreePlan": "by the Free plan",
     "seatsLeft_one": "{{count}} seat left",
     "seatsLeft_other": "{{count}} seats left",
     "seatsFull": "No seats left",
@@ -921,7 +923,7 @@
     "daysLeft_one": "{{count}} day left · 23:59 Cairo time",
     "daysLeft_other": "{{count}} days left · 23:59 Cairo time",
     "seats": "Seats",
-    "seatsUsed": "{{used}} of {{max}} used",
+    "seatsUsed": "{{active}} active · {{used}} of {{max}} seats",
     "renewal": "Renewal",
     "quotationSent": "Quotation sent {{date}}",
     "howToRenew": "To renew, pay the quotation and send the transfer reference to",

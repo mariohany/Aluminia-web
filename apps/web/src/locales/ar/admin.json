@@ -347,7 +347,7 @@
       "role": "الدور",
       "status": "الحالة",
       "add": "إضافة مستخدم",
-      "seatsUsed": "{{used}} من {{max}} مقاعد",
+      "seatsUsed": "{{active}} نشط · {{used}} من {{max}} مقاعد",
       "seatLimitReached": "وصلت للحد الأقصى — زوّده من تبويب الاشتراك",
       "byFreePlan": "بسبب الباقة المجانية"
     },
@@ -378,6 +378,7 @@
       "label": "نظرة سريعة",
       "seats": "المقاعد",
       "seatsValue": "{{used}} / {{max}}",
+      "activeCount": "{{count}} نشط",
       "projects": "المشاريع",
       "projectsCaption": "الإجمالي",
       "projectsArchived": "لا تُحسب أثناء الأرشفة",
@@ -813,6 +814,10 @@
       "markPaid": "تسجيل الدفع",
       "void": "إلغاء",
       "voided": "أُلغي {{number}}.",
+      "voidTitle": "إلغاء {{number}}؟",
+      "voidDescription": "لن يمكن دفعه أو إرساله بعد ذلك، ولا يمكن التراجع عن الإلغاء.",
+      "voidReason": "السبب (اختياري)",
+      "voidReasonPlaceholder": "مثلًا: العميل غيّر الباقة",
       "error": "لم ينجح ذلك. حاول مرة أخرى.",
       "pdf": "PDF",
       "email": "إرسال بالبريد"

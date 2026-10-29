@@ -585,6 +585,7 @@ function toUserSummary(
     email: user.email,
     role: user.role,
     status: user.status,
+    planDeactivated: user.planDeactivated,
     companyId: user.companyId,
     companyName,
     createdAt: user.createdAt.toISOString(),

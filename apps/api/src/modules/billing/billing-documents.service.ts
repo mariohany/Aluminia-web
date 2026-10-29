@@ -15,6 +15,7 @@ import {
   type DocumentParty,
   type DocumentSeller,
   type MarkPaidInput,
+  type VoidQuotationInput,
   type QuotationInput,
   type SendDocumentInput,
   type TransactionsPage,
@@ -179,6 +180,7 @@ export class BillingDocumentsService {
 
   async voidQuotation(
     id: string,
+    input: VoidQuotationInput,
     actorId: string,
   ): Promise<BillingDocumentSummary> {
     await this.inTransaction(async (manager) => {
@@ -193,13 +195,14 @@ export class BillingDocumentsService {
         });
       }
       doc.status = 'void';
+      doc.voidReason = input.reason || null;
       await manager.save(doc);
       await this.auditLog.record(manager, {
         actorUserId: actorId,
         action: 'billing.quotation_voided',
         targetType: 'company',
         targetId: doc.companyId,
-        metadata: { number: doc.number },
+        metadata: { number: doc.number, reason: doc.voidReason },
       });
     });
     return this.get(id);
@@ -640,6 +643,7 @@ export class BillingDocumentsService {
       amountReceived: doc.amountReceived,
       paymentMethod: doc.paymentMethod,
       paymentReference: doc.paymentReference,
+      voidReason: doc.voidReason,
       createdByEmail: doc.creator?.email ?? null,
       createdAt: doc.createdAt.toISOString(),
       lastSent: lastSentOf(sends.find((x) => x.document_id === doc.id)),

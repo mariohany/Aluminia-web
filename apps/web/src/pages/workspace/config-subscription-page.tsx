@@ -107,7 +107,11 @@ export function ConfigSubscriptionPage() {
               <div className="flex flex-col gap-1">
                 <span className="text-xs text-muted-foreground">{t('subscription.seats')}</span>
                 <span className="text-sm font-semibold text-foreground">
-                  {subscription ? t('subscription.seatsUsed', { used: subscription.seatsUsed, max: subscription.maxUsers }) : '—'}
+                  {subscription ? t('subscription.seatsUsed', {
+                        active: subscription.activeUsers,
+                        used: subscription.seatsUsed,
+                        max: subscription.maxUsers,
+                      }) : '—'}
                 </span>
                 <span className="h-1.5 overflow-hidden rounded-full bg-muted">
                   <span className="block h-full rounded-full bg-primary" style={{ width: `${seatsShare}%` }} />

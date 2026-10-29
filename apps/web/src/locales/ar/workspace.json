@@ -316,6 +316,8 @@
       "onlineNow": "متصل دلوقتي"
     },
     "seatsTitle": "المقاعد",
+    "activeCount": "{{count}} نشط",
+    "byFreePlan": "بسبب الباقة المجانية",
     "seatsLeft_zero": "مفيش مقاعد فاضية",
     "seatsLeft_one": "مقعد واحد فاضي",
     "seatsLeft_two": "مقعدين فاضيين",
@@ -995,7 +997,7 @@
     "daysLeft_many": "فاضل {{count}} يوم · 11:59 مساءً بتوقيت القاهرة",
     "daysLeft_other": "فاضل {{count}} يوم · 11:59 مساءً بتوقيت القاهرة",
     "seats": "المستخدمين",
-    "seatsUsed": "{{used}} من {{max}} مستخدمين",
+    "seatsUsed": "{{active}} نشط · {{used}} من {{max}} مقاعد",
     "renewal": "التجديد",
     "quotationSent": "عرض السعر اتبعت {{date}}",
     "howToRenew": "عشان تجدد، ادفع عرض السعر وابعت رقم التحويل على",

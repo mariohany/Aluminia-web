@@ -363,9 +363,28 @@ describe('Billing documents (e2e)', () => {
     const res = await request(server())
       .post(`/admin/billing/documents/${q.id}/void`)
       .set(as(superToken))
+      .send({})
       .expect(200);
     expect((res.body as BillingDocumentSummary).status).toBe('void');
+    expect((res.body as BillingDocumentSummary).voidReason).toBeNull();
     await pay(q.id).expect(409);
+  });
+
+  it('keeps the reason a void was given', async () => {
+    const q = (await create().expect(201)).body as BillingDocumentSummary;
+    const res = await request(server())
+      .post(`/admin/billing/documents/${q.id}/void`)
+      .set(as(superToken))
+      .send({ reason: '  customer changed plan  ' })
+      .expect(200);
+    expect((res.body as BillingDocumentSummary).voidReason).toBe(
+      'customer changed plan',
+    );
+    await request(server())
+      .post(`/admin/billing/documents/${q.id}/void`)
+      .set(as(superToken))
+      .send({ reason: 'again' })
+      .expect(409);
   });
 
   it('pages Transactions newest first with a cursor, filters and exports (B21)', async () => {

@@ -60,6 +60,7 @@ const quotation: BillingDocumentSummary = {
   amountReceived: null,
   paymentMethod: null,
   paymentReference: null,
+  voidReason: null,
   createdByEmail: null,
   createdAt: '2026-10-25T09:00:00.000Z',
   lastSent: null,
@@ -78,6 +79,7 @@ const invoice: BillingDocumentSummary = {
   amountReceived: 5589,
   paymentMethod: 'bank_transfer',
   paymentReference: 'SNB-55120931',
+  voidReason: null,
   createdAt: '2026-10-27T10:00:00.000Z',
 }
 

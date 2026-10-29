@@ -35,7 +35,10 @@ export class CompanyService {
     // UsersService, which counts inside a transaction holding a row
     // lock precisely because it is about to act on the result. This
     // number is for display; that one is enforcement.
-    const seatsUsed = await this.users.count({ where: { companyId } });
+    const [seatsUsed, activeUsers] = await Promise.all([
+      this.users.count({ where: { companyId } }),
+      this.users.count({ where: { companyId, status: UserStatus.ACTIVE } }),
+    ]);
     const admin = await this.users.findOne({
       where: {
         companyId,
@@ -48,8 +51,10 @@ export class CompanyService {
     return {
       id: company.id,
       name: company.name,
+      nameAr: company.nameAr,
       plan: toPlanRef(company.plan!),
       seatsUsed,
+      activeUsers,
       maxUsers: company.maxUsers,
       adminEmail: admin?.email ?? null,
     };

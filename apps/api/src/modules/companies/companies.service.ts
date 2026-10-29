@@ -24,7 +24,10 @@ import {
   Company,
   CompanyStatus,
 } from '../../database/control-plane/entities/company.entity';
-import { User } from '../../database/control-plane/entities/user.entity';
+import {
+  User,
+  UserStatus,
+} from '../../database/control-plane/entities/user.entity';
 import { BillingRecord } from '../../database/control-plane/entities/billing-record.entity';
 import { Plan } from '../../database/control-plane/entities/plan.entity';
 import { toPlanRef } from '../plans/plans.service';
@@ -65,17 +68,28 @@ export class CompaniesService {
         .createQueryBuilder(User, 'user')
         .select('user.companyId', 'companyId')
         .addSelect('COUNT(*)', 'count')
+        .addSelect(
+          `COUNT(*) FILTER (WHERE "user"."status" = :active)`,
+          'active',
+        )
         .where('user.companyId IS NOT NULL')
+        .setParameter('active', UserStatus.ACTIVE)
         .groupBy('user.companyId')
-        .getRawMany<{ companyId: string; count: string }>(),
+        .getRawMany<{ companyId: string; count: string; active: string }>(),
       this.projectCounts.byCompany(),
     ]);
     const countByCompany = new Map(
-      counts.map((row) => [row.companyId, Number(row.count)]),
+      counts.map((row) => [
+        row.companyId,
+        { all: Number(row.count), active: Number(row.active) },
+      ]),
     );
 
     return companies.map((company) => ({
-      ...toCompanySummary(company, countByCompany.get(company.id) ?? 0),
+      ...toCompanySummary(
+        company,
+        countByCompany.get(company.id) ?? { all: 0, active: 0 },
+      ),
       // Archived companies aren't counted (null → "—"). An active one
       // missing from a still-cached map was created or reactivated within
       // the cache's 90 s, so 0 is the honest answer for a new one.
@@ -107,7 +121,11 @@ export class CompaniesService {
     ]);
 
     return {
-      ...toCompanySummary(company, users.length),
+      ...toCompanySummary(company, {
+        all: users.length,
+        active: users.filter((user) => user.status === UserStatus.ACTIVE)
+          .length,
+      }),
       // Same rule as list(): archived → null ("—").
       projectCount:
         company.status === CompanyStatus.ACTIVE
@@ -149,7 +167,7 @@ export class CompaniesService {
       },
     });
 
-    return toCompanySummary(company, 1);
+    return toCompanySummary(company, { all: 1, active: 1 });
   }
 
   /** The Overview tab: the English and Arabic names (B20). */
@@ -348,14 +366,17 @@ export class CompaniesService {
 
   /** A company as the mutation endpoints return it, plan included. */
   private async summary(id: string): Promise<CompanySummary> {
-    const [company, userCount] = await Promise.all([
+    const [company, all, active] = await Promise.all([
       this.companies.findOneOrFail({
         where: { id },
         relations: { plan: true },
       }),
       this.users.count({ where: { companyId: id } }),
+      this.users.count({
+        where: { companyId: id, status: UserStatus.ACTIVE },
+      }),
     ]);
-    return toCompanySummary(company, userCount);
+    return toCompanySummary(company, { all, active });
   }
 
   async archive(id: string, actorId: string): Promise<CompanySummary> {
@@ -518,7 +539,10 @@ export class CompaniesService {
 }
 
 // `company.plan` must be loaded (`relations: { plan: true }`).
-function toCompanySummary(company: Company, userCount: number): CompanySummary {
+function toCompanySummary(
+  company: Company,
+  users: { all: number; active: number },
+): CompanySummary {
   return {
     id: company.id,
     name: company.name,
@@ -530,7 +554,8 @@ function toCompanySummary(company: Company, userCount: number): CompanySummary {
     isTrial: company.isTrial,
     currency: company.currency,
     vatRate: company.vatRate,
-    userCount,
+    userCount: users.all,
+    activeUserCount: users.active,
     createdAt: company.createdAt.toISOString(),
   };
 }

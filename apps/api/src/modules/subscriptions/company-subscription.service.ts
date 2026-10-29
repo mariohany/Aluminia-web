@@ -9,7 +9,10 @@ import { DataSource } from 'typeorm';
 import { FREE_PLAN_LIMITS } from '@repo/types/plans';
 import type { CompanySubscription } from '@repo/types/subscriptions';
 import { Company } from '../../database/control-plane/entities/company.entity';
-import { User } from '../../database/control-plane/entities/user.entity';
+import {
+  User,
+  UserStatus,
+} from '../../database/control-plane/entities/user.entity';
 import { Client } from '../../database/tenant/entities/client.entity';
 import { Project } from '../../database/tenant/entities/project.entity';
 import { TenantContextService } from '../tenancy/tenant-context.service';
@@ -29,7 +32,7 @@ export class CompanySubscriptionService {
       where: { id: access.companyId },
       relations: { plan: true },
     });
-    const [counts, seatsUsed] = await Promise.all([
+    const [counts, seatsUsed, activeUsers] = await Promise.all([
       this.tenantContext.run(async (manager) => ({
         clients: await manager.count(Client),
         projects: await manager.count(Project),
@@ -37,6 +40,9 @@ export class CompanySubscriptionService {
       this.dataSource
         .getRepository(User)
         .count({ where: { companyId: access.companyId } }),
+      this.dataSource.getRepository(User).count({
+        where: { companyId: access.companyId, status: UserStatus.ACTIVE },
+      }),
     ]);
     return {
       state: access.state,
@@ -51,6 +57,7 @@ export class CompanySubscriptionService {
       counts,
       maxUsers: company.maxUsers,
       seatsUsed,
+      activeUsers,
       currency: company.currency,
       freeProjectId: company.freeProjectId,
       needsProjectPick:

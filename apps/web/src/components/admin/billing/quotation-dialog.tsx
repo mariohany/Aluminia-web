@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
@@ -15,15 +15,32 @@ import {
   planPeriodEgp,
   quotationInputSchema,
   round2,
+  unusedCredit,
+  upgradeHasCredit,
+  upgradePeriod,
   type BillingDocumentSummary,
   type QuotationInput,
   type QuotationMonths,
+  type QuotationPurpose,
 } from '@repo/types/billing-documents'
 import { MAX_PLAN_SEATS, PAID_PLAN_KEYS, type PlanSummary } from '@repo/types/plans'
-import { BILLING_CURRENCIES, addDays, cairoDateOf, type BillingCurrency } from '@repo/types/subscriptions'
+import {
+  BILLING_CURRENCIES,
+  BILLING_TIME_ZONE,
+  addDays,
+  cairoDateOf,
+  daysBetween,
+  endOfCairoDay,
+  type BillingCurrency,
+} from '@repo/types/subscriptions'
 import { apiErrorCode, apiErrorMessage } from '@/lib/api-client'
 import { planName } from '@/lib/bilingual'
-import { useFxQuoteQuery, useSaveQuotationMutation, useSendDefaultsQuery } from '@/lib/billing-queries'
+import {
+  useCompanyDocumentsQuery,
+  useFxQuoteQuery,
+  useSaveQuotationMutation,
+  useSendDefaultsQuery,
+} from '@/lib/billing-queries'
 import { cn } from '@/lib/utils'
 import { usePlansQuery } from '@/lib/plans-queries'
 import { Button } from '@/components/ui/button'
@@ -49,32 +66,104 @@ function priceOf(plans: PlanSummary[] | undefined, key: string, months: Quotatio
   return fxRate ? round2(egp / fxRate) : egp
 }
 
-function blankForm(company: CompanyDetail, plans: PlanSummary[] | undefined, today: string): QuotationInput {
-  const planKey = PAID_PLAN_KEYS.find((key) => key === company.plan.key) ?? 'pro'
-  const startsOn = renewalStart(company, today)
-  const currency = company.currency
+/** What an upgrade needs to know about the running period (P11). */
+interface UpgradeContext {
+  today: string
+  /** The company's current end, YYYY-MM-DD (Cairo). */
+  currentEnd: string
+  /** Paid invoices in issue order: the credit's sources. */
+  invoices: BillingDocumentSummary[]
+}
+
+/** The invoice whose period is running now: the one ending last. */
+function currentInvoice(ctx: UpgradeContext) {
+  return ctx.invoices.reduce<BillingDocumentSummary | undefined>((last, d) => (!last || d.endsOn > last.endsOn ? d : last), undefined)
+}
+
+/**
+ * An upgrade's dates and plan price in EGP (P11, Mario 2026-11-05): a length
+ * that runs past the current end starts today at the plan's full price;
+ * otherwise the end stays and the days left are charged at the new plan's
+ * rate for the length paid. Extra seats on the same plan to the same end
+ * cost only their own line.
+ */
+function upgradeTerms(ctx: UpgradeContext, plans: PlanSummary[] | undefined, companyPlanKey: string, planKey: string, months: QuotationMonths) {
+  const period = upgradePeriod(ctx.today, ctx.currentEnd, months)
   const plan = plans?.find((p) => p.key === planKey)
-  return {
-    planKey,
-    seats: Math.max(company.plan.key === 'free' ? (plan?.seats ?? 1) : company.maxUsers, company.userCount),
-    months: 12,
-    startsOn,
-    endsOn: periodEnd(startsOn, 12),
+  const samePlan = planKey === companyPlanKey
+  let priceEgp = 0
+  if (plan && period.full) priceEgp = planPeriodEgp(plan, months)
+  else if (plan && !samePlan) {
+    const paid = currentInvoice(ctx)
+    const length = paid?.months ?? months
+    const days = paid ? daysBetween(paid.startsOn, paid.endsOn) + 1 : daysBetween(ctx.today, periodEnd(ctx.today, months)) + 1
+    priceEgp = round2((planPeriodEgp(plan, length) * (daysBetween(ctx.today, ctx.currentEnd) + 1)) / days)
+  }
+  return { ...period, samePlan, priceEgp }
+}
+
+function blankForm(
+  company: CompanyDetail,
+  plans: PlanSummary[] | undefined,
+  today: string,
+  purpose: QuotationPurpose,
+  ctx: UpgradeContext | null,
+): QuotationInput {
+  const current = PAID_PLAN_KEYS.find((key) => key === company.plan.key)
+  const paid = ctx ? currentInvoice(ctx) : undefined
+  const currency = company.currency
+  const base = {
+    purpose,
+    extraSeats: 0,
+    extraSeatPrice: 0,
     currency,
     fxRate: null,
-    unitPrice: currency === 'EGP' ? priceOf(plans, planKey, 12, null) : 0,
     discountKind: null,
     discountValue: null,
     vatRate: company.vatRate,
     validUntil: addDays(today, QUOTATION_VALID_DAYS),
     note: null,
   }
+  if (purpose === 'upgrade' && ctx && current) {
+    // The next plan up (PAID_PLAN_KEYS is in plan order), else more seats
+    // on the top plan.
+    const planKey = PAID_PLAN_KEYS[PAID_PLAN_KEYS.indexOf(current) + 1] ?? current
+    const plan = plans?.find((p) => p.key === planKey)
+    const months = paid?.months ?? 12
+    const terms = upgradeTerms(ctx, plans, company.plan.key, planKey, months)
+    return {
+      ...base,
+      planKey: planKey as QuotationInput['planKey'],
+      extraSeats: Math.max(0, company.maxUsers - (plan?.seats ?? 0)),
+      months,
+      startsOn: terms.startsOn,
+      endsOn: terms.endsOn,
+      unitPrice: currency === 'EGP' ? terms.priceEgp : 0,
+    }
+  }
+  // A renewal repeats what is paid now (§3 step 11); a new one starts on Pro.
+  const planKey = current ?? 'pro'
+  const months = (purpose === 'renewal' ? paid?.months : undefined) ?? 12
+  const startsOn = renewalStart(company, today)
+  const sameCurrency = paid?.currency === currency
+  return {
+    ...base,
+    planKey,
+    extraSeats: purpose === 'renewal' ? (paid?.extraSeats ?? 0) : 0,
+    extraSeatPrice: purpose === 'renewal' && sameCurrency ? (paid?.extraSeatPrice ?? 0) : 0,
+    months,
+    startsOn,
+    endsOn: periodEnd(startsOn, months),
+    unitPrice: currency === 'EGP' ? priceOf(plans, planKey, months, null) : 0,
+  }
 }
 
 function fromDocument(doc: BillingDocumentSummary): QuotationInput {
   return {
+    purpose: doc.purpose,
     planKey: doc.plan.key as QuotationInput['planKey'],
-    seats: doc.seats,
+    extraSeats: doc.extraSeats,
+    extraSeatPrice: doc.extraSeatPrice,
     months: doc.months,
     startsOn: doc.startsOn,
     endsOn: doc.endsOn,
@@ -91,21 +180,25 @@ function fromDocument(doc: BillingDocumentSummary): QuotationInput {
 
 /**
  * New quotation (docs/subscriptions_planing.md B5–B7, B18, board
- * `bill-q-new`), step 1: plan, seats, duration (1/3/6/12 months; 12 = the
- * annual price), dates (B8 start, editable end), currency at today's rate
- * (frozen on the quotation), price (overwritable), discount, VAT % and
- * valid until (14 days, Q3). Step 2 emails it (B16, B18): Next saves the
- * draft and opens the Email step; Back edits that same draft. Also edits a
- * draft (`document`).
+ * `bill-q-new`), step 1: plan, extra seats at a typed price (P15), duration
+ * (1/3/6/12 months; 12 = the annual price), dates (B8 start, editable end),
+ * currency at today's rate (frozen on the quotation), price (overwritable),
+ * discount, VAT % and valid until (14 days, Q3). `purpose` (P30) is new,
+ * renewal (prefilled from what is paid now) or upgrade (P11: dates and
+ * price worked out, the credit for unused days shown in the totals). Step
+ * 2 emails it (B16, B18): Next saves the draft and opens the Email step;
+ * Back edits that same draft. Also edits a draft (`document`).
  */
 export function QuotationDialog({
   company,
   document,
+  purpose: newPurpose = 'new',
   open,
   onOpenChange,
 }: {
   company: CompanyDetail
   document?: BillingDocumentSummary
+  purpose?: QuotationPurpose
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -113,7 +206,29 @@ export function QuotationDialog({
   const { data: plans } = usePlansQuery()
   const save = useSaveQuotationMutation(company.id)
   const today = cairoDateOf(new Date())
-  const paidPlans = (plans ?? []).filter((p) => p.key !== 'free')
+  const purpose = document?.purpose ?? newPurpose
+  const companyPlanKey = company.plan.key
+  const upgrade = purpose === 'upgrade'
+  // Renewals and upgrades start from what is paid now (P11, §3 step 11).
+  const { data: documents } = useCompanyDocumentsQuery(company.id)
+  const ctx = useMemo<UpgradeContext | null>(
+    () =>
+      documents && company.endsAt
+        ? {
+            today,
+            currentEnd: cairoDateOf(new Date(company.endsAt)),
+            invoices: documents
+              .filter((d) => d.kind === 'invoice')
+              .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+          }
+        : null,
+    [documents, company.endsAt, today],
+  )
+  // P16: an upgrade never lowers the plan.
+  const currentIndex = PAID_PLAN_KEYS.findIndex((key) => key === company.plan.key)
+  const paidPlans = (plans ?? []).filter(
+    (p) => p.key !== 'free' && (!upgrade || PAID_PLAN_KEYS.findIndex((key) => key === p.key) >= currentIndex),
+  )
   // Step 2 works on the saved draft; Back edits that same draft.
   const [step, setStep] = useState<1 | 2>(1)
   const [saved, setSaved] = useState<BillingDocumentSummary | null>(null)
@@ -137,11 +252,12 @@ export function QuotationDialog({
   // `key`), when the plans are known: a refetch of the company after Next
   // saved the draft must not reset what Back shows.
   const filled = useRef(false)
+  const ready = !!plans && (purpose === 'new' || !!documents)
   useEffect(() => {
-    if (!open || filled.current || !plans) return
+    if (!open || filled.current || !ready) return
     filled.current = true
-    reset(document ? fromDocument(document) : blankForm(company, plans, today))
-  }, [open, document, company, plans, today, reset])
+    reset(document ? fromDocument(document) : blankForm(company, plans, today, purpose, ctx))
+  }, [open, document, company, plans, today, reset, ready, purpose, ctx])
 
   const values = useWatch({ control }) as Partial<QuotationInput>
   const currency = (values.currency ?? company.currency) as BillingCurrency
@@ -152,27 +268,66 @@ export function QuotationDialog({
   useEffect(() => {
     if (!quote?.egpPerUnit || quote.currency !== getValues('currency') || getValues('fxRate')) return
     setValue('fxRate', quote.egpPerUnit)
-    setValue('unitPrice', priceOf(plans, getValues('planKey'), getValues('months'), quote.egpPerUnit))
-  }, [quote, plans, getValues, setValue])
+    const rate = quote.egpPerUnit
+    const egpPrice =
+      upgrade && ctx
+        ? upgradeTerms(ctx, plans, companyPlanKey, getValues('planKey'), getValues('months')).priceEgp
+        : priceOf(plans, getValues('planKey'), getValues('months'), null)
+    setValue('unitPrice', round2(egpPrice / rate))
+  }, [quote, plans, getValues, setValue, upgrade, ctx, companyPlanKey])
 
-  /** Plan, months or rate changed: the plan's price again. */
+  /** Plan, months or rate changed: the plan's price again (an upgrade's
+   * dates too). */
   function reprice(next: Partial<Pick<QuotationInput, 'planKey' | 'months' | 'fxRate'>>) {
     const v = { ...getValues(), ...next }
-    setValue('unitPrice', priceOf(plans, v.planKey, v.months, v.currency === 'EGP' ? null : v.fxRate), {
-      shouldDirty: true,
-    })
+    const rate = v.currency === 'EGP' ? null : v.fxRate
+    if (upgrade && ctx) {
+      const terms = upgradeTerms(ctx, plans, company.plan.key, v.planKey, v.months)
+      setValue('startsOn', terms.startsOn, { shouldDirty: true })
+      setValue('endsOn', terms.endsOn, { shouldDirty: true })
+      setValue('unitPrice', rate ? round2(terms.priceEgp / rate) : rate === null && v.currency !== 'EGP' ? 0 : terms.priceEgp, {
+        shouldDirty: true,
+      })
+      return
+    }
+    setValue('unitPrice', priceOf(plans, v.planKey, v.months, rate), { shouldDirty: true })
   }
 
+  // The upgrade's credit, as the API will work it out (P11).
+  const terms =
+    upgrade && ctx && values.planKey && values.months
+      ? upgradeTerms(ctx, plans, company.plan.key, values.planKey, values.months)
+      : null
+  const credit =
+    terms && ctx && upgradeHasCredit(terms.samePlan, terms.full)
+      ? unusedCredit(
+          ctx.invoices.map((d) => ({
+            number: d.number,
+            startsOn: d.startsOn,
+            endsOn: d.endsOn,
+            valueEgp: round2((d.totals.subtotal - d.totals.discountAmount) * (d.fxRate ?? 1)),
+          })),
+          today,
+        )
+      : []
+  const creditEgp = round2(credit.reduce((sum, line) => sum + line.amountEgp, 0))
   const totals = documentTotals({
     unitPrice: Number(values.unitPrice) || 0,
+    extraSeats: Number(values.extraSeats) || 0,
+    extraSeatPrice: Number(values.extraSeatPrice) || 0,
     discountKind: values.discountKind ?? null,
     discountValue: values.discountValue ?? null,
     vatRate: Number(values.vatRate) || 0,
     fxRate: values.fxRate ?? null,
+    creditAmount: values.fxRate ? round2(creditEgp / values.fxRate) : creditEgp,
   })
   const money = new Intl.NumberFormat(i18n.language, { style: 'currency', currency, minimumFractionDigits: 2 })
   const egp = new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'EGP', minimumFractionDigits: 2 })
   const plan = plans?.find((p) => p.key === values.planKey)
+  const totalSeats = (plan?.seats ?? 0) + (Number(values.extraSeats) || 0)
+  const seatsTooFew = !!plan && totalSeats < (upgrade ? Math.max(company.userCount, company.maxUsers) : company.userCount)
+  const dayFormatter = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: BILLING_TIME_ZONE })
+  const showDay = (date: string | undefined) => (date ? dayFormatter.format(endOfCairoDay(date)) : '—')
   const saving =
     plan && values.months === 12 && plan.monthlyEgp && plan.annualEgp
       ? Math.round(100 - (plan.annualEgp / (12 * plan.monthlyEgp)) * 100)
@@ -211,7 +366,7 @@ export function QuotationDialog({
               ? t('email.title', { number: saved.number })
               : (saved ?? document)
                 ? t('quotation.editTitle', { number: (saved ?? document)?.number })
-                : t('quotation.title')}
+                : t(`quotation.titles.${purpose}`)}
           </DialogTitle>
           <DialogDescription>{t('quotation.description', { company: company.name })}</DialogDescription>
           <ol className="mt-1 flex items-center gap-2 text-xs" aria-label={t('quotation.steps.label')}>
@@ -266,8 +421,6 @@ export function QuotationDialog({
                       onValueChange={(value) => {
                         if (!value) return
                         field.onChange(value)
-                        const next = plans?.find((p) => p.key === value)
-                        if (next) setValue('seats', Math.max(next.seats, company.userCount), { shouldDirty: true })
                         reprice({ planKey: value as QuotationInput['planKey'] })
                       }}
                     >
@@ -286,23 +439,53 @@ export function QuotationDialog({
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="quotation-seats">{t('quotation.seats')}</Label>
+                <Label htmlFor="quotation-extra-seats">{t('quotation.extraSeats')}</Label>
                 <Input
-                  id="quotation-seats"
+                  id="quotation-extra-seats"
                   type="number"
-                  min={company.userCount}
-                  max={MAX_PLAN_SEATS}
+                  min={0}
+                  max={MAX_PLAN_SEATS - (plan?.seats ?? 0)}
                   className="font-mono"
-                  aria-invalid={!!errors.seats}
-                  {...register('seats', { valueAsNumber: true })}
+                  aria-invalid={seatsTooFew || !!errors.extraSeats}
+                  {...register('extraSeats', {
+                    valueAsNumber: true,
+                    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                      if (!Number(e.target.value)) setValue('extraSeatPrice', 0, { shouldDirty: true })
+                    },
+                  })}
                 />
-                {(values.seats ?? 0) < company.userCount ? (
-                  <p className="text-xs text-destructive">{t('quotation.seatsBelowUsers', { count: company.userCount })}</p>
-                ) : (
-                  error('seats')
-                )}
               </div>
             </div>
+
+            {(Number(values.extraSeats) || 0) > 0 && (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="quotation-seat-price">{t('quotation.extraSeatPrice', { currency })}</Label>
+                  <Controller
+                    control={control}
+                    name="extraSeatPrice"
+                    render={({ field }) => (
+                      <PriceInput
+                        id="quotation-seat-price"
+                        className="font-mono"
+                        aria-invalid={!!errors.extraSeatPrice}
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                      />
+                    )}
+                  />
+                </div>
+                <p className="self-end pb-2 text-xs text-muted-foreground sm:col-span-2">{t('quotation.extraSeatHint')}</p>
+              </div>
+            )}
+            <p className={cn('-mt-2 text-xs', seatsTooFew ? 'text-destructive' : 'text-muted-foreground')}>
+              {seatsTooFew
+                ? upgrade && company.maxUsers > company.userCount
+                  ? t('quotation.seatsBelowCurrent', { count: company.maxUsers })
+                  : t('quotation.seatsBelowUsers', { count: company.userCount })
+                : t('quotation.seatsTotal', { plan: plan?.seats ?? 0, count: totalSeats })}
+            </p>
 
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium">{t('quotation.duration')}</span>
@@ -319,7 +502,7 @@ export function QuotationDialog({
                         aria-checked={field.value === m}
                         onClick={() => {
                           field.onChange(m)
-                          setValue('endsOn', periodEnd(getValues('startsOn'), m), { shouldDirty: true })
+                          if (!upgrade) setValue('endsOn', periodEnd(getValues('startsOn'), m), { shouldDirty: true })
                           reprice({ months: m })
                         }}
                         className={
@@ -335,7 +518,9 @@ export function QuotationDialog({
                 )}
               />
               <p className="text-xs text-muted-foreground">
-                {values.months === 12
+                {terms
+                  ? t(terms.full ? 'quotation.upgradeFull' : 'quotation.upgradeSameEnd', { date: showDay(ctx?.currentEnd) })
+                  : values.months === 12
                   ? saving
                     ? t('quotation.annualSaving', { percent: saving })
                     : t('quotation.annual')
@@ -344,25 +529,44 @@ export function QuotationDialog({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="quotation-start">{t('quotation.startsOn')}</Label>
-                <Input
-                  id="quotation-start"
-                  type="date"
-                  aria-invalid={!!errors.startsOn}
-                  {...register('startsOn', {
-                    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-                      if (e.target.value) setValue('endsOn', periodEnd(e.target.value, getValues('months')), { shouldDirty: true })
-                    },
-                  })}
-                />
-                <p className="text-xs text-muted-foreground">{t('quotation.startHint')}</p>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="quotation-end">{t('quotation.endsOn')}</Label>
-                <Input id="quotation-end" type="date" aria-invalid={!!errors.endsOn} {...register('endsOn')} />
-                {error('endsOn') || <p className="text-xs text-muted-foreground">{t('quotation.endHint')}</p>}
-              </div>
+              {upgrade ? (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-medium">{t('quotation.startsOn')}</span>
+                    <span className="flex h-9 items-center text-sm font-semibold">{showDay(values.startsOn)}</span>
+                    <p className="text-xs text-muted-foreground">{t('quotation.upgradeStartHint')}</p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-medium">{t('quotation.endsOn')}</span>
+                    <span className="flex h-9 items-center text-sm font-semibold">{showDay(values.endsOn)}</span>
+                    <p className="text-xs text-muted-foreground">
+                      {t(terms?.full ? 'quotation.upgradeEndFullHint' : 'quotation.upgradeEndHint')}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="quotation-start">{t('quotation.startsOn')}</Label>
+                    <Input
+                      id="quotation-start"
+                      type="date"
+                      aria-invalid={!!errors.startsOn}
+                      {...register('startsOn', {
+                        onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+                          if (e.target.value) setValue('endsOn', periodEnd(e.target.value, getValues('months')), { shouldDirty: true })
+                        },
+                      })}
+                    />
+                    <p className="text-xs text-muted-foreground">{t('quotation.startHint')}</p>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="quotation-end">{t('quotation.endsOn')}</Label>
+                    <Input id="quotation-end" type="date" aria-invalid={!!errors.endsOn} {...register('endsOn')} />
+                    {error('endsOn') || <p className="text-xs text-muted-foreground">{t('quotation.endHint')}</p>}
+                  </div>
+                </>
+              )}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="quotation-valid">{t('quotation.validUntil')}</Label>
                 <Input id="quotation-valid" type="date" aria-invalid={!!errors.validUntil} {...register('validUntil')} />
@@ -455,7 +659,9 @@ export function QuotationDialog({
                     />
                   )}
                 />
-                <p className="text-xs text-muted-foreground">{t('quotation.priceHint')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t(terms ? (terms.full ? 'quotation.priceUpgradeFull' : 'quotation.priceUpgrade') : 'quotation.priceHint')}
+                </p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="quotation-discount">{t('quotation.discount')}</Label>
@@ -529,12 +735,35 @@ export function QuotationDialog({
             </div>
 
             <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm">
+              {totals.extraSeatsAmount > 0 && (
+                <>
+                  <dt className="text-muted-foreground">{t('quotation.totals.plan')}</dt>
+                  <dd className="text-end font-mono">{money.format(Number(values.unitPrice) || 0)}</dd>
+                  <dt className="text-muted-foreground">
+                    {t('quotation.totals.extraSeats', { count: Number(values.extraSeats) || 0 })}
+                  </dt>
+                  <dd className="text-end font-mono">{money.format(totals.extraSeatsAmount)}</dd>
+                </>
+              )}
               <dt className="text-muted-foreground">{t('quotation.totals.subtotal')}</dt>
               <dd className="text-end font-mono">{money.format(totals.subtotal)}</dd>
               {totals.discountAmount > 0 && (
                 <>
                   <dt className="text-muted-foreground">{t('quotation.totals.discount')}</dt>
                   <dd className="text-end font-mono">−{money.format(totals.discountAmount)}</dd>
+                </>
+              )}
+              {totals.creditAmount > 0 && (
+                <>
+                  <dt className="text-muted-foreground">
+                    {t('quotation.totals.credit')}
+                    <span className="block text-xs">
+                      {credit
+                        .map((line) => t('quotation.totals.creditLine', { number: line.invoiceNumber, left: line.daysLeft, days: line.days }))
+                        .join(' · ')}
+                    </span>
+                  </dt>
+                  <dd className="text-end font-mono text-emerald-600 dark:text-emerald-500">−{money.format(totals.creditAmount)}</dd>
                 </>
               )}
               <dt className="text-muted-foreground">{t('quotation.totals.vat', { rate: Number(values.vatRate) || 0 })}</dt>
@@ -556,13 +785,13 @@ export function QuotationDialog({
               <Button
                 type="button"
                 variant="outline"
-                disabled={save.isPending || (values.seats ?? 0) < company.userCount}
+                disabled={save.isPending || seatsTooFew}
                 onClick={() => void handleSubmit(submit('email'))()}
               >
                 {t('quotation.next')}
                 <ArrowRight className="rtl:rotate-180" aria-hidden="true" />
               </Button>
-              <Button type="submit" disabled={save.isPending || (values.seats ?? 0) < company.userCount}>
+              <Button type="submit" disabled={save.isPending || seatsTooFew}>
                 <Check aria-hidden="true" />
                 {t('quotation.save')}
               </Button>

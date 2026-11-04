@@ -9,11 +9,13 @@ import {
 } from 'typeorm';
 import type { BillingDocumentKind } from '@repo/types/billing-profile';
 import type {
+  CreditLine,
   DiscountKind,
   DocumentParty,
   DocumentSeller,
   PaymentMethod,
   QuotationMonths,
+  QuotationPurpose,
   StoredDocumentStatus,
 } from '@repo/types/billing-documents';
 import type { BillingCurrency } from '@repo/types/subscriptions';
@@ -68,8 +70,28 @@ export class BillingDocument {
   @Column({ name: 'plan_name_ar', type: 'varchar', length: 60 })
   planNameAr: string;
 
+  @Column({ type: 'varchar', length: 10 })
+  purpose: QuotationPurpose;
+
+  /** The plan's own seats + `extraSeats`. */
   @Column({ type: 'int' })
   seats: number;
+
+  @Column({ name: 'extra_seats', type: 'int' })
+  extraSeats: number;
+
+  @Column(decimal('extra_seat_price'))
+  extraSeatPrice: number;
+
+  @Column(decimal('extra_seats_amount'))
+  extraSeatsAmount: number;
+
+  /** An upgrade's credit for unused days (P11), in the document currency. */
+  @Column(decimal('credit_amount'))
+  creditAmount: number;
+
+  @Column({ name: 'credit_lines', type: 'jsonb' })
+  creditLines: CreditLine[];
 
   @Column({ type: 'int' })
   months: QuotationMonths;

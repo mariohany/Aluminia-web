@@ -182,8 +182,11 @@ describe('Billing email (e2e)', () => {
         .post(`/admin/companies/${companyId}/quotations`)
         .set(as(superToken))
         .send({
+          // An active paid plan (endsIn above): its next period.
+          purpose: 'renewal',
           planKey: 'pro',
-          seats: 5,
+          extraSeats: 0,
+          extraSeatPrice: 0,
           months: 1,
           startsOn: today,
           endsOn: periodEnd(today, 1),
@@ -260,8 +263,10 @@ describe('Billing email (e2e)', () => {
       .post(`/admin/companies/${companyId}/quotations`)
       .set(as(superToken))
       .send({
+        purpose: 'renewal',
         planKey: 'pro',
-        seats: 5,
+        extraSeats: 0,
+        extraSeatPrice: 0,
         months: 1,
         startsOn: today,
         endsOn: periodEnd(today, 1),

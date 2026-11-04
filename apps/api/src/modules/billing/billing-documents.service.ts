@@ -11,7 +11,12 @@ import { Brackets, DataSource, type EntityManager } from 'typeorm';
 import {
   documentStatus,
   documentTotals,
+  round2,
+  unusedCredit,
+  upgradeHasCredit,
+  upgradePeriod,
   type BillingDocumentSummary,
+  type CreditLine,
   type DocumentParty,
   type DocumentSeller,
   type MarkPaidInput,
@@ -32,6 +37,7 @@ import {
   daysBetween,
   endOfCairoDay,
 } from '@repo/types/subscriptions';
+import { MAX_PLAN_SEATS } from '@repo/types/plans';
 import { BillingDocument } from '../../database/control-plane/entities/billing-document.entity';
 import { BillingSend } from '../../database/control-plane/entities/billing-send.entity';
 import { BillingProfileRow } from '../../database/control-plane/entities/billing-profile.entity';
@@ -109,6 +115,7 @@ export class BillingDocumentsService {
       const plan = await manager.findOneOrFail(Plan, {
         where: { key: input.planKey },
       });
+      const terms = await termsOf(manager, company, input, plan);
       const number = await takeNumber(manager, 'quotation');
       const doc = manager.create(BillingDocument, {
         companyId,
@@ -117,7 +124,7 @@ export class BillingDocumentsService {
         status: 'draft',
         quotationId: null,
         createdBy: actorId,
-        ...fieldsOf(input, plan),
+        ...fieldsOf(input, plan, terms),
         seller,
         buyer,
       });
@@ -163,7 +170,8 @@ export class BillingDocumentsService {
       const plan = await manager.findOneOrFail(Plan, {
         where: { key: input.planKey },
       });
-      Object.assign(doc, fieldsOf(input, plan), {
+      const terms = await termsOf(manager, current.company!, input, plan);
+      Object.assign(doc, fieldsOf(input, plan, terms), {
         seller: await sellerOf(manager),
         buyer,
       });
@@ -256,20 +264,36 @@ export class BillingDocumentsService {
         });
       }
 
-      // B8: an active paid plan renews from the day after its end; Free,
-      // a trial or an ended plan from the payment day.
       const activePaid =
         previous.key !== 'free' &&
         !company.isTrial &&
         company.endsAt !== null &&
         company.endsAt.getTime() > Date.now();
-      const startsOn = activePaid
-        ? addDays(cairoDateOf(company.endsAt!), 1)
-        : input.paidOn;
-      const endsOn = addDays(
-        startsOn,
-        daysBetween(quotation.startsOn, quotation.endsOn),
-      );
+      let startsOn: string;
+      let endsOn: string;
+      if (quotation.purpose === 'upgrade') {
+        // P11: plan and seats switch now; the quoted end is kept (the
+        // current end, or a longer period's). Its credit assumed the paid
+        // plan still runs.
+        if (!activePaid || quotation.endsOn < today) {
+          throw new ConflictException({
+            message: `"${company.name}" is no longer on the plan this upgrade was quoted for; void it and issue a new quotation.`,
+            code: 'upgrade_outdated',
+          });
+        }
+        startsOn = input.paidOn;
+        endsOn = quotation.endsOn;
+      } else {
+        // B8: an active paid plan renews from the day after its end; Free,
+        // a trial or an ended plan from the payment day.
+        startsOn = activePaid
+          ? addDays(cairoDateOf(company.endsAt!), 1)
+          : input.paidOn;
+        endsOn = addDays(
+          startsOn,
+          daysBetween(quotation.startsOn, quotation.endsOn),
+        );
+      }
 
       const number = await takeNumber(manager, 'invoice');
       const invoice = manager.create(BillingDocument, {
@@ -622,7 +646,11 @@ export class BillingDocumentsService {
         nameEn: doc.planNameEn,
         nameAr: doc.planNameAr,
       },
+      purpose: doc.purpose,
       seats: doc.seats,
+      extraSeats: doc.extraSeats,
+      extraSeatPrice: doc.extraSeatPrice,
+      credit: doc.creditLines,
       months: doc.months,
       startsOn: doc.startsOn,
       endsOn: doc.endsOn,
@@ -634,7 +662,9 @@ export class BillingDocumentsService {
       vatRate: doc.vatRate,
       totals: {
         subtotal: doc.subtotal,
+        extraSeatsAmount: doc.extraSeatsAmount,
         discountAmount: doc.discountAmount,
+        creditAmount: doc.creditAmount,
         vatAmount: doc.vatAmount,
         total: doc.total,
         totalEgp: doc.totalEgp,
@@ -692,21 +722,133 @@ export class BillingDocumentsService {
   }
 }
 
+/** What the API decides about a quotation, not the dialog. */
+interface QuotationTerms {
+  seats: number;
+  startsOn: string;
+  endsOn: string;
+  creditLines: CreditLine[];
+  creditAmount: number;
+}
+
+/**
+ * Checks the type against the company (payment cycle P11, P16, P30) and
+ * settles what the dialog can't: seats = plan + extra; an upgrade starts
+ * today, keeps the end unless its length runs past it, and gets a credit
+ * for the unused days of what was paid.
+ */
+async function termsOf(
+  manager: EntityManager,
+  company: Company,
+  input: QuotationInput,
+  plan: Plan,
+): Promise<QuotationTerms> {
+  const current = await manager.findOneOrFail(Plan, {
+    where: { id: company.planId },
+  });
+  const onPaidPlan =
+    current.key !== 'free' &&
+    !company.isTrial &&
+    company.endsAt !== null &&
+    company.endsAt.getTime() > Date.now();
+  if ((input.purpose === 'new') === onPaidPlan) {
+    throw new ConflictException({
+      message: onPaidPlan
+        ? `"${company.name}" is on a paid plan: quote a renewal or an upgrade.`
+        : `"${company.name}" isn't on a paid plan: quote a new subscription.`,
+      code: 'purpose_not_allowed',
+    });
+  }
+  const seats = plan.seats + input.extraSeats;
+  if (seats > MAX_PLAN_SEATS) {
+    throw new BadRequestException({
+      message: `At most ${MAX_PLAN_SEATS} seats: ${plan.nameEn} has ${plan.seats}.`,
+      code: 'too_many_seats',
+    });
+  }
+  if (input.purpose !== 'upgrade') {
+    return {
+      seats,
+      startsOn: input.startsOn,
+      endsOn: input.endsOn,
+      creditLines: [],
+      creditAmount: 0,
+    };
+  }
+
+  // P16: a smaller plan or fewer seats waits for the renewal.
+  if (plan.position < current.position || seats < company.maxUsers) {
+    throw new BadRequestException({
+      message:
+        'An upgrade can’t lower the plan or the seats; do that at the renewal.',
+      code: 'upgrade_is_downgrade',
+    });
+  }
+  const today = cairoDateOf(new Date());
+  const period = upgradePeriod(
+    today,
+    cairoDateOf(company.endsAt!),
+    input.months,
+  );
+  const samePlan = plan.id === current.id;
+  if (samePlan && !period.full && seats === company.maxUsers) {
+    throw new BadRequestException({
+      message:
+        'This upgrade changes nothing: pick a bigger plan, more seats or a longer period.',
+      code: 'upgrade_changes_nothing',
+    });
+  }
+  let creditLines: CreditLine[] = [];
+  if (upgradeHasCredit(samePlan, period.full)) {
+    const invoices = await manager.find(BillingDocument, {
+      where: { companyId: company.id, kind: 'invoice' },
+      order: { createdAt: 'ASC' },
+    });
+    creditLines = unusedCredit(
+      invoices.map((doc) => ({
+        number: doc.number,
+        startsOn: doc.startsOn,
+        endsOn: doc.endsOn,
+        valueEgp: round2(
+          (doc.subtotal - doc.discountAmount) * (doc.fxRate ?? 1),
+        ),
+      })),
+      today,
+    );
+  }
+  const creditEgp = round2(
+    creditLines.reduce((sum, line) => sum + line.amountEgp, 0),
+  );
+  return {
+    seats,
+    startsOn: period.startsOn,
+    endsOn: period.endsOn,
+    creditLines,
+    creditAmount: input.fxRate ? round2(creditEgp / input.fxRate) : creditEgp,
+  };
+}
+
 /** The editable part of a quotation, with its totals rebuilt (§4d). */
-function fieldsOf(input: QuotationInput, plan: Plan) {
-  const totals = documentTotals(input);
+function fieldsOf(input: QuotationInput, plan: Plan, terms: QuotationTerms) {
+  const totals = documentTotals({ ...input, creditAmount: terms.creditAmount });
   return {
     planId: plan.id,
     planNameEn: plan.nameEn,
     planNameAr: plan.nameAr,
-    seats: input.seats,
+    purpose: input.purpose,
+    seats: terms.seats,
+    extraSeats: input.extraSeats,
+    extraSeatPrice: input.extraSeatPrice,
+    extraSeatsAmount: totals.extraSeatsAmount,
+    creditAmount: totals.creditAmount,
+    creditLines: terms.creditLines,
     months: input.months,
-    startsOn: input.startsOn,
-    endsOn: input.endsOn,
+    startsOn: terms.startsOn,
+    endsOn: terms.endsOn,
     currency: input.currency,
     fxRate: input.fxRate,
     fxDate: input.fxRate === null ? null : cairoDateOf(new Date()),
-    unitPrice: totals.subtotal,
+    unitPrice: round2(input.unitPrice),
     subtotal: totals.subtotal,
     discountKind: input.discountKind,
     discountValue: input.discountValue,
@@ -727,7 +869,13 @@ function copyOf(q: BillingDocument): Partial<BillingDocument> {
     planId: q.planId,
     planNameEn: q.planNameEn,
     planNameAr: q.planNameAr,
+    purpose: q.purpose,
     seats: q.seats,
+    extraSeats: q.extraSeats,
+    extraSeatPrice: q.extraSeatPrice,
+    extraSeatsAmount: q.extraSeatsAmount,
+    creditAmount: q.creditAmount,
+    creditLines: q.creditLines,
     months: q.months,
     currency: q.currency,
     fxRate: q.fxRate,

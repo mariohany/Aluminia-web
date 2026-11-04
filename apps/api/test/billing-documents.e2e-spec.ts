@@ -156,9 +156,13 @@ describe('Billing documents (e2e)', () => {
   const server = () => app.getHttpServer();
   const code = (res: { body: unknown }) => (res.body as { code?: string }).code;
 
+  // New while the company is on Free; once it pays, a renewal (P30).
+  let purpose: QuotationInput['purpose'] = 'new';
   const quotation = (over: Partial<QuotationInput> = {}): QuotationInput => ({
+    purpose,
     planKey: 'pro',
-    seats: 5,
+    extraSeats: 0,
+    extraSeatPrice: 0,
     months: 12,
     startsOn: today,
     endsOn: periodEnd(today, 12),
@@ -240,7 +244,9 @@ describe('Billing documents (e2e)', () => {
     expect(doc.status).toBe('draft');
     expect(doc.totals).toEqual({
       subtotal: 6000,
+      extraSeatsAmount: 0,
       discountAmount: 600,
+      creditAmount: 0,
       vatAmount: 756,
       total: 6156,
       totalEgp: 6156,
@@ -294,7 +300,7 @@ describe('Billing documents (e2e)', () => {
       code(await pay((old.body as BillingDocumentSummary).id).expect(409)),
     ).toBe('quotation_expired');
 
-    const small = await create({ seats: 1 }).expect(201);
+    const small = await create({ planKey: 'individual' }).expect(201);
     expect(
       code(await pay((small.body as BillingDocumentSummary).id).expect(400)),
     ).toBe('seats_below_users');
@@ -342,6 +348,10 @@ describe('Billing documents (e2e)', () => {
         [companyId],
       );
     expect(history[0]).toEqual({ reason: 'paid', document_id: invoice.id });
+
+    // On a paid plan a new quotation is refused: renewal or upgrade (P30).
+    expect(code(await create().expect(409))).toBe('purpose_not_allowed');
+    purpose = 'renewal';
   });
 
   it('renews an active plan from the day after its end (B8)', async () => {

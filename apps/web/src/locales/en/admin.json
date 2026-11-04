@@ -646,11 +646,9 @@
   },
   "quotation": {
     "new": "New quotation",
-    "title": "New quotation",
     "editTitle": "Edit {{number}}",
     "description": "A quotation for {{company}}. It is saved as a numbered draft; the plan changes only when it is paid.",
     "plan": "Plan",
-    "seats": "Seats",
     "seatsBelowUsers": "The company has {{count}} users: quote at least that many seats.",
     "duration": "Duration",
     "months_one": "{{count}} month",
@@ -683,26 +681,56 @@
       "discount": "Discount",
       "vat": "VAT {{rate}} %",
       "total": "Total",
-      "inEgp": "In EGP at the frozen rate"
+      "inEgp": "In EGP at the frozen rate",
+      "plan": "Plan",
+      "extraSeats_one": "{{count}} extra seat",
+      "extraSeats_other": "{{count}} extra seats",
+      "credit": "Credit for unused days",
+      "creditLine": "{{number}}: {{left}} of {{days}} days"
     },
     "cancel": "Cancel",
     "save": "Save quotation",
     "saved": "Quotation {{number}} saved.",
     "errors": {
       "field": "Check this field.",
-      "seats": "1 to 50 seats.",
       "endsOn": "The end is before the start.",
       "fxRate": "A rate is needed for any currency but EGP.",
       "discountValue": "Check the discount (a percent is at most 100).",
       "save": "Couldn’t save the quotation. Try again.",
-      "noBillingProfile": "Fill in Billing › Billing profile first: it prints as the seller."
+      "noBillingProfile": "Fill in Billing › Billing profile first: it prints as the seller.",
+      "extraSeats": "Check the extra seats.",
+      "extraSeatPrice": "Check the seat price."
     },
     "next": "Next",
     "steps": {
       "label": "Steps",
       "quotation": "Quotation",
       "email": "Email"
-    }
+    },
+    "titles": {
+      "new": "New quotation",
+      "renewal": "Renewal quotation",
+      "upgrade": "Upgrade quotation"
+    },
+    "menu": {
+      "renewal": "Renewal quotation…",
+      "renewalHint": "Same plan and seats, starts the day after {{date}}",
+      "upgrade": "Upgrade quotation…",
+      "upgradeHint": "Bigger plan or more seats now; the unused days are credited"
+    },
+    "extraSeats": "Extra seats",
+    "extraSeatPrice": "Price per extra seat ({{currency}})",
+    "extraSeatHint": "For the whole period, typed by hand; printed as its own line.",
+    "seatsTotal_one": "The plan has {{plan}} seat · {{count}} seat in all",
+    "seatsTotal_other": "The plan has {{plan}} seats · {{count}} seats in all",
+    "seatsBelowCurrent": "The company has {{count}} seats now: an upgrade can’t lower them (fewer seats at the renewal).",
+    "upgradeFull": "Runs past {{date}}: the new period starts today for the full length.",
+    "upgradeSameEnd": "Ends with the current period on {{date}}; only the days left are charged.",
+    "upgradeStartHint": "Today: the upgrade applies when it’s paid",
+    "upgradeEndHint": "Kept: the current end",
+    "upgradeEndFullHint": "Today + the new length",
+    "priceUpgrade": "The new plan’s rate for the days left; you can change it",
+    "priceUpgradeFull": "The plan’s price for the new period; you can change it"
   },
   "markPaid": {
     "title": "Mark {{number}} as paid",
@@ -730,7 +758,8 @@
       "quotation_expired": "This quotation has expired: issue a new one.",
       "seats_below_users": "The company has more users than this quotation's seats."
     },
-    "emailNow": "Email the invoice now"
+    "emailNow": "Email the invoice now",
+    "upgradeNote": "An upgrade switches the plan and seats on the payment day and keeps this end date."
   },
   "documents": {
     "number": "Number",

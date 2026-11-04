@@ -167,7 +167,9 @@ export function MarkPaidDialog({
                 end: day(document.endsOn),
               })}
             </span>
-            <span className="text-xs text-muted-foreground">{t('markPaid.startNote')}</span>
+            <span className="text-xs text-muted-foreground">
+              {t(document.purpose === 'upgrade' ? 'markPaid.upgradeNote' : 'markPaid.startNote')}
+            </span>
           </div>
 
           {onEmail && (

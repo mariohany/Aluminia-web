@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Ban, Banknote, FileText, FilePlus2, Mail, MoreHorizontal, Pencil } from 'lucide-react'
+import { ArrowUpCircle, Ban, Banknote, ChevronDown, FileText, FilePlus2, Mail, MoreHorizontal, Pencil, RefreshCw } from 'lucide-react'
 import { UserRole } from '@repo/types/auth'
 import type { CompanyDetail } from '@repo/types/companies'
-import type { BillingDocumentSummary } from '@repo/types/billing-documents'
+import type { BillingDocumentSummary, QuotationPurpose } from '@repo/types/billing-documents'
+import { BILLING_TIME_ZONE, subscriptionState } from '@repo/types/subscriptions'
 import { useCompanyDocumentsQuery } from '@/lib/billing-queries'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -29,7 +30,7 @@ import { VoidQuotationDialog } from './void-quotation-dialog'
 export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
   const { t, i18n } = useTranslation('admin')
   const { data: documents, isPending, isError } = useCompanyDocumentsQuery(company.id)
-  const [editing, setEditing] = useState<{ document?: BillingDocumentSummary } | null>(null)
+  const [editing, setEditing] = useState<{ document?: BillingDocumentSummary; purpose?: QuotationPurpose } | null>(null)
   const [paying, setPaying] = useState<BillingDocumentSummary | null>(null)
   const [viewing, setViewing] = useState<BillingDocumentSummary | null>(null)
   const [voiding, setVoiding] = useState<BillingDocumentSummary | null>(null)
@@ -43,6 +44,14 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
     return doc.lastSent?.to ?? quotation?.lastSent?.to ?? admins
   }
   const dateFormatter = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' })
+  // P30: Free or a trial gets a new subscription; a paid plan its renewal or
+  // an upgrade, picked from the button's menu.
+  const state = subscriptionState(
+    { planKey: company.plan.key, endsAt: company.endsAt, isTrial: company.isTrial },
+    new Date(),
+  )
+  const onPaidPlan = state.kind === 'active' || state.kind === 'ending'
+  const endFormatter = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: BILLING_TIME_ZONE })
 
   const money = (doc: BillingDocumentSummary) =>
     new Intl.NumberFormat(i18n.language, { style: 'currency', currency: doc.currency }).format(doc.totals.total)
@@ -52,10 +61,43 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
       <CardHeader>
         <CardTitle>{t('companyDetail.documents.title')}</CardTitle>
         <CardAction>
-          <Button size="sm" onClick={() => setEditing({})}>
-            <FilePlus2 aria-hidden="true" />
-            {t('quotation.new')}
-          </Button>
+          {onPaidPlan && company.endsAt ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm">
+                  <FilePlus2 aria-hidden="true" />
+                  {t('quotation.new')}
+                  <ChevronDown aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align={document.documentElement.dir === 'rtl' ? 'start' : 'end'}
+                className="w-72 *:data-[slot=dropdown-menu-item]:items-start *:data-[slot=dropdown-menu-item]:gap-2.5 *:data-[slot=dropdown-menu-item]:py-2"
+              >
+                {(
+                  [
+                    ['renewal', RefreshCw],
+                    ['upgrade', ArrowUpCircle],
+                  ] as const
+                ).map(([purpose, Icon]) => (
+                  <DropdownMenuItem key={purpose} onSelect={() => setEditing({ purpose })}>
+                    <Icon className="mt-0.5 text-muted-foreground" aria-hidden="true" />
+                    <span className="flex flex-col gap-0.5">
+                      <span className="font-medium">{t(`quotation.menu.${purpose}`)}</span>
+                      <span className="text-xs whitespace-normal text-muted-foreground">
+                        {t(`quotation.menu.${purpose}Hint`, { date: endFormatter.format(new Date(company.endsAt!)) })}
+                      </span>
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button size="sm" onClick={() => setEditing({ purpose: 'new' })}>
+              <FilePlus2 aria-hidden="true" />
+              {t('quotation.new')}
+            </Button>
+          )}
         </CardAction>
       </CardHeader>
       <CardContent>
@@ -157,9 +199,10 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
         )}
       </CardContent>
       <QuotationDialog
-        key={editing ? (editing.document?.id ?? 'new') : 'closed'}
+        key={editing ? (editing.document?.id ?? editing.purpose ?? 'new') : 'closed'}
         company={company}
         document={editing?.document}
+        purpose={editing?.purpose ?? 'new'}
         open={editing !== null}
         onOpenChange={(open) => !open && setEditing(null)}
       />

@@ -100,13 +100,27 @@ export function documentEmail(
     );
   }
   const [validEn, validAr] = doc.validUntil ? day(doc.validUntil) : ['—', '—'];
+  // An upgrade runs to a date, not whole months (payment cycle P11).
+  const [untilEn, untilAr] = day(doc.endsOn);
+  const lengthEn =
+    doc.purpose === 'upgrade'
+      ? `until ${esc(untilEn)}`
+      : `${doc.months} ${doc.months === 1 ? 'month' : 'months'}`;
+  const planEn =
+    doc.purpose === 'upgrade'
+      ? `an upgrade to the <b>${esc(doc.plan.nameEn)}</b> plan`
+      : `the <b>${esc(doc.plan.nameEn)}</b> plan`;
+  const planAr =
+    doc.purpose === 'upgrade'
+      ? `ترقية إلى باقة <b>${esc(doc.plan.nameAr)}</b> حتى ${esc(untilAr)}`
+      : `باقة <b>${esc(doc.plan.nameAr)}</b>`;
   return compose(
     subject,
     `<h1 style="margin:0 0 10px;font-size:22px">Your Aluminia quotation</h1>
-<p style="margin:0 0 10px">Please find attached quotation <b>${esc(doc.number)}</b> for ${company}: the <b>${esc(doc.plan.nameEn)}</b> plan, ${doc.seats} seats, ${doc.months} ${doc.months === 1 ? 'month' : 'months'}, <b>${total}</b>.</p>
+<p style="margin:0 0 10px">Please find attached quotation <b>${esc(doc.number)}</b> for ${company}: ${planEn}, ${doc.seats} seats, ${lengthEn}, <b>${total}</b>.</p>
 <p style="margin:0">It is valid until <b>${esc(validEn)}</b>. To pay, transfer to the account on the quotation and reply with the transfer reference.</p>`,
     `<h1 style="margin:0 0 10px;font-size:22px">عرض سعر Aluminia</h1>
-<p style="margin:0 0 10px">مرفق عرض السعر <b>${esc(doc.number)}</b> لشركة ${companyAr}: باقة <b>${esc(doc.plan.nameAr)}</b>، ${doc.seats} مستخدمين، <b>${total}</b>.</p>
+<p style="margin:0 0 10px">مرفق عرض السعر <b>${esc(doc.number)}</b> لشركة ${companyAr}: ${planAr}، ${doc.seats} مستخدمين، <b>${total}</b>.</p>
 <p style="margin:0">صالح حتى <b>${esc(validAr)}</b>. للدفع حوّل المبلغ إلى الحساب المذكور في عرض السعر وأرسل لنا رقم التحويل.</p>`,
   );
 }
@@ -143,9 +157,9 @@ export function reminderEmail(p: {
   return compose(
     `Your Aluminia subscription ends in ${days} · اشتراكك ينتهي خلال ${daysAr}`,
     `<h1 style="margin:0 0 10px;font-size:22px">Your subscription ends in ${days}</h1>
-<p style="margin:0">${esc(p.companyEn)}'s <b>${esc(p.planEn)}</b> plan ends on <b>${esc(endEn)}</b> at 23:59 (Cairo time). After that, every user is signed out and nobody can sign in until it's renewed. Your projects and windows stay safe.</p>`,
+<p style="margin:0">${esc(p.companyEn)}'s <b>${esc(p.planEn)}</b> plan ends on <b>${esc(endEn)}</b> at 23:59 (Cairo time). After that, the company moves to the Free plan: one admin keeps working and the other users are paused until it's renewed. Your projects and windows stay safe.</p>`,
     `<h1 style="margin:0 0 10px;font-size:22px">اشتراكك ينتهي خلال ${daysAr}</h1>
-<p style="margin:0">باقة <b>${esc(p.planAr)}</b> لشركة ${esc(p.companyAr ?? p.companyEn)} تنتهي يوم <b>${esc(endAr)}</b> الساعة 11:59 مساءً بتوقيت القاهرة. بعدها يتم تسجيل خروج كل المستخدمين ولن يستطيع أحد الدخول حتى التجديد. مشاريعك وبياناتك محفوظة.</p>`,
+<p style="margin:0">باقة <b>${esc(p.planAr)}</b> لشركة ${esc(p.companyAr ?? p.companyEn)} تنتهي يوم <b>${esc(endAr)}</b> الساعة 11:59 مساءً بتوقيت القاهرة. بعدها تتحول الشركة إلى الباقة المجانية: يستمر مدير واحد في العمل ويتوقف باقي المستخدمين حتى التجديد. مشاريعك وبياناتك محفوظة.</p>`,
     { url: `${p.appUrl}/workspace`, label: 'Open Aluminia · افتح Aluminia' },
   );
 }

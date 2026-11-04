@@ -43,7 +43,11 @@ const quotation: BillingDocumentSummary = {
   quotationId: null,
   invoiceId: null,
   plan: { id: 'p1', key: 'pro', nameEn: 'Pro', nameAr: 'احترافي' },
+  purpose: 'renewal',
   seats: 5,
+  extraSeats: 0,
+  extraSeatPrice: 0,
+  credit: [],
   months: 12,
   startsOn: '2027-01-17',
   endsOn: '2028-01-16',
@@ -53,7 +57,15 @@ const quotation: BillingDocumentSummary = {
   discountKind: 'percent',
   discountValue: 10,
   vatRate: 15,
-  totals: { subtotal: 5400, discountAmount: 540, vatAmount: 729, total: 5589, totalEgp: 69862.5 },
+  totals: {
+    subtotal: 5400,
+    extraSeatsAmount: 0,
+    discountAmount: 540,
+    creditAmount: 0,
+    vatAmount: 729,
+    total: 5589,
+    totalEgp: 69862.5,
+  },
   validUntil: '2026-11-08',
   note: 'Annual renewal.',
   paidOn: null,
@@ -114,8 +126,8 @@ describe('quotation PDF', () => {
 
   it('is one page with both titles and the number', () => {
     assert.equal(drawn.pages, 1)
-    has(drawn.lines, 'Quotation')
-    has(drawn.lines, 'عرض سعر')
+    has(drawn.lines, 'Renewal quotation')
+    has(drawn.lines, 'عرض سعر تجديد')
     has(drawn.lines, 'QUO-2026-0042')
   })
 
@@ -162,5 +174,62 @@ describe('invoice PDF', () => {
   it('prints the payment and the subscription it bought', () => {
     has(drawn.lines, 'Bank transfer · ref SNB-55120931 · SAR 5,589.00')
     has(drawn.lines, 'Pro · 5 seats · active until 16 Jan 2028, 23:59 Cairo')
+  })
+})
+
+// Payment cycle P11, P15: Mario's example, Pro 3 months paid 16,200 on
+// 1 Oct, upgraded to Ultimate on 4 Nov with 2 extra seats.
+const upgrade: BillingDocumentSummary = {
+  ...quotation,
+  number: 'QUO-2026-0051',
+  purpose: 'upgrade',
+  plan: { id: 'p2', key: 'ultimate', nameEn: 'Ultimate', nameAr: 'متكامل' },
+  seats: 17,
+  extraSeats: 2,
+  extraSeatPrice: 900,
+  credit: [{ invoiceNumber: 'INV-2026-0043', daysLeft: 58, days: 92, amountEgp: 10213.04 }],
+  months: 3,
+  startsOn: '2026-11-04',
+  endsOn: '2026-12-31',
+  currency: 'EGP',
+  fxRate: null,
+  unitPrice: 24965.22,
+  discountKind: null,
+  discountValue: null,
+  vatRate: 14,
+  totals: {
+    subtotal: 26765.22,
+    extraSeatsAmount: 1800,
+    discountAmount: 0,
+    creditAmount: 10213.04,
+    vatAmount: 2317.31,
+    total: 18869.49,
+    totalEgp: 18869.49,
+  },
+}
+
+describe('upgrade quotation PDF', () => {
+  let drawn: { lines: string[]; pages: number }
+  before(async () => {
+    drawn = await linesOf(upgrade)
+  })
+
+  it('is titled an upgrade, with its dates instead of months', () => {
+    assert.equal(drawn.pages, 1)
+    has(drawn.lines, 'Upgrade quotation')
+    has(drawn.lines, 'عرض سعر ترقية')
+    has(drawn.lines, 'Upgrade to Aluminia Ultimate')
+    has(drawn.lines, '4 Nov 2026 – 31 Dec 2026')
+  })
+
+  it('prints the extra seats and the credit as their own lines', () => {
+    has(drawn.lines, 'Extra seats')
+    has(drawn.lines, '2 × EGP 900.00')
+    has(drawn.lines, '1,800.00')
+    has(drawn.lines, 'Credit for unused days')
+    has(drawn.lines, 'INV-2026-0043 · 58 of 92 days')
+    has(drawn.lines, '-10,213.04')
+    has(drawn.lines, '16,552.18')
+    has(drawn.lines, '18,869.49')
   })
 })

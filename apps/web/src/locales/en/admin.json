@@ -82,7 +82,10 @@
           "deleted": "Permanently deleted {{name}}",
           "subscription_changed_one": "Changed the subscription of {{name}} · {{plan}}, 1 seat",
           "subscription_changed_other": "Changed the subscription of {{name}} · {{plan}}, {{count}} seats",
-          "free_project_reset": "Reset the editable project of {{name}}"
+          "free_project_reset": "Reset the editable project of {{name}}",
+          "trial_granted": "Granted {{name}} a {{plan}} trial",
+          "trial_extended": "Extended the {{plan}} trial of {{name}}",
+          "trial_ended": "Ended the trial of {{name}} → Free"
         },
         "user": {
           "created": "Added {{email}}",
@@ -294,7 +297,8 @@
         "paid_other": "Paid · {{plan}} · {{count}} seats",
         "dropped_to_free": "Moved to Free",
         "trial_ended": "Trial ended → Free",
-        "plan_ended": "Plan ended → Free"
+        "plan_ended": "Plan ended → Free",
+        "trial_extended": "Trial extended · {{plan}}"
       },
       "endsOn": "Ends {{date}}"
     },
@@ -385,7 +389,8 @@
       "resetPickHint": "The company admin picks the project Free keeps editable again",
       "resetPickDone": "The company admin will pick again.",
       "unpaidCount_one": "{{count}} quotation",
-      "unpaidCount_other": "{{count}} quotations"
+      "unpaidCount_other": "{{count}} quotations",
+      "more": "More subscription actions"
     }
   },
   "usersPage": {
@@ -541,7 +546,6 @@
     }
   },
   "subscription": {
-    "title": "Edit subscription",
     "plan": "Plan",
     "planOption_one": "{{name}} · {{count}} seat",
     "planOption_other": "{{name}} · {{count}} seats",
@@ -554,14 +558,11 @@
     "freeDeactivates_one": "Free has 1 seat: the admin below stays active and {{count}} other user is deactivated and logged out. Nothing is deleted; a paid plan brings them back.",
     "freeDeactivates_other": "Free has 1 seat: the admin below stays active and the {{count}} other users are deactivated and logged out. Nothing is deleted; a paid plan brings them back.",
     "keepAdmin": "Stays active",
-    "trial": "Trial: no quotation; drops to Free if not paid by the end",
     "trialEnds": "Trial ends",
     "ends": "Subscription ends",
     "endOfDay": "23:59 Cairo",
     "endRequired": "Pick the end date",
-    "trialHint": "14 days from today unless you change it",
     "endsHint": "A paid quotation moves it for you; edit it here only to correct it",
-    "trialDays": "Days",
     "currency": "Currency",
     "currencies": {
       "EGP": "Egyptian pound",
@@ -570,15 +571,20 @@
       "USD": "US dollar",
       "EUR": "Euro"
     },
-    "vat": "VAT",
-    "vatInvalid": "0 to 100",
-    "currencyHint": "Currency and VAT are used by new quotations; issued ones keep theirs.",
-    "note": "Note (optional)",
-    "notePlaceholder": "e.g. Asked for two more designers",
     "cancel": "Cancel",
     "save": "Save",
     "saved": "Subscription saved.",
-    "saveError": "Couldn’t save the subscription. Try again."
+    "saveError": "Couldn’t save the subscription. Try again.",
+    "specialTitle": "Edit subscription · special case",
+    "specialDescription": "{{name}} · no invoice is made",
+    "specialWarning": "For special cases only, like a gift or fixing a wrong date. Anything the client pays for goes through a quotation and Record payment.",
+    "trialEndsHint": "Still a trial: it drops to Free at the end unless a payment is recorded",
+    "reason": "Reason",
+    "reasonPlaceholder": "e.g. Compensation for the 2-day outage",
+    "reasonHint": "Shown in the billing history and the admin log",
+    "reasonRequired": "Say why: this change has no invoice behind it.",
+    "specialItem": "Edit subscription (special case)…",
+    "specialItemHint": "Gift, fixing a date. Needs a reason; no invoice."
   },
   "billingProfile": {
     "title": "Billing profile",
@@ -812,5 +818,49 @@
     "sent_other": "{{number}} emailed to {{count}} people.",
     "failed": "The email wasn’t sent (the mail service refused it). Try again later.",
     "error": "Couldn’t send the email. Try again."
+  },
+  "trial": {
+    "grantItem": "Grant trial…",
+    "grantItemHint": "Any plan, any number of days",
+    "extendItem": "Extend trial…",
+    "extendItemHint": "Add days to {{date}}",
+    "endItem": "End trial now…",
+    "endItemHint": "Back to Free today",
+    "grantTitle": "Grant trial",
+    "extendTitle": "Extend trial",
+    "endTitle": "End trial now?",
+    "onFree": "{{name}} · on Free",
+    "onTrial": "{{name}} · {{plan}} trial",
+    "days": "Days",
+    "daysHint": "1 to {{max}}",
+    "ends": "Trial ends",
+    "endsHint": "Worked out from Days. Then it drops back to Free by itself unless a payment is recorded.",
+    "grantNote": "Uses {{plan}}’s {{seats}} seats. No quotation, invoice or payment is made.",
+    "grantNotePaused_one": "Uses {{plan}}’s {{seats}} seats, so the paused user comes back. No quotation, invoice or payment is made.",
+    "grantNotePaused_other": "Uses {{plan}}’s {{seats}} seats, so the {{count}} paused users come back. No quotation, invoice or payment is made.",
+    "tooFewSeats_one": "The company has {{count}} user and {{plan}} has {{seats}} seats. Pick a bigger plan or remove users first.",
+    "tooFewSeats_other": "The company has {{count}} users and {{plan}} has {{seats}} seats. Pick a bigger plan or remove users first.",
+    "currentEnd": "Current end",
+    "daysLeft_one": "{{count}} day left",
+    "daysLeft_other": "{{count}} days left",
+    "addDays": "Add days",
+    "newEnd": "New end",
+    "newEndHint": "Worked out from Add days · at most {{date}}",
+    "tooLong": "Too far: a trial can run until {{date}} at the latest ({{max}} days from today).",
+    "endMoves_one": "{{name}} moves to Free now, {{count}} day early.",
+    "endMoves_other": "{{name}} moves to Free now, {{count}} days early.",
+    "endKeeps": "{{email}} keeps working",
+    "endPauses_one": "{{count}} user is paused until a paid plan",
+    "endPauses_other": "{{count}} users are paused until a paid plan",
+    "endProjects": "Only one project stays editable; nothing is deleted",
+    "reasonOptional": "Reason (optional)",
+    "reasonPlaceholder": "e.g. Client asked to stop",
+    "grant": "Grant trial",
+    "extend": "Extend trial",
+    "end": "End trial",
+    "granted": "Trial started.",
+    "extended": "Trial extended.",
+    "ended": "Trial ended; the company is on Free.",
+    "error": "Couldn’t change the trial. Try again."
   }
 }

@@ -370,10 +370,7 @@ describe('Subscription enforcement (e2e)', () => {
         planKey: 'pro',
         maxUsers: 5,
         endDate: '2099-12-31',
-        isTrial: false,
-        currency: 'EGP',
-        vatRate: 14,
-        note: null,
+        reason: 'E2E',
         keepAdminId: null,
       })
       .expect(200);

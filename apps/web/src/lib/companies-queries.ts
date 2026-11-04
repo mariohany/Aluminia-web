@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CreateCompanyInput, UpdateCompanyInput } from '@repo/types/companies'
-import type { UpdateSubscriptionInput } from '@repo/types/subscriptions'
+import type { CompanyDetail } from '@repo/types/companies'
+import type {
+  EndTrialInput,
+  ExtendTrialInput,
+  GrantTrialInput,
+  UpdateSubscriptionInput,
+} from '@repo/types/subscriptions'
 import * as companiesApi from '@/lib/companies-api'
 
 const companiesKey = ['companies'] as const
@@ -42,10 +48,12 @@ export function useUpdateCompanyMutation(id: string) {
 
 // Edit subscription. A drop to Free deactivates users and leaving it
 // brings them back, so the users lists and the sidebar counts refetch.
-export function useUpdateSubscriptionMutation(id: string) {
+// Any subscription change: the detail comes back; lists, the dashboard
+// and users (paused / brought back) move with it.
+function useSubscriptionChange<T>(change: (input: T) => Promise<CompanyDetail>, id: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: UpdateSubscriptionInput) => companiesApi.updateSubscription(id, input),
+    mutationFn: change,
     onSuccess: (detail) => {
       queryClient.setQueryData(companyKey(id), detail)
       void queryClient.invalidateQueries({ queryKey: companiesKey })
@@ -53,6 +61,22 @@ export function useUpdateSubscriptionMutation(id: string) {
       void queryClient.invalidateQueries({ queryKey: ['users'] })
     },
   })
+}
+
+export function useUpdateSubscriptionMutation(id: string) {
+  return useSubscriptionChange((input: UpdateSubscriptionInput) => companiesApi.updateSubscription(id, input), id)
+}
+
+export function useGrantTrialMutation(id: string) {
+  return useSubscriptionChange((input: GrantTrialInput) => companiesApi.grantTrial(id, input), id)
+}
+
+export function useExtendTrialMutation(id: string) {
+  return useSubscriptionChange((input: ExtendTrialInput) => companiesApi.extendTrial(id, input), id)
+}
+
+export function useEndTrialMutation(id: string) {
+  return useSubscriptionChange((input: EndTrialInput) => companiesApi.endTrial(id, input), id)
 }
 
 // Free (Q5): clears the company's editable-project pick so its admin

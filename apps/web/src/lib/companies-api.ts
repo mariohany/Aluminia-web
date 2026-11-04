@@ -5,7 +5,12 @@ import type {
   CreateCompanyInput,
   UpdateCompanyInput,
 } from '@repo/types/companies'
-import type { UpdateSubscriptionInput } from '@repo/types/subscriptions'
+import type {
+  EndTrialInput,
+  ExtendTrialInput,
+  GrantTrialInput,
+  UpdateSubscriptionInput,
+} from '@repo/types/subscriptions'
 import { apiFetch } from '@/lib/api-client'
 
 export function listCompanies(): Promise<CompanyListItem[]> {
@@ -26,6 +31,19 @@ export function updateCompany(id: string, input: UpdateCompanyInput): Promise<Co
 
 export function updateSubscription(id: string, input: UpdateSubscriptionInput): Promise<CompanyDetail> {
   return apiFetch<CompanyDetail>(`/admin/companies/${id}/subscription`, { method: 'PATCH', body: input })
+}
+
+// Trials (payment cycle P26): history rows only, no documents.
+export function grantTrial(id: string, input: GrantTrialInput): Promise<CompanyDetail> {
+  return apiFetch<CompanyDetail>(`/admin/companies/${id}/trial`, { method: 'POST', body: input })
+}
+
+export function extendTrial(id: string, input: ExtendTrialInput): Promise<CompanyDetail> {
+  return apiFetch<CompanyDetail>(`/admin/companies/${id}/trial/extend`, { method: 'POST', body: input })
+}
+
+export function endTrial(id: string, input: EndTrialInput): Promise<CompanyDetail> {
+  return apiFetch<CompanyDetail>(`/admin/companies/${id}/trial/end`, { method: 'POST', body: input })
 }
 
 export function resetFreeProject(id: string): Promise<CompanyDetail> {

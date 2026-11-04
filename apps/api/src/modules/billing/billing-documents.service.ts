@@ -122,6 +122,7 @@ export class BillingDocumentsService {
         buyer,
       });
       await manager.save(doc);
+      await rememberPricing(manager, companyId, input);
       await this.auditLog.record(manager, {
         actorUserId: actorId,
         action: 'billing.quotation_created',
@@ -167,6 +168,7 @@ export class BillingDocumentsService {
         buyer,
       });
       await manager.save(doc);
+      await rememberPricing(manager, doc.companyId, input);
       await this.auditLog.record(manager, {
         actorUserId: actorId,
         action: 'billing.quotation_updated',
@@ -743,6 +745,22 @@ function copyOf(q: BillingDocument): Partial<BillingDocument> {
     seller: q.seller,
     buyer: q.buyer,
   };
+}
+
+/**
+ * The company's currency and VAT are only the next quotation's starting
+ * values, set by saving a quotation (payment cycle 2.2b, Mario 2026-11-04).
+ */
+async function rememberPricing(
+  manager: EntityManager,
+  companyId: string,
+  input: Pick<QuotationInput, 'currency' | 'vatRate'>,
+): Promise<void> {
+  await manager.update(
+    Company,
+    { id: companyId },
+    { currency: input.currency, vatRate: input.vatRate },
+  );
 }
 
 async function lockDocument(

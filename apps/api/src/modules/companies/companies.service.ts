@@ -1,10 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, type EntityManager } from 'typeorm';
 import type {
   BillingRecordSummary,
   CompanyDetail,
@@ -16,8 +17,14 @@ import type {
 } from '@repo/types/companies';
 import { FREE_PLAN_LIMITS } from '@repo/types/plans';
 import {
+  addDays,
+  cairoDateOf,
   endOfCairoDay,
+  latestTrialEnd,
   type BillingReason,
+  type EndTrialInput,
+  type ExtendTrialInput,
+  type GrantTrialInput,
   type UpdateSubscriptionInput,
 } from '@repo/types/subscriptions';
 import {
@@ -268,9 +275,8 @@ export class CompaniesService {
           toFree || input.endDate === null
             ? null
             : endOfCairoDay(input.endDate),
-        isTrial: !toFree && input.isTrial,
-        currency: input.currency,
-        vatRate: input.vatRate,
+        // Only Grant trial starts a trial; a special-case edit keeps one.
+        isTrial: !toFree && company.isTrial,
       };
 
       let deactivated: string[] = [];
@@ -291,16 +297,10 @@ export class CompaniesService {
         next.planId !== company.planId ||
         next.maxUsers !== company.maxUsers ||
         next.endsAt?.getTime() !== company.endsAt?.getTime() ||
-        next.isTrial !== company.isTrial ||
-        next.currency !== company.currency ||
-        next.vatRate !== company.vatRate;
+        next.isTrial !== company.isTrial;
 
       const reason: BillingReason =
-        toFree && !wasFree
-          ? 'dropped_to_free'
-          : next.isTrial && !(company.isTrial && company.planId === plan.id)
-            ? 'trial_started'
-            : 'edited';
+        toFree && !wasFree ? 'dropped_to_free' : 'edited';
 
       Object.assign(company, next);
       // A fresh drop to Free asks the admin to pick a project again;
@@ -308,7 +308,7 @@ export class CompaniesService {
       if (!toFree || !wasFree) company.freeProjectId = null;
       await manager.save(company);
 
-      if (changed || input.note || deactivated.length > 0) {
+      if (changed || deactivated.length > 0) {
         await manager.insert(BillingRecord, {
           companyId: id,
           planId: plan.id,
@@ -316,7 +316,7 @@ export class CompaniesService {
           endsAt: company.endsAt,
           isTrial: company.isTrial,
           reason,
-          notes: input.note || null,
+          notes: input.reason,
           actorId,
         });
         await this.auditLog.record(manager, {
@@ -331,6 +331,7 @@ export class CompaniesService {
             endsAt: company.endsAt?.toISOString() ?? null,
             isTrial: company.isTrial,
             reason,
+            note: input.reason,
             deactivated: deactivated.length,
             reactivated: reactivated.length,
           },
@@ -346,6 +347,187 @@ export class CompaniesService {
     }
     if (bumped.length > 0) await this.authVersions.publish(bumped);
     return this.detail(id);
+  }
+
+  /**
+   * Grant trial (payment cycle P2, P20, P26): only from Free, on the
+   * plan's own seats, ending today + days. No quotation, invoice or
+   * payment; the users Free paused come back.
+   */
+  async grantTrial(
+    id: string,
+    input: GrantTrialInput,
+    actorId: string,
+  ): Promise<CompanyDetail> {
+    await this.subscriptions.endLapsed(id);
+    await this.lockedCompany(id, async (manager, company, current) => {
+      if (current.key !== 'free') {
+        throw new ConflictException({
+          message: `"${company.name}" is on ${current.nameEn}; a trial starts only from Free.`,
+          code: 'not_on_free',
+        });
+      }
+      const plan = await manager.findOneOrFail(Plan, {
+        where: { key: input.planKey },
+      });
+      const userCount = await manager.count(User, {
+        where: { companyId: id },
+      });
+      if (userCount > plan.seats) {
+        throw new BadRequestException({
+          message: `"${company.name}" has ${userCount} users and ${plan.nameEn} has ${plan.seats} seats; remove some users first.`,
+          code: 'seats_below_users',
+        });
+      }
+      const reactivated = await this.subscriptions.restoreFromFree(manager, id);
+      Object.assign(company, {
+        planId: plan.id,
+        maxUsers: plan.seats,
+        endsAt: endOfCairoDay(addDays(cairoDateOf(new Date()), input.days)),
+        isTrial: true,
+        freeProjectId: null,
+      });
+      await manager.save(company);
+      await this.recordTrial(manager, company, plan, 'trial_started', actorId, {
+        action: 'company.trial_granted',
+        days: input.days,
+        reactivated: reactivated.length,
+      });
+      return [];
+    });
+    return this.detail(id);
+  }
+
+  /** Extend trial (P26): days go on the current end, at most MAX_TRIAL_DAYS after today. */
+  async extendTrial(
+    id: string,
+    input: ExtendTrialInput,
+    actorId: string,
+  ): Promise<CompanyDetail> {
+    await this.subscriptions.endLapsed(id);
+    await this.lockedCompany(id, async (manager, company, current) => {
+      assertOnTrial(company, current);
+      const newEnd = addDays(cairoDateOf(company.endsAt!), input.days);
+      const latest = latestTrialEnd(new Date());
+      if (newEnd > latest) {
+        throw new BadRequestException({
+          message: `A trial can run until ${latest} at the latest (90 days from today).`,
+          code: 'trial_too_long',
+        });
+      }
+      company.endsAt = endOfCairoDay(newEnd);
+      await manager.save(company);
+      await this.recordTrial(
+        manager,
+        company,
+        current,
+        'trial_extended',
+        actorId,
+        { action: 'company.trial_extended', days: input.days },
+      );
+      return [];
+    });
+    return this.detail(id);
+  }
+
+  /** End trial now (P26): straight to Free, the oldest admin stays. */
+  async endTrial(
+    id: string,
+    input: EndTrialInput,
+    actorId: string,
+  ): Promise<CompanyDetail> {
+    await this.subscriptions.endLapsed(id);
+    const bumped = await this.lockedCompany(
+      id,
+      async (manager, company, current) => {
+        assertOnTrial(company, current);
+        const change = await this.subscriptions.dropToFree(manager, id, null);
+        const free = await manager.findOneOrFail(Plan, {
+          where: { key: 'free' },
+        });
+        Object.assign(company, {
+          planId: free.id,
+          maxUsers: FREE_PLAN_LIMITS.seats,
+          endsAt: null,
+          isTrial: false,
+          freeProjectId: null,
+        });
+        await manager.save(company);
+        await this.recordTrial(manager, company, free, 'trial_ended', actorId, {
+          action: 'company.trial_ended',
+          trialPlan: current.nameEn,
+          deactivated: change.deactivated.length,
+          note: input.reason || null,
+        });
+        return change.bumped;
+      },
+    );
+    if (bumped.length > 0) await this.authVersions.publish(bumped);
+    return this.detail(id);
+  }
+
+  /** One transaction holding the company row lock (the seat check's lock). */
+  private async lockedCompany<T extends unknown[]>(
+    id: string,
+    work: (manager: EntityManager, company: Company, plan: Plan) => Promise<T>,
+  ): Promise<T> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const manager = queryRunner.manager;
+      const company = await manager.findOne(Company, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!company) throw new NotFoundException('Company not found.');
+      const plan = await manager.findOneOrFail(Plan, {
+        where: { id: company.planId },
+      });
+      const result = await work(manager, company, plan);
+      await queryRunner.commitTransaction();
+      return result;
+    } catch (error) {
+      await rollbackQuietly(queryRunner);
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /** The history row and the audit entry of a trial action. */
+  private async recordTrial(
+    manager: EntityManager,
+    company: Company,
+    plan: Plan,
+    reason: BillingReason,
+    actorId: string,
+    audit: { action: string; note?: string | null } & Record<string, unknown>,
+  ): Promise<void> {
+    const { action, note = null, ...extra } = audit;
+    await manager.insert(BillingRecord, {
+      companyId: company.id,
+      planId: plan.id,
+      maxUsers: company.maxUsers,
+      endsAt: company.endsAt,
+      isTrial: company.isTrial,
+      reason,
+      notes: note,
+      actorId,
+    });
+    await this.auditLog.record(manager, {
+      actorUserId: actorId,
+      action,
+      targetType: 'company',
+      targetId: company.id,
+      metadata: {
+        name: company.name,
+        plan: plan.nameEn,
+        maxUsers: company.maxUsers,
+        endsAt: company.endsAt?.toISOString() ?? null,
+        ...extra,
+      },
+    });
   }
 
   /** Clears the project Free keeps editable; the company admin picks again (Q5). */
@@ -587,4 +769,13 @@ function toCompanyUserSummary(user: User): CompanyUserSummary {
     planDeactivated: user.planDeactivated,
     createdAt: user.createdAt.toISOString(),
   };
+}
+
+function assertOnTrial(company: Company, plan: Plan): void {
+  if (plan.key === 'free' || !company.isTrial) {
+    throw new ConflictException({
+      message: `"${company.name}" isn't on a trial.`,
+      code: 'not_on_trial',
+    });
+  }
 }

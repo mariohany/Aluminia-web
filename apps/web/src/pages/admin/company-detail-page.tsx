@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Copy, Loader2, Pencil } from 'lucide-react'
+import { ArrowLeft, Copy, Loader2, MoreHorizontal, Pencil, Plus, X } from 'lucide-react'
 import {
   CompanyStatus,
   updateCompanySchema,
@@ -34,6 +34,14 @@ import {
   SubscriptionTag,
 } from '@/components/admin/companies/company-badges'
 import { EditSubscriptionDialog } from '@/components/admin/companies/edit-subscription-dialog'
+import { EndTrialDialog, ExtendTrialDialog, GrantTrialDialog } from '@/components/admin/companies/trial-dialogs'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { CompanyDocumentsCard } from '@/components/admin/billing/company-documents-card'
 import { useCompanyDocumentsQuery } from '@/lib/billing-queries'
 import { RequiredMark } from '@/components/ui/required-mark'
@@ -123,7 +131,7 @@ function CompanyView({ company, language }: { company: CompanyDetail; language: 
   const { renderMenu, dialogs } = useUserRowActions()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab: Tab = searchParams.get('tab') === 'billing' ? 'billing' : 'overview'
-  const [editOpen, setEditOpen] = useState(false)
+  const [subscriptionDialog, setSubscriptionDialog] = useState<SubscriptionAction | null>(null)
   // Deactivated by the drop to Free (B13): only the company endpoint knows.
   const planDeactivated = useMemo(
     () => new Set(company.users.filter((user) => user.planDeactivated).map((user) => user.id)),
@@ -346,12 +354,19 @@ function CompanyView({ company, language }: { company: CompanyDetail; language: 
         </div>
       ) : (
         <div role="tabpanel" className="flex flex-col gap-4">
-          <BillingStrip company={company} language={language} onEdit={() => setEditOpen(true)} />
+          <BillingStrip company={company} language={language} onAction={setSubscriptionDialog} />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22.5rem] lg:items-start">
             <CompanyDocumentsCard company={company} />
             <BillingCard company={company} language={language} />
           </div>
-          <EditSubscriptionDialog company={company} open={editOpen} onOpenChange={setEditOpen} />
+          {SUBSCRIPTION_DIALOGS.map(([action, Dialog]) => (
+            <Dialog
+              key={action}
+              company={company}
+              open={subscriptionDialog === action}
+              onOpenChange={(open) => setSubscriptionDialog(open ? action : null)}
+            />
+          ))}
         </div>
       )}
 
@@ -431,15 +446,29 @@ function DetailsCard({ company }: { company: CompanyDetail }) {
   )
 }
 
-/** The Billing tab's strip (board `bill-cd-b`): plan, seat limit, end, unpaid, and Edit subscription. */
+type SubscriptionAction = 'grant' | 'extend' | 'end' | 'special'
+
+const SUBSCRIPTION_DIALOGS = [
+  ['grant', GrantTrialDialog],
+  ['extend', ExtendTrialDialog],
+  ['end', EndTrialDialog],
+  ['special', EditSubscriptionDialog],
+] as const
+
+/**
+ * The Billing tab's strip (board `bill-cd-b`): plan, seat limit, end,
+ * unpaid, and one ⋯ menu listing what fits the company now (payment
+ * cycle, boards `pc-menu-*`): Free → Grant trial; a trial → Extend / End;
+ * always the special-case Edit subscription.
+ */
 function BillingStrip({
   company,
   language,
-  onEdit,
+  onAction,
 }: {
   company: CompanyDetail
   language: string
-  onEdit: () => void
+  onAction: (action: SubscriptionAction) => void
 }) {
   const { t } = useTranslation('admin')
   const { data: plans } = usePlansQuery()
@@ -521,12 +550,77 @@ function BillingStrip({
             {t('companyDetail.strip.resetPick')}
           </Button>
         )}
-        <Button variant="outline" size="sm" onClick={onEdit}>
-          <Pencil aria-hidden="true" />
-          {t('subscription.title')}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon-sm" aria-label={t('companyDetail.strip.more')}>
+              <MoreHorizontal aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align={document.documentElement.dir === 'rtl' ? 'start' : 'end'}
+            className="w-72 *:data-[slot=dropdown-menu-item]:items-start *:data-[slot=dropdown-menu-item]:gap-2.5 *:data-[slot=dropdown-menu-item]:px-2.5 *:data-[slot=dropdown-menu-item]:py-2"
+          >
+            {state.kind === 'free' && (
+              <MenuAction
+                icon={Plus}
+                label={t('trial.grantItem')}
+                hint={t('trial.grantItemHint')}
+                onSelect={() => onAction('grant')}
+              />
+            )}
+            {state.kind === 'trial' && (
+              <>
+                <MenuAction
+                  icon={Plus}
+                  label={t('trial.extendItem')}
+                  hint={t('trial.extendItemHint', { date: company.endsAt ? endFormatter.format(new Date(company.endsAt)) : '—' })}
+                  onSelect={() => onAction('extend')}
+                />
+                <MenuAction
+                  icon={X}
+                  destructive
+                  label={t('trial.endItem')}
+                  hint={t('trial.endItemHint')}
+                  onSelect={() => onAction('end')}
+                />
+              </>
+            )}
+            {(state.kind === 'free' || state.kind === 'trial') && <DropdownMenuSeparator />}
+            <MenuAction
+              icon={Pencil}
+              label={t('subscription.specialItem')}
+              hint={t('subscription.specialItemHint')}
+              onSelect={() => onAction('special')}
+            />
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </section>
+  )
+}
+
+/** A ⋯ menu row: icon, label and a one-line hint under it. */
+function MenuAction({
+  icon: Icon,
+  label,
+  hint,
+  destructive = false,
+  onSelect,
+}: {
+  icon: typeof Plus
+  label: string
+  hint: string
+  destructive?: boolean
+  onSelect: () => void
+}) {
+  return (
+    <DropdownMenuItem variant={destructive ? 'destructive' : 'default'} onSelect={onSelect}>
+      <Icon className={destructive ? 'mt-0.5' : 'mt-0.5 text-muted-foreground'} aria-hidden="true" />
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="font-medium">{label}</span>
+        <span className="text-xs whitespace-normal text-muted-foreground">{hint}</span>
+      </span>
+    </DropdownMenuItem>
   )
 }
 

@@ -22,6 +22,7 @@ import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
+import { EndTrialDto, ExtendTrialDto, GrantTrialDto } from './dto/trial.dto';
 import { DeleteCompanyDto } from './dto/delete-company.dto';
 
 @Roles(UserRole.SUPER_ADMIN)
@@ -63,6 +64,37 @@ export class CompaniesController {
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<CompanyDetail> {
     return this.companies.updateSubscription(id, dto, actor.id);
+  }
+
+  // Trials (payment cycle P26): history rows only, no documents.
+  @Post(':id/trial')
+  @HttpCode(200)
+  grantTrial(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: GrantTrialDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<CompanyDetail> {
+    return this.companies.grantTrial(id, dto, actor.id);
+  }
+
+  @Post(':id/trial/extend')
+  @HttpCode(200)
+  extendTrial(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ExtendTrialDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<CompanyDetail> {
+    return this.companies.extendTrial(id, dto, actor.id);
+  }
+
+  @Post(':id/trial/end')
+  @HttpCode(200)
+  endTrial(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EndTrialDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<CompanyDetail> {
+    return this.companies.endTrial(id, dto, actor.id);
   }
 
   // Free (Q5): the company admin picks the editable project once; only

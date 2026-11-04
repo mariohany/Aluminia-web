@@ -271,10 +271,7 @@ describe('CompaniesService.updateSubscription', () => {
     planKey: 'pro',
     maxUsers: 5,
     endDate: '2027-01-16',
-    isTrial: false,
-    currency: 'EGP',
-    vatRate: 14,
-    note: null,
+    reason: 'Compensation for an outage',
     keepAdminId: null,
     ...overrides,
   });
@@ -318,14 +315,20 @@ describe('CompaniesService.updateSubscription', () => {
     expect(events).toEqual(['commit']);
   });
 
-  it('writes a history row for a note alone', async () => {
-    const { service, events } = makeService(active(), 1);
+  it('stores the required reason on the history row', async () => {
+    const { service, manager } = makeService(active(), 1);
     await service.updateSubscription(
       'company-a',
-      input({ note: 'Asked for a call' }),
+      input({ maxUsers: 4 }),
       ACTOR,
     );
-    expect(events).toEqual(['billing', 'commit']);
+    expect(manager.insert).toHaveBeenCalledWith(
+      BillingRecord,
+      expect.objectContaining({
+        reason: 'edited',
+        notes: 'Compensation for an outage',
+      }),
+    );
   });
 
   // B13: one admin stays, the rest are deactivated and logged out after
@@ -388,16 +391,28 @@ describe('CompaniesService.updateSubscription', () => {
     expect(events).toEqual(['restore-from-free', 'billing', 'commit']);
   });
 
-  it('starts a trial on a paid plan', async () => {
-    const { service, manager } = makeService(active(), 1);
-    await service.updateSubscription(
+  // P27: only Grant trial starts a trial; the special case keeps one.
+  it('keeps a trial a trial and never starts one', async () => {
+    const onTrial = makeService(active({ isTrial: true }), 1);
+    await onTrial.service.updateSubscription(
       'company-a',
-      input({ isTrial: true, endDate: '2026-11-11' }),
+      input({ endDate: '2026-11-11' }),
       ACTOR,
     );
-    expect(manager.insert).toHaveBeenCalledWith(
+    expect(onTrial.manager.insert).toHaveBeenCalledWith(
       BillingRecord,
-      expect.objectContaining({ reason: 'trial_started', isTrial: true }),
+      expect.objectContaining({ reason: 'edited', isTrial: true }),
+    );
+
+    const paid = makeService(active(), 1);
+    await paid.service.updateSubscription(
+      'company-a',
+      input({ endDate: '2026-11-11' }),
+      ACTOR,
+    );
+    expect(paid.manager.insert).toHaveBeenCalledWith(
+      BillingRecord,
+      expect.objectContaining({ reason: 'edited', isTrial: false }),
     );
   });
 });

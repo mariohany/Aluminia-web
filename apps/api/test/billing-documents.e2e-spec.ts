@@ -266,6 +266,25 @@ describe('Billing documents (e2e)', () => {
       .expect(200);
     expect((edited.body as BillingDocumentSummary).number).toBe(doc.number);
     expect((edited.body as BillingDocumentSummary).totals.total).toBe(6840);
+
+    // Saving a quotation sets what the company's next one starts with
+    // (payment cycle 2.2b): the SAR one, then the EGP edit.
+    const pricing = async (): Promise<{ currency: string; vat: number }> => {
+      const rows: Array<{ currency: string; vat: number }> =
+        await controlPlane.query(
+          `SELECT currency, vat_rate::float AS vat FROM companies WHERE id = $1`,
+          [companyId],
+        );
+      return rows[0];
+    };
+    await create({ currency: 'SAR', fxRate: 12.5, vatRate: 15 }).expect(201);
+    expect(await pricing()).toEqual({ currency: 'SAR', vat: 15 });
+    await request(server())
+      .patch(`/admin/billing/documents/${doc.id}`)
+      .set(as(superToken))
+      .send(quotation())
+      .expect(200);
+    expect((await pricing()).currency).toBe('EGP');
   });
 
   it('refuses a quotation past its valid-until day, and fewer seats than users (Q3, B3)', async () => {

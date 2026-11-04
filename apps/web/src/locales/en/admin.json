@@ -127,18 +127,18 @@
       "leads": "Leads",
       "endingSoon": "Ending soon",
       "unpaid": "Unpaid quotations",
-      "expired": "Expired",
+      "ended": "Ended",
       "error": "Couldn’t load the list.",
       "endDate": "Ends",
       "when": "When",
       "daysLeft_one": "in {{count}} day",
       "daysLeft_other": "in {{count}} days",
-      "expiredAgo_one": "{{count}} day ago",
-      "expiredAgo_other": "{{count}} days ago",
+      "endedAgo_one": "{{count}} day ago",
+      "endedAgo_other": "{{count}} days ago",
       "empty": {
         "endingSoon": "No paid plan ends in the next 30 days.",
         "unpaid": "No sent quotation is waiting for payment.",
-        "expired": "No company's plan has ended."
+        "ended": "No paid plan ended in the last 30 days."
       }
     }
   },
@@ -293,7 +293,8 @@
         "paid_one": "Paid · {{plan}} · {{count}} seat",
         "paid_other": "Paid · {{plan}} · {{count}} seats",
         "dropped_to_free": "Moved to Free",
-        "trial_ended": "Trial ended → Free"
+        "trial_ended": "Trial ended → Free",
+        "plan_ended": "Plan ended → Free"
       },
       "endsOn": "Ends {{date}}"
     },
@@ -357,8 +358,7 @@
       "ends_other": "Ends in {{count}} days",
       "trial_zero": "Trial ends today",
       "trial_one": "Trial · {{count}} day left",
-      "trial_other": "Trial · {{count}} days left",
-      "expired": "Expired"
+      "trial_other": "Trial · {{count}} days left"
     },
     "documents": {
       "title": "Quotations & invoices",
@@ -376,7 +376,6 @@
       "seatsCustom_other": "Plan default {{seats}} · {{count}} users",
       "ends": "Ends",
       "neverEnds": "Free never ends",
-      "expired": "Expired",
       "daysLeft_zero": "Ends today · 23:59 Cairo",
       "daysLeft_one": "{{count}} day left · 23:59 Cairo",
       "daysLeft_other": "{{count}} days left · 23:59 Cairo",

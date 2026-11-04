@@ -13,8 +13,5 @@ export interface SubscriptionAccess {
   freeProjectId: string | null;
 }
 
-export const SUBSCRIPTION_ENDED_MESSAGE =
-  "Your company's subscription has ended. Ask your company admin to renew it.";
-
 export const PLAN_DEACTIVATED_MESSAGE =
   'Your company is on the Free plan, which has one user. Ask your company admin to upgrade.';

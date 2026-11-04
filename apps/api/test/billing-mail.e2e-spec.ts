@@ -314,6 +314,6 @@ describe('Billing email (e2e)', () => {
       planEn: 'Pro',
     });
     expect(lists.unpaid.some((q) => q.companyId === companyId)).toBe(true);
-    expect(lists.expired.some((c) => c.companyId === companyId)).toBe(false);
+    expect(lists.ended.some((c) => c.companyId === companyId)).toBe(false);
   });
 });

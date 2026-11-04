@@ -56,9 +56,7 @@ export function ConfigSubscriptionPage() {
   const ends =
     !state || state.kind === 'free'
       ? { value: t('subscription.neverEnds'), caption: t('subscription.freeCaption') }
-      : state.kind === 'expired'
-        ? { value: date(state.endDate), caption: '' }
-        : { value: date(state.endDate), caption: t('subscription.daysLeft', { count: state.daysLeft }) }
+      : { value: date(state.endDate), caption: t('subscription.daysLeft', { count: state.daysLeft }) }
 
   return (
     <div className="flex flex-col gap-4 p-4 md:px-9 md:py-6">

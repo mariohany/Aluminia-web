@@ -52,9 +52,10 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
 
 let accessToken: string | null = null
 
-// The company's plan logged this user out (§4a, B10, B13): the session is
-// dropped at once and the login page says why (`takeSignOutReason`).
-export const SIGN_OUT_CODES = ['subscription_ended', 'plan_deactivated'] as const
+// The company's drop to Free logged this user out (B13, payment cycle
+// P10): the session is dropped at once and the login page says why
+// (`takeSignOutReason`).
+export const SIGN_OUT_CODES = ['plan_deactivated'] as const
 export type SignOutReason = (typeof SIGN_OUT_CODES)[number]
 let signOutReason: SignOutReason | null = null
 

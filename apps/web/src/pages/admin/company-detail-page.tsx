@@ -457,9 +457,7 @@ function BillingStrip({
   const endsCaption =
     state.kind === 'free'
       ? t('companyDetail.strip.neverEnds')
-      : state.kind === 'expired'
-        ? t('companyDetail.strip.expired')
-        : t('companyDetail.strip.daysLeft', { count: state.daysLeft })
+      : t('companyDetail.strip.daysLeft', { count: state.daysLeft })
 
   const cells: { label: string; value: string; caption: string }[] = [
     {

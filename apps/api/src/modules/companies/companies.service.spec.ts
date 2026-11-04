@@ -131,6 +131,8 @@ function makeService(company: Company | null, userCount = 0) {
     byCompany: jest.fn(() => Promise.resolve(new Map())),
   };
   const subscriptions = {
+    settleAllLapsed: jest.fn().mockResolvedValue(0),
+    endLapsed: jest.fn().mockResolvedValue([]),
     dropToFree: jest.fn(() => {
       events.push('drop-to-free');
       return Promise.resolve({

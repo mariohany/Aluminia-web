@@ -87,15 +87,14 @@ export function daysBetween(from: string, to: string): number {
 
 export type EndingTone = 'yellow' | 'red'
 
-// Computed, never stored: nothing needs a job to flip a company from
-// active to expired. `daysLeft` 0 = ends today. A trial past its end is
-// `free` (B11): it drops to Free, it is never blocked.
+// Computed, never stored. `daysLeft` 0 = ends today. Any plan past its
+// end, trial or paid, is `free` (payment cycle P10): it drops to Free,
+// never blocked, and the API settles the drop (SubscriptionsService).
 export type SubscriptionState =
   | { kind: 'free' }
   | { kind: 'trial'; endDate: string; daysLeft: number; tone: EndingTone | null }
   | { kind: 'active'; endDate: string; daysLeft: number }
   | { kind: 'ending'; endDate: string; daysLeft: number; tone: EndingTone }
-  | { kind: 'expired'; endDate: string }
 
 export interface SubscriptionFacts {
   planKey: PlanKey
@@ -112,18 +111,17 @@ function toneOf(daysLeft: number): EndingTone | null {
 export function subscriptionState(facts: SubscriptionFacts, now: Date): SubscriptionState {
   if (facts.planKey === 'free' || facts.endsAt === null) return { kind: 'free' }
   const endsAt = new Date(facts.endsAt)
+  if (now.getTime() > endsAt.getTime()) return { kind: 'free' }
   const endDate = cairoDateOf(endsAt)
-  if (now.getTime() > endsAt.getTime()) {
-    return facts.isTrial ? { kind: 'free' } : { kind: 'expired', endDate }
-  }
   const daysLeft = daysBetween(cairoDateOf(now), endDate)
   const tone = toneOf(daysLeft)
   if (facts.isTrial) return { kind: 'trial', endDate, daysLeft, tone }
   return tone ? { kind: 'ending', endDate, daysLeft, tone } : { kind: 'active', endDate, daysLeft }
 }
 
-// Why a history row was written (§3c). `paid` arrives with step 6.
-export const BILLING_REASONS = ['created', 'edited', 'trial_started', 'paid', 'trial_ended', 'dropped_to_free'] as const
+// Why a history row was written (§3c). `plan_ended`: a paid plan ran out
+// unpaid and dropped to Free (payment cycle P10).
+export const BILLING_REASONS = ['created', 'edited', 'trial_started', 'paid', 'trial_ended', 'plan_ended', 'dropped_to_free'] as const
 export type BillingReason = (typeof BILLING_REASONS)[number]
 
 // The Edit subscription dialog (B2, `bill-cd-edit-sub`). On Free the end

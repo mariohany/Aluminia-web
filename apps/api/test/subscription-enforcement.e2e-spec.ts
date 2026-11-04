@@ -7,14 +7,15 @@ import { App } from 'supertest/types';
 import { UserRole } from '@repo/types/auth';
 import type { LoginResponse } from '@repo/types/auth';
 import type { CompanySubscription } from '@repo/types/subscriptions';
+import type { DashboardBilling } from '@repo/types/dashboard';
 import { AppModule } from './../src/app.module';
 import { TenantProvisioningService } from './../src/modules/tenancy/tenant-provisioning.service';
 import { PasswordService } from './../src/modules/auth/password.service';
 
 /**
- * Step 3 of docs/subscriptions_planing.md (§4a, §4b): a paid plan past its
- * end blocks everyone (B10); a trial past its end drops to Free on the
- * next request, keeping the oldest admin (B11, B13); Free locks features
+ * Step 3 of docs/subscriptions_planing.md (§4a, §4b): a paid plan or trial
+ * past its end drops to Free on the next request, keeping the oldest admin
+ * (B11, B13, payment cycle P10); Free locks features
  * (B12), allows one client and one project, and only the picked project
  * is editable, viewing and deleting aside (Q5); a paid plan unlocks it all
  * and brings the deactivated users back (B14). One company walks the
@@ -152,27 +153,59 @@ describe('Subscription enforcement (e2e)', () => {
     });
   });
 
-  it('blocks every user once a paid plan ended (B10), and lets them back on renewal', async () => {
+  it('drops an ended paid plan to Free, keeping the oldest admin (P10)', async () => {
     await controlPlane.query(
       `UPDATE companies SET ends_at = now() - interval '1 minute' WHERE id = $1`,
       [companyId],
     );
-    const blocked = await request(server())
+    const res = await request(server())
       .get('/clients')
       .set(as(userToken))
-      .expect(403);
-    expect(code(blocked)).toBe('subscription_ended');
-    await request(server()).get('/me').set(as(adminToken)).expect(403);
-    const login = await request(server())
+      .expect(401);
+    expect(code(res)).toBe('plan_deactivated');
+
+    const rows: Array<{ key: string; ends_at: Date | null }> =
+      await controlPlane.query(
+        `SELECT p.key, c.ends_at FROM companies c JOIN plans p ON p.id = c.plan_id WHERE c.id = $1`,
+        [companyId],
+      );
+    expect(rows[0]).toEqual({ key: 'free', ends_at: null });
+    const history: Array<{ reason: string; actor_id: string | null }> =
+      await controlPlane.query(
+        `SELECT reason, actor_id FROM billing WHERE company_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [companyId],
+      );
+    expect(history[0]).toEqual({ reason: 'plan_ended', actor_id: null });
+
+    // Nobody is locked out any more: the admin signs in and carries on.
+    await request(server())
       .post('/auth/login')
       .send({ email: adminEmail, password })
-      .expect(401);
-    expect(code(login)).toBe('subscription_ended');
+      .expect(200);
+    await request(server()).get('/clients').set(as(adminToken)).expect(200);
 
+    // The super admin's dashboard lists it under Ended, with its old plan.
+    const lists = await request(server())
+      .get('/admin/dashboard/billing')
+      .set(as(superToken))
+      .expect(200);
+    expect(
+      (lists.body as DashboardBilling).ended.find(
+        (c) => c.companyId === companyId,
+      ),
+    ).toMatchObject({ planEn: 'Pro', daysLeft: 0 });
+
+    // Back on Pro (what a recorded payment does), the user returns.
     await controlPlane.query(
-      `UPDATE companies SET ends_at = now() + interval '30 days' WHERE id = $1`,
+      `UPDATE companies SET plan_id = (SELECT id FROM plans WHERE key = 'pro'),
+         max_users = 5, ends_at = now() + interval '30 days' WHERE id = $1`,
       [companyId],
     );
+    await controlPlane.query(
+      `UPDATE users SET status = 'active', plan_deactivated = false WHERE company_id = $1 AND plan_deactivated`,
+      [companyId],
+    );
+    userToken = await loginAs(userEmail);
     await request(server()).get('/clients').set(as(userToken)).expect(200);
   });
 

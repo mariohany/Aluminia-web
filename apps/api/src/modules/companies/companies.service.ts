@@ -57,6 +57,8 @@ export class CompaniesService {
   ) {}
 
   async list(): Promise<CompanyListItem[]> {
+    // Plans that ran out show as the Free they really are (P10).
+    await this.subscriptions.settleAllLapsed();
     const companies = await this.companies.find({
       relations: { plan: true },
       order: { createdAt: 'DESC' },
@@ -101,6 +103,7 @@ export class CompaniesService {
   }
 
   async detail(id: string): Promise<CompanyDetail> {
+    await this.subscriptions.endLapsed(id);
     const company = await this.companies.findOne({
       where: { id },
       relations: { plan: true },

@@ -89,12 +89,13 @@ describe('subscriptionState', () => {
     ).toMatchObject({ kind: 'ending', daysLeft: 0, tone: 'red' });
   });
 
-  it('expires one second after 23:59:59 Cairo', () => {
+  // P10: a paid plan past its end is Free, like a trial.
+  it('is free one second after 23:59:59 Cairo', () => {
     const endsAt = endOfCairoDay('2026-10-27');
     const facts = { planKey: 'pro' as const, endsAt, isTrial: false };
     expect(subscriptionState(facts, endsAt).kind).toBe('ending');
     expect(subscriptionState(facts, new Date(endsAt.getTime() + 1000))).toEqual(
-      { kind: 'expired', endDate: '2026-10-27' },
+      { kind: 'free' },
     );
   });
 

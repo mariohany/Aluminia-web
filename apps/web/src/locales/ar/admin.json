@@ -151,7 +151,7 @@
       "leads": "العملاء المحتملون",
       "endingSoon": "تنتهي قريبًا",
       "unpaid": "عروض أسعار غير مدفوعة",
-      "expired": "منتهية",
+      "ended": "انتهت",
       "error": "تعذّر تحميل القائمة.",
       "endDate": "تنتهي",
       "when": "متى",
@@ -161,16 +161,16 @@
       "daysLeft_few": "بعد {{count}} أيام",
       "daysLeft_many": "بعد {{count}} يومًا",
       "daysLeft_other": "بعد {{count}} يوم",
-      "expiredAgo_zero": "اليوم",
-      "expiredAgo_one": "منذ يوم",
-      "expiredAgo_two": "منذ يومين",
-      "expiredAgo_few": "منذ {{count}} أيام",
-      "expiredAgo_many": "منذ {{count}} يومًا",
-      "expiredAgo_other": "منذ {{count}} يوم",
+      "endedAgo_zero": "اليوم",
+      "endedAgo_one": "منذ يوم",
+      "endedAgo_two": "منذ يومين",
+      "endedAgo_few": "منذ {{count}} أيام",
+      "endedAgo_many": "منذ {{count}} يومًا",
+      "endedAgo_other": "منذ {{count}} يوم",
       "empty": {
         "endingSoon": "لا توجد باقة مدفوعة تنتهي خلال 30 يومًا.",
         "unpaid": "لا يوجد عرض سعر مُرسل بانتظار الدفع.",
-        "expired": "لا توجد شركة انتهت باقتها."
+        "ended": "مفيش باقة مدفوعة انتهت في آخر 30 يوم."
       }
     }
   },
@@ -337,7 +337,8 @@
         "paid_one": "اتدفع · {{plan}} · مستخدم واحد",
         "paid_other": "اتدفع · {{plan}} · {{count}} مستخدم",
         "dropped_to_free": "اتحوّلت للمجانية",
-        "trial_ended": "التجربة خلصت ← المجانية"
+        "trial_ended": "التجربة خلصت ← المجانية",
+        "plan_ended": "الباقة خلصت ← المجانية"
       },
       "endsOn": "بينتهي {{date}}"
     },
@@ -409,8 +410,7 @@
       "ends_other": "بينتهي بعد {{count}} يوم",
       "trial_zero": "التجربة بتنتهي النهارده",
       "trial_one": "تجربة · فاضل يوم",
-      "trial_other": "تجربة · فاضل {{count}} يوم",
-      "expired": "منتهي"
+      "trial_other": "تجربة · فاضل {{count}} يوم"
     },
     "documents": {
       "title": "عروض الأسعار والفواتير",
@@ -428,7 +428,6 @@
       "seatsCustom_other": "افتراضي الباقة {{seats}} · {{count}} مستخدم",
       "ends": "بينتهي",
       "neverEnds": "المجانية مبتنتهيش",
-      "expired": "منتهي",
       "daysLeft_zero": "بينتهي النهارده · ١١:٥٩ م بتوقيت القاهرة",
       "daysLeft_one": "فاضل يوم · ١١:٥٩ م بتوقيت القاهرة",
       "daysLeft_other": "فاضل {{count}} يوم · ١١:٥٩ م بتوقيت القاهرة",

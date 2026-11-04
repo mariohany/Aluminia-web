@@ -72,7 +72,7 @@ const TONE_PILL = {
 /**
  * The header tag next to the name and plan (B19, boards `bill-cd-b-*`):
  * "Ends in N days" only in the last 30 days, yellow, red from 5;
- * "Expired" once a paid plan ran out; a trial always says so.
+ * a trial always says so. A plan that ran out is Free (P10): no tag.
  */
 export function SubscriptionTag({
   company,
@@ -84,10 +84,7 @@ export function SubscriptionTag({
 
   let text: string | null = null
   let tone: keyof typeof TONE_PILL | null = null
-  if (state.kind === 'expired') {
-    text = t('companyDetail.tag.expired')
-    tone = 'red'
-  } else if (state.kind === 'trial') {
+  if (state.kind === 'trial') {
     text = t('companyDetail.tag.trial', { count: state.daysLeft })
     tone = state.tone
   } else if (state.kind === 'ending') {

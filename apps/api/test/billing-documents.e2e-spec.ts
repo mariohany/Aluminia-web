@@ -183,6 +183,8 @@ describe('Billing documents (e2e)', () => {
       .set(as(superToken))
       .send(quotation(over));
 
+  // A reference is used once per method (payment cycle §6), and an amount
+  // that differs from the total needs a note (P12).
   const pay = (id: string, paidOn = today) =>
     request(server())
       .post(`/admin/billing/documents/${id}/pay`)
@@ -191,7 +193,8 @@ describe('Billing documents (e2e)', () => {
         paidOn,
         amountReceived: 6156,
         method: 'bank_transfer',
-        reference: 'SNB-55120931',
+        reference: `SNB-${id.slice(0, 8)}`,
+        note: 'E2E',
       });
 
   async function company() {
@@ -318,7 +321,8 @@ describe('Billing documents (e2e)', () => {
       startsOn: paidOn,
       // The quotation's length, moved to the payment day.
       endsOn: addDays(paidOn, daysBetween(today, periodEnd(today, 12))),
-      paymentReference: 'SNB-55120931',
+      paymentReference: `SNB-${q.id.slice(0, 8)}`,
+      paymentNote: 'E2E',
     });
     expect(invoice.number).toMatch(/^INV-\d{4}-\d{4,}$/);
     // What the PDF prints (§5): its quotation's number and the snapshots.

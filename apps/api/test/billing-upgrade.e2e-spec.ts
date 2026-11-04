@@ -138,6 +138,7 @@ describe('Billing upgrades (e2e)', () => {
         amountReceived: 1000,
         method: 'bank_transfer',
         reference: `BU-${id.slice(0, 8)}`,
+        note: 'E2E',
       });
 
   async function company() {

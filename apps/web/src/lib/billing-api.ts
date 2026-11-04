@@ -68,8 +68,8 @@ export function exportTransactionsCsv(filters: TransactionsFilters): Promise<Blo
   })
 }
 
-export function getSendDefaults(id: string): Promise<{ subject: string }> {
-  return apiFetch<{ subject: string }>(`/admin/billing/documents/${id}/send-defaults`)
+export function getSendDefaults(id: string): Promise<{ subject: string; to: string[] }> {
+  return apiFetch<{ subject: string; to: string[] }>(`/admin/billing/documents/${id}/send-defaults`)
 }
 
 export function sendDocument(id: string, input: SendDocumentInput): Promise<BillingDocumentSummary> {

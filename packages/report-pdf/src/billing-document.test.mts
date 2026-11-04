@@ -72,6 +72,8 @@ const quotation: BillingDocumentSummary = {
   amountReceived: null,
   paymentMethod: null,
   paymentReference: null,
+  paymentNote: null,
+  paymentRecordedAt: null,
   voidReason: null,
   createdByEmail: null,
   createdAt: '2026-10-25T09:00:00.000Z',

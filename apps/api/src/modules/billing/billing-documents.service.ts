@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
+import { UserRole } from '@repo/types/auth';
 import { Brackets, DataSource, type EntityManager } from 'typeorm';
 import {
   documentStatus,
@@ -41,7 +42,10 @@ import { MAX_PLAN_SEATS } from '@repo/types/plans';
 import { BillingDocument } from '../../database/control-plane/entities/billing-document.entity';
 import { BillingSend } from '../../database/control-plane/entities/billing-send.entity';
 import { BillingProfileRow } from '../../database/control-plane/entities/billing-profile.entity';
-import { BillingRecord } from '../../database/control-plane/entities/billing-record.entity';
+import {
+  BillingRecord,
+  type PreviousSubscription,
+} from '../../database/control-plane/entities/billing-record.entity';
 import { Company } from '../../database/control-plane/entities/company.entity';
 import { Plan } from '../../database/control-plane/entities/plan.entity';
 import { User } from '../../database/control-plane/entities/user.entity';
@@ -218,6 +222,23 @@ export class BillingDocumentsService {
     return this.get(id);
   }
 
+  /**
+   * Who gets a document by default: whoever got it (or its quotation)
+   * last, else the company's active admins.
+   */
+  async recipientsOf(doc: BillingDocumentSummary): Promise<string[]> {
+    if (doc.lastSent) return doc.lastSent.to;
+    if (doc.quotationId) {
+      const quotation = await this.get(doc.quotationId);
+      if (quotation.lastSent) return quotation.lastSent.to;
+    }
+    const admins: Array<{ email: string }> = await this.dataSource.query(
+      `SELECT "email" FROM "users" WHERE "company_id" = $1 AND "role" = $2 AND "status" = 'active' ORDER BY "created_at"`,
+      [doc.company.id, UserRole.COMPANY_ADMIN],
+    );
+    return admins.map((a) => a.email);
+  }
+
   async markPaid(
     id: string,
     input: MarkPaidInput,
@@ -235,13 +256,41 @@ export class BillingDocumentsService {
         });
       }
       const today = cairoDateOf(new Date());
+      // P14: an expired quotation can still be paid, after a warning.
       if (
         documentStatus(quotation.status, quotation.validUntil, today) ===
-        'expired'
+          'expired' &&
+        !input.acknowledgeExpired
       ) {
         throw new ConflictException({
-          message: 'This quotation has expired; issue a new one.',
+          message: 'This quotation has expired. Record the payment anyway?',
           code: 'quotation_expired',
+        });
+      }
+      if (input.paidOn > today) {
+        throw new BadRequestException({
+          message: 'The money can’t have arrived after today.',
+          code: 'paid_in_future',
+        });
+      }
+      // P12: a different amount is recorded as it arrived, with a note.
+      const note = input.note?.trim() || null;
+      if (round2(input.amountReceived) !== quotation.total && !note) {
+        throw new BadRequestException({
+          message: `The amount differs from the total ${quotation.total}: say why in the note.`,
+          code: 'note_required',
+        });
+      }
+      // §6: a reference is used once per method.
+      const reused: Array<{ number: string }> = await manager.query(
+        `SELECT "number" FROM "billing_documents"
+         WHERE "kind" = 'invoice' AND "payment_method" = $1 AND lower("payment_reference") = lower($2)`,
+        [input.method, input.reference.trim()],
+      );
+      if (reused.length > 0) {
+        throw new ConflictException({
+          message: `This reference is already on ${reused[0].number}.`,
+          code: 'reference_used',
         });
       }
 
@@ -308,15 +357,29 @@ export class BillingDocumentsService {
         paidOn: input.paidOn,
         amountReceived: input.amountReceived,
         paymentMethod: input.method,
-        paymentReference: input.reference,
+        paymentReference: input.reference.trim(),
+        paymentNote: note,
+        paymentRecordedAt: new Date(),
         createdBy: actorId,
       });
       await manager.save(invoice);
       quotation.status = 'paid';
       await manager.save(quotation);
 
+      // P22: what the same-day undo puts back.
+      const before: PreviousSubscription = {
+        planId: company.planId,
+        maxUsers: company.maxUsers,
+        endsAt: company.endsAt?.toISOString() ?? null,
+        isTrial: company.isTrial,
+        freeProjectId: company.freeProjectId,
+        reactivatedUserIds: [],
+      };
       if (previous.key === 'free') {
-        await this.subscriptions.restoreFromFree(manager, company.id);
+        before.reactivatedUserIds = await this.subscriptions.restoreFromFree(
+          manager,
+          company.id,
+        );
       }
       Object.assign(company, {
         planId: quotation.planId,
@@ -336,6 +399,7 @@ export class BillingDocumentsService {
         documentId: invoice.id,
         notes: null,
         actorId,
+        previous: before,
       });
       await this.auditLog.record(manager, {
         actorUserId: actorId,
@@ -352,6 +416,15 @@ export class BillingDocumentsService {
         },
       });
       return invoice.id;
+    }).catch((error: unknown) => {
+      // Two payments with one reference at the same moment: the index decides.
+      if (isUniqueViolation(error, 'UQ_billing_documents_payment_reference')) {
+        throw new ConflictException({
+          message: 'This reference is already on another invoice.',
+          code: 'reference_used',
+        });
+      }
+      throw error;
     });
     return this.get(invoiceId);
   }
@@ -675,6 +748,8 @@ export class BillingDocumentsService {
       amountReceived: doc.amountReceived,
       paymentMethod: doc.paymentMethod,
       paymentReference: doc.paymentReference,
+      paymentNote: doc.paymentNote,
+      paymentRecordedAt: doc.paymentRecordedAt?.toISOString() ?? null,
       voidReason: doc.voidReason,
       createdByEmail: doc.creator?.email ?? null,
       createdAt: doc.createdAt.toISOString(),
@@ -995,4 +1070,11 @@ function csvCell(value: string | number): string {
   // A leading = + - @ would run as a formula in a spreadsheet.
   const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
+function isUniqueViolation(error: unknown, constraint: string): boolean {
+  const driver = (
+    error as { driverError?: { code?: string; constraint?: string } }
+  )?.driverError;
+  return driver?.code === '23505' && driver.constraint === constraint;
 }

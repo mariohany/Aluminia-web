@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { VirtualizedLogTable, type LogColumn } from '@/components/admin/admin-logs/virtualized-log-table'
 import { DocumentStatusPill } from '@/components/billing/document-status'
 import { MarkPaidDialog } from '@/components/admin/billing/mark-paid-dialog'
+import { AmountDifference } from '@/components/admin/billing/company-documents-card'
 import { DocumentPdfDialog } from '@/components/billing/document-pdf-dialog'
 import { EmailDocumentDialog } from '@/components/admin/billing/email-document-dialog'
 
@@ -112,7 +113,12 @@ export function TransactionsPage() {
       header: t('documents.total'),
       width: '1fr',
       className: 'text-end font-mono text-[13px]',
-      cell: (d) => money(d),
+      cell: (d) => (
+        <>
+          {money(d)}
+          <AmountDifference document={d} />
+        </>
+      ),
     },
     {
       key: 'created',
@@ -127,7 +133,7 @@ export function TransactionsPage() {
       width: '10rem',
       cell: (d) => (
         <span className="flex items-center justify-end gap-1">
-          {d.kind === 'quotation' && (d.status === 'draft' || d.status === 'sent') && (
+          {d.kind === 'quotation' && (d.status === 'draft' || d.status === 'sent' || d.status === 'expired') && (
             <Button variant="ghost" size="sm" className="h-7" onClick={() => setPaying(d)}>
               <Banknote aria-hidden="true" />
               {t('documents.actions.markPaid')}

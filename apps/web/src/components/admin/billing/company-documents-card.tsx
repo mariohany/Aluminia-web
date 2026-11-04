@@ -145,7 +145,10 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                         )}
                       </span>
                     </TableCell>
-                    <TableCell className="text-end font-mono text-[13px]">{money(doc)}</TableCell>
+                    <TableCell className="text-end font-mono text-[13px]">
+                      {money(doc)}
+                      <AmountDifference document={doc} />
+                    </TableCell>
                     <TableCell className="text-[13px] text-muted-foreground">
                       {dateFormatter.format(new Date(doc.createdAt))}
                     </TableCell>
@@ -173,7 +176,8 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                               {t('documents.actions.edit')}
                             </DropdownMenuItem>
                           )}
-                          {unpaid && (
+                          {/* P14: an expired one can still be paid, after a warning. */}
+                          {(unpaid || doc.status === 'expired') && (
                             <DropdownMenuItem onSelect={() => setPaying(doc)}>
                               <Banknote aria-hidden="true" />
                               {t('documents.actions.markPaid')}
@@ -219,5 +223,28 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
       <DocumentPdfDialog document={viewing} onOpenChange={(open) => !open && setViewing(null)} />
       <VoidQuotationDialog document={voiding} onOpenChange={(open) => !open && setVoiding(null)} />
     </Card>
+  )
+}
+
+/**
+ * P12: an invoice whose money differs from its total shows what arrived and
+ * the gap, the note on hover. Super admin only (this card and Transactions).
+ */
+export function AmountDifference({ document: doc }: { document: BillingDocumentSummary }) {
+  const { t, i18n } = useTranslation('admin')
+  if (doc.kind !== 'invoice' || doc.amountReceived === null) return null
+  const gap = Math.round((doc.amountReceived - doc.totals.total) * 100) / 100
+  if (gap === 0) return null
+  const format = new Intl.NumberFormat(i18n.language, { style: 'currency', currency: doc.currency })
+  return (
+    <span
+      className="block text-[11px] text-amber-600 dark:text-amber-500"
+      title={doc.paymentNote ?? undefined}
+    >
+      {t('documents.received', {
+        amount: format.format(doc.amountReceived),
+        gap: `${gap > 0 ? '+' : '−'}${format.format(Math.abs(gap))}`,
+      })}
+    </span>
   )
 }

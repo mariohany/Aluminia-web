@@ -130,12 +130,17 @@ export class AdminBillingController {
     return this.documents.send(id, dto, actor.id);
   }
 
-  /** The prefilled subject of the send step. */
+  /** The send step's prefilled subject and recipients (P23: the invoice
+   * goes out by itself to these). */
   @Get('billing/documents/:id/send-defaults')
   async sendDefaults(
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<{ subject: string }> {
-    return { subject: defaultSubject(await this.documents.get(id)) };
+  ): Promise<{ subject: string; to: string[] }> {
+    const doc = await this.documents.get(id);
+    return {
+      subject: defaultSubject(doc),
+      to: await this.documents.recipientsOf(doc),
+    };
   }
 
   @Post('billing/documents/:id/pay')

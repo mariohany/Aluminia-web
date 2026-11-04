@@ -733,7 +733,7 @@
     "priceUpgradeFull": "The plan’s price for the new period; you can change it"
   },
   "markPaid": {
-    "title": "Mark {{number}} as paid",
+    "title": "Record payment for {{number}}",
     "description": "The money arrived outside the app: record it here.",
     "paidOn": "Paid on",
     "amount": "Amount received ({{currency}})",
@@ -750,16 +750,37 @@
     "invoiceCreated": "An invoice is created from this quotation (same lines, marked paid)",
     "renewed": "Plan {{plan}}, {{seats}} seats · {{start}} → {{end}}",
     "startNote": "If the current plan is still running, the period starts the day after it ends instead.",
-    "confirm": "Confirm payment",
+    "confirm": "Record payment",
     "done": "Paid: invoice {{number}} created.",
     "errors": {
       "reference": "Required: it prints on the invoice.",
       "save": "Couldn’t record the payment. Try again.",
-      "quotation_expired": "This quotation has expired: issue a new one.",
-      "seats_below_users": "The company has more users than this quotation's seats."
+      "seats_below_users": "The company has more users than this quotation's seats.",
+      "reference_used": "This reference is already on another invoice for this method.",
+      "note_required": "The amount differs from the total: say why in the note.",
+      "paid_in_future": "The paid-on date can’t be after today.",
+      "upgrade_outdated": "The company is no longer on the plan this upgrade was quoted for: void it and issue a new one."
     },
-    "emailNow": "Email the invoice now",
-    "upgradeNote": "An upgrade switches the plan and seats on the payment day and keeps this end date."
+    "upgradeNote": "An upgrade switches the plan and seats on the payment day and keeps this end date.",
+    "expiredWarning": "This quotation expired on {{date}}. You can still record the payment if the client paid it.",
+    "confirmExpired": "Record payment anyway",
+    "matchesTotal": "Matches the total",
+    "difference": "{{amount}} against the total {{total}}: say why in the note",
+    "note": "Note",
+    "noteOptional": "Note (optional)",
+    "notePlaceholder": "e.g. Cheque no. 004512, CIB",
+    "notePlaceholderDiff": "e.g. Bank fee of 40 EGP",
+    "emailedAfter": "The invoice is emailed to the client by itself once recorded.",
+    "recordedTitle": "{{number}} recorded",
+    "recordedDescription": "The payment is recorded and the subscription updated.",
+    "emailing": "Emailing the invoice to {{to}}…",
+    "emailed_one": "{{number}} emailed to {{count}} address.",
+    "emailed_other": "{{number}} emailed to {{count}} addresses.",
+    "notEmailed": "Invoice not emailed: the email didn’t go out.",
+    "notEmailedNoAddress": "Invoice not emailed: the company has no active admin to send it to.",
+    "retry": "Retry",
+    "emailManually": "Email…",
+    "close": "Close"
   },
   "documents": {
     "number": "Number",
@@ -780,7 +801,7 @@
     },
     "actions": {
       "edit": "Edit",
-      "markPaid": "Mark paid",
+      "markPaid": "Record payment",
       "void": "Void",
       "voided": "{{number}} voided.",
       "voidTitle": "Void {{number}}?",
@@ -800,7 +821,8 @@
       "drawing": "Drawing the PDF…"
     },
     "emailed_one": "Emailed {{date}} · {{count}} person",
-    "emailed_other": "Emailed {{date}} · {{count}} people"
+    "emailed_other": "Emailed {{date}} · {{count}} people",
+    "received": "Received {{amount}} ({{gap}})"
   },
   "transactions": {
     "title": "Transactions",

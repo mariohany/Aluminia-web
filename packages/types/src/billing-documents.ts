@@ -91,13 +91,19 @@ export const quotationInputSchema = z
   })
 export type QuotationInput = z.infer<typeof quotationInputSchema>
 
-/** Mark paid (B4): every field required; the reference prints on the invoice. */
+/** Record payment (B4, payment cycle §6): the reference prints on the
+ * invoice and is used once per method (409 `reference_used`). A note is
+ * required when the amount differs from the total (P12, 400
+ * `note_required`). An expired quotation is paid only with
+ * `acknowledgeExpired` (P14, else 409 `quotation_expired`). */
 export const markPaidSchema = z
   .object({
     paidOn: isoDate,
     amountReceived: z.number().positive().max(100_000_000),
     method: z.enum(PAYMENT_METHODS),
     reference: z.string().trim().min(1).max(100),
+    note: z.string().trim().max(500).nullable().optional(),
+    acknowledgeExpired: z.boolean().optional(),
   })
   .strict()
 export type MarkPaidInput = z.infer<typeof markPaidSchema>
@@ -291,6 +297,10 @@ export interface BillingDocumentSummary {
   amountReceived: number | null
   paymentMethod: PaymentMethod | null
   paymentReference: string | null
+  /** Why the amount differs, or anything else (P12). */
+  paymentNote: string | null
+  /** When the payment was recorded (the same-day undo, P22). */
+  paymentRecordedAt: string | null
   voidReason: string | null
   createdByEmail: string | null
   createdAt: string

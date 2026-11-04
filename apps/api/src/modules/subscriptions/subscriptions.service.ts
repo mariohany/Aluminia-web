@@ -266,7 +266,8 @@ export class SubscriptionsService {
     manager: EntityManager,
     companyId: string,
   ): Promise<string[]> {
-    const rows: Array<{ id: string }> = await manager.query(
+    // An UPDATE through the postgres driver answers [rows, affected count].
+    const [rows]: [Array<{ id: string }>, number] = await manager.query(
       `UPDATE "users" SET "status" = 'active', "plan_deactivated" = false, "updated_at" = now()
        WHERE "company_id" = $1 AND "plan_deactivated" RETURNING "id"`,
       [companyId],

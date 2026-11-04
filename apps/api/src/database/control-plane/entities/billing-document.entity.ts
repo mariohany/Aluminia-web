@@ -177,6 +177,19 @@ export class BillingDocument {
   })
   paymentReference: string | null;
 
+  /** Why the amount received differs, or anything else (P12). */
+  @Column({
+    name: 'payment_note',
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
+  paymentNote: string | null;
+
+  /** When the payment was recorded: the same-day undo (P22) reads it. */
+  @Column({ name: 'payment_recorded_at', type: 'timestamptz', nullable: true })
+  paymentRecordedAt: Date | null;
+
   @Column({ name: 'void_reason', type: 'varchar', length: 200, nullable: true })
   voidReason: string | null;
 

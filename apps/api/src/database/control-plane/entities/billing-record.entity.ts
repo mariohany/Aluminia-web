@@ -68,6 +68,22 @@ export class BillingRecord {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  /** On a `paid` row: the subscription before the payment, which the
+   * same-day undo puts back (payment cycle P22). */
+  @Column({ type: 'jsonb', nullable: true })
+  previous: PreviousSubscription | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+}
+
+/** A company's subscription as it was before a payment changed it. */
+export interface PreviousSubscription {
+  planId: string;
+  maxUsers: number;
+  endsAt: string | null;
+  isTrial: boolean;
+  freeProjectId: string | null;
+  /** Users the payment brought back from Free; the undo pauses them again. */
+  reactivatedUserIds: string[];
 }

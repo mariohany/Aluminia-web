@@ -41,6 +41,7 @@ import {
   endOfCairoDay,
 } from '@repo/types/subscriptions';
 import { MAX_PLAN_SEATS } from '@repo/types/plans';
+import { etaAddressOf } from '@repo/types/eta';
 import { BillingDocument } from '../../database/control-plane/entities/billing-document.entity';
 import { BillingSend } from '../../database/control-plane/entities/billing-send.entity';
 import { BillingProfileRow } from '../../database/control-plane/entities/billing-profile.entity';
@@ -935,6 +936,9 @@ export class BillingDocumentsService {
       addressAr: profile?.arAddress ?? null,
       taxId: profile?.taxId ?? null,
       commercialRegister: profile?.commercialRegister ?? null,
+      // ETA (payment cycle §9), optional for now.
+      buyerType: profile?.buyerType ?? null,
+      etaAddress: profile ? etaAddressOf(profile) : null,
     };
   }
 
@@ -1180,6 +1184,8 @@ async function sellerOf(manager: EntityManager): Promise<DocumentSeller> {
     bankAccount: row.bankAccount,
     instapay: row.instapay,
     logoFileId: row.logoFileId,
+    activityCode: row.activityCode,
+    etaAddress: etaAddressOf(row),
   };
 }
 

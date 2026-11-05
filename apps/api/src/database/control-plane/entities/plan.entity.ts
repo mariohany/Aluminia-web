@@ -52,6 +52,15 @@ export class Plan {
   @Column({ type: 'int' })
   position: number;
 
+  /** ETA EGS item code registered for this plan (payment cycle §9). */
+  @Column({
+    name: 'eta_item_code',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+  })
+  etaItemCode: string | null;
+
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 }

@@ -546,7 +546,9 @@
       "required": "Required",
       "seats": "1 to {{max}}",
       "price": "Enter a price above 0"
-    }
+    },
+    "etaItemCode": "ETA item code",
+    "etaItemCodeHint": "The EGS code registered for this plan; optional until e-invoicing is turned on."
   },
   "subscription": {
     "plan": "Plan",
@@ -601,7 +603,8 @@
     "sections": {
       "business": "Business",
       "pay": "How to pay",
-      "numbering": "Numbering"
+      "numbering": "Numbering",
+      "eta": "E-invoicing (ETA)"
     },
     "fields": {
       "legalNameEn": "Legal name (English)",
@@ -615,12 +618,20 @@
       "bankAccount": "Bank · IBAN",
       "instapay": "InstaPay",
       "nextQuotation": "Next quotation",
-      "nextInvoice": "Next invoice"
+      "nextInvoice": "Next invoice",
+      "activityCode": "Activity code",
+      "etaCountry": "Country code",
+      "etaGovernorate": "Governorate",
+      "etaCity": "City / area",
+      "etaStreet": "Street",
+      "etaBuilding": "Building no."
     },
     "hints": {
       "billingEmail": "Quotations and invoices are sent from and reply to it",
       "nextQuotation": "Restarts at 0001 every January; can only go up",
-      "nextInvoice": "No gaps; never reused; can only go up"
+      "nextInvoice": "No gaps; never reused; can only go up",
+      "eta": "Optional for now: used when invoices are submitted to Egypt’s e-invoicing system. Never printed.",
+      "activityCode": "Your ETA activity code, e.g. 6201"
     },
     "errors": {
       "required": "Required.",

@@ -41,6 +41,35 @@ export class BillingProfileRow {
   @Column({ name: 'logo_file_id', type: 'uuid', nullable: true })
   logoFileId: string | null;
 
+  /** ETA activity code (payment cycle §9); optional for now. */
+  @Column({
+    name: 'activity_code',
+    type: 'varchar',
+    length: 10,
+    nullable: true,
+  })
+  activityCode: string | null;
+
+  @Column({ name: 'eta_country', type: 'varchar', length: 2, nullable: true })
+  etaCountry: string | null;
+
+  @Column({
+    name: 'eta_governorate',
+    type: 'varchar',
+    length: 80,
+    nullable: true,
+  })
+  etaGovernorate: string | null;
+
+  @Column({ name: 'eta_city', type: 'varchar', length: 80, nullable: true })
+  etaCity: string | null;
+
+  @Column({ name: 'eta_street', type: 'varchar', length: 160, nullable: true })
+  etaStreet: string | null;
+
+  @Column({ name: 'eta_building', type: 'varchar', length: 40, nullable: true })
+  etaBuilding: string | null;
+
   @Column({ name: 'updated_by', type: 'uuid', nullable: true })
   updatedBy: string | null;
 

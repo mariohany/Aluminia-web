@@ -1,3 +1,4 @@
+import { etaAddressOf } from '@repo/types/eta';
 import {
   documentTotals,
   unusedCredit,
@@ -128,5 +129,19 @@ describe('upgradePeriod', () => {
     expect(upgradeHasCredit(true, false)).toBe(false);
     expect(upgradeHasCredit(true, true)).toBe(true);
     expect(upgradeHasCredit(false, false)).toBe(true);
+  });
+});
+
+describe('etaAddressOf', () => {
+  it('is null until something is filled, then keeps every part', () => {
+    expect(etaAddressOf({})).toBeNull();
+    expect(etaAddressOf({ etaCountry: null, etaCity: null })).toBeNull();
+    expect(etaAddressOf({ etaCountry: 'EG', etaCity: 'Nasr City' })).toEqual({
+      country: 'EG',
+      governorate: null,
+      city: 'Nasr City',
+      street: null,
+      building: null,
+    });
   });
 });

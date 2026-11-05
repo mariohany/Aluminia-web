@@ -1,4 +1,5 @@
 import { Column, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import type { EtaBuyerType } from '@repo/types/eta';
 
 /**
  * The company's letterhead (docs/company_profile_planing.md, Config ›
@@ -46,6 +47,30 @@ export class CompanyProfileRow {
   // A `files` id (control plane), attached through FilesService.
   @Column({ name: 'logo_file_id', type: 'uuid', nullable: true })
   logoFileId: string | null;
+
+  /** ETA receiver type (payment cycle §9): B, P or F; optional for now. */
+  @Column({ name: 'buyer_type', type: 'varchar', length: 1, nullable: true })
+  buyerType: EtaBuyerType | null;
+
+  @Column({ name: 'eta_country', type: 'varchar', length: 2, nullable: true })
+  etaCountry: string | null;
+
+  @Column({
+    name: 'eta_governorate',
+    type: 'varchar',
+    length: 80,
+    nullable: true,
+  })
+  etaGovernorate: string | null;
+
+  @Column({ name: 'eta_city', type: 'varchar', length: 80, nullable: true })
+  etaCity: string | null;
+
+  @Column({ name: 'eta_street', type: 'varchar', length: 160, nullable: true })
+  etaStreet: string | null;
+
+  @Column({ name: 'eta_building', type: 'varchar', length: 40, nullable: true })
+  etaBuilding: string | null;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;

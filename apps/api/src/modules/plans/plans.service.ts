@@ -18,6 +18,7 @@ const EDITABLE = [
   'seats',
   'monthlyEgp',
   'annualEgp',
+  'etaItemCode',
 ] as const;
 
 @Injectable()
@@ -61,8 +62,9 @@ export class PlansService {
 
         const changes: Record<string, { from: unknown; to: unknown }> = {};
         for (const field of EDITABLE) {
-          if (plan[field] !== next[field]) {
-            changes[field] = { from: plan[field], to: next[field] };
+          const to = next[field] ?? null;
+          if (plan[field] !== to) {
+            changes[field] = { from: plan[field], to };
           }
         }
         if (features.join() !== plan.features.join()) {
@@ -77,6 +79,7 @@ export class PlansService {
           monthlyEgp: next.monthlyEgp,
           annualEgp: next.annualEgp,
           features,
+          etaItemCode: next.etaItemCode ?? null,
         });
         await manager.save(plan);
         await this.auditLog.record(manager, {
@@ -110,6 +113,7 @@ export function toPlanSummary(plan: Plan): PlanSummary {
     monthlyEgp: plan.monthlyEgp,
     annualEgp: plan.annualEgp,
     features: plan.features,
+    etaItemCode: plan.etaItemCode,
     updatedAt: plan.updatedAt.toISOString(),
   };
 }

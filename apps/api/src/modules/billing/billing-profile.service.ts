@@ -27,6 +27,12 @@ const DETAILS = [
   'bankAccount',
   'instapay',
   'logoFileId',
+  'activityCode',
+  'etaCountry',
+  'etaGovernorate',
+  'etaCity',
+  'etaStreet',
+  'etaBuilding',
 ] as const;
 
 /** The Cairo year documents are numbered in right now (B17). */
@@ -89,14 +95,22 @@ export class BillingProfileService {
       await manager.save(BillingProfileRow, {
         id: 1,
         ...details,
+        // A PUT: the optional ETA fields left out are cleared.
+        activityCode: details.activityCode ?? null,
+        etaCountry: details.etaCountry ?? null,
+        etaGovernorate: details.etaGovernorate ?? null,
+        etaCity: details.etaCity ?? null,
+        etaStreet: details.etaStreet ?? null,
+        etaBuilding: details.etaBuilding ?? null,
         updatedBy: actorId,
       });
 
       const changes: Record<string, { from: unknown; to: unknown }> = {};
       for (const field of DETAILS) {
         const from = before?.[field] ?? null;
-        if (from !== details[field]) {
-          changes[field] = { from, to: details[field] };
+        const to = details[field] ?? null;
+        if (from !== to) {
+          changes[field] = { from, to };
         }
       }
       for (const [kind, next] of [
@@ -201,5 +215,11 @@ function pickDetails(
     bankAccount: row.bankAccount,
     instapay: row.instapay,
     logoFileId: row.logoFileId,
+    activityCode: row.activityCode,
+    etaCountry: row.etaCountry,
+    etaGovernorate: row.etaGovernorate,
+    etaCity: row.etaCity,
+    etaStreet: row.etaStreet,
+    etaBuilding: row.etaBuilding,
   };
 }

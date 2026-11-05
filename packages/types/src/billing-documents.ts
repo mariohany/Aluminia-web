@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { PAID_PLAN_KEYS, MAX_PLAN_SEATS, type PlanRef } from './plans.ts'
 import { BILLING_CURRENCIES, addDays, daysBetween, type BillingCurrency } from './subscriptions.ts'
 import type { BillingDocumentKind } from './billing-profile.ts'
+import type { EtaAddress, EtaBuyerType } from './eta.ts'
 
 // Quotations and invoices (docs/subscriptions_planing.md §3d, §4d, B4–B8,
 // B18, B21). A quotation is issued before payment; Mark paid turns it into
@@ -264,6 +265,10 @@ export interface DocumentParty {
   addressAr: string | null
   taxId: string | null
   commercialRegister: string | null
+  /** ETA (payment cycle §9): the buyer's type and both parties' structured
+   * address, as issued. Missing on documents from before. */
+  buyerType?: EtaBuyerType | null
+  etaAddress?: EtaAddress | null
 }
 
 /** The seller as issued (B17): the Billing profile at that moment. */
@@ -274,6 +279,8 @@ export interface DocumentSeller extends DocumentParty {
   instapay: string | null
   /** A platform file (purpose billing_logo). */
   logoFileId: string | null
+  /** ETA activity code (payment cycle §9); missing on documents from before. */
+  activityCode?: string | null
 }
 
 export interface BillingDocumentSummary {

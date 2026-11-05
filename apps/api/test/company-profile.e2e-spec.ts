@@ -175,6 +175,12 @@ describe('Company profile (e2e)', () => {
         taxId: null,
         commercialRegister: null,
         logoFileId: null,
+        buyerType: null,
+        etaCountry: null,
+        etaGovernorate: null,
+        etaCity: null,
+        etaStreet: null,
+        etaBuilding: null,
         updatedAt: null,
       });
     }
@@ -206,6 +212,28 @@ describe('Company profile (e2e)', () => {
       taxId: '512-884-301',
     });
     expect((await get(alphaUserToken).expect(200)).body).toEqual(second.body);
+  });
+
+  // Payment cycle §9 (Mario 2026-11-05): optional ETA details.
+  it('saves the optional e-invoicing details and checks their shape', async () => {
+    await patch(alphaToken, { buyerType: 'X' }).expect(400);
+    await patch(alphaToken, { etaCountry: 'eg' }).expect(400);
+    const res = await patch(alphaToken, {
+      buyerType: 'B',
+      etaCountry: 'EG',
+      etaGovernorate: 'Cairo',
+      etaCity: ' Nasr City ',
+      etaStreet: 'Abbas El Akkad',
+      etaBuilding: '12',
+    }).expect(200);
+    expect(res.body).toMatchObject({
+      buyerType: 'B',
+      etaCountry: 'EG',
+      etaCity: 'Nasr City',
+      etaBuilding: '12',
+    });
+    // Nothing else moved.
+    expect((res.body as CompanyProfile).taxId).toBe('512-884-301');
   });
 
   it('keeps the account name untouched (P1)', async () => {

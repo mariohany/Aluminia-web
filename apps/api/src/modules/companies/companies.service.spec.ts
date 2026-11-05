@@ -33,6 +33,7 @@ const PLANS: Record<string, Plan> = Object.fromEntries(
       monthlyEgp: null,
       annualEgp: null,
       features: [],
+      etaItemCode: null,
       position: 0,
       updatedAt: new Date(),
     },

@@ -193,6 +193,17 @@ export class BillingDocument {
   @Column({ name: 'void_reason', type: 'varchar', length: 200, nullable: true })
   voidReason: string | null;
 
+  // ETA (payment cycle §9): an invoice's identity there, empty until the
+  // integration (its own plan) submits it.
+  @Column({ name: 'eta_uuid', type: 'varchar', length: 64, nullable: true })
+  etaUuid: string | null;
+
+  @Column({ name: 'eta_long_id', type: 'varchar', length: 200, nullable: true })
+  etaLongId: string | null;
+
+  @Column({ name: 'eta_status', type: 'varchar', length: 20, nullable: true })
+  etaStatus: string | null;
+
   @Column({ name: 'created_by', type: 'uuid', nullable: true })
   createdBy: string | null;
 

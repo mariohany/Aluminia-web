@@ -329,6 +329,9 @@ describe('Billing documents (e2e)', () => {
     expect(invoice.quotationNumber).toBe(q.number);
     expect(invoice.seller.bankAccount).toBeTruthy();
     expect(invoice.buyer.nameEn).toBe(companyName);
+    // ETA details (payment cycle §9): copied as issued, empty here.
+    expect(invoice.buyer).toMatchObject({ buyerType: null, etaAddress: null });
+    expect(invoice.seller).toHaveProperty('activityCode');
     expect((await company()).key).toBe('pro');
     expect((await company()).max_users).toBe(5);
 

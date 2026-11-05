@@ -7,6 +7,8 @@ import type {
   TransactionsPage,
   TransactionsQuery,
   TransactionsSummary,
+  UndoPaymentInput,
+  UndoPaymentResult,
   VoidQuotationInput,
 } from '@repo/types/billing-documents'
 import type { BillingCurrency } from '@repo/types/subscriptions'
@@ -44,6 +46,11 @@ export function voidQuotation(id: string, input: VoidQuotationInput): Promise<Bi
 
 export function markPaid(id: string, input: MarkPaidInput): Promise<BillingDocumentSummary> {
   return apiFetch<BillingDocumentSummary>(`/admin/billing/documents/${id}/pay`, { method: 'POST', body: input })
+}
+
+// Payment cycle P22: the same-day undo of the latest invoice.
+export function undoPayment(id: string, input: UndoPaymentInput): Promise<UndoPaymentResult> {
+  return apiFetch<UndoPaymentResult>(`/admin/billing/documents/${id}/undo`, { method: 'POST', body: input })
 }
 
 export function listTransactions(

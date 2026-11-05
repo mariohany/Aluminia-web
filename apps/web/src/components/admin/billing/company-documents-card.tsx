@@ -1,6 +1,18 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUpCircle, Ban, Banknote, ChevronDown, FileText, FilePlus2, Mail, MoreHorizontal, Pencil, RefreshCw } from 'lucide-react'
+import {
+  ArrowUpCircle,
+  Ban,
+  Banknote,
+  ChevronDown,
+  FileText,
+  FilePlus2,
+  Mail,
+  MoreHorizontal,
+  Pencil,
+  RefreshCw,
+  Undo2,
+} from 'lucide-react'
 import { UserRole } from '@repo/types/auth'
 import type { CompanyDetail } from '@repo/types/companies'
 import type { BillingDocumentSummary, QuotationPurpose } from '@repo/types/billing-documents'
@@ -20,6 +32,7 @@ import { EmailDocumentDialog } from './email-document-dialog'
 import { DocumentStatusPill } from '@/components/billing/document-status'
 import { MarkPaidDialog } from './mark-paid-dialog'
 import { QuotationDialog } from './quotation-dialog'
+import { UndoPaymentDialog } from './undo-payment-dialog'
 import { VoidQuotationDialog } from './void-quotation-dialog'
 
 /**
@@ -34,6 +47,7 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
   const [paying, setPaying] = useState<BillingDocumentSummary | null>(null)
   const [viewing, setViewing] = useState<BillingDocumentSummary | null>(null)
   const [voiding, setVoiding] = useState<BillingDocumentSummary | null>(null)
+  const [undoing, setUndoing] = useState<BillingDocumentSummary | null>(null)
   const [emailing, setEmailing] = useState<{ document: BillingDocumentSummary; to: string[] } | null>(null)
   const admins = company.users
     .filter((u) => u.role === UserRole.COMPANY_ADMIN && u.status === 'active')
@@ -183,6 +197,13 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                               {t('documents.actions.markPaid')}
                             </DropdownMenuItem>
                           )}
+                          {/* P22: only today's latest invoice. */}
+                          {doc.canUndo && (
+                            <DropdownMenuItem variant="destructive" onSelect={() => setUndoing(doc)}>
+                              <Undo2 aria-hidden="true" />
+                              {t('documents.actions.undo')}
+                            </DropdownMenuItem>
+                          )}
                           {(unpaid || doc.status === 'expired') && (
                             <DropdownMenuItem
                               variant="destructive"
@@ -222,6 +243,7 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
       />
       <DocumentPdfDialog document={viewing} onOpenChange={(open) => !open && setViewing(null)} />
       <VoidQuotationDialog document={voiding} onOpenChange={(open) => !open && setVoiding(null)} />
+      <UndoPaymentDialog document={undoing} onOpenChange={(open) => !open && setUndoing(null)} />
     </Card>
   )
 }

@@ -121,7 +121,8 @@ export function subscriptionState(facts: SubscriptionFacts, now: Date): Subscrip
 
 // Why a history row was written (§3c). `plan_ended`: a paid plan ran out
 // unpaid and dropped to Free (payment cycle P10). `trial_extended`: the
-// super admin added days to a trial (P26).
+// super admin added days to a trial (P26). `payment_undone`: a payment
+// recorded today was taken back, its invoice deleted (P22).
 export const BILLING_REASONS = [
   'created',
   'edited',
@@ -131,6 +132,7 @@ export const BILLING_REASONS = [
   'trial_ended',
   'plan_ended',
   'dropped_to_free',
+  'payment_undone',
 ] as const
 export type BillingReason = (typeof BILLING_REASONS)[number]
 

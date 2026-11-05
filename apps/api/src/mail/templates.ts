@@ -126,6 +126,25 @@ export function documentEmail(
 }
 
 /** What the send dialog prefills as the subject. */
+/** A payment taken back the same day (payment cycle P23): the client's
+ * invoice no longer stands. Plain, no PDF; the reason stays internal. */
+export function cancellationEmail(
+  invoice: BillingDocumentSummary,
+): MailContent {
+  const company = esc(invoice.buyer.nameEn);
+  const companyAr = esc(invoice.buyer.nameAr ?? invoice.buyer.nameEn);
+  const number = esc(invoice.number);
+  return compose(
+    `Invoice ${invoice.number} has been cancelled`,
+    `<h1 style="margin:0 0 10px;font-size:22px">Invoice ${number} has been cancelled</h1>
+<p style="margin:0 0 10px">The invoice we sent ${company} today, <b>${number}</b>, was issued by mistake and has been cancelled. Please disregard it.</p>
+<p style="margin:0">${invoice.quotationNumber ? `Quotation <b>${esc(invoice.quotationNumber)}</b> is open again. ` : ''}If you have any questions, reply to this email.</p>`,
+    `<h1 style="margin:0 0 10px;font-size:22px">تم إلغاء الفاتورة ${number}</h1>
+<p style="margin:0 0 10px">الفاتورة <b>${number}</b> اللي أرسلناها لشركة ${companyAr} النهارده صدرت بالخطأ واتلغت. برجاء تجاهلها.</p>
+<p style="margin:0">لو عندك أي سؤال، رد على الإيميل ده.</p>`,
+  );
+}
+
 export function defaultSubject(doc: BillingDocumentSummary): string {
   return doc.kind === 'invoice'
     ? `Invoice ${doc.number} — thank you · فاتورة — شكرًا لك`

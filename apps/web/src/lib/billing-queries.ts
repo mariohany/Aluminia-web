@@ -79,6 +79,19 @@ export function useMarkPaidMutation() {
   })
 }
 
+export function useUndoPaymentMutation() {
+  const invalidate = useInvalidateBilling()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => billingApi.undoPayment(id, { reason }),
+    onSuccess: () => {
+      invalidate()
+      // Users the payment brought back are paused again.
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
+  })
+}
+
 export function useSendDefaultsQuery(id: string | null) {
   return useQuery({
     queryKey: [...billingKey, 'send-defaults', id] as const,

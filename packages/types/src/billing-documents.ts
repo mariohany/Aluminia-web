@@ -108,6 +108,22 @@ export const markPaidSchema = z
   .strict()
 export type MarkPaidInput = z.infer<typeof markPaidSchema>
 
+/** Undo a payment (payment cycle P22, P23): only the latest invoice, only
+ * on the day it was recorded (else 409 `undo_not_allowed`). The invoice is
+ * deleted and its number reused, the quotation is payable again, the
+ * company goes back to before, and the client gets a cancellation email.
+ * The reason stays in the history. */
+export const undoPaymentSchema = z.object({ reason: z.string().trim().min(1).max(200) }).strict()
+export type UndoPaymentInput = z.infer<typeof undoPaymentSchema>
+
+export interface UndoPaymentResult {
+  /** The quotation, payable again. */
+  quotation: BillingDocumentSummary
+  /** Whether the cancellation email went out, and to whom. */
+  emailed: boolean
+  to: string[]
+}
+
 /** Void (Mario 2026-10-29): confirmed in a dialog, the reason optional. */
 export const voidQuotationSchema = z
   .object({ reason: z.string().trim().max(200).nullable().optional() })
@@ -301,6 +317,8 @@ export interface BillingDocumentSummary {
   paymentNote: string | null
   /** When the payment was recorded (the same-day undo, P22). */
   paymentRecordedAt: string | null
+  /** An invoice that can still be undone: recorded today, the latest number (P22). */
+  canUndo: boolean
   voidReason: string | null
   createdByEmail: string | null
   createdAt: string

@@ -258,6 +258,41 @@ export class SubscriptionsService {
   }
 
   /**
+   * Pauses these users again (a payment taken back the same day, P22): the
+   * ones still active become `plan_deactivated` and are logged out. Run in
+   * the caller's transaction; publish the bumps after the commit
+   * (`publish`).
+   */
+  async pauseUsers(
+    manager: EntityManager,
+    userIds: string[],
+  ): Promise<{ paused: string[]; bumped: BumpedVersion[] }> {
+    if (userIds.length === 0) return { paused: [], bumped: [] };
+    const [rows]: [Array<{ id: string }>, number] = await manager.query(
+      `UPDATE "users" SET "status" = 'inactive', "plan_deactivated" = true, "updated_at" = now()
+       WHERE "id" = ANY($1::uuid[]) AND "status" = 'active' RETURNING "id"`,
+      [userIds],
+    );
+    const paused = rows.map((row) => row.id);
+    const bumped: BumpedVersion[] = [];
+    if (paused.length > 0) {
+      await manager.query(
+        `DELETE FROM "sessions" WHERE "user_id" = ANY($1::uuid[])`,
+        [paused],
+      );
+      for (const id of paused) {
+        bumped.push(...(await this.authVersions.bump(manager, { userId: id })));
+      }
+    }
+    return { paused, bumped };
+  }
+
+  /** Publishes auth-version bumps after the caller's commit. */
+  async publish(bumped: BumpedVersion[]): Promise<void> {
+    if (bumped.length > 0) await this.authVersions.publish(bumped);
+  }
+
+  /**
    * Back on a paid plan: exactly the users the drop to Free deactivated
    * come back. Someone a company admin deactivated stays deactivated.
    * The seat check already counts them (deactivated users hold a seat).

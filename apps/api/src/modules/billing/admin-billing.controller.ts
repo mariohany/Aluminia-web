@@ -16,7 +16,9 @@ import { z } from 'zod';
 import { UserRole } from '@repo/types/auth';
 import {
   markPaidSchema,
+  undoPaymentSchema,
   voidQuotationSchema,
+  type UndoPaymentResult,
   quotationInputSchema,
   sendDocumentSchema,
   transactionsQuerySchema,
@@ -36,6 +38,7 @@ import { defaultSubject } from '../../mail/templates';
 class QuotationDto extends createZodDto(quotationInputSchema) {}
 class MarkPaidDto extends createZodDto(markPaidSchema) {}
 class VoidQuotationDto extends createZodDto(voidQuotationSchema) {}
+class UndoPaymentDto extends createZodDto(undoPaymentSchema) {}
 class SendDocumentDto extends createZodDto(sendDocumentSchema) {}
 class TransactionsQueryDto extends createZodDto(transactionsQuerySchema) {}
 class FxQueryDto extends createZodDto(
@@ -116,6 +119,17 @@ export class AdminBillingController {
     @CurrentUser() actor: AuthenticatedRequestUser,
   ): Promise<BillingDocumentSummary> {
     return this.documents.voidQuotation(id, dto, actor.id);
+  }
+
+  /** Same-day undo of the latest invoice (payment cycle P22, P23). */
+  @Post('billing/documents/:id/undo')
+  @HttpCode(200)
+  undo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UndoPaymentDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<UndoPaymentResult> {
+    return this.documents.undoPayment(id, dto, actor.id);
   }
 
   /** Emails it with the PDF the browser drew (B16, Q1). */

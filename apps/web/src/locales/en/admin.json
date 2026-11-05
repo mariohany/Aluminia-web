@@ -110,7 +110,8 @@
           "quotation_updated": "Edited quotation {{number}}",
           "quotation_voided": "Voided quotation {{number}}",
           "paid": "{{name}} paid: invoice {{invoice}}",
-          "document_sent": "Emailed {{number}} to {{name}}"
+          "document_sent": "Emailed {{number}} to {{name}}",
+          "payment_undone": "Undid the payment of {{name}}: invoice {{invoice}}"
         }
       },
       "lookup": {
@@ -298,7 +299,8 @@
         "dropped_to_free": "Moved to Free",
         "trial_ended": "Trial ended → Free",
         "plan_ended": "Plan ended → Free",
-        "trial_extended": "Trial extended · {{plan}}"
+        "trial_extended": "Trial extended · {{plan}}",
+        "payment_undone": "Payment undone"
       },
       "endsOn": "Ends {{date}}"
     },
@@ -810,7 +812,8 @@
       "voidReasonPlaceholder": "e.g. the customer changed plan",
       "error": "That didn’t work. Try again.",
       "pdf": "PDF",
-      "email": "Email"
+      "email": "Email",
+      "undo": "Undo payment"
     },
     "pdf": {
       "download": "Download",
@@ -913,5 +916,19 @@
     "extended": "Trial extended.",
     "ended": "Trial ended; the company is on Free.",
     "error": "Couldn’t change the trial. Try again."
+  },
+  "undo": {
+    "title": "Undo the payment of {{number}}?",
+    "description": "Only for a payment recorded by mistake today.",
+    "invoiceGone": "{{number}} is deleted and its number is used by the next invoice",
+    "quotationBack": "{{number}} can be paid again",
+    "companyBack": "The company’s plan, seats and end date go back to how they were before the payment; users it brought back are paused again",
+    "clientEmailed": "The client is emailed that the invoice was cancelled",
+    "reason": "Reason",
+    "reasonPlaceholder": "e.g. Recorded on the wrong company",
+    "confirm": "Undo payment",
+    "done_one": "Payment undone. The cancellation was emailed to {{count}} address.",
+    "done_other": "Payment undone. The cancellation was emailed to {{count}} addresses.",
+    "doneNotEmailed": "Payment undone, but the cancellation email to the client didn’t go out: tell them yourself."
   }
 }

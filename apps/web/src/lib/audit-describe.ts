@@ -105,7 +105,7 @@ function describe(entry: AuditLogEntry, t: Translate, tLookups: Translate, exist
     if (!exists(key)) return fallback
     return {
       icon: Receipt,
-      tone: verb === 'paid' ? 'primary' : verb === 'quotation_voided' ? 'danger' : 'info',
+      tone: verb === 'paid' ? 'primary' : verb === 'quotation_voided' || verb === 'payment_undone' ? 'danger' : 'info',
       text: t(key, { name: text(meta.name), number: text(meta.number), invoice: text(meta.invoice) }),
     }
   }

@@ -27,6 +27,8 @@ import {
   type TransactionsPage,
   type TransactionsQuery,
   type TransactionsSummary,
+  type UndoPaymentInput,
+  type UndoPaymentResult,
 } from '@repo/types/billing-documents';
 import {
   documentNumber,
@@ -52,7 +54,7 @@ import { User } from '../../database/control-plane/entities/user.entity';
 import { CompanyProfileRow } from '../../database/tenant/entities/company-profile.entity';
 import { rollbackQuietly } from '../../database/rollback';
 import { MAILER, type Mailer } from '../../mail/mailer';
-import { documentEmail } from '../../mail/templates';
+import { cancellationEmail, documentEmail } from '../../mail/templates';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { toPlanRef } from '../plans/plans.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
@@ -430,6 +432,148 @@ export class BillingDocumentsService {
   }
 
   /**
+   * Undo a payment (payment cycle P22, P23): only the latest invoice, only
+   * on the Cairo day it was recorded, and only while the company is still
+   * on what it bought. In one transaction the invoice is deleted and its
+   * number freed (the counter steps back), the quotation is payable again,
+   * the company is put back as it was before the payment, the users that
+   * payment brought back are paused again, and a `payment_undone` history
+   * row keeps the payment's details and the reason. The client is then
+   * emailed that the invoice was cancelled (no PDF); a failed email doesn't
+   * undo the undo.
+   */
+  async undoPayment(
+    id: string,
+    input: UndoPaymentInput,
+    actorId: string,
+  ): Promise<UndoPaymentResult> {
+    const summary = await this.get(id);
+    const to = await this.recipientsOf(summary);
+    const refuse = (message: string) =>
+      new ConflictException({ message, code: 'undo_not_allowed' });
+
+    let bumped: Awaited<
+      ReturnType<SubscriptionsService['pauseUsers']>
+    >['bumped'] = [];
+    const quotationId = await this.inTransaction(async (manager) => {
+      const invoice = await lockDocument(manager, id);
+      if (invoice.kind !== 'invoice' || !invoice.quotationId) {
+        throw refuse('Only an invoice’s payment can be undone.');
+      }
+      const today = cairoDateOf(new Date());
+      if (
+        !invoice.paymentRecordedAt ||
+        cairoDateOf(invoice.paymentRecordedAt) !== today
+      ) {
+        throw refuse(
+          'A payment can be undone only on the day it was recorded.',
+        );
+      }
+      const [, yearText, nText] = invoice.number.split('-');
+      const [counter] = await manager.query<Array<{ last: number }>>(
+        `SELECT "last" FROM "billing_counters" WHERE "kind" = 'invoice' AND "year" = $1 FOR UPDATE`,
+        [Number(yearText)],
+      );
+      if (!counter || counter.last !== Number(nText)) {
+        throw refuse('Only the latest invoice can be undone.');
+      }
+      const paid = await manager.findOne(BillingRecord, {
+        where: { documentId: invoice.id, reason: 'paid' },
+      });
+      const company = await manager.findOneOrFail(Company, {
+        where: { id: invoice.companyId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const unchanged =
+        company.planId === invoice.planId &&
+        company.maxUsers === invoice.seats &&
+        company.endsAt !== null &&
+        cairoDateOf(company.endsAt) === invoice.endsOn;
+      if (!paid?.previous || !unchanged) {
+        throw refuse(
+          'The subscription changed after this payment; fix it with Edit subscription instead.',
+        );
+      }
+      const before = paid.previous;
+
+      // The quotation is payable again: sent if it ever was, else a draft.
+      const sends: Array<{ n: number }> = await manager.query(
+        `SELECT count(*)::int AS n FROM "billing_sends" WHERE "document_id" = $1 AND "error" IS NULL`,
+        [invoice.quotationId],
+      );
+      await manager.update(
+        BillingDocument,
+        { id: invoice.quotationId },
+        { status: sends[0].n > 0 ? 'sent' : 'draft' },
+      );
+      const details = {
+        invoice: invoice.number,
+        method: invoice.paymentMethod,
+        reference: invoice.paymentReference,
+        amountReceived: invoice.amountReceived,
+        currency: invoice.currency,
+        paidOn: invoice.paidOn,
+      };
+      await manager.delete(BillingDocument, { id: invoice.id });
+      await manager.query(
+        `UPDATE "billing_counters" SET "last" = "last" - 1 WHERE "kind" = 'invoice' AND "year" = $1`,
+        [Number(yearText)],
+      );
+
+      Object.assign(company, {
+        planId: before.planId,
+        maxUsers: before.maxUsers,
+        endsAt: before.endsAt ? new Date(before.endsAt) : null,
+        isTrial: before.isTrial,
+        freeProjectId: before.freeProjectId,
+      });
+      await manager.save(company);
+      const pause = await this.subscriptions.pauseUsers(
+        manager,
+        before.reactivatedUserIds,
+      );
+      bumped = pause.bumped;
+
+      await manager.insert(BillingRecord, {
+        companyId: company.id,
+        planId: company.planId,
+        maxUsers: company.maxUsers,
+        endsAt: company.endsAt,
+        isTrial: company.isTrial,
+        reason: 'payment_undone',
+        documentId: invoice.quotationId,
+        notes: `${invoice.number} · ${invoice.paymentMethod ?? ''} · ref ${invoice.paymentReference ?? '—'} · ${invoice.currency} ${invoice.amountReceived ?? 0} — ${input.reason}`,
+        actorId,
+      });
+      await this.auditLog.record(manager, {
+        actorUserId: actorId,
+        action: 'billing.payment_undone',
+        targetType: 'company',
+        targetId: company.id,
+        metadata: {
+          name: company.name,
+          ...details,
+          reason: input.reason,
+          paused: pause.paused.length,
+        },
+      });
+      return invoice.quotationId;
+    });
+    await this.subscriptions.publish(bumped);
+
+    let emailed = false;
+    if (to.length > 0) {
+      try {
+        await this.mailer.send({ to, ...cancellationEmail(summary) });
+        emailed = true;
+      } catch {
+        // Said in the answer; the undo stands.
+      }
+    }
+    return { quotation: await this.get(quotationId), emailed, to };
+  }
+
+  /**
    * Emails a quotation or invoice (B16, §6b) with the PDF the browser drew
    * (Q1). Every attempt is recorded in `billing_sends`, a failure too, and
    * a failure is answered 502 `mail_failed`, never retried silently. A
@@ -698,6 +842,17 @@ export class BillingDocumentsService {
           )
         : [];
     const today = cairoDateOf(new Date());
+    // P22: the latest invoice number of its year, recorded today.
+    const counters: Array<{ year: number; last: number }> = rows.some(
+      (doc) => doc.kind === 'invoice',
+    )
+      ? await this.dataSource.query(
+          `SELECT "year", "last" FROM "billing_counters" WHERE "kind" = 'invoice'`,
+        )
+      : [];
+    const latest = new Set(
+      counters.map((c) => documentNumber('invoice', c.year, c.last)),
+    );
     return rows.map((doc) => ({
       id: doc.id,
       kind: doc.kind,
@@ -750,6 +905,11 @@ export class BillingDocumentsService {
       paymentReference: doc.paymentReference,
       paymentNote: doc.paymentNote,
       paymentRecordedAt: doc.paymentRecordedAt?.toISOString() ?? null,
+      canUndo:
+        doc.kind === 'invoice' &&
+        latest.has(doc.number) &&
+        doc.paymentRecordedAt !== null &&
+        cairoDateOf(doc.paymentRecordedAt) === today,
       voidReason: doc.voidReason,
       createdByEmail: doc.creator?.email ?? null,
       createdAt: doc.createdAt.toISOString(),

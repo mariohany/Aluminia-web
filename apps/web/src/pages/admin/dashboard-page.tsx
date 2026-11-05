@@ -95,7 +95,7 @@ export function DashboardPage() {
       counts={{
         endingSoon: data?.billing.endingSoon,
         unpaid: data?.billing.unpaid,
-        expired: data?.billing.expired,
+        ended: data?.billing.ended,
       }}
     />
   )

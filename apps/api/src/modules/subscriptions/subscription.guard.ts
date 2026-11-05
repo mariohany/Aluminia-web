@@ -13,19 +13,15 @@ import {
   type RequiredFeature,
 } from '../../common/decorators/requires-feature.decorator';
 import { SubscriptionsService } from './subscriptions.service';
-import {
-  PLAN_DEACTIVATED_MESSAGE,
-  SUBSCRIPTION_ENDED_MESSAGE,
-} from './subscription-access';
+import { PLAN_DEACTIVATED_MESSAGE } from './subscription-access';
 
 /**
  * Every request of a company user passes the company's plan
  * (docs/subscriptions_planing.md §4a, §4b):
  *
- * - a paid plan past its end blocks everything: 403 `subscription_ended`
- *   (B10; login and refresh refuse too, in AuthService);
- * - a trial past its end drops the company to Free on the spot (B11), and
- *   a user that drop deactivated gets 401 `plan_deactivated`;
+ * - a trial or paid plan past its end drops the company to Free on the
+ *   spot (B11, payment cycle P10), and a user that drop deactivated gets
+ *   401 `plan_deactivated`;
  * - `@RequiresFeature` routes answer 403 `feature_locked` without the
  *   feature (B12).
  *
@@ -59,12 +55,6 @@ export class SubscriptionGuard implements CanActivate {
       });
     }
     const { access } = found;
-    if (access.state.kind === 'expired') {
-      throw new ForbiddenException({
-        message: SUBSCRIPTION_ENDED_MESSAGE,
-        code: 'subscription_ended',
-      });
-    }
     request.subscription = access;
 
     const required = this.reflector.getAllAndOverride<

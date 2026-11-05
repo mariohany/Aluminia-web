@@ -1,6 +1,8 @@
 import { NavLink } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { ChartLine, Building2, Users, Database, ScrollText, Layers, Receipt, ArrowLeftRight } from 'lucide-react'
+import { ChartLine, Building2, Users, Database, ScrollText, Layers, Receipt, ArrowLeftRight, ListTodo } from 'lucide-react'
+import { todoCount } from '@repo/types/billing-todo'
+import { useBillingTodoQuery } from '@/lib/billing-queries'
 import { useDashboardSummaryQuery } from '@/lib/dashboard-queries'
 import { useUsersQuery } from '@/lib/users-queries'
 import { cn } from '@/lib/utils'
@@ -16,11 +18,11 @@ const navGroups = [
       { to: '/app/users', key: 'nav.users', icon: Users, end: false, count: 'users' },
     ],
   },
-  // Transactions and Billing profile join this group in their own steps
-  // (docs/subscriptions_tasks.md steps 5 and 6).
+  // To-do first (payment cycle §8, Mario 2026-11-05): what to act on now.
   {
     key: 'billing',
     items: [
+      { to: '/app/todo', key: 'nav.todo', icon: ListTodo, end: false, count: 'todo' },
       { to: '/app/plans', key: 'nav.plans', icon: Layers, end: false, count: null },
       { to: '/app/transactions', key: 'nav.transactions', icon: ArrowLeftRight, end: false, count: null },
       { to: '/app/billing-profile', key: 'nav.billingProfile', icon: Receipt, end: false, count: null },
@@ -36,10 +38,12 @@ export function AdminNav({ onNavigate }: { onNavigate?: () => void }) {
   // load the link shows no number rather than a misleading 0.
   const { data: summary } = useDashboardSummaryQuery()
   const { data: users } = useUsersQuery()
+  const { data: todo } = useBillingTodoQuery()
   const numberFormatter = new Intl.NumberFormat(i18n.language)
   const counts = {
     companies: summary ? summary.companies.active + summary.companies.archived : null,
     users: users ? users.length : null,
+    todo: todo ? todoCount(todo) : null,
   }
 
   return (

@@ -1,13 +1,20 @@
 import { z } from 'zod'
 import { PAID_PLAN_KEYS, MAX_PLAN_SEATS, type PlanRef } from './plans.ts'
-import { BILLING_CURRENCIES, type BillingCurrency } from './subscriptions.ts'
+import { BILLING_CURRENCIES, addDays, daysBetween, type BillingCurrency } from './subscriptions.ts'
 import type { BillingDocumentKind } from './billing-profile.ts'
+import type { EtaAddress, EtaBuyerType } from './eta.ts'
 
 // Quotations and invoices (docs/subscriptions_planing.md §3d, §4d, B4–B8,
 // B18, B21). A quotation is issued before payment; Mark paid turns it into
 // an invoice (a copy, marked paid) and renews the company.
 
 export const QUOTATION_MONTHS = [1, 3, 6, 12] as const
+
+/** Payment cycle P11, P30: new (from Free or a trial), renewal (the next
+ * period of a paid plan) or upgrade (bigger plan / more seats now, with a
+ * credit for the unused days). */
+export const QUOTATION_PURPOSES = ['new', 'renewal', 'upgrade'] as const
+export type QuotationPurpose = (typeof QUOTATION_PURPOSES)[number]
 export type QuotationMonths = (typeof QUOTATION_MONTHS)[number]
 
 /** Valid until = issue day + 14 by default, editable (Q3, Mario 2026-10-28). */
@@ -41,12 +48,17 @@ const money = z.number().finite().min(0).max(100_000_000)
 const isoDate = z.iso.date()
 
 /** The New quotation dialog's step 1 (B18). Totals are never sent: the API
- * rebuilds them from these (§4d). `unitPrice` is the whole period's price in
- * the quotation currency, prefilled from the plan and overwritable. */
+ * rebuilds them from these (§4d). `unitPrice` is the plan's price for the
+ * period in the quotation currency, prefilled and overwritable. Seats = the
+ * plan's own + `extraSeats`, each extra seat at a hand-typed
+ * `extraSeatPrice` for the whole period (P15). An upgrade's dates and its
+ * credit are set by the API (P11). */
 export const quotationInputSchema = z
   .object({
+    purpose: z.enum(QUOTATION_PURPOSES),
     planKey: z.enum(PAID_PLAN_KEYS),
-    seats: z.number().int().min(1).max(MAX_PLAN_SEATS),
+    extraSeats: z.number().int().min(0).max(MAX_PLAN_SEATS),
+    extraSeatPrice: z.number().finite().min(0).max(100_000_000),
     months: z.union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)]),
     startsOn: isoDate,
     endsOn: isoDate,
@@ -74,18 +86,44 @@ export const quotationInputSchema = z
     path: ['discountValue'],
     message: 'A percent discount is at most 100.',
   })
+  .refine((q) => q.extraSeats > 0 || q.extraSeatPrice === 0, {
+    path: ['extraSeatPrice'],
+    message: 'No price without extra seats.',
+  })
 export type QuotationInput = z.infer<typeof quotationInputSchema>
 
-/** Mark paid (B4): every field required; the reference prints on the invoice. */
+/** Record payment (B4, payment cycle §6): the reference prints on the
+ * invoice and is used once per method (409 `reference_used`). A note is
+ * required when the amount differs from the total (P12, 400
+ * `note_required`). An expired quotation is paid only with
+ * `acknowledgeExpired` (P14, else 409 `quotation_expired`). */
 export const markPaidSchema = z
   .object({
     paidOn: isoDate,
     amountReceived: z.number().positive().max(100_000_000),
     method: z.enum(PAYMENT_METHODS),
     reference: z.string().trim().min(1).max(100),
+    note: z.string().trim().max(500).nullable().optional(),
+    acknowledgeExpired: z.boolean().optional(),
   })
   .strict()
 export type MarkPaidInput = z.infer<typeof markPaidSchema>
+
+/** Undo a payment (payment cycle P22, P23): only the latest invoice, only
+ * on the day it was recorded (else 409 `undo_not_allowed`). The invoice is
+ * deleted and its number reused, the quotation is payable again, the
+ * company goes back to before, and the client gets a cancellation email.
+ * The reason stays in the history. */
+export const undoPaymentSchema = z.object({ reason: z.string().trim().min(1).max(200) }).strict()
+export type UndoPaymentInput = z.infer<typeof undoPaymentSchema>
+
+export interface UndoPaymentResult {
+  /** The quotation, payable again. */
+  quotation: BillingDocumentSummary
+  /** Whether the cancellation email went out, and to whom. */
+  emailed: boolean
+  to: string[]
+}
 
 /** Void (Mario 2026-10-29): confirmed in a dialog, the reason optional. */
 export const voidQuotationSchema = z
@@ -96,28 +134,111 @@ export type VoidQuotationInput = z.infer<typeof voidQuotationSchema>
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
 export interface DocumentTotals {
+  /** The plan line + the extra-seats line. */
   subtotal: number
+  /** extraSeats × extraSeatPrice (P15). */
+  extraSeatsAmount: number
   discountAmount: number
+  /** The upgrade's credit for unused days (P11), after the discount. */
+  creditAmount: number
   vatAmount: number
   total: number
   /** The total in EGP at the frozen rate (B6: cross-company sums). */
   totalEgp: number
 }
 
-/** The totals, built the same way in the dialog and the API (§4d): VAT on
- * the subtotal after discount, 2 decimals per line. */
-export function documentTotals(q: Pick<QuotationInput, 'unitPrice' | 'discountKind' | 'discountValue' | 'vatRate' | 'fxRate'>): DocumentTotals {
-  const subtotal = round2(q.unitPrice)
+type TotalsInput = Pick<
+  QuotationInput,
+  'unitPrice' | 'extraSeats' | 'extraSeatPrice' | 'discountKind' | 'discountValue' | 'vatRate' | 'fxRate'
+> & { creditAmount?: number }
+
+/** The totals, built the same way in the dialog and the API (§4d): plan +
+ * extra seats, then the discount, then the credit (never below zero), then
+ * VAT, 2 decimals per line. */
+export function documentTotals(q: TotalsInput): DocumentTotals {
+  const extraSeatsAmount = round2(q.extraSeats * q.extraSeatPrice)
+  const subtotal = round2(q.unitPrice + extraSeatsAmount)
   const discountAmount =
     q.discountKind === 'percent'
       ? round2((subtotal * (q.discountValue ?? 0)) / 100)
       : q.discountKind === 'amount'
         ? round2(Math.min(q.discountValue ?? 0, subtotal))
         : 0
-  const taxable = round2(subtotal - discountAmount)
+  const afterDiscount = round2(subtotal - discountAmount)
+  const creditAmount = round2(Math.min(q.creditAmount ?? 0, afterDiscount))
+  const taxable = round2(afterDiscount - creditAmount)
   const vatAmount = round2((taxable * q.vatRate) / 100)
   const total = round2(taxable + vatAmount)
-  return { subtotal, discountAmount, vatAmount, total, totalEgp: round2(total * (q.fxRate ?? 1)) }
+  return {
+    subtotal,
+    extraSeatsAmount,
+    discountAmount,
+    creditAmount,
+    vatAmount,
+    total,
+    totalEgp: round2(total * (q.fxRate ?? 1)),
+  }
+}
+
+/** A paid invoice as an upgrade's credit sees it. `valueEgp` = what the
+ * client paid for its period before any credit and VAT, in EGP. */
+export interface CreditSource {
+  number: string
+  startsOn: string
+  endsOn: string
+  valueEgp: number
+}
+
+/** One printed credit line: the unused days of one paid invoice. */
+export interface CreditLine {
+  invoiceNumber: string
+  daysLeft: number
+  days: number
+  amountEgp: number
+}
+
+/** P11 (Mario 2026-11-05): the unused days of every paid period still
+ * running on `today` (today counts as unused), at what was paid for it.
+ * `sources` are in issue order: a day two invoices cover (an earlier
+ * upgrade over the original period) is credited once, by the later one.
+ * Only days up to the company's `currentEnd` count: a period cut short
+ * (moved to Free, the special case) left the client none after it. */
+export function unusedCredit(sources: CreditSource[], today: string, currentEnd: string): CreditLine[] {
+  const running = sources.filter((source) => source.endsOn >= today && source.startsOn <= currentEnd)
+  if (running.length === 0) return []
+  const latest = running.reduce((max, source) => (source.endsOn > max ? source.endsOn : max), today)
+  const last = latest < currentEnd ? latest : currentEnd
+  const counted = new Map<number, number>()
+  for (let day = today; day <= last; day = addDays(day, 1)) {
+    for (let i = running.length - 1; i >= 0; i--) {
+      const source = running[i]!
+      if (source.startsOn <= day && day <= source.endsOn) {
+        counted.set(i, (counted.get(i) ?? 0) + 1)
+        break
+      }
+    }
+  }
+  return running
+    .map((source, i) => {
+      const days = daysBetween(source.startsOn, source.endsOn) + 1
+      const daysLeft = counted.get(i) ?? 0
+      return { invoiceNumber: source.number, daysLeft, days, amountEgp: round2((source.valueEgp * daysLeft) / days) }
+    })
+    .filter((line) => line.amountEgp > 0)
+}
+
+/** An upgrade's period (P11): a length that runs past the current end
+ * starts today and runs in full (`full`); otherwise it keeps the end. */
+export function upgradePeriod(today: string, currentEnd: string, months: QuotationMonths) {
+  const fullEnd = periodEnd(today, months)
+  const full = fullEnd > currentEnd
+  return { startsOn: today, endsOn: full ? fullEnd : currentEnd, full }
+}
+
+/** Whether an upgrade gets the credit: always, except the same plan kept to
+ * the same end (only extra seats are added, P15). */
+export function upgradeHasCredit(samePlan: boolean, full: boolean): boolean {
+  return !samePlan || full
 }
 
 /** The plan's EGP price for a period (B5): 12 months = the annual price,
@@ -147,6 +268,10 @@ export interface DocumentParty {
   addressAr: string | null
   taxId: string | null
   commercialRegister: string | null
+  /** ETA (payment cycle §9): the buyer's type and both parties' structured
+   * address, as issued. Missing on documents from before. */
+  buyerType?: EtaBuyerType | null
+  etaAddress?: EtaAddress | null
 }
 
 /** The seller as issued (B17): the Billing profile at that moment. */
@@ -157,6 +282,8 @@ export interface DocumentSeller extends DocumentParty {
   instapay: string | null
   /** A platform file (purpose billing_logo). */
   logoFileId: string | null
+  /** ETA activity code (payment cycle §9); missing on documents from before. */
+  activityCode?: string | null
 }
 
 export interface BillingDocumentSummary {
@@ -173,7 +300,13 @@ export interface BillingDocumentSummary {
   quotationId: string | null
   invoiceId: string | null
   plan: PlanRef
+  purpose: QuotationPurpose
+  /** Plan seats + extra seats. */
   seats: number
+  extraSeats: number
+  extraSeatPrice: number
+  /** The upgrade's credit lines (P11); empty otherwise. */
+  credit: CreditLine[]
   months: QuotationMonths
   startsOn: string
   endsOn: string
@@ -190,6 +323,12 @@ export interface BillingDocumentSummary {
   amountReceived: number | null
   paymentMethod: PaymentMethod | null
   paymentReference: string | null
+  /** Why the amount differs, or anything else (P12). */
+  paymentNote: string | null
+  /** When the payment was recorded (the same-day undo, P22). */
+  paymentRecordedAt: string | null
+  /** An invoice that can still be undone: recorded today, the latest number (P22). */
+  canUndo: boolean
   voidReason: string | null
   createdByEmail: string | null
   createdAt: string

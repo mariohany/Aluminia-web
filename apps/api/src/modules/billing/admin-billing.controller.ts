@@ -16,7 +16,9 @@ import { z } from 'zod';
 import { UserRole } from '@repo/types/auth';
 import {
   markPaidSchema,
+  undoPaymentSchema,
   voidQuotationSchema,
+  type UndoPaymentResult,
   quotationInputSchema,
   sendDocumentSchema,
   transactionsQuerySchema,
@@ -30,12 +32,15 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/jwt-payload';
 import { BillingDocumentsService } from './billing-documents.service';
+import { BillingTodoService } from './billing-todo.service';
+import type { BillingTodo } from '@repo/types/billing-todo';
 import { FxService } from './fx.service';
 import { defaultSubject } from '../../mail/templates';
 
 class QuotationDto extends createZodDto(quotationInputSchema) {}
 class MarkPaidDto extends createZodDto(markPaidSchema) {}
 class VoidQuotationDto extends createZodDto(voidQuotationSchema) {}
+class UndoPaymentDto extends createZodDto(undoPaymentSchema) {}
 class SendDocumentDto extends createZodDto(sendDocumentSchema) {}
 class TransactionsQueryDto extends createZodDto(transactionsQuerySchema) {}
 class FxQueryDto extends createZodDto(
@@ -52,7 +57,14 @@ export class AdminBillingController {
   constructor(
     private readonly documents: BillingDocumentsService,
     private readonly fx: FxService,
+    private readonly todos: BillingTodoService,
   ) {}
+
+  /** Billing › To-do (payment cycle §8): what to act on now. */
+  @Get('billing/todo')
+  todo(): Promise<BillingTodo> {
+    return this.todos.todo();
+  }
 
   @Get('billing/fx')
   quote(@Query() query: FxQueryDto): Promise<FxQuote> {
@@ -118,6 +130,17 @@ export class AdminBillingController {
     return this.documents.voidQuotation(id, dto, actor.id);
   }
 
+  /** Same-day undo of the latest invoice (payment cycle P22, P23). */
+  @Post('billing/documents/:id/undo')
+  @HttpCode(200)
+  undo(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UndoPaymentDto,
+    @CurrentUser() actor: AuthenticatedRequestUser,
+  ): Promise<UndoPaymentResult> {
+    return this.documents.undoPayment(id, dto, actor.id);
+  }
+
   /** Emails it with the PDF the browser drew (B16, Q1). */
   @Post('billing/documents/:id/send')
   @HttpCode(200)
@@ -130,12 +153,17 @@ export class AdminBillingController {
     return this.documents.send(id, dto, actor.id);
   }
 
-  /** The prefilled subject of the send step. */
+  /** The send step's prefilled subject and recipients (P23: the invoice
+   * goes out by itself to these). */
   @Get('billing/documents/:id/send-defaults')
   async sendDefaults(
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<{ subject: string }> {
-    return { subject: defaultSubject(await this.documents.get(id)) };
+  ): Promise<{ subject: string; to: string[] }> {
+    const doc = await this.documents.get(id);
+    return {
+      subject: defaultSubject(doc),
+      to: await this.documents.recipientsOf(doc),
+    };
   }
 
   @Post('billing/documents/:id/pay')

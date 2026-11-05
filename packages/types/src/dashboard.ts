@@ -36,7 +36,8 @@ export interface RevenueSummary {
 export interface BillingCounts {
   endingSoon: number
   unpaid: number
-  expired: number
+  /** Paid plans that ended in the last ENDED_RECENT_DAYS and are still on Free. */
+  ended: number
 }
 
 export interface DashboardSummary {
@@ -47,14 +48,18 @@ export interface DashboardSummary {
   billing: BillingCounts
 }
 
-/** A company in the Ending soon / Expired tabs: a paid plan (no trial). */
+/** How far back the Ended tab looks (payment cycle P10). */
+export const ENDED_RECENT_DAYS = 30
+
+/** A company in the Ending soon / Ended tabs: a paid plan (no trial);
+ * in Ended, the plan it had before it dropped to Free. */
 export interface DashboardBillingCompany {
   companyId: string
   companyName: string
   planEn: string
   planAr: string
   endDate: string
-  /** Negative once expired. */
+  /** Negative once ended (days since). */
   daysLeft: number
 }
 
@@ -73,7 +78,7 @@ export interface DashboardUnpaidQuotation {
 export interface DashboardBilling {
   endingSoon: DashboardBillingCompany[]
   unpaid: DashboardUnpaidQuotation[]
-  expired: DashboardBillingCompany[]
+  ended: DashboardBillingCompany[]
 }
 
 // `from`/`to` are calendar dates (YYYY-MM-DD), same convention as

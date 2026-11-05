@@ -32,3 +32,14 @@ export function useBillingPdf(document: BillingDocumentSummary | null) {
 export function billingPdfFileName(document: BillingDocumentSummary): string {
   return `${document.number}.pdf`
 }
+
+/** A drawn PDF as base64, the send endpoint's attachment (Q1). */
+export async function pdfToBase64(blob: Blob): Promise<string> {
+  const url = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read the PDF.'))
+    reader.readAsDataURL(blob)
+  })
+  return url.slice(url.indexOf(',') + 1)
+}

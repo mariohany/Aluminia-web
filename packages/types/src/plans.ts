@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { etaItemCode } from './eta.ts'
 
 // The four plans are fixed rows (docs/subscriptions_planing.md §3a, B1):
 // the super admin edits them on the Plans page but never adds or deletes
@@ -34,6 +35,8 @@ export interface PlanSummary {
   monthlyEgp: number | null
   annualEgp: number | null
   features: PlanFeature[]
+  /** ETA EGS item code registered for this plan (payment cycle §9), e.g. EG-<RIN>-PRO. */
+  etaItemCode: string | null
   updatedAt: string
 }
 
@@ -59,6 +62,7 @@ export const paidPlanInputSchema = z
     monthlyEgp: price,
     annualEgp: price,
     features: z.array(z.enum(PLAN_FEATURES)),
+    etaItemCode: etaItemCode,
   })
   .strict()
 export type PaidPlanInput = z.infer<typeof paidPlanInputSchema>

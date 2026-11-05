@@ -26,6 +26,12 @@ import { QuotationPreview } from '@/components/admin/billing/quotation-preview'
 
 const LOGO = FILE_PURPOSE_LIMITS[FilePurpose.BILLING_LOGO]
 
+/** ETA's country is two capital letters ("eg" → "EG"). */
+const countryField = {
+  setValueAs: (value: unknown): string | null =>
+    typeof value === 'string' && value.trim() ? value.trim().toUpperCase() : null,
+}
+
 type TextField = Exclude<keyof UpdateBillingProfileInput, 'logoFileId' | 'nextQuotation' | 'nextInvoice'>
 
 function toForm(profile: BillingProfile): UpdateBillingProfileInput {
@@ -42,6 +48,12 @@ function toForm(profile: BillingProfile): UpdateBillingProfileInput {
     bankAccount: d?.bankAccount ?? '',
     instapay: d?.instapay ?? null,
     logoFileId: d?.logoFileId ?? null,
+    activityCode: d?.activityCode ?? null,
+    etaCountry: d?.etaCountry ?? 'EG',
+    etaGovernorate: d?.etaGovernorate ?? null,
+    etaCity: d?.etaCity ?? null,
+    etaStreet: d?.etaStreet ?? null,
+    etaBuilding: d?.etaBuilding ?? null,
     nextQuotation: profile.numbering.nextQuotation,
     nextInvoice: profile.numbering.nextInvoice,
   }
@@ -156,7 +168,10 @@ export function BillingProfilePage() {
           dir={opts.dir}
           className={opts.mono ? 'font-mono' : undefined}
           aria-invalid={!!error}
-          {...register(name, opts.required ? undefined : optionalTextField)}
+          {...register(
+            name,
+            opts.required ? undefined : name === 'etaCountry' ? countryField : optionalTextField,
+          )}
         />
         {error ? (
           <p className="text-xs text-destructive">
@@ -307,6 +322,21 @@ export function BillingProfilePage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 {field('bankAccount', { required: true, dir: 'ltr', mono: true })}
                 {field('instapay', { dir: 'ltr', mono: true })}
+              </div>
+
+              {/* ETA e-invoicing (payment cycle §9): optional for now, never printed. */}
+              <div className="h-px bg-border" />
+              <div className="flex flex-col gap-0.5">
+                <h2 className="text-sm font-semibold text-foreground">{t('billingProfile.sections.eta')}</h2>
+                <p className="text-xs text-muted-foreground">{t('billingProfile.hints.eta')}</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {field('activityCode', { dir: 'ltr', mono: true, hint: t('billingProfile.hints.activityCode') })}
+                {field('etaCountry', { dir: 'ltr', mono: true })}
+                {field('etaGovernorate', { dir: 'ltr' })}
+                {field('etaCity', { dir: 'ltr' })}
+                {field('etaStreet', { dir: 'ltr' })}
+                {field('etaBuilding', { dir: 'ltr', mono: true })}
               </div>
 
               <div className="h-px bg-border" />

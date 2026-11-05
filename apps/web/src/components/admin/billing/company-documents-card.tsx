@@ -1,9 +1,22 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Ban, Banknote, FileText, FilePlus2, Mail, MoreHorizontal, Pencil } from 'lucide-react'
+import {
+  ArrowUpCircle,
+  Ban,
+  Banknote,
+  ChevronDown,
+  FileText,
+  FilePlus2,
+  Mail,
+  MoreHorizontal,
+  Pencil,
+  RefreshCw,
+  Undo2,
+} from 'lucide-react'
 import { UserRole } from '@repo/types/auth'
 import type { CompanyDetail } from '@repo/types/companies'
-import type { BillingDocumentSummary } from '@repo/types/billing-documents'
+import type { BillingDocumentSummary, QuotationPurpose } from '@repo/types/billing-documents'
+import { BILLING_TIME_ZONE, subscriptionState } from '@repo/types/subscriptions'
 import { useCompanyDocumentsQuery } from '@/lib/billing-queries'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,6 +32,7 @@ import { EmailDocumentDialog } from './email-document-dialog'
 import { DocumentStatusPill } from '@/components/billing/document-status'
 import { MarkPaidDialog } from './mark-paid-dialog'
 import { QuotationDialog } from './quotation-dialog'
+import { UndoPaymentDialog } from './undo-payment-dialog'
 import { VoidQuotationDialog } from './void-quotation-dialog'
 
 /**
@@ -29,10 +43,11 @@ import { VoidQuotationDialog } from './void-quotation-dialog'
 export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
   const { t, i18n } = useTranslation('admin')
   const { data: documents, isPending, isError } = useCompanyDocumentsQuery(company.id)
-  const [editing, setEditing] = useState<{ document?: BillingDocumentSummary } | null>(null)
+  const [editing, setEditing] = useState<{ document?: BillingDocumentSummary; purpose?: QuotationPurpose } | null>(null)
   const [paying, setPaying] = useState<BillingDocumentSummary | null>(null)
   const [viewing, setViewing] = useState<BillingDocumentSummary | null>(null)
   const [voiding, setVoiding] = useState<BillingDocumentSummary | null>(null)
+  const [undoing, setUndoing] = useState<BillingDocumentSummary | null>(null)
   const [emailing, setEmailing] = useState<{ document: BillingDocumentSummary; to: string[] } | null>(null)
   const admins = company.users
     .filter((u) => u.role === UserRole.COMPANY_ADMIN && u.status === 'active')
@@ -43,6 +58,14 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
     return doc.lastSent?.to ?? quotation?.lastSent?.to ?? admins
   }
   const dateFormatter = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' })
+  // P30: Free or a trial gets a new subscription; a paid plan its renewal or
+  // an upgrade, picked from the button's menu.
+  const state = subscriptionState(
+    { planKey: company.plan.key, endsAt: company.endsAt, isTrial: company.isTrial },
+    new Date(),
+  )
+  const onPaidPlan = state.kind === 'active' || state.kind === 'ending'
+  const endFormatter = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: BILLING_TIME_ZONE })
 
   const money = (doc: BillingDocumentSummary) =>
     new Intl.NumberFormat(i18n.language, { style: 'currency', currency: doc.currency }).format(doc.totals.total)
@@ -52,10 +75,43 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
       <CardHeader>
         <CardTitle>{t('companyDetail.documents.title')}</CardTitle>
         <CardAction>
-          <Button size="sm" onClick={() => setEditing({})}>
-            <FilePlus2 aria-hidden="true" />
-            {t('quotation.new')}
-          </Button>
+          {onPaidPlan && company.endsAt ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm">
+                  <FilePlus2 aria-hidden="true" />
+                  {t('quotation.new')}
+                  <ChevronDown aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align={document.documentElement.dir === 'rtl' ? 'start' : 'end'}
+                className="w-72 *:data-[slot=dropdown-menu-item]:items-start *:data-[slot=dropdown-menu-item]:gap-2.5 *:data-[slot=dropdown-menu-item]:py-2"
+              >
+                {(
+                  [
+                    ['renewal', RefreshCw],
+                    ['upgrade', ArrowUpCircle],
+                  ] as const
+                ).map(([purpose, Icon]) => (
+                  <DropdownMenuItem key={purpose} onSelect={() => setEditing({ purpose })}>
+                    <Icon className="mt-0.5 text-muted-foreground" aria-hidden="true" />
+                    <span className="flex flex-col gap-0.5">
+                      <span className="font-medium">{t(`quotation.menu.${purpose}`)}</span>
+                      <span className="text-xs whitespace-normal text-muted-foreground">
+                        {t(`quotation.menu.${purpose}Hint`, { date: endFormatter.format(new Date(company.endsAt!)) })}
+                      </span>
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button size="sm" onClick={() => setEditing({ purpose: 'new' })}>
+              <FilePlus2 aria-hidden="true" />
+              {t('quotation.new')}
+            </Button>
+          )}
         </CardAction>
       </CardHeader>
       <CardContent>
@@ -103,7 +159,10 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                         )}
                       </span>
                     </TableCell>
-                    <TableCell className="text-end font-mono text-[13px]">{money(doc)}</TableCell>
+                    <TableCell className="text-end font-mono text-[13px]">
+                      {money(doc)}
+                      <AmountDifference document={doc} />
+                    </TableCell>
                     <TableCell className="text-[13px] text-muted-foreground">
                       {dateFormatter.format(new Date(doc.createdAt))}
                     </TableCell>
@@ -114,7 +173,7 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                             <MoreHorizontal aria-hidden="true" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align="end" className="w-auto min-w-40 whitespace-nowrap">
                           <DropdownMenuItem onSelect={() => setViewing(doc)}>
                             <FileText aria-hidden="true" />
                             {t('documents.actions.pdf')}
@@ -131,10 +190,18 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                               {t('documents.actions.edit')}
                             </DropdownMenuItem>
                           )}
-                          {unpaid && (
+                          {/* P14: an expired one can still be paid, after a warning. */}
+                          {(unpaid || doc.status === 'expired') && (
                             <DropdownMenuItem onSelect={() => setPaying(doc)}>
                               <Banknote aria-hidden="true" />
                               {t('documents.actions.markPaid')}
+                            </DropdownMenuItem>
+                          )}
+                          {/* P22: only today's latest invoice. */}
+                          {doc.canUndo && (
+                            <DropdownMenuItem variant="destructive" onSelect={() => setUndoing(doc)}>
+                              <Undo2 aria-hidden="true" />
+                              {t('documents.actions.undo')}
                             </DropdownMenuItem>
                           )}
                           {(unpaid || doc.status === 'expired') && (
@@ -157,9 +224,10 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
         )}
       </CardContent>
       <QuotationDialog
-        key={editing ? (editing.document?.id ?? 'new') : 'closed'}
+        key={editing ? (editing.document?.id ?? editing.purpose ?? 'new') : 'closed'}
         company={company}
         document={editing?.document}
+        purpose={editing?.purpose ?? 'new'}
         open={editing !== null}
         onOpenChange={(open) => !open && setEditing(null)}
       />
@@ -175,6 +243,30 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
       />
       <DocumentPdfDialog document={viewing} onOpenChange={(open) => !open && setViewing(null)} />
       <VoidQuotationDialog document={voiding} onOpenChange={(open) => !open && setVoiding(null)} />
+      <UndoPaymentDialog document={undoing} onOpenChange={(open) => !open && setUndoing(null)} />
     </Card>
+  )
+}
+
+/**
+ * P12: an invoice whose money differs from its total shows what arrived and
+ * the gap, the note on hover. Super admin only (this card and Transactions).
+ */
+export function AmountDifference({ document: doc }: { document: BillingDocumentSummary }) {
+  const { t, i18n } = useTranslation('admin')
+  if (doc.kind !== 'invoice' || doc.amountReceived === null) return null
+  const gap = Math.round((doc.amountReceived - doc.totals.total) * 100) / 100
+  if (gap === 0) return null
+  const format = new Intl.NumberFormat(i18n.language, { style: 'currency', currency: doc.currency })
+  return (
+    <span
+      className="block text-[11px] text-amber-600 dark:text-amber-500"
+      title={doc.paymentNote ?? undefined}
+    >
+      {t('documents.received', {
+        amount: format.format(doc.amountReceived),
+        gap: `${gap > 0 ? '+' : '−'}${format.format(Math.abs(gap))}`,
+      })}
+    </span>
   )
 }

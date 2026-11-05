@@ -27,6 +27,9 @@ const VERB_TONE: Record<string, Tone> = {
   deleted: 'danger',
   password_reset: 'warn',
   session_ended: 'warn',
+  trial_granted: 'primary',
+  trial_extended: 'info',
+  trial_ended: 'warn',
 }
 
 // Audit `lookup.<entity>.<verb>` → the Data warehouse tab it belongs to
@@ -102,7 +105,7 @@ function describe(entry: AuditLogEntry, t: Translate, tLookups: Translate, exist
     if (!exists(key)) return fallback
     return {
       icon: Receipt,
-      tone: verb === 'paid' ? 'primary' : verb === 'quotation_voided' ? 'danger' : 'info',
+      tone: verb === 'paid' ? 'primary' : verb === 'quotation_voided' || verb === 'payment_undone' ? 'danger' : 'info',
       text: t(key, { name: text(meta.name), number: text(meta.number), invoice: text(meta.invoice) }),
     }
   }

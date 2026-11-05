@@ -9,6 +9,7 @@ import type {
   DashboardSummary,
   RevenueSummary,
 } from '@repo/types/dashboard';
+import { ENDED_RECENT_DAYS } from '@repo/types/dashboard';
 import {
   ENDING_SOON_DAYS,
   addDays,
@@ -21,6 +22,30 @@ import {
 } from '../../database/control-plane/entities/company.entity';
 import { Session } from '../../database/control-plane/entities/session.entity';
 import { ProjectCountsService } from '../project-counts/project-counts.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+
+// The Ended tab (payment cycle P10): a company whose paid plan ran out in
+// the last N days and that is still on Free. The drop's history row takes
+// effect at the plan's end (`effective_from`); the plan is the last paid
+// one before it.
+const ENDED_FROM = `
+  FROM billing b
+  JOIN companies c ON c.id = b.company_id
+  JOIN plans cp ON cp.id = c.plan_id
+  JOIN LATERAL (
+    SELECT prev.plan_id FROM billing prev
+    JOIN plans pp ON pp.id = prev.plan_id
+    WHERE prev.company_id = b.company_id AND prev.created_at < b.created_at
+      AND pp.key <> 'free'
+    ORDER BY prev.created_at DESC LIMIT 1
+  ) last_paid ON true
+  JOIN plans p ON p.id = last_paid.plan_id
+  WHERE b.reason = 'plan_ended' AND c.status = 'active' AND cp.key = 'free'
+    AND b.effective_from > now() - make_interval(days => $1)
+    AND NOT EXISTS (
+      SELECT 1 FROM billing later WHERE later.company_id = b.company_id
+        AND later.reason = 'plan_ended' AND later.created_at > b.created_at
+    )`;
 
 // Same "YYYY-MM-01" shape on both sides of the zero-fill join — Postgres's
 // date_trunc result and the enumerated calendar cursor must key identically
@@ -35,9 +60,12 @@ export class DashboardService {
     @InjectRepository(Company) private readonly companies: Repository<Company>,
     @InjectRepository(Session) private readonly sessions: Repository<Session>,
     private readonly projectCounts: ProjectCountsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async summary(): Promise<DashboardSummary> {
+    // Plans that ran out count as ended, not as active (P10).
+    await this.subscriptions.settleAllLapsed();
     const [active, archived, liveSessionCount, projectCount, revenue, billing] =
       await Promise.all([
         this.companies.count({ where: { status: CompanyStatus.ACTIVE } }),
@@ -86,30 +114,29 @@ export class DashboardService {
   private async billingCounts(): Promise<BillingCounts> {
     const today = cairoDateOf(new Date());
     const [row] = await this.companies.query<
-      Array<{ ending: string; expired: string; unpaid: string }>
+      Array<{ ending: string; ended: string; unpaid: string }>
     >(
       `SELECT
          (SELECT COUNT(*) FROM companies c JOIN plans p ON p.id = c.plan_id
            WHERE c.status = 'active' AND p.key <> 'free' AND NOT c.is_trial
              AND c.ends_at > now() AND c.ends_at <= now() + make_interval(days => $1)) AS ending,
-         (SELECT COUNT(*) FROM companies c JOIN plans p ON p.id = c.plan_id
-           WHERE c.status = 'active' AND p.key <> 'free' AND NOT c.is_trial
-             AND c.ends_at <= now()) AS expired,
+         (SELECT COUNT(*) ${ENDED_FROM.replace('$1', '$3')}) AS ended,
          (SELECT COUNT(*) FROM billing_documents
            WHERE kind = 'quotation' AND status = 'sent'
              AND (valid_until IS NULL OR valid_until >= $2)) AS unpaid`,
-      [ENDING_SOON_DAYS, today],
+      [ENDING_SOON_DAYS, today, ENDED_RECENT_DAYS],
     );
     return {
       endingSoon: Number(row?.ending ?? 0),
       unpaid: Number(row?.unpaid ?? 0),
-      expired: Number(row?.expired ?? 0),
+      ended: Number(row?.ended ?? 0),
     };
   }
 
   /** The Leads card's billing tabs (B22): soonest end first, newest
-   * quotation first, most recently expired first; 50 rows each. */
+   * quotation first, most recently ended first; 50 rows each. */
   async billing(): Promise<DashboardBilling> {
+    await this.subscriptions.settleAllLapsed();
     const today = cairoDateOf(new Date());
     const companies = (where: string, order: string, params: unknown[]) =>
       this.companies.query<
@@ -144,13 +171,26 @@ export class DashboardService {
         daysLeft: daysBetween(today, endDate),
       };
     };
-    const [ending, expired, unpaid] = await Promise.all([
+    const [ending, ended, unpaid] = await Promise.all([
       companies(
         `c.ends_at > now() AND c.ends_at <= now() + make_interval(days => $1)`,
         'ASC',
         [ENDING_SOON_DAYS],
       ),
-      companies(`c.ends_at <= now()`, 'DESC', []),
+      this.companies.query<
+        Array<{
+          id: string;
+          name: string;
+          name_en: string;
+          name_ar: string;
+          ends_at: Date;
+        }>
+      >(
+        `SELECT c.id, c.name, p.name_en, p.name_ar, b.effective_from AS ends_at
+         ${ENDED_FROM}
+         ORDER BY b.effective_from DESC LIMIT 50`,
+        [ENDED_RECENT_DAYS],
+      ),
       this.companies.query<
         Array<{
           id: string;
@@ -173,7 +213,7 @@ export class DashboardService {
     ]);
     return {
       endingSoon: ending.map(toRow),
-      expired: expired.map(toRow),
+      ended: ended.map(toRow),
       unpaid: unpaid.map((r) => ({
         documentId: r.id,
         number: r.number,

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ETA_BUYER_TYPES, etaAddressFields, type EtaAddressFields, type EtaBuyerType } from './eta.ts'
 
 // Config › Company profile (docs/company_profile_planing.md): the
 // company's letterhead — printed names, address, contacts, tax numbers
@@ -38,11 +39,14 @@ export const updateCompanyProfileSchema = z
     taxId: optionalText(COMPANY_PROFILE_LIMITS.registration),
     commercialRegister: optionalText(COMPANY_PROFILE_LIMITS.registration),
     logoFileId: z.uuid().nullable().optional(),
+    // ETA e-invoicing (payment cycle §9): optional for now.
+    buyerType: z.enum(ETA_BUYER_TYPES).nullable().optional(),
+    ...etaAddressFields,
   })
   .strict()
 export type UpdateCompanyProfileInput = z.infer<typeof updateCompanyProfileSchema>
 
-export interface CompanyProfile {
+export interface CompanyProfile extends EtaAddressFields {
   enName: string
   arName: string | null
   enAddress: string | null
@@ -54,6 +58,8 @@ export interface CompanyProfile {
   commercialRegister: string | null
   /** Shown with `GET /files/:id`. */
   logoFileId: string | null
+  /** ETA e-invoicing (payment cycle §9), optional for now. */
+  buyerType: EtaBuyerType | null
   /** Null until the first save (then `enName` is the account name). */
   updatedAt: string | null
 }

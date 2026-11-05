@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Controller, useForm, useWatch, type Control, type FieldErrors, type UseFormRegister } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { optionalTextField } from '@/lib/form-fields'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Check } from 'lucide-react'
@@ -36,6 +37,7 @@ function toForm(plans: PlanSummary[]): UpdatePlansInput {
         monthlyEgp: plan?.monthlyEgp ?? Number.NaN,
         annualEgp: plan?.annualEgp ?? Number.NaN,
         features: plan?.features ?? [],
+        etaItemCode: plan?.etaItemCode ?? null,
       }
     }),
   }
@@ -250,6 +252,19 @@ function PlanColumn({
               </>
             )}
           />
+        </div>
+
+        {/* ETA e-invoicing (payment cycle §9): optional for now. */}
+        <div className="border-t border-border pt-3">
+          <Field id={id('etaItemCode')} label={t('plansPage.etaItemCode')} hint={t('plansPage.etaItemCodeHint')}>
+            <Input
+              id={id('etaItemCode')}
+              dir="ltr"
+              className="font-mono"
+              placeholder="EG-000000000-PRO"
+              {...register(`plans.${index}.etaItemCode`, optionalTextField)}
+            />
+          </Field>
         </div>
       </CardContent>
     </Card>

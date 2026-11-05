@@ -6,7 +6,7 @@ import { z } from 'zod'
 import type { BillingDocumentSummary } from '@repo/types/billing-documents'
 import { apiErrorCode, apiErrorMessage } from '@/lib/api-client'
 import { useSendDocumentMutation } from '@/lib/billing-queries'
-import { billingPdfFileName, useBillingPdf } from '@/lib/billing-pdf'
+import { billingPdfFileName, pdfToBase64 as toBase64, useBillingPdf } from '@/lib/billing-pdf'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -15,16 +15,6 @@ import { DialogFooter } from '@/components/ui/dialog'
 import { DocumentPdfDialog } from '@/components/billing/document-pdf-dialog'
 
 const isEmail = (value: string) => z.email().safeParse(value).success
-
-async function toBase64(blob: Blob): Promise<string> {
-  const url = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(reader.error ?? new Error('Could not read the PDF.'))
-    reader.readAsDataURL(blob)
-  })
-  return url.slice(url.indexOf(',') + 1)
-}
 
 /**
  * The Email step (docs/subscriptions_planing.md B16, B18, board

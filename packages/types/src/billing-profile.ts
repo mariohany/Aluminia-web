@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { etaActivityCode, etaAddressFields } from './eta.ts'
 
 // Billing › Billing profile (docs/subscriptions_planing.md B17, §3e, board
 // bill-seller-a): the platform's own business, printed as the seller on
@@ -46,6 +47,10 @@ export const updateBillingProfileSchema = z
     instapay: optionalText(BILLING_PROFILE_LIMITS.instapay),
     /** An id from `POST /files` (purpose `billing_logo`); null = none. */
     logoFileId: z.uuid().nullable(),
+    // ETA e-invoicing (payment cycle §9): the seller's activity code and
+    // branch address. Optional for now.
+    activityCode: etaActivityCode,
+    ...etaAddressFields,
     /** This year's next numbers; they can only go up (B17: no gaps, never
      * reused). Sent only when changed, so saving the details never trips on
      * a number issued meanwhile. */

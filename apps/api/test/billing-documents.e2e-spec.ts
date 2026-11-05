@@ -156,9 +156,13 @@ describe('Billing documents (e2e)', () => {
   const server = () => app.getHttpServer();
   const code = (res: { body: unknown }) => (res.body as { code?: string }).code;
 
+  // New while the company is on Free; once it pays, a renewal (P30).
+  let purpose: QuotationInput['purpose'] = 'new';
   const quotation = (over: Partial<QuotationInput> = {}): QuotationInput => ({
+    purpose,
     planKey: 'pro',
-    seats: 5,
+    extraSeats: 0,
+    extraSeatPrice: 0,
     months: 12,
     startsOn: today,
     endsOn: periodEnd(today, 12),
@@ -179,6 +183,8 @@ describe('Billing documents (e2e)', () => {
       .set(as(superToken))
       .send(quotation(over));
 
+  // A reference is used once per method (payment cycle §6), and an amount
+  // that differs from the total needs a note (P12).
   const pay = (id: string, paidOn = today) =>
     request(server())
       .post(`/admin/billing/documents/${id}/pay`)
@@ -187,7 +193,8 @@ describe('Billing documents (e2e)', () => {
         paidOn,
         amountReceived: 6156,
         method: 'bank_transfer',
-        reference: 'SNB-55120931',
+        reference: `SNB-${id.slice(0, 8)}`,
+        note: 'E2E',
       });
 
   async function company() {
@@ -240,7 +247,9 @@ describe('Billing documents (e2e)', () => {
     expect(doc.status).toBe('draft');
     expect(doc.totals).toEqual({
       subtotal: 6000,
+      extraSeatsAmount: 0,
       discountAmount: 600,
+      creditAmount: 0,
       vatAmount: 756,
       total: 6156,
       totalEgp: 6156,
@@ -266,6 +275,25 @@ describe('Billing documents (e2e)', () => {
       .expect(200);
     expect((edited.body as BillingDocumentSummary).number).toBe(doc.number);
     expect((edited.body as BillingDocumentSummary).totals.total).toBe(6840);
+
+    // Saving a quotation sets what the company's next one starts with
+    // (payment cycle 2.2b): the SAR one, then the EGP edit.
+    const pricing = async (): Promise<{ currency: string; vat: number }> => {
+      const rows: Array<{ currency: string; vat: number }> =
+        await controlPlane.query(
+          `SELECT currency, vat_rate::float AS vat FROM companies WHERE id = $1`,
+          [companyId],
+        );
+      return rows[0];
+    };
+    await create({ currency: 'SAR', fxRate: 12.5, vatRate: 15 }).expect(201);
+    expect(await pricing()).toEqual({ currency: 'SAR', vat: 15 });
+    await request(server())
+      .patch(`/admin/billing/documents/${doc.id}`)
+      .set(as(superToken))
+      .send(quotation())
+      .expect(200);
+    expect((await pricing()).currency).toBe('EGP');
   });
 
   it('refuses a quotation past its valid-until day, and fewer seats than users (Q3, B3)', async () => {
@@ -275,7 +303,7 @@ describe('Billing documents (e2e)', () => {
       code(await pay((old.body as BillingDocumentSummary).id).expect(409)),
     ).toBe('quotation_expired');
 
-    const small = await create({ seats: 1 }).expect(201);
+    const small = await create({ planKey: 'individual' }).expect(201);
     expect(
       code(await pay((small.body as BillingDocumentSummary).id).expect(400)),
     ).toBe('seats_below_users');
@@ -293,13 +321,17 @@ describe('Billing documents (e2e)', () => {
       startsOn: paidOn,
       // The quotation's length, moved to the payment day.
       endsOn: addDays(paidOn, daysBetween(today, periodEnd(today, 12))),
-      paymentReference: 'SNB-55120931',
+      paymentReference: `SNB-${q.id.slice(0, 8)}`,
+      paymentNote: 'E2E',
     });
     expect(invoice.number).toMatch(/^INV-\d{4}-\d{4,}$/);
     // What the PDF prints (§5): its quotation's number and the snapshots.
     expect(invoice.quotationNumber).toBe(q.number);
     expect(invoice.seller.bankAccount).toBeTruthy();
     expect(invoice.buyer.nameEn).toBe(companyName);
+    // ETA details (payment cycle §9): copied as issued, empty here.
+    expect(invoice.buyer).toMatchObject({ buyerType: null, etaAddress: null });
+    expect(invoice.seller).toHaveProperty('activityCode');
     expect((await company()).key).toBe('pro');
     expect((await company()).max_users).toBe(5);
 
@@ -323,6 +355,10 @@ describe('Billing documents (e2e)', () => {
         [companyId],
       );
     expect(history[0]).toEqual({ reason: 'paid', document_id: invoice.id });
+
+    // On a paid plan a new quotation is refused: renewal or upgrade (P30).
+    expect(code(await create().expect(409))).toBe('purpose_not_allowed');
+    purpose = 'renewal';
   });
 
   it('renews an active plan from the day after its end (B8)', async () => {

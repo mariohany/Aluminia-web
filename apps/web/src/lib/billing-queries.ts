@@ -39,6 +39,12 @@ export function useTransactionsInfiniteQuery(filters: TransactionsFilters) {
   })
 }
 
+/** Billing › To-do and its sidebar badge; under the billing key, so any
+ * document change refreshes it (subscription changes do too). */
+export function useBillingTodoQuery() {
+  return useQuery({ queryKey: [...billingKey, 'todo'] as const, queryFn: billingApi.getBillingTodo })
+}
+
 export function useTransactionsSummaryQuery() {
   return useQuery({ queryKey: [...transactionsKey, 'summary'] as const, queryFn: billingApi.getTransactionsSummary })
 }
@@ -76,6 +82,19 @@ export function useMarkPaidMutation() {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: MarkPaidInput }) => billingApi.markPaid(id, input),
     onSuccess: () => invalidate(),
+  })
+}
+
+export function useUndoPaymentMutation() {
+  const invalidate = useInvalidateBilling()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => billingApi.undoPayment(id, { reason }),
+    onSuccess: () => {
+      invalidate()
+      // Users the payment brought back are paused again.
+      void queryClient.invalidateQueries({ queryKey: ['users'] })
+    },
   })
 }
 

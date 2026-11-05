@@ -139,10 +139,7 @@ describe('Company subscription (e2e)', () => {
       planKey: 'pro',
       maxUsers: 5,
       endDate: '2027-01-16',
-      isTrial: false,
-      currency: 'SAR',
-      vatRate: 15,
-      note: null,
+      reason: 'Signed on the phone',
       keepAdminId: null,
       ...overrides,
     };
@@ -192,16 +189,34 @@ describe('Company subscription (e2e)', () => {
     await edit({}, adminToken).expect(403);
   });
 
-  it('sets plan, seats, end date, currency and VAT with a history row', async () => {
-    const res = await edit({ note: 'Signed on the phone' }).expect(200);
+  it('sets plan, seats and end date with the required reason (P27)', async () => {
+    const server = app.getHttpServer();
+    const auth = { Authorization: `Bearer ${superToken}` };
+    // No reason, or currency / VAT (quotations only, 2.2b): refused.
+    await edit({ reason: '   ' }).expect(400);
+    await request(server)
+      .patch(`/admin/companies/${companyId}/subscription`)
+      .set(auth)
+      .send({
+        planKey: 'pro',
+        maxUsers: 5,
+        endDate: '2027-01-16',
+        reason: 'x',
+        keepAdminId: null,
+        currency: 'SAR',
+      })
+      .expect(400);
+
+    const res = await edit({}).expect(200);
     const detail = res.body as CompanyDetail;
     expect(detail).toMatchObject({
       plan: { key: 'pro' },
       maxUsers: 5,
       // 23:59:59 Cairo (UTC+2 in January).
       endsAt: '2027-01-16T21:59:59.000Z',
-      currency: 'SAR',
-      vatRate: 15,
+      isTrial: false,
+      currency: 'EGP',
+      vatRate: 14,
     });
     expect(detail.billing[0]).toMatchObject({
       plan: { key: 'pro' },
@@ -213,16 +228,6 @@ describe('Company subscription (e2e)', () => {
       plan: { key: 'free' },
       reason: 'created',
     });
-  });
-
-  it('starts a trial on a paid plan', async () => {
-    const res = await edit({ isTrial: true, endDate: '2026-11-11' }).expect(
-      200,
-    );
-    const detail = res.body as CompanyDetail;
-    expect(detail.isTrial).toBe(true);
-    expect(detail.billing[0].reason).toBe('trial_started');
-    await edit({ planKey: 'free', isTrial: true, endDate: null }).expect(400);
   });
 
   it('never lets seats go below the users (B3)', async () => {

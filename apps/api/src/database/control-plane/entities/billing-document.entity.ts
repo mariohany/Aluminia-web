@@ -9,11 +9,13 @@ import {
 } from 'typeorm';
 import type { BillingDocumentKind } from '@repo/types/billing-profile';
 import type {
+  CreditLine,
   DiscountKind,
   DocumentParty,
   DocumentSeller,
   PaymentMethod,
   QuotationMonths,
+  QuotationPurpose,
   StoredDocumentStatus,
 } from '@repo/types/billing-documents';
 import type { BillingCurrency } from '@repo/types/subscriptions';
@@ -68,8 +70,28 @@ export class BillingDocument {
   @Column({ name: 'plan_name_ar', type: 'varchar', length: 60 })
   planNameAr: string;
 
+  @Column({ type: 'varchar', length: 10 })
+  purpose: QuotationPurpose;
+
+  /** The plan's own seats + `extraSeats`. */
   @Column({ type: 'int' })
   seats: number;
+
+  @Column({ name: 'extra_seats', type: 'int' })
+  extraSeats: number;
+
+  @Column(decimal('extra_seat_price'))
+  extraSeatPrice: number;
+
+  @Column(decimal('extra_seats_amount'))
+  extraSeatsAmount: number;
+
+  /** An upgrade's credit for unused days (P11), in the document currency. */
+  @Column(decimal('credit_amount'))
+  creditAmount: number;
+
+  @Column({ name: 'credit_lines', type: 'jsonb' })
+  creditLines: CreditLine[];
 
   @Column({ type: 'int' })
   months: QuotationMonths;
@@ -155,8 +177,32 @@ export class BillingDocument {
   })
   paymentReference: string | null;
 
+  /** Why the amount received differs, or anything else (P12). */
+  @Column({
+    name: 'payment_note',
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+  })
+  paymentNote: string | null;
+
+  /** When the payment was recorded: the same-day undo (P22) reads it. */
+  @Column({ name: 'payment_recorded_at', type: 'timestamptz', nullable: true })
+  paymentRecordedAt: Date | null;
+
   @Column({ name: 'void_reason', type: 'varchar', length: 200, nullable: true })
   voidReason: string | null;
+
+  // ETA (payment cycle §9): an invoice's identity there, empty until the
+  // integration (its own plan) submits it.
+  @Column({ name: 'eta_uuid', type: 'varchar', length: 64, nullable: true })
+  etaUuid: string | null;
+
+  @Column({ name: 'eta_long_id', type: 'varchar', length: 200, nullable: true })
+  etaLongId: string | null;
+
+  @Column({ name: 'eta_status', type: 'varchar', length: 20, nullable: true })
+  etaStatus: string | null;
 
   @Column({ name: 'created_by', type: 'uuid', nullable: true })
   createdBy: string | null;

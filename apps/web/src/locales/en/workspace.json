@@ -129,6 +129,10 @@
         "paper": {
           "title": "On paper",
           "hint": "How these fields look together."
+        },
+        "eta": {
+          "title": "E-invoicing details",
+          "hint": "Optional for now. For Egypt’s e-invoicing (ETA) on Aluminia’s invoices to you; never printed on your documents."
         }
       },
       "fields": {
@@ -139,7 +143,13 @@
         "website": "Website",
         "taxId": "Tax ID",
         "commercialRegister": "Commercial register",
-        "crShort": "CR"
+        "crShort": "CR",
+        "buyerType": "Company type",
+        "country": "Country code",
+        "governorate": "Governorate",
+        "city": "City / area",
+        "street": "Street",
+        "building": "Building no."
       },
       "logo": {
         "upload": "Upload",
@@ -155,7 +165,13 @@
       "previewCaption": "Preview — top of a report page",
       "saved": "Company profile saved.",
       "saveError": "Couldn’t save the company profile.",
-      "loadError": "Couldn’t load the company profile. Try again."
+      "loadError": "Couldn’t load the company profile. Try again.",
+      "buyerTypes": {
+        "none": "Not set",
+        "B": "Business",
+        "P": "Person",
+        "F": "Foreign company"
+      }
     },
     "projects": {
       "description": "How new projects start, and the statuses every project moves through.",
@@ -924,14 +940,14 @@
     "daysLeft_other": "{{count}} days left · 23:59 Cairo time",
     "seats": "Seats",
     "seatsUsed": "{{active}} active · {{used}} of {{max}} seats",
-    "renewal": "Renewal",
-    "quotationSent": "Quotation sent {{date}}",
     "howToRenew": "To renew, pay the quotation and send the transfer reference to",
     "howToRenewAfter": "Your end date moves as soon as it's confirmed.",
     "howToRenewNoEmail": "To renew, ask Aluminia for a quotation. Your end date moves as soon as the payment is confirmed.",
-    "documents": "Quotations & invoices",
-    "noDocuments": "Nothing yet: quotations and invoices from Aluminia show here.",
-    "inYourPlan": "In your plan"
+    "documents": "Invoices",
+    "noDocuments": "Nothing yet: your invoices from Aluminia show here.",
+    "inYourPlan": "In your plan",
+    "lastPayment": "Last payment",
+    "paidOn": "Paid {{date}}"
   },
   "expiryBar": {
     "title_one": "{{company}}'s subscription ends in {{count}} day",

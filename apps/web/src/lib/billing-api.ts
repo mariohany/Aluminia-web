@@ -7,8 +7,11 @@ import type {
   TransactionsPage,
   TransactionsQuery,
   TransactionsSummary,
+  UndoPaymentInput,
+  UndoPaymentResult,
   VoidQuotationInput,
 } from '@repo/types/billing-documents'
+import type { BillingTodo } from '@repo/types/billing-todo'
 import type { BillingCurrency } from '@repo/types/subscriptions'
 import { apiFetch } from '@/lib/api-client'
 
@@ -46,6 +49,16 @@ export function markPaid(id: string, input: MarkPaidInput): Promise<BillingDocum
   return apiFetch<BillingDocumentSummary>(`/admin/billing/documents/${id}/pay`, { method: 'POST', body: input })
 }
 
+// Billing › To-do (payment cycle §8).
+export function getBillingTodo(): Promise<BillingTodo> {
+  return apiFetch<BillingTodo>('/admin/billing/todo')
+}
+
+// Payment cycle P22: the same-day undo of the latest invoice.
+export function undoPayment(id: string, input: UndoPaymentInput): Promise<UndoPaymentResult> {
+  return apiFetch<UndoPaymentResult>(`/admin/billing/documents/${id}/undo`, { method: 'POST', body: input })
+}
+
 export function listTransactions(
   filters: TransactionsFilters,
   cursor: string | null,
@@ -68,8 +81,8 @@ export function exportTransactionsCsv(filters: TransactionsFilters): Promise<Blo
   })
 }
 
-export function getSendDefaults(id: string): Promise<{ subject: string }> {
-  return apiFetch<{ subject: string }>(`/admin/billing/documents/${id}/send-defaults`)
+export function getSendDefaults(id: string): Promise<{ subject: string; to: string[] }> {
+  return apiFetch<{ subject: string; to: string[] }>(`/admin/billing/documents/${id}/send-defaults`)
 }
 
 export function sendDocument(id: string, input: SendDocumentInput): Promise<BillingDocumentSummary> {

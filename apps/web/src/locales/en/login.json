@@ -19,7 +19,6 @@
   "unavailable": "Sign-in is briefly unavailable. Try again in a minute.",
   "backHome": "Back to home",
   "signedOut": {
-    "subscription_ended": "Your company's subscription has ended. Ask your company admin to renew it.",
     "plan_deactivated": "Your company is on the Free plan, which has one user. Ask your company admin to upgrade."
   }
 }

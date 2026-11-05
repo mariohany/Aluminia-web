@@ -14,7 +14,8 @@
       "catalogue": "Catalogue",
       "system": "System",
       "billing": "Billing"
-    }
+    },
+    "todo": "To-do"
   },
   "sidebar": {
     "openMenu": "Open menu",
@@ -82,7 +83,10 @@
           "deleted": "Permanently deleted {{name}}",
           "subscription_changed_one": "Changed the subscription of {{name}} · {{plan}}, 1 seat",
           "subscription_changed_other": "Changed the subscription of {{name}} · {{plan}}, {{count}} seats",
-          "free_project_reset": "Reset the editable project of {{name}}"
+          "free_project_reset": "Reset the editable project of {{name}}",
+          "trial_granted": "Granted {{name}} a {{plan}} trial",
+          "trial_extended": "Extended the {{plan}} trial of {{name}}",
+          "trial_ended": "Ended the trial of {{name}} → Free"
         },
         "user": {
           "created": "Added {{email}}",
@@ -107,7 +111,8 @@
           "quotation_updated": "Edited quotation {{number}}",
           "quotation_voided": "Voided quotation {{number}}",
           "paid": "{{name}} paid: invoice {{invoice}}",
-          "document_sent": "Emailed {{number}} to {{name}}"
+          "document_sent": "Emailed {{number}} to {{name}}",
+          "payment_undone": "Undid the payment of {{name}}: invoice {{invoice}}"
         }
       },
       "lookup": {
@@ -127,18 +132,18 @@
       "leads": "Leads",
       "endingSoon": "Ending soon",
       "unpaid": "Unpaid quotations",
-      "expired": "Expired",
+      "ended": "Ended",
       "error": "Couldn’t load the list.",
       "endDate": "Ends",
       "when": "When",
       "daysLeft_one": "in {{count}} day",
       "daysLeft_other": "in {{count}} days",
-      "expiredAgo_one": "{{count}} day ago",
-      "expiredAgo_other": "{{count}} days ago",
+      "endedAgo_one": "{{count}} day ago",
+      "endedAgo_other": "{{count}} days ago",
       "empty": {
         "endingSoon": "No paid plan ends in the next 30 days.",
         "unpaid": "No sent quotation is waiting for payment.",
-        "expired": "No company's plan has ended."
+        "ended": "No paid plan ended in the last 30 days."
       }
     }
   },
@@ -293,7 +298,10 @@
         "paid_one": "Paid · {{plan}} · {{count}} seat",
         "paid_other": "Paid · {{plan}} · {{count}} seats",
         "dropped_to_free": "Moved to Free",
-        "trial_ended": "Trial ended → Free"
+        "trial_ended": "Trial ended → Free",
+        "plan_ended": "Plan ended → Free",
+        "trial_extended": "Trial extended · {{plan}}",
+        "payment_undone": "Payment undone"
       },
       "endsOn": "Ends {{date}}"
     },
@@ -357,8 +365,7 @@
       "ends_other": "Ends in {{count}} days",
       "trial_zero": "Trial ends today",
       "trial_one": "Trial · {{count}} day left",
-      "trial_other": "Trial · {{count}} days left",
-      "expired": "Expired"
+      "trial_other": "Trial · {{count}} days left"
     },
     "documents": {
       "title": "Quotations & invoices",
@@ -376,7 +383,6 @@
       "seatsCustom_other": "Plan default {{seats}} · {{count}} users",
       "ends": "Ends",
       "neverEnds": "Free never ends",
-      "expired": "Expired",
       "daysLeft_zero": "Ends today · 23:59 Cairo",
       "daysLeft_one": "{{count}} day left · 23:59 Cairo",
       "daysLeft_other": "{{count}} days left · 23:59 Cairo",
@@ -386,7 +392,8 @@
       "resetPickHint": "The company admin picks the project Free keeps editable again",
       "resetPickDone": "The company admin will pick again.",
       "unpaidCount_one": "{{count}} quotation",
-      "unpaidCount_other": "{{count}} quotations"
+      "unpaidCount_other": "{{count}} quotations",
+      "more": "More subscription actions"
     }
   },
   "usersPage": {
@@ -539,10 +546,11 @@
       "required": "Required",
       "seats": "1 to {{max}}",
       "price": "Enter a price above 0"
-    }
+    },
+    "etaItemCode": "ETA item code",
+    "etaItemCodeHint": "The EGS code registered for this plan; optional until e-invoicing is turned on."
   },
   "subscription": {
-    "title": "Edit subscription",
     "plan": "Plan",
     "planOption_one": "{{name}} · {{count}} seat",
     "planOption_other": "{{name}} · {{count}} seats",
@@ -555,14 +563,11 @@
     "freeDeactivates_one": "Free has 1 seat: the admin below stays active and {{count}} other user is deactivated and logged out. Nothing is deleted; a paid plan brings them back.",
     "freeDeactivates_other": "Free has 1 seat: the admin below stays active and the {{count}} other users are deactivated and logged out. Nothing is deleted; a paid plan brings them back.",
     "keepAdmin": "Stays active",
-    "trial": "Trial: no quotation; drops to Free if not paid by the end",
     "trialEnds": "Trial ends",
     "ends": "Subscription ends",
     "endOfDay": "23:59 Cairo",
     "endRequired": "Pick the end date",
-    "trialHint": "14 days from today unless you change it",
     "endsHint": "A paid quotation moves it for you; edit it here only to correct it",
-    "trialDays": "Days",
     "currency": "Currency",
     "currencies": {
       "EGP": "Egyptian pound",
@@ -571,15 +576,20 @@
       "USD": "US dollar",
       "EUR": "Euro"
     },
-    "vat": "VAT",
-    "vatInvalid": "0 to 100",
-    "currencyHint": "Currency and VAT are used by new quotations; issued ones keep theirs.",
-    "note": "Note (optional)",
-    "notePlaceholder": "e.g. Asked for two more designers",
     "cancel": "Cancel",
     "save": "Save",
     "saved": "Subscription saved.",
-    "saveError": "Couldn’t save the subscription. Try again."
+    "saveError": "Couldn’t save the subscription. Try again.",
+    "specialTitle": "Edit subscription · special case",
+    "specialDescription": "{{name}} · no invoice is made",
+    "specialWarning": "For special cases only, like a gift or fixing a wrong date. Anything the client pays for goes through a quotation and Record payment.",
+    "trialEndsHint": "Still a trial: it drops to Free at the end unless a payment is recorded",
+    "reason": "Reason",
+    "reasonPlaceholder": "e.g. Compensation for the 2-day outage",
+    "reasonHint": "Shown in the billing history and the admin log",
+    "reasonRequired": "Say why: this change has no invoice behind it.",
+    "specialItem": "Edit subscription (special case)…",
+    "specialItemHint": "Gift, fixing a date. Needs a reason; no invoice."
   },
   "billingProfile": {
     "title": "Billing profile",
@@ -593,7 +603,8 @@
     "sections": {
       "business": "Business",
       "pay": "How to pay",
-      "numbering": "Numbering"
+      "numbering": "Numbering",
+      "eta": "E-invoicing (ETA)"
     },
     "fields": {
       "legalNameEn": "Legal name (English)",
@@ -607,12 +618,20 @@
       "bankAccount": "Bank · IBAN",
       "instapay": "InstaPay",
       "nextQuotation": "Next quotation",
-      "nextInvoice": "Next invoice"
+      "nextInvoice": "Next invoice",
+      "activityCode": "Activity code",
+      "etaCountry": "Country code",
+      "etaGovernorate": "Governorate",
+      "etaCity": "City / area",
+      "etaStreet": "Street",
+      "etaBuilding": "Building no."
     },
     "hints": {
       "billingEmail": "Quotations and invoices are sent from and reply to it",
       "nextQuotation": "Restarts at 0001 every January; can only go up",
-      "nextInvoice": "No gaps; never reused; can only go up"
+      "nextInvoice": "No gaps; never reused; can only go up",
+      "eta": "Optional for now: used when invoices are submitted to Egypt’s e-invoicing system. Never printed.",
+      "activityCode": "Your ETA activity code, e.g. 6201"
     },
     "errors": {
       "required": "Required.",
@@ -641,11 +660,9 @@
   },
   "quotation": {
     "new": "New quotation",
-    "title": "New quotation",
     "editTitle": "Edit {{number}}",
     "description": "A quotation for {{company}}. It is saved as a numbered draft; the plan changes only when it is paid.",
     "plan": "Plan",
-    "seats": "Seats",
     "seatsBelowUsers": "The company has {{count}} users: quote at least that many seats.",
     "duration": "Duration",
     "months_one": "{{count}} month",
@@ -678,29 +695,59 @@
       "discount": "Discount",
       "vat": "VAT {{rate}} %",
       "total": "Total",
-      "inEgp": "In EGP at the frozen rate"
+      "inEgp": "In EGP at the frozen rate",
+      "plan": "Plan",
+      "extraSeats_one": "{{count}} extra seat",
+      "extraSeats_other": "{{count}} extra seats",
+      "credit": "Credit for unused days",
+      "creditLine": "{{number}}: {{left}} of {{days}} days"
     },
     "cancel": "Cancel",
     "save": "Save quotation",
     "saved": "Quotation {{number}} saved.",
     "errors": {
       "field": "Check this field.",
-      "seats": "1 to 50 seats.",
       "endsOn": "The end is before the start.",
       "fxRate": "A rate is needed for any currency but EGP.",
       "discountValue": "Check the discount (a percent is at most 100).",
       "save": "Couldn’t save the quotation. Try again.",
-      "noBillingProfile": "Fill in Billing › Billing profile first: it prints as the seller."
+      "noBillingProfile": "Fill in Billing › Billing profile first: it prints as the seller.",
+      "extraSeats": "Check the extra seats.",
+      "extraSeatPrice": "Check the seat price."
     },
     "next": "Next",
     "steps": {
       "label": "Steps",
       "quotation": "Quotation",
       "email": "Email"
-    }
+    },
+    "titles": {
+      "new": "New quotation",
+      "renewal": "Renewal quotation",
+      "upgrade": "Upgrade quotation"
+    },
+    "menu": {
+      "renewal": "Renewal quotation…",
+      "renewalHint": "Same plan and seats, starts the day after {{date}}",
+      "upgrade": "Upgrade quotation…",
+      "upgradeHint": "Bigger plan or more seats now; the unused days are credited"
+    },
+    "extraSeats": "Extra seats",
+    "extraSeatPrice": "Price per extra seat ({{currency}})",
+    "extraSeatHint": "For the whole period, typed by hand; printed as its own line.",
+    "seatsTotal_one": "The plan has {{plan}} seat · {{count}} seat in all",
+    "seatsTotal_other": "The plan has {{plan}} seats · {{count}} seats in all",
+    "seatsBelowCurrent": "The company has {{count}} seats now: an upgrade can’t lower them (fewer seats at the renewal).",
+    "upgradeFull": "Runs past {{date}}: the new period starts today for the full length.",
+    "upgradeSameEnd": "Ends with the current period on {{date}}; only the days left are charged.",
+    "upgradeStartHint": "Today: the upgrade applies when it’s paid",
+    "upgradeEndHint": "Kept: the current end",
+    "upgradeEndFullHint": "Today + the new length",
+    "priceUpgrade": "The new plan’s rate for the days left; you can change it",
+    "priceUpgradeFull": "The plan’s price for the new period; you can change it"
   },
   "markPaid": {
-    "title": "Mark {{number}} as paid",
+    "title": "Record payment for {{number}}",
     "description": "The money arrived outside the app: record it here.",
     "paidOn": "Paid on",
     "amount": "Amount received ({{currency}})",
@@ -717,15 +764,37 @@
     "invoiceCreated": "An invoice is created from this quotation (same lines, marked paid)",
     "renewed": "Plan {{plan}}, {{seats}} seats · {{start}} → {{end}}",
     "startNote": "If the current plan is still running, the period starts the day after it ends instead.",
-    "confirm": "Confirm payment",
+    "confirm": "Record payment",
     "done": "Paid: invoice {{number}} created.",
     "errors": {
       "reference": "Required: it prints on the invoice.",
       "save": "Couldn’t record the payment. Try again.",
-      "quotation_expired": "This quotation has expired: issue a new one.",
-      "seats_below_users": "The company has more users than this quotation's seats."
+      "seats_below_users": "The company has more users than this quotation's seats.",
+      "reference_used": "This reference is already on another invoice for this method.",
+      "note_required": "The amount differs from the total: say why in the note.",
+      "paid_in_future": "The paid-on date can’t be after today.",
+      "upgrade_outdated": "The company is no longer on the plan this upgrade was quoted for: void it and issue a new one."
     },
-    "emailNow": "Email the invoice now"
+    "upgradeNote": "An upgrade switches the plan and seats on the payment day and keeps this end date.",
+    "expiredWarning": "This quotation expired on {{date}}. You can still record the payment if the client paid it.",
+    "confirmExpired": "Record payment anyway",
+    "matchesTotal": "Matches the total",
+    "difference": "{{amount}} against the total {{total}}: say why in the note",
+    "note": "Note",
+    "noteOptional": "Note (optional)",
+    "notePlaceholder": "e.g. Cheque no. 004512, CIB",
+    "notePlaceholderDiff": "e.g. Bank fee of 40 EGP",
+    "emailedAfter": "The invoice is emailed to the client by itself once recorded.",
+    "recordedTitle": "{{number}} recorded",
+    "recordedDescription": "The payment is recorded and the subscription updated.",
+    "emailing": "Emailing the invoice to {{to}}…",
+    "emailed_one": "{{number}} emailed to {{count}} address.",
+    "emailed_other": "{{number}} emailed to {{count}} addresses.",
+    "notEmailed": "Invoice not emailed: the email didn’t go out.",
+    "notEmailedNoAddress": "Invoice not emailed: the company has no active admin to send it to.",
+    "retry": "Retry",
+    "emailManually": "Email…",
+    "close": "Close"
   },
   "documents": {
     "number": "Number",
@@ -746,7 +815,7 @@
     },
     "actions": {
       "edit": "Edit",
-      "markPaid": "Mark paid",
+      "markPaid": "Record payment",
       "void": "Void",
       "voided": "{{number}} voided.",
       "voidTitle": "Void {{number}}?",
@@ -755,7 +824,8 @@
       "voidReasonPlaceholder": "e.g. the customer changed plan",
       "error": "That didn’t work. Try again.",
       "pdf": "PDF",
-      "email": "Email"
+      "email": "Email",
+      "undo": "Undo payment"
     },
     "pdf": {
       "download": "Download",
@@ -766,7 +836,8 @@
       "drawing": "Drawing the PDF…"
     },
     "emailed_one": "Emailed {{date}} · {{count}} person",
-    "emailed_other": "Emailed {{date}} · {{count}} people"
+    "emailed_other": "Emailed {{date}} · {{count}} people",
+    "received": "Received {{amount}} ({{gap}})"
   },
   "transactions": {
     "title": "Transactions",
@@ -813,5 +884,94 @@
     "sent_other": "{{number}} emailed to {{count}} people.",
     "failed": "The email wasn’t sent (the mail service refused it). Try again later.",
     "error": "Couldn’t send the email. Try again."
+  },
+  "trial": {
+    "grantItem": "Grant trial…",
+    "grantItemHint": "Any plan, any number of days",
+    "extendItem": "Extend trial…",
+    "extendItemHint": "Add days to {{date}}",
+    "endItem": "End trial now…",
+    "endItemHint": "Back to Free today",
+    "grantTitle": "Grant trial",
+    "extendTitle": "Extend trial",
+    "endTitle": "End trial now?",
+    "onFree": "{{name}} · on Free",
+    "onTrial": "{{name}} · {{plan}} trial",
+    "days": "Days",
+    "daysHint": "1 to {{max}}",
+    "ends": "Trial ends",
+    "endsHint": "Worked out from Days. Then it drops back to Free by itself unless a payment is recorded.",
+    "grantNote": "Uses {{plan}}’s {{seats}} seats. No quotation, invoice or payment is made.",
+    "grantNotePaused_one": "Uses {{plan}}’s {{seats}} seats, so the paused user comes back. No quotation, invoice or payment is made.",
+    "grantNotePaused_other": "Uses {{plan}}’s {{seats}} seats, so the {{count}} paused users come back. No quotation, invoice or payment is made.",
+    "tooFewSeats_one": "The company has {{count}} user and {{plan}} has {{seats}} seats. Pick a bigger plan or remove users first.",
+    "tooFewSeats_other": "The company has {{count}} users and {{plan}} has {{seats}} seats. Pick a bigger plan or remove users first.",
+    "currentEnd": "Current end",
+    "daysLeft_one": "{{count}} day left",
+    "daysLeft_other": "{{count}} days left",
+    "addDays": "Add days",
+    "newEnd": "New end",
+    "newEndHint": "Worked out from Add days · at most {{date}}",
+    "tooLong": "Too far: a trial can run until {{date}} at the latest ({{max}} days from today).",
+    "endMoves_one": "{{name}} moves to Free now, {{count}} day early.",
+    "endMoves_other": "{{name}} moves to Free now, {{count}} days early.",
+    "endKeeps": "{{email}} keeps working",
+    "endPauses_one": "{{count}} user is paused until a paid plan",
+    "endPauses_other": "{{count}} users are paused until a paid plan",
+    "endProjects": "Only one project stays editable; nothing is deleted",
+    "reasonOptional": "Reason (optional)",
+    "reasonPlaceholder": "e.g. Client asked to stop",
+    "grant": "Grant trial",
+    "extend": "Extend trial",
+    "end": "End trial",
+    "granted": "Trial started.",
+    "extended": "Trial extended.",
+    "ended": "Trial ended; the company is on Free.",
+    "error": "Couldn’t change the trial. Try again."
+  },
+  "undo": {
+    "title": "Undo the payment of {{number}}?",
+    "description": "Only for a payment recorded by mistake today.",
+    "invoiceGone": "{{number}} is deleted and its number is used by the next invoice",
+    "quotationBack": "{{number}} can be paid again",
+    "companyBack": "The company’s plan, seats and end date go back to how they were before the payment; users it brought back are paused again",
+    "clientEmailed": "The client is emailed that the invoice was cancelled",
+    "reason": "Reason",
+    "reasonPlaceholder": "e.g. Recorded on the wrong company",
+    "confirm": "Undo payment",
+    "done_one": "Payment undone. The cancellation was emailed to {{count}} address.",
+    "done_other": "Payment undone. The cancellation was emailed to {{count}} addresses.",
+    "doneNotEmailed": "Payment undone, but the cancellation email to the client didn’t go out: tell them yourself."
+  },
+  "todo": {
+    "title": "To-do",
+    "subtitle": "What needs you in billing now. Each row opens the company’s Billing tab.",
+    "error": "Couldn’t load the to-do list. Try again.",
+    "empty": "Nothing to do: no quotation waiting, no plan ending without a renewal quotation.",
+    "nothing": "Nothing here.",
+    "endsOn": "ends {{date}}",
+    "daysLeft_one": "{{count}} day left",
+    "daysLeft_other": "{{count}} days left",
+    "waiting": {
+      "title": "Waiting for payment",
+      "hint": "Sent quotations not paid yet, oldest first.",
+      "sent_one": "sent {{count}} day ago",
+      "sent_other": "sent {{count}} days ago",
+      "expires_one": "expires in {{count}} day",
+      "expires_other": "expires in {{count}} days"
+    },
+    "ending": {
+      "title": "Ending, no renewal quotation",
+      "hint": "Paid plans ending within 30 days with no renewal or upgrade quotation sent."
+    },
+    "trials": {
+      "title": "Trials ending",
+      "hint": "Trials ending within 7 days.",
+      "plan": "{{plan}} trial"
+    },
+    "differences": {
+      "title": "Paid a different amount",
+      "hint": "Payments of the last 30 days that didn’t match their total."
+    }
   }
 }

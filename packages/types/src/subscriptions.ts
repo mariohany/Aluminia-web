@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { MAX_PLAN_SEATS, PLAN_KEYS, type PlanFeature, type PlanKey, type PlanRef } from './plans.ts'
+import { MAX_PLAN_SEATS, PAID_PLAN_KEYS, PLAN_KEYS, type PlanFeature, type PlanKey, type PlanRef } from './plans.ts'
 
 // A company's subscription (docs/subscriptions_planing.md §3b, B2, B9,
 // B11). Pure and shared: the API enforces with it, the web shows it.
@@ -87,15 +87,14 @@ export function daysBetween(from: string, to: string): number {
 
 export type EndingTone = 'yellow' | 'red'
 
-// Computed, never stored: nothing needs a job to flip a company from
-// active to expired. `daysLeft` 0 = ends today. A trial past its end is
-// `free` (B11): it drops to Free, it is never blocked.
+// Computed, never stored. `daysLeft` 0 = ends today. Any plan past its
+// end, trial or paid, is `free` (payment cycle P10): it drops to Free,
+// never blocked, and the API settles the drop (SubscriptionsService).
 export type SubscriptionState =
   | { kind: 'free' }
   | { kind: 'trial'; endDate: string; daysLeft: number; tone: EndingTone | null }
   | { kind: 'active'; endDate: string; daysLeft: number }
   | { kind: 'ending'; endDate: string; daysLeft: number; tone: EndingTone }
-  | { kind: 'expired'; endDate: string }
 
 export interface SubscriptionFacts {
   planKey: PlanKey
@@ -112,47 +111,70 @@ function toneOf(daysLeft: number): EndingTone | null {
 export function subscriptionState(facts: SubscriptionFacts, now: Date): SubscriptionState {
   if (facts.planKey === 'free' || facts.endsAt === null) return { kind: 'free' }
   const endsAt = new Date(facts.endsAt)
+  if (now.getTime() > endsAt.getTime()) return { kind: 'free' }
   const endDate = cairoDateOf(endsAt)
-  if (now.getTime() > endsAt.getTime()) {
-    return facts.isTrial ? { kind: 'free' } : { kind: 'expired', endDate }
-  }
   const daysLeft = daysBetween(cairoDateOf(now), endDate)
   const tone = toneOf(daysLeft)
   if (facts.isTrial) return { kind: 'trial', endDate, daysLeft, tone }
   return tone ? { kind: 'ending', endDate, daysLeft, tone } : { kind: 'active', endDate, daysLeft }
 }
 
-// Why a history row was written (§3c). `paid` arrives with step 6.
-export const BILLING_REASONS = ['created', 'edited', 'trial_started', 'paid', 'trial_ended', 'dropped_to_free'] as const
+// Why a history row was written (§3c). `plan_ended`: a paid plan ran out
+// unpaid and dropped to Free (payment cycle P10). `trial_extended`: the
+// super admin added days to a trial (P26). `payment_undone`: a payment
+// recorded today was taken back, its invoice deleted (P22).
+export const BILLING_REASONS = [
+  'created',
+  'edited',
+  'trial_started',
+  'trial_extended',
+  'paid',
+  'trial_ended',
+  'plan_ended',
+  'dropped_to_free',
+  'payment_undone',
+] as const
 export type BillingReason = (typeof BILLING_REASONS)[number]
 
-// The Edit subscription dialog (B2, `bill-cd-edit-sub`). On Free the end
-// date, trial and seats are ignored (Free is fixed: one seat, never
-// ends); `keepAdminId` picks the one admin who stays active there (B13,
-// null = the oldest). A trial is a paid plan with `isTrial` and an end
-// date the dialog fills from its days.
+// Edit subscription, the special case (payment cycle P27): a gift or a
+// fixed date, never anything the client pays for. On Free the end date
+// and seats are ignored (Free is fixed: one seat, never ends);
+// `keepAdminId` picks the one admin who stays active there (B13, null =
+// the oldest). A trial stays a trial (only Grant trial starts one); the
+// reason is required and lands in the billing history. Currency and VAT
+// are set on quotations only (2.2b).
 export const updateSubscriptionSchema = z
   .object({
     planKey: z.enum(PLAN_KEYS),
     maxUsers: z.number().int().min(1).max(MAX_PLAN_SEATS),
     endDate: z.iso.date().nullable(),
-    isTrial: z.boolean(),
-    currency: z.enum(BILLING_CURRENCIES),
-    vatRate: z.number().min(0).max(100),
-    note: z.string().trim().max(300).nullable(),
+    reason: z.string().trim().min(1, 'Say why.').max(300),
     keepAdminId: z.uuid().nullable(),
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.planKey === 'free') {
-      if (value.isTrial) ctx.addIssue({ code: 'custom', path: ['isTrial'], message: 'Trials are only on paid plans.' })
-      return
-    }
-    if (value.endDate === null) {
+    if (value.planKey !== 'free' && value.endDate === null) {
       ctx.addIssue({ code: 'custom', path: ['endDate'], message: 'A paid plan needs an end date.' })
     }
   })
 export type UpdateSubscriptionInput = z.infer<typeof updateSubscriptionSchema>
+
+// Trials (payment cycle P2, P20, P26): no quotation, invoice or payment,
+// only history rows. Grant works only on Free and uses the plan's own
+// seats; the end is today + days. Extend adds days to the current end,
+// which may be at most MAX_TRIAL_DAYS after today. End drops to Free now.
+const trialDays = z.number().int().min(1).max(MAX_TRIAL_DAYS)
+export const grantTrialSchema = z.object({ planKey: z.enum(PAID_PLAN_KEYS), days: trialDays }).strict()
+export type GrantTrialInput = z.infer<typeof grantTrialSchema>
+export const extendTrialSchema = z.object({ days: trialDays }).strict()
+export type ExtendTrialInput = z.infer<typeof extendTrialSchema>
+export const endTrialSchema = z.object({ reason: z.string().trim().max(300).nullable() }).strict()
+export type EndTrialInput = z.infer<typeof endTrialSchema>
+
+/** The latest end an extended trial may have: MAX_TRIAL_DAYS after today (Cairo). */
+export function latestTrialEnd(now: Date): string {
+  return addDays(cairoDateOf(now), MAX_TRIAL_DAYS)
+}
 
 // GET /company/subscription (every company user): what the workspace
 // shows and dims (B12, B13, B15). `limits` null = unlimited (paid plans).

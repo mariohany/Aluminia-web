@@ -24,6 +24,7 @@ import { AddReportSnapshot1792440000000 } from './1792440000000-AddReportSnapsho
 import { DropReportCache1792450000000 } from './1792450000000-DropReportCache';
 import { AddCompanyLookupVersions1792460000000 } from './1792460000000-AddCompanyLookupVersions';
 import { AddCompanyProfileFaceWidth1792700000001 } from './1792700000001-AddCompanyProfileFaceWidth';
+import { AddCompanyProfileEta1793400000000 } from './1793400000000-AddCompanyProfileEta';
 
 /**
  * The tenant migration track, explicitly ordered.
@@ -63,6 +64,7 @@ export const tenantMigrations: Array<new () => MigrationInterface> = [
   DropReportCache1792450000000,
   AddCompanyLookupVersions1792460000000,
   AddCompanyProfileFaceWidth1792700000001,
+  AddCompanyProfileEta1793400000000,
 ];
 
 /** TypeORM records applied migrations as `{timestamp}-{ClassName}`. */

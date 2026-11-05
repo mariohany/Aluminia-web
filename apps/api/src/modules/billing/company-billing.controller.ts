@@ -7,9 +7,10 @@ import type { AuthenticatedRequestUser } from '../auth/jwt-payload';
 import { BillingDocumentsService } from './billing-documents.service';
 
 /**
- * Config › Subscription (docs/subscriptions_planing.md B24): the company's
- * own quotations and invoices, for its admins. Drafts and voided ones are
- * the super admin's working copies and never shown here.
+ * Config › Subscription (docs/payment_cycle_planing.md P13, §8; replaces
+ * B24): the company's own invoices, for its admins. Quotations reach the
+ * client by email only; their drafts, voids and expiries are the super
+ * admin's business.
  */
 @Roles(UserRole.COMPANY_ADMIN)
 @Controller('company/billing')
@@ -24,6 +25,6 @@ export class CompanyBillingController {
       throw new ForbiddenException('This route requires a company.');
     }
     const all = await this.documents.listForCompany(user.companyId);
-    return all.filter((d) => d.status !== 'draft' && d.status !== 'void');
+    return all.filter((d) => d.kind === 'invoice');
   }
 }

@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { VirtualizedLogTable, type LogColumn } from '@/components/admin/admin-logs/virtualized-log-table'
 import { DocumentStatusPill } from '@/components/billing/document-status'
 import { MarkPaidDialog } from '@/components/admin/billing/mark-paid-dialog'
+import { AmountDifference } from '@/components/admin/billing/company-documents-card'
 import { DocumentPdfDialog } from '@/components/billing/document-pdf-dialog'
 import { EmailDocumentDialog } from '@/components/admin/billing/email-document-dialog'
 
@@ -99,7 +100,7 @@ export function TransactionsPage() {
     {
       key: 'company',
       header: t('transactions.company'),
-      width: '1.6fr',
+      width: '1.4fr',
       cell: (d) => (
         <Link to={`/app/companies/${d.company.id}?tab=billing`} className="font-medium text-foreground hover:underline">
           {i18n.language === 'ar' && d.company.nameAr ? d.company.nameAr : d.company.name}
@@ -110,9 +111,15 @@ export function TransactionsPage() {
     {
       key: 'total',
       header: t('documents.total'),
-      width: '1fr',
+      // Wide enough for "Received EGP 80,700.00 (−EGP 12.00)" under the total.
+      width: '1.8fr',
       className: 'text-end font-mono text-[13px]',
-      cell: (d) => money(d),
+      cell: (d) => (
+        <>
+          {money(d)}
+          <AmountDifference document={d} />
+        </>
+      ),
     },
     {
       key: 'created',
@@ -127,7 +134,7 @@ export function TransactionsPage() {
       width: '10rem',
       cell: (d) => (
         <span className="flex items-center justify-end gap-1">
-          {d.kind === 'quotation' && (d.status === 'draft' || d.status === 'sent') && (
+          {d.kind === 'quotation' && (d.status === 'draft' || d.status === 'sent' || d.status === 'expired') && (
             <Button variant="ghost" size="sm" className="h-7" onClick={() => setPaying(d)}>
               <Banknote aria-hidden="true" />
               {t('documents.actions.markPaid')}

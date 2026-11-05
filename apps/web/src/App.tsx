@@ -23,6 +23,7 @@ import { LogsPage } from '@/pages/admin/logs-page'
 import { PlansPage } from '@/pages/admin/plans-page'
 import { BillingProfilePage } from '@/pages/admin/billing-profile-page'
 import { TransactionsPage } from '@/pages/admin/transactions-page'
+import { BillingTodoPage } from '@/pages/admin/billing-todo-page'
 import { FeatureGate } from '@/components/workspace/plan/feature-gate'
 import { WorkspaceLayout } from '@/pages/workspace/workspace-layout'
 import { ConfigSubscriptionPage } from '@/pages/workspace/config-subscription-page'
@@ -96,6 +97,7 @@ function App() {
               <Route path="users" element={<UsersPage />} />
               <Route path="data-warehouse" element={<DataWarehousePage />} />
               <Route path="logs" element={<LogsPage />} />
+              <Route path="todo" element={<BillingTodoPage />} />
               <Route path="plans" element={<PlansPage />} />
               <Route path="transactions" element={<TransactionsPage />} />
               <Route path="billing-profile" element={<BillingProfilePage />} />

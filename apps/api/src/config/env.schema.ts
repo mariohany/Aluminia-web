@@ -60,6 +60,13 @@ export const envSchema = z.object({
   BREVO_API_KEY: z.string().min(1).optional(),
   MAIL_FROM: z.email().optional(),
   MAIL_FROM_NAME: z.string().min(1).default('Aluminia'),
+
+  // Payment cycle P17, P28: who sends the 30/15/5/1-day reminders. 'false'
+  // (laptops, CI, the test deploy) = the alerts call on app open, as
+  // before; 'true' (production, with the DigitalOcean scheduled job
+  // `npm run job:daily-billing`) = only the daily job, to the client admins
+  // and the super admins. Both claim each reminder in billing_notices.
+  BILLING_REMINDERS_BY_JOB: z.enum(['true', 'false']).default('false'),
 });
 
 export type Env = z.infer<typeof envSchema>;

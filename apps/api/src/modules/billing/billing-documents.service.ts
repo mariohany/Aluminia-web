@@ -7,20 +7,29 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
+import { UserRole } from '@repo/types/auth';
 import { Brackets, DataSource, type EntityManager } from 'typeorm';
 import {
   documentStatus,
   documentTotals,
+  round2,
+  unusedCredit,
+  upgradeHasCredit,
+  upgradePeriod,
   type BillingDocumentSummary,
+  type CreditLine,
   type DocumentParty,
   type DocumentSeller,
   type MarkPaidInput,
+  type PaymentMethod,
   type VoidQuotationInput,
   type QuotationInput,
   type SendDocumentInput,
   type TransactionsPage,
   type TransactionsQuery,
   type TransactionsSummary,
+  type UndoPaymentInput,
+  type UndoPaymentResult,
 } from '@repo/types/billing-documents';
 import {
   documentNumber,
@@ -32,17 +41,22 @@ import {
   daysBetween,
   endOfCairoDay,
 } from '@repo/types/subscriptions';
+import { MAX_PLAN_SEATS } from '@repo/types/plans';
+import { etaAddressOf } from '@repo/types/eta';
 import { BillingDocument } from '../../database/control-plane/entities/billing-document.entity';
 import { BillingSend } from '../../database/control-plane/entities/billing-send.entity';
 import { BillingProfileRow } from '../../database/control-plane/entities/billing-profile.entity';
-import { BillingRecord } from '../../database/control-plane/entities/billing-record.entity';
+import {
+  BillingRecord,
+  type PreviousSubscription,
+} from '../../database/control-plane/entities/billing-record.entity';
 import { Company } from '../../database/control-plane/entities/company.entity';
 import { Plan } from '../../database/control-plane/entities/plan.entity';
 import { User } from '../../database/control-plane/entities/user.entity';
 import { CompanyProfileRow } from '../../database/tenant/entities/company-profile.entity';
 import { rollbackQuietly } from '../../database/rollback';
 import { MAILER, type Mailer } from '../../mail/mailer';
-import { documentEmail } from '../../mail/templates';
+import { cancellationEmail, documentEmail } from '../../mail/templates';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { toPlanRef } from '../plans/plans.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
@@ -66,6 +80,14 @@ const CSV_LIMIT = 10_000;
  *   payment day; the quotation's length kept). An expired quotation can't
  *   be paid (Q3).
  */
+/** How a payment method reads in the (English) billing history note. */
+const METHOD_LABELS: Record<PaymentMethod, string> = {
+  bank_transfer: 'Bank transfer',
+  instapay: 'InstaPay',
+  cash: 'Cash',
+  cheque: 'Cheque',
+};
+
 @Injectable()
 export class BillingDocumentsService {
   constructor(
@@ -109,6 +131,7 @@ export class BillingDocumentsService {
       const plan = await manager.findOneOrFail(Plan, {
         where: { key: input.planKey },
       });
+      const terms = await termsOf(manager, company, input, plan);
       const number = await takeNumber(manager, 'quotation');
       const doc = manager.create(BillingDocument, {
         companyId,
@@ -117,11 +140,12 @@ export class BillingDocumentsService {
         status: 'draft',
         quotationId: null,
         createdBy: actorId,
-        ...fieldsOf(input, plan),
+        ...fieldsOf(input, plan, terms),
         seller,
         buyer,
       });
       await manager.save(doc);
+      await rememberPricing(manager, companyId, input);
       await this.auditLog.record(manager, {
         actorUserId: actorId,
         action: 'billing.quotation_created',
@@ -162,11 +186,13 @@ export class BillingDocumentsService {
       const plan = await manager.findOneOrFail(Plan, {
         where: { key: input.planKey },
       });
-      Object.assign(doc, fieldsOf(input, plan), {
+      const terms = await termsOf(manager, current.company!, input, plan);
+      Object.assign(doc, fieldsOf(input, plan, terms), {
         seller: await sellerOf(manager),
         buyer,
       });
       await manager.save(doc);
+      await rememberPricing(manager, doc.companyId, input);
       await this.auditLog.record(manager, {
         actorUserId: actorId,
         action: 'billing.quotation_updated',
@@ -208,6 +234,23 @@ export class BillingDocumentsService {
     return this.get(id);
   }
 
+  /**
+   * Who gets a document by default: whoever got it (or its quotation)
+   * last, else the company's active admins.
+   */
+  async recipientsOf(doc: BillingDocumentSummary): Promise<string[]> {
+    if (doc.lastSent) return doc.lastSent.to;
+    if (doc.quotationId) {
+      const quotation = await this.get(doc.quotationId);
+      if (quotation.lastSent) return quotation.lastSent.to;
+    }
+    const admins: Array<{ email: string }> = await this.dataSource.query(
+      `SELECT "email" FROM "users" WHERE "company_id" = $1 AND "role" = $2 AND "status" = 'active' ORDER BY "created_at"`,
+      [doc.company.id, UserRole.COMPANY_ADMIN],
+    );
+    return admins.map((a) => a.email);
+  }
+
   async markPaid(
     id: string,
     input: MarkPaidInput,
@@ -225,13 +268,41 @@ export class BillingDocumentsService {
         });
       }
       const today = cairoDateOf(new Date());
+      // P14: an expired quotation can still be paid, after a warning.
       if (
         documentStatus(quotation.status, quotation.validUntil, today) ===
-        'expired'
+          'expired' &&
+        !input.acknowledgeExpired
       ) {
         throw new ConflictException({
-          message: 'This quotation has expired; issue a new one.',
+          message: 'This quotation has expired. Record the payment anyway?',
           code: 'quotation_expired',
+        });
+      }
+      if (input.paidOn > today) {
+        throw new BadRequestException({
+          message: 'The money can’t have arrived after today.',
+          code: 'paid_in_future',
+        });
+      }
+      // P12: a different amount is recorded as it arrived, with a note.
+      const note = input.note?.trim() || null;
+      if (round2(input.amountReceived) !== quotation.total && !note) {
+        throw new BadRequestException({
+          message: `The amount differs from the total ${quotation.total}: say why in the note.`,
+          code: 'note_required',
+        });
+      }
+      // §6: a reference is used once per method.
+      const reused: Array<{ number: string }> = await manager.query(
+        `SELECT "number" FROM "billing_documents"
+         WHERE "kind" = 'invoice' AND "payment_method" = $1 AND lower("payment_reference") = lower($2)`,
+        [input.method, input.reference.trim()],
+      );
+      if (reused.length > 0) {
+        throw new ConflictException({
+          message: `This reference is already on ${reused[0].number}.`,
+          code: 'reference_used',
         });
       }
 
@@ -254,20 +325,36 @@ export class BillingDocumentsService {
         });
       }
 
-      // B8: an active paid plan renews from the day after its end; Free,
-      // a trial or an ended plan from the payment day.
       const activePaid =
         previous.key !== 'free' &&
         !company.isTrial &&
         company.endsAt !== null &&
         company.endsAt.getTime() > Date.now();
-      const startsOn = activePaid
-        ? addDays(cairoDateOf(company.endsAt!), 1)
-        : input.paidOn;
-      const endsOn = addDays(
-        startsOn,
-        daysBetween(quotation.startsOn, quotation.endsOn),
-      );
+      let startsOn: string;
+      let endsOn: string;
+      if (quotation.purpose === 'upgrade') {
+        // P11: plan and seats switch now; the quoted end is kept (the
+        // current end, or a longer period's). Its credit assumed the paid
+        // plan still runs.
+        if (!activePaid || quotation.endsOn < today) {
+          throw new ConflictException({
+            message: `"${company.name}" is no longer on the plan this upgrade was quoted for; void it and issue a new quotation.`,
+            code: 'upgrade_outdated',
+          });
+        }
+        startsOn = input.paidOn;
+        endsOn = quotation.endsOn;
+      } else {
+        // B8: an active paid plan renews from the day after its end; Free,
+        // a trial or an ended plan from the payment day.
+        startsOn = activePaid
+          ? addDays(cairoDateOf(company.endsAt!), 1)
+          : input.paidOn;
+        endsOn = addDays(
+          startsOn,
+          daysBetween(quotation.startsOn, quotation.endsOn),
+        );
+      }
 
       const number = await takeNumber(manager, 'invoice');
       const invoice = manager.create(BillingDocument, {
@@ -282,15 +369,29 @@ export class BillingDocumentsService {
         paidOn: input.paidOn,
         amountReceived: input.amountReceived,
         paymentMethod: input.method,
-        paymentReference: input.reference,
+        paymentReference: input.reference.trim(),
+        paymentNote: note,
+        paymentRecordedAt: new Date(),
         createdBy: actorId,
       });
       await manager.save(invoice);
       quotation.status = 'paid';
       await manager.save(quotation);
 
+      // P22: what the same-day undo puts back.
+      const before: PreviousSubscription = {
+        planId: company.planId,
+        maxUsers: company.maxUsers,
+        endsAt: company.endsAt?.toISOString() ?? null,
+        isTrial: company.isTrial,
+        freeProjectId: company.freeProjectId,
+        reactivatedUserIds: [],
+      };
       if (previous.key === 'free') {
-        await this.subscriptions.restoreFromFree(manager, company.id);
+        before.reactivatedUserIds = await this.subscriptions.restoreFromFree(
+          manager,
+          company.id,
+        );
       }
       Object.assign(company, {
         planId: quotation.planId,
@@ -310,6 +411,7 @@ export class BillingDocumentsService {
         documentId: invoice.id,
         notes: null,
         actorId,
+        previous: before,
       });
       await this.auditLog.record(manager, {
         actorUserId: actorId,
@@ -326,8 +428,159 @@ export class BillingDocumentsService {
         },
       });
       return invoice.id;
+    }).catch((error: unknown) => {
+      // Two payments with one reference at the same moment: the index decides.
+      if (isUniqueViolation(error, 'UQ_billing_documents_payment_reference')) {
+        throw new ConflictException({
+          message: 'This reference is already on another invoice.',
+          code: 'reference_used',
+        });
+      }
+      throw error;
     });
     return this.get(invoiceId);
+  }
+
+  /**
+   * Undo a payment (payment cycle P22, P23): only the latest invoice, only
+   * on the Cairo day it was recorded, and only while the company is still
+   * on what it bought. In one transaction the invoice is deleted and its
+   * number freed (the counter steps back), the quotation is payable again,
+   * the company is put back as it was before the payment, the users that
+   * payment brought back are paused again, and a `payment_undone` history
+   * row keeps the payment's details and the reason. The client is then
+   * emailed that the invoice was cancelled (no PDF); a failed email doesn't
+   * undo the undo.
+   */
+  async undoPayment(
+    id: string,
+    input: UndoPaymentInput,
+    actorId: string,
+  ): Promise<UndoPaymentResult> {
+    const summary = await this.get(id);
+    const to = await this.recipientsOf(summary);
+    const refuse = (message: string) =>
+      new ConflictException({ message, code: 'undo_not_allowed' });
+
+    let bumped: Awaited<
+      ReturnType<SubscriptionsService['pauseUsers']>
+    >['bumped'] = [];
+    const quotationId = await this.inTransaction(async (manager) => {
+      const invoice = await lockDocument(manager, id);
+      if (invoice.kind !== 'invoice' || !invoice.quotationId) {
+        throw refuse('Only an invoice’s payment can be undone.');
+      }
+      const today = cairoDateOf(new Date());
+      if (
+        !invoice.paymentRecordedAt ||
+        cairoDateOf(invoice.paymentRecordedAt) !== today
+      ) {
+        throw refuse(
+          'A payment can be undone only on the day it was recorded.',
+        );
+      }
+      const [, yearText, nText] = invoice.number.split('-');
+      const [counter] = await manager.query<Array<{ last: number }>>(
+        `SELECT "last" FROM "billing_counters" WHERE "kind" = 'invoice' AND "year" = $1 FOR UPDATE`,
+        [Number(yearText)],
+      );
+      if (!counter || counter.last !== Number(nText)) {
+        throw refuse('Only the latest invoice can be undone.');
+      }
+      const paid = await manager.findOne(BillingRecord, {
+        where: { documentId: invoice.id, reason: 'paid' },
+      });
+      const company = await manager.findOneOrFail(Company, {
+        where: { id: invoice.companyId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const unchanged =
+        company.planId === invoice.planId &&
+        company.maxUsers === invoice.seats &&
+        company.endsAt !== null &&
+        cairoDateOf(company.endsAt) === invoice.endsOn;
+      if (!paid?.previous || !unchanged) {
+        throw refuse(
+          'The subscription changed after this payment; fix it with Edit subscription instead.',
+        );
+      }
+      const before = paid.previous;
+
+      // The quotation is payable again: sent if it ever was, else a draft.
+      const sends: Array<{ n: number }> = await manager.query(
+        `SELECT count(*)::int AS n FROM "billing_sends" WHERE "document_id" = $1 AND "error" IS NULL`,
+        [invoice.quotationId],
+      );
+      await manager.update(
+        BillingDocument,
+        { id: invoice.quotationId },
+        { status: sends[0].n > 0 ? 'sent' : 'draft' },
+      );
+      const details = {
+        invoice: invoice.number,
+        method: invoice.paymentMethod,
+        reference: invoice.paymentReference,
+        amountReceived: invoice.amountReceived,
+        currency: invoice.currency,
+        paidOn: invoice.paidOn,
+      };
+      await manager.delete(BillingDocument, { id: invoice.id });
+      await manager.query(
+        `UPDATE "billing_counters" SET "last" = "last" - 1 WHERE "kind" = 'invoice' AND "year" = $1`,
+        [Number(yearText)],
+      );
+
+      Object.assign(company, {
+        planId: before.planId,
+        maxUsers: before.maxUsers,
+        endsAt: before.endsAt ? new Date(before.endsAt) : null,
+        isTrial: before.isTrial,
+        freeProjectId: before.freeProjectId,
+      });
+      await manager.save(company);
+      const pause = await this.subscriptions.pauseUsers(
+        manager,
+        before.reactivatedUserIds,
+      );
+      bumped = pause.bumped;
+
+      await manager.insert(BillingRecord, {
+        companyId: company.id,
+        planId: company.planId,
+        maxUsers: company.maxUsers,
+        endsAt: company.endsAt,
+        isTrial: company.isTrial,
+        reason: 'payment_undone',
+        documentId: invoice.quotationId,
+        notes: `${invoice.number} · ${invoice.paymentMethod ? METHOD_LABELS[invoice.paymentMethod] : ''} · ref ${invoice.paymentReference ?? '—'} · ${invoice.currency} ${(invoice.amountReceived ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} — ${input.reason}`,
+        actorId,
+      });
+      await this.auditLog.record(manager, {
+        actorUserId: actorId,
+        action: 'billing.payment_undone',
+        targetType: 'company',
+        targetId: company.id,
+        metadata: {
+          name: company.name,
+          ...details,
+          reason: input.reason,
+          paused: pause.paused.length,
+        },
+      });
+      return invoice.quotationId;
+    });
+    await this.subscriptions.publish(bumped);
+
+    let emailed = false;
+    if (to.length > 0) {
+      try {
+        await this.mailer.send({ to, ...cancellationEmail(summary) });
+        emailed = true;
+      } catch {
+        // Said in the answer; the undo stands.
+      }
+    }
+    return { quotation: await this.get(quotationId), emailed, to };
   }
 
   /**
@@ -599,6 +852,17 @@ export class BillingDocumentsService {
           )
         : [];
     const today = cairoDateOf(new Date());
+    // P22: the latest invoice number of its year, recorded today.
+    const counters: Array<{ year: number; last: number }> = rows.some(
+      (doc) => doc.kind === 'invoice',
+    )
+      ? await this.dataSource.query(
+          `SELECT "year", "last" FROM "billing_counters" WHERE "kind" = 'invoice'`,
+        )
+      : [];
+    const latest = new Set(
+      counters.map((c) => documentNumber('invoice', c.year, c.last)),
+    );
     return rows.map((doc) => ({
       id: doc.id,
       kind: doc.kind,
@@ -620,7 +884,11 @@ export class BillingDocumentsService {
         nameEn: doc.planNameEn,
         nameAr: doc.planNameAr,
       },
+      purpose: doc.purpose,
       seats: doc.seats,
+      extraSeats: doc.extraSeats,
+      extraSeatPrice: doc.extraSeatPrice,
+      credit: doc.creditLines,
       months: doc.months,
       startsOn: doc.startsOn,
       endsOn: doc.endsOn,
@@ -632,7 +900,9 @@ export class BillingDocumentsService {
       vatRate: doc.vatRate,
       totals: {
         subtotal: doc.subtotal,
+        extraSeatsAmount: doc.extraSeatsAmount,
         discountAmount: doc.discountAmount,
+        creditAmount: doc.creditAmount,
         vatAmount: doc.vatAmount,
         total: doc.total,
         totalEgp: doc.totalEgp,
@@ -643,6 +913,13 @@ export class BillingDocumentsService {
       amountReceived: doc.amountReceived,
       paymentMethod: doc.paymentMethod,
       paymentReference: doc.paymentReference,
+      paymentNote: doc.paymentNote,
+      paymentRecordedAt: doc.paymentRecordedAt?.toISOString() ?? null,
+      canUndo:
+        doc.kind === 'invoice' &&
+        latest.has(doc.number) &&
+        doc.paymentRecordedAt !== null &&
+        cairoDateOf(doc.paymentRecordedAt) === today,
       voidReason: doc.voidReason,
       createdByEmail: doc.creator?.email ?? null,
       createdAt: doc.createdAt.toISOString(),
@@ -668,6 +945,9 @@ export class BillingDocumentsService {
       addressAr: profile?.arAddress ?? null,
       taxId: profile?.taxId ?? null,
       commercialRegister: profile?.commercialRegister ?? null,
+      // ETA (payment cycle §9), optional for now.
+      buyerType: profile?.buyerType ?? null,
+      etaAddress: profile ? etaAddressOf(profile) : null,
     };
   }
 
@@ -690,21 +970,134 @@ export class BillingDocumentsService {
   }
 }
 
+/** What the API decides about a quotation, not the dialog. */
+interface QuotationTerms {
+  seats: number;
+  startsOn: string;
+  endsOn: string;
+  creditLines: CreditLine[];
+  creditAmount: number;
+}
+
+/**
+ * Checks the type against the company (payment cycle P11, P16, P30) and
+ * settles what the dialog can't: seats = plan + extra; an upgrade starts
+ * today, keeps the end unless its length runs past it, and gets a credit
+ * for the unused days of what was paid.
+ */
+async function termsOf(
+  manager: EntityManager,
+  company: Company,
+  input: QuotationInput,
+  plan: Plan,
+): Promise<QuotationTerms> {
+  const current = await manager.findOneOrFail(Plan, {
+    where: { id: company.planId },
+  });
+  const onPaidPlan =
+    current.key !== 'free' &&
+    !company.isTrial &&
+    company.endsAt !== null &&
+    company.endsAt.getTime() > Date.now();
+  if ((input.purpose === 'new') === onPaidPlan) {
+    throw new ConflictException({
+      message: onPaidPlan
+        ? `"${company.name}" is on a paid plan: quote a renewal or an upgrade.`
+        : `"${company.name}" isn't on a paid plan: quote a new subscription.`,
+      code: 'purpose_not_allowed',
+    });
+  }
+  const seats = plan.seats + input.extraSeats;
+  if (seats > MAX_PLAN_SEATS) {
+    throw new BadRequestException({
+      message: `At most ${MAX_PLAN_SEATS} seats: ${plan.nameEn} has ${plan.seats}.`,
+      code: 'too_many_seats',
+    });
+  }
+  if (input.purpose !== 'upgrade') {
+    return {
+      seats,
+      startsOn: input.startsOn,
+      endsOn: input.endsOn,
+      creditLines: [],
+      creditAmount: 0,
+    };
+  }
+
+  // P16: a smaller plan or fewer seats waits for the renewal.
+  if (plan.position < current.position || seats < company.maxUsers) {
+    throw new BadRequestException({
+      message:
+        'An upgrade can’t lower the plan or the seats; do that at the renewal.',
+      code: 'upgrade_is_downgrade',
+    });
+  }
+  const today = cairoDateOf(new Date());
+  const period = upgradePeriod(
+    today,
+    cairoDateOf(company.endsAt!),
+    input.months,
+  );
+  const samePlan = plan.id === current.id;
+  if (samePlan && !period.full && seats === company.maxUsers) {
+    throw new BadRequestException({
+      message:
+        'This upgrade changes nothing: pick a bigger plan, more seats or a longer period.',
+      code: 'upgrade_changes_nothing',
+    });
+  }
+  let creditLines: CreditLine[] = [];
+  if (upgradeHasCredit(samePlan, period.full)) {
+    const invoices = await manager.find(BillingDocument, {
+      where: { companyId: company.id, kind: 'invoice' },
+      order: { createdAt: 'ASC' },
+    });
+    creditLines = unusedCredit(
+      invoices.map((doc) => ({
+        number: doc.number,
+        startsOn: doc.startsOn,
+        endsOn: doc.endsOn,
+        valueEgp: round2(
+          (doc.subtotal - doc.discountAmount) * (doc.fxRate ?? 1),
+        ),
+      })),
+      today,
+      cairoDateOf(company.endsAt!),
+    );
+  }
+  const creditEgp = round2(
+    creditLines.reduce((sum, line) => sum + line.amountEgp, 0),
+  );
+  return {
+    seats,
+    startsOn: period.startsOn,
+    endsOn: period.endsOn,
+    creditLines,
+    creditAmount: input.fxRate ? round2(creditEgp / input.fxRate) : creditEgp,
+  };
+}
+
 /** The editable part of a quotation, with its totals rebuilt (§4d). */
-function fieldsOf(input: QuotationInput, plan: Plan) {
-  const totals = documentTotals(input);
+function fieldsOf(input: QuotationInput, plan: Plan, terms: QuotationTerms) {
+  const totals = documentTotals({ ...input, creditAmount: terms.creditAmount });
   return {
     planId: plan.id,
     planNameEn: plan.nameEn,
     planNameAr: plan.nameAr,
-    seats: input.seats,
+    purpose: input.purpose,
+    seats: terms.seats,
+    extraSeats: input.extraSeats,
+    extraSeatPrice: input.extraSeatPrice,
+    extraSeatsAmount: totals.extraSeatsAmount,
+    creditAmount: totals.creditAmount,
+    creditLines: terms.creditLines,
     months: input.months,
-    startsOn: input.startsOn,
-    endsOn: input.endsOn,
+    startsOn: terms.startsOn,
+    endsOn: terms.endsOn,
     currency: input.currency,
     fxRate: input.fxRate,
     fxDate: input.fxRate === null ? null : cairoDateOf(new Date()),
-    unitPrice: totals.subtotal,
+    unitPrice: round2(input.unitPrice),
     subtotal: totals.subtotal,
     discountKind: input.discountKind,
     discountValue: input.discountValue,
@@ -725,7 +1118,13 @@ function copyOf(q: BillingDocument): Partial<BillingDocument> {
     planId: q.planId,
     planNameEn: q.planNameEn,
     planNameAr: q.planNameAr,
+    purpose: q.purpose,
     seats: q.seats,
+    extraSeats: q.extraSeats,
+    extraSeatPrice: q.extraSeatPrice,
+    extraSeatsAmount: q.extraSeatsAmount,
+    creditAmount: q.creditAmount,
+    creditLines: q.creditLines,
     months: q.months,
     currency: q.currency,
     fxRate: q.fxRate,
@@ -743,6 +1142,22 @@ function copyOf(q: BillingDocument): Partial<BillingDocument> {
     seller: q.seller,
     buyer: q.buyer,
   };
+}
+
+/**
+ * The company's currency and VAT are only the next quotation's starting
+ * values, set by saving a quotation (payment cycle 2.2b, Mario 2026-11-04).
+ */
+async function rememberPricing(
+  manager: EntityManager,
+  companyId: string,
+  input: Pick<QuotationInput, 'currency' | 'vatRate'>,
+): Promise<void> {
+  await manager.update(
+    Company,
+    { id: companyId },
+    { currency: input.currency, vatRate: input.vatRate },
+  );
 }
 
 async function lockDocument(
@@ -779,6 +1194,8 @@ async function sellerOf(manager: EntityManager): Promise<DocumentSeller> {
     bankAccount: row.bankAccount,
     instapay: row.instapay,
     logoFileId: row.logoFileId,
+    activityCode: row.activityCode,
+    etaAddress: etaAddressOf(row),
   };
 }
 
@@ -829,4 +1246,11 @@ function csvCell(value: string | number): string {
   // A leading = + - @ would run as a formula in a spreadsheet.
   const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
+function isUniqueViolation(error: unknown, constraint: string): boolean {
+  const driver = (
+    error as { driverError?: { code?: string; constraint?: string } }
+  )?.driverError;
+  return driver?.code === '23505' && driver.constraint === constraint;
 }

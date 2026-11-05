@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
-export type DashboardListTab = 'leads' | 'endingSoon' | 'unpaid' | 'expired'
+export type DashboardListTab = 'leads' | 'endingSoon' | 'unpaid' | 'ended'
 
 /** The tab strip over the dashboard's Leads card (B22, board bill-dash-c-tab). */
 export function DashboardListTabs({
@@ -20,7 +20,7 @@ export function DashboardListTabs({
   counts: Partial<Record<DashboardListTab, number>>
 }) {
   const { t } = useTranslation('admin')
-  const tabs: DashboardListTab[] = ['leads', 'endingSoon', 'unpaid', 'expired']
+  const tabs: DashboardListTab[] = ['leads', 'endingSoon', 'unpaid', 'ended']
   return (
     <div role="tablist" aria-label={t('dashboardPage.lists.label')} className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-0.5">
       {tabs.map((key) => (
@@ -40,7 +40,7 @@ export function DashboardListTabs({
             <span
               className={cn(
                 'rounded-full px-1.5 text-[11px]',
-                key === 'expired' ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary',
+                key === 'ended' ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary',
               )}
             >
               {counts[key]}
@@ -52,7 +52,7 @@ export function DashboardListTabs({
   )
 }
 
-/** Ending soon, Unpaid quotations or Expired, in the Leads card's place. */
+/** Ending soon, Unpaid quotations or Ended (now on Free), in the Leads card's place. */
 export function BillingListsCard({
   tab,
   tabs,
@@ -134,7 +134,7 @@ export function BillingListsCard({
                       )}
                     >
                       {c.daysLeft < 0
-                        ? t('dashboardPage.lists.expiredAgo', { count: -c.daysLeft })
+                        ? t('dashboardPage.lists.endedAgo', { count: -c.daysLeft })
                         : t('dashboardPage.lists.daysLeft', { count: c.daysLeft })}
                     </TableCell>
                   </TableRow>

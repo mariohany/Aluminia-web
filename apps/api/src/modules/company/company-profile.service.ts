@@ -125,6 +125,12 @@ function toProfile(
     taxId: row?.taxId ?? null,
     commercialRegister: row?.commercialRegister ?? null,
     logoFileId: row?.logoFileId ?? null,
+    buyerType: row?.buyerType ?? null,
+    etaCountry: row?.etaCountry ?? null,
+    etaGovernorate: row?.etaGovernorate ?? null,
+    etaCity: row?.etaCity ?? null,
+    etaStreet: row?.etaStreet ?? null,
+    etaBuilding: row?.etaBuilding ?? null,
     updatedAt: row?.updatedAt.toISOString() ?? null,
   };
 }

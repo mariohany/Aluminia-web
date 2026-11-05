@@ -81,6 +81,7 @@ export function day(iso: string): [string, string] {
 export function billingDocument(input: BillingPdfInput): ReactElement<DocumentProps> {
   const doc = input.document
   const invoice = doc.kind === 'invoice'
+  const upgrade = doc.purpose === 'upgrade'
   const { seller, buyer, totals } = doc
   const cur = doc.currency
   const [issuedEn, issuedAr] = day(doc.createdAt)
@@ -117,7 +118,14 @@ export function billingDocument(input: BillingPdfInput): ReactElement<DocumentPr
     ),
   )
 
-  const [titleEn, titleAr] = invoice ? ['Tax invoice', 'فاتورة ضريبية'] : ['Quotation', 'عرض سعر']
+  // Payment cycle P30: a renewal or an upgrade says so on the quotation.
+  const [titleEn, titleAr] = invoice
+    ? ['Tax invoice', 'فاتورة ضريبية']
+    : doc.purpose === 'renewal'
+      ? ['Renewal quotation', 'عرض سعر تجديد']
+      : doc.purpose === 'upgrade'
+        ? ['Upgrade quotation', 'عرض سعر ترقية']
+        : ['Quotation', 'عرض سعر']
   const title = row(
     { alignItems: 'flex-end', justifyContent: 'space-between', paddingTop: px(22), paddingBottom: px(16) },
     col({ gap: px(2) }, en(titleEn, { fontSize: px(26), fontWeight: 700 }), num(doc.number, { fontSize: px(13) })),
@@ -177,18 +185,41 @@ export function billingDocument(input: BillingPdfInput): ReactElement<DocumentPr
         { flex: 3, padding: px(10), gap: px(2) },
         row(
           { justifyContent: 'space-between', gap: px(8) },
-          en(`Aluminia ${doc.plan.nameEn} — ${doc.months} ${doc.months === 1 ? 'month' : 'months'}`, { fontSize: px(11.5), fontWeight: 700 }),
-          ar(
-            `باقة ${doc.plan.nameAr} — ${doc.months === 1 ? 'شهر واحد' : `${doc.months} ${doc.months === 12 ? 'شهرًا' : 'أشهر'}`}`,
-            { fontSize: px(11.5), fontWeight: 600 },
-          ),
+          upgrade
+            ? en(`Upgrade to Aluminia ${doc.plan.nameEn}`, { fontSize: px(11.5), fontWeight: 700 })
+            : en(`Aluminia ${doc.plan.nameEn} — ${doc.months} ${doc.months === 1 ? 'month' : 'months'}`, { fontSize: px(11.5), fontWeight: 700 }),
+          upgrade
+            ? ar(`ترقية إلى باقة ${doc.plan.nameAr}`, { fontSize: px(11.5), fontWeight: 600 })
+            : ar(
+                `باقة ${doc.plan.nameAr} — ${doc.months === 1 ? 'شهر واحد' : `${doc.months} ${doc.months === 12 ? 'شهرًا' : 'أشهر'}`}`,
+                { fontSize: px(11.5), fontWeight: 600 },
+              ),
         ),
         en(`${startEn} – ${endEn}`, { fontSize: px(10.5), color: C.mute }),
       ),
-      col({ flex: 1, padding: px(10), ...right }, num(String(doc.months), { fontSize: px(11) })),
-      col({ flex: 1, padding: px(10), ...right }, num(String(doc.seats), { fontSize: px(11) })),
-      col({ flex: 1.3, padding: px(10), ...right }, num(amount(totals.subtotal), { fontSize: px(11) })),
+      // An upgrade's period is its dates, not whole months (P11).
+      col({ flex: 1, padding: px(10), ...right }, num(upgrade ? '—' : String(doc.months), { fontSize: px(11) })),
+      col({ flex: 1, padding: px(10), ...right }, num(String(doc.seats - doc.extraSeats), { fontSize: px(11) })),
+      col({ flex: 1.3, padding: px(10), ...right }, num(amount(doc.unitPrice), { fontSize: px(11) })),
     ),
+    // P15: extra seats above the plan's own, at a hand-typed price each.
+    doc.extraSeats > 0
+      ? row(
+          { borderBottomWidth: px(1), borderBottomColor: C.line },
+          col(
+            { flex: 3, padding: px(10), gap: px(2) },
+            row(
+              { justifyContent: 'space-between', gap: px(8) },
+              en('Extra seats', { fontSize: px(11.5), fontWeight: 700 }),
+              ar('مستخدمين إضافيين', { fontSize: px(11.5), fontWeight: 600 }),
+            ),
+            en(`${doc.extraSeats} × ${cur} ${amount(doc.extraSeatPrice)}`, { fontSize: px(10.5), color: C.mute }),
+          ),
+          col({ flex: 1, padding: px(10), ...right }, num('—', { fontSize: px(11) })),
+          col({ flex: 1, padding: px(10), ...right }, num(String(doc.extraSeats), { fontSize: px(11) })),
+          col({ flex: 1.3, padding: px(10), ...right }, num(amount(totals.extraSeatsAmount), { fontSize: px(11) })),
+        )
+      : null,
   )
 
   const totalRow = (english: string, arabic: string, value: string, opts: { bold?: boolean; color?: string } = {}) =>
@@ -203,16 +234,28 @@ export function billingDocument(input: BillingPdfInput): ReactElement<DocumentPr
       ar(arabic, { flex: 1, fontSize: px(opts.bold ? 14 : 11), fontWeight: opts.bold ? 700 : 400, color: opts.color ?? C.ink }),
       num(value, { width: px(110), textAlign: 'right', fontSize: px(opts.bold ? 15 : 11.5), fontWeight: opts.bold ? 700 : 400, color: opts.color ?? C.ink }),
     )
+  const creditDetail = doc.credit
+    .map((line) => `${line.invoiceNumber} · ${line.daysLeft} of ${line.days} days`)
+    .join(', ')
   const discountLabel =
     doc.discountKind === 'percent' ? [`Discount ${doc.discountValue} %`, 'خصم'] : ['Discount', 'خصم']
-  const taxable = totals.subtotal - totals.discountAmount
+  const taxable = totals.subtotal - totals.discountAmount - totals.creditAmount
   const totalsBlock = col(
     { marginLeft: 'auto', width: px(380), marginTop: px(10) },
     totalRow('Subtotal', 'الإجمالي قبل الخصم', amount(totals.subtotal)),
     totals.discountAmount > 0
       ? totalRow(discountLabel[0]!, discountLabel[1]!, `-${amount(totals.discountAmount)}`, { color: C.paid })
       : null,
-    totals.discountAmount > 0 ? totalRow('Taxable amount', 'المبلغ الخاضع للضريبة', amount(taxable)) : null,
+    // P11: the credit for the unused days of what was paid, its own line.
+    totals.creditAmount > 0
+      ? totalRow('Credit for unused days', 'رصيد الأيام غير المستخدمة', `-${amount(totals.creditAmount)}`, { color: C.paid })
+      : null,
+    totals.creditAmount > 0 && creditDetail
+      ? en(creditDetail, { fontSize: px(9.5), color: C.mute, marginTop: px(-4), paddingBottom: px(4) })
+      : null,
+    totals.discountAmount > 0 || totals.creditAmount > 0
+      ? totalRow('Taxable amount', 'المبلغ الخاضع للضريبة', amount(taxable))
+      : null,
     totalRow(`VAT ${doc.vatRate} %`, 'ضريبة القيمة المضافة', amount(totals.vatAmount)),
     totalRow(`Total ${cur}`, `الإجمالي بال${CURRENCY_AR[cur] ?? cur}`, amount(totals.total), { bold: true }),
     doc.fxRate

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useForm, useWatch } from 'react-hook-form'
+import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -12,6 +12,7 @@ import {
   type RequiredProfileField,
 } from '@repo/types/company-profile'
 import { FILE_PURPOSE_LIMITS, FilePurpose } from '@repo/types/files'
+import { ETA_BUYER_TYPES, type EtaBuyerType } from '@repo/types/eta'
 import { apiErrorMessage } from '@/lib/api-client'
 import { optionalTextField } from '@/lib/form-fields'
 import { uploadFile } from '@/lib/files-api'
@@ -19,6 +20,7 @@ import { useFileObjectUrl } from '@/lib/files-queries'
 import { useCompanyProfileQuery, useUpdateCompanyProfileMutation } from '@/lib/company-profile-queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { FieldLabel } from '@/components/workspace/field-label'
 import { ConfigSectionHeader } from '@/components/workspace/config/config-section-header'
 import { LetterheadPreview } from '@/components/workspace/config/letterhead-preview'
@@ -47,7 +49,19 @@ function toForm(profile: CompanyProfile): ProfileForm {
     website: profile.website,
     taxId: profile.taxId,
     commercialRegister: profile.commercialRegister,
+    buyerType: profile.buyerType,
+    etaCountry: profile.etaCountry,
+    etaGovernorate: profile.etaGovernorate,
+    etaCity: profile.etaCity,
+    etaStreet: profile.etaStreet,
+    etaBuilding: profile.etaBuilding,
   }
+}
+
+/** ETA's country is two capital letters ("eg" → "EG"). */
+const countryField = {
+  setValueAs: (value: unknown): string | null =>
+    typeof value === 'string' && value.trim() ? value.trim().toUpperCase() : null,
 }
 
 /**
@@ -172,7 +186,7 @@ export function ConfigCompanyPage() {
           dir={opts.dir}
           className={opts.mono ? 'mt-1.5 font-mono' : 'mt-1.5'}
           aria-invalid={!!errors[name] || empty}
-          {...register(name, name === 'enName' ? undefined : optionalTextField)}
+          {...register(name, name === 'enName' ? undefined : name === 'etaCountry' ? countryField : optionalTextField)}
         />
         {errors[name] ? (
           <p className="mt-1 text-xs text-destructive">{errors[name].message}</p>
@@ -305,6 +319,45 @@ export function ConfigCompanyPage() {
                     dir: 'ltr',
                     mono: true,
                   })}
+                </ConfigGrid2>
+              </ConfigRow>
+
+              {/* ETA e-invoicing (payment cycle §9, Mario 2026-11-05): optional
+                  for now, beside the printed address; never printed. */}
+              <ConfigRow title={t('config.company.rows.eta.title')} hint={t('config.company.rows.eta.hint')}>
+                <ConfigGrid2>
+                  <div className="min-w-0">
+                    <FieldLabel htmlFor="company-buyerType" optional>
+                      {t('config.company.fields.buyerType')}
+                    </FieldLabel>
+                    <Controller
+                      control={control}
+                      name="buyerType"
+                      render={({ field: buyer }) => (
+                        <Select
+                          value={buyer.value ?? 'none'}
+                          onValueChange={(value) => value && buyer.onChange(value === 'none' ? null : (value as EtaBuyerType))}
+                        >
+                          <SelectTrigger id="company-buyerType" className="mt-1.5 w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">{t('config.company.buyerTypes.none')}</SelectItem>
+                            {ETA_BUYER_TYPES.map((type) => (
+                              <SelectItem key={type} value={type}>
+                                {t(`config.company.buyerTypes.${type}`)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </div>
+                  {field('etaCountry', t('config.company.fields.country'), { dir: 'ltr', mono: true })}
+                  {field('etaGovernorate', t('config.company.fields.governorate'), { dir: 'ltr' })}
+                  {field('etaCity', t('config.company.fields.city'), { dir: 'ltr' })}
+                  {field('etaStreet', t('config.company.fields.street'), { dir: 'ltr' })}
+                  {field('etaBuilding', t('config.company.fields.building'), { dir: 'ltr', mono: true })}
                 </ConfigGrid2>
               </ConfigRow>
 

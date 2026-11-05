@@ -3,6 +3,9 @@ import {
   cairoDateOf,
   daysBetween,
   endOfCairoDay,
+  extendTrialSchema,
+  grantTrialSchema,
+  latestTrialEnd,
   subscriptionState,
   updateSubscriptionSchema,
 } from '@repo/types/subscriptions';
@@ -89,12 +92,13 @@ describe('subscriptionState', () => {
     ).toMatchObject({ kind: 'ending', daysLeft: 0, tone: 'red' });
   });
 
-  it('expires one second after 23:59:59 Cairo', () => {
+  // P10: a paid plan past its end is Free, like a trial.
+  it('is free one second after 23:59:59 Cairo', () => {
     const endsAt = endOfCairoDay('2026-10-27');
     const facts = { planKey: 'pro' as const, endsAt, isTrial: false };
     expect(subscriptionState(facts, endsAt).kind).toBe('ending');
     expect(subscriptionState(facts, new Date(endsAt.getTime() + 1000))).toEqual(
-      { kind: 'expired', endDate: '2026-10-27' },
+      { kind: 'free' },
     );
   });
 
@@ -122,10 +126,7 @@ describe('updateSubscriptionSchema', () => {
     planKey: 'pro',
     maxUsers: 5,
     endDate: '2027-01-16',
-    isTrial: false,
-    currency: 'EGP',
-    vatRate: 14,
-    note: null,
+    reason: 'A gift',
     keepAdminId: null,
   };
 
@@ -143,16 +144,43 @@ describe('updateSubscriptionSchema', () => {
     ).toBe(true);
   });
 
-  it('refuses a trial on Free and a currency outside the list', () => {
+  // P27 + 2.2b: a reason is required; trials and currency / VAT live elsewhere.
+  it('needs a reason and refuses trial, currency and VAT fields', () => {
+    for (const reason of ['', '   ']) {
+      expect(
+        updateSubscriptionSchema.safeParse({ ...base, reason }).success,
+      ).toBe(false);
+    }
+    for (const extra of [
+      { isTrial: true },
+      { currency: 'EGP' },
+      { vatRate: 14 },
+    ]) {
+      expect(
+        updateSubscriptionSchema.safeParse({ ...base, ...extra }).success,
+      ).toBe(false);
+    }
+  });
+});
+
+describe('trial inputs', () => {
+  it('grants only paid plans for 1 to 90 days', () => {
     expect(
-      updateSubscriptionSchema.safeParse({
-        ...base,
-        planKey: 'free',
-        isTrial: true,
-      }).success,
-    ).toBe(false);
+      grantTrialSchema.safeParse({ planKey: 'pro', days: 14 }).success,
+    ).toBe(true);
     expect(
-      updateSubscriptionSchema.safeParse({ ...base, currency: 'GBP' }).success,
+      grantTrialSchema.safeParse({ planKey: 'free', days: 14 }).success,
     ).toBe(false);
+    for (const days of [0, 91, 1.5]) {
+      expect(grantTrialSchema.safeParse({ planKey: 'pro', days }).success).toBe(
+        false,
+      );
+      expect(extendTrialSchema.safeParse({ days }).success).toBe(false);
+    }
+  });
+
+  it('caps an extended trial 90 days after today, Cairo time', () => {
+    // 22:30 UTC on 4 Nov is already 5 Nov in Cairo (UTC+2).
+    expect(latestTrialEnd(new Date('2026-11-04T22:30:00Z'))).toBe('2027-02-03');
   });
 });

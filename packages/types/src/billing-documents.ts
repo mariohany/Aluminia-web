@@ -200,11 +200,14 @@ export interface CreditLine {
 /** P11 (Mario 2026-11-05): the unused days of every paid period still
  * running on `today` (today counts as unused), at what was paid for it.
  * `sources` are in issue order: a day two invoices cover (an earlier
- * upgrade over the original period) is credited once, by the later one. */
-export function unusedCredit(sources: CreditSource[], today: string): CreditLine[] {
-  const running = sources.filter((source) => source.endsOn >= today)
+ * upgrade over the original period) is credited once, by the later one.
+ * Only days up to the company's `currentEnd` count: a period cut short
+ * (moved to Free, the special case) left the client none after it. */
+export function unusedCredit(sources: CreditSource[], today: string, currentEnd: string): CreditLine[] {
+  const running = sources.filter((source) => source.endsOn >= today && source.startsOn <= currentEnd)
   if (running.length === 0) return []
-  const last = running.reduce((max, source) => (source.endsOn > max ? source.endsOn : max), today)
+  const latest = running.reduce((max, source) => (source.endsOn > max ? source.endsOn : max), today)
+  const last = latest < currentEnd ? latest : currentEnd
   const counted = new Map<number, number>()
   for (let day = today; day <= last; day = addDays(day, 1)) {
     for (let i = running.length - 1; i >= 0; i--) {

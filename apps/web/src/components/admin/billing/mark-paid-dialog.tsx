@@ -11,7 +11,7 @@ import {
   type BillingDocumentSummary,
   type MarkPaidInput,
 } from '@repo/types/billing-documents'
-import { cairoDateOf } from '@repo/types/subscriptions'
+import { addDays, cairoDateOf, daysBetween } from '@repo/types/subscriptions'
 import { apiErrorCode, apiErrorMessage } from '@/lib/api-client'
 import { planName } from '@/lib/bilingual'
 import { useMarkPaidMutation, useSendDefaultsQuery, useSendDocumentMutation } from '@/lib/billing-queries'
@@ -35,16 +35,21 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
  * then the invoice is emailed by itself to its default recipients (P23);
  * if that fails the dialog says so, with Retry and `onEmail` (the email
  * step alone).
+ *
+ * Keyed by the open quotation, so every opening starts fresh: a payment
+ * undone and recorded again never shows the deleted invoice (bug-148).
  */
-export function MarkPaidDialog({
-  document,
-  onOpenChange,
-  onEmail,
-}: {
+export function MarkPaidDialog(props: MarkPaidDialogProps) {
+  return <MarkPaidDialogBody key={props.document?.id ?? 'closed'} {...props} />
+}
+
+interface MarkPaidDialogProps {
   document: BillingDocumentSummary | null
   onOpenChange: (open: boolean) => void
   onEmail?: (invoice: BillingDocumentSummary) => void
-}) {
+}
+
+function MarkPaidDialogBody({ document, onOpenChange, onEmail }: MarkPaidDialogProps) {
   const { t, i18n } = useTranslation('admin')
   const pay = useMarkPaidMutation()
   // After the payment: the invoice being emailed (P23), for this quotation.
@@ -56,7 +61,7 @@ export function MarkPaidDialog({
     handleSubmit,
     formState: { errors },
   } = useForm<MarkPaidInput>({ resolver: zodResolver(markPaidSchema) })
-  const [amountReceived, note] = useWatch({ control, name: ['amountReceived', 'note'] })
+  const [amountReceived, note, paidOn] = useWatch({ control, name: ['amountReceived', 'note', 'paidOn'] })
 
   useEffect(() => {
     if (document) {
@@ -95,6 +100,13 @@ export function MarkPaidDialog({
   const money = new Intl.NumberFormat(i18n.language, { style: 'currency', currency: document.currency })
   const date = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeZone: 'UTC' })
   const day = (iso: string) => date.format(new Date(`${iso}T00:00:00Z`))
+  // B8: a "new" quotation (Free or a trial) always starts on the payment
+  // day, so its real period is known here; a renewal keeps the quoted one
+  // (the day after the running plan) and an upgrade the quoted end.
+  const fromPayment = document.purpose === 'new' && /^\d{4}-\d{2}-\d{2}$/.test(paidOn ?? '')
+  const period = fromPayment
+    ? { startsOn: paidOn, endsOn: addDays(paidOn, daysBetween(document.startsOn, document.endsOn)) }
+    : { startsOn: document.startsOn, endsOn: document.endsOn }
 
   async function onSubmit(input: MarkPaidInput) {
     if (!document) return
@@ -224,13 +236,15 @@ export function MarkPaidDialog({
               {t('markPaid.renewed', {
                 plan: planName(document.plan, i18n.language),
                 seats: document.seats,
-                start: day(document.startsOn),
-                end: day(document.endsOn),
+                start: day(period.startsOn),
+                end: day(period.endsOn),
               })}
             </span>
-            <span className="text-xs text-muted-foreground">
-              {t(document.purpose === 'upgrade' ? 'markPaid.upgradeNote' : 'markPaid.startNote')}
-            </span>
+            {!fromPayment && (
+              <span className="text-xs text-muted-foreground">
+                {t(document.purpose === 'upgrade' ? 'markPaid.upgradeNote' : 'markPaid.startNote')}
+              </span>
+            )}
           </div>
 
           <p className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -302,7 +316,10 @@ function InvoiceMailer({
   const stuck = failed || drawFailed || defaults.isError || noRecipients
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      {/* The payment form unmounting hands focus back to the row's ⋯
+          button, outside this dialog: without this it could close before the
+          invoice was drawn and sent (bug-148). */}
+      <DialogContent className="sm:max-w-md" onFocusOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{t('markPaid.recordedTitle', { number: invoice.number })}</DialogTitle>
           <DialogDescription>{t('markPaid.recordedDescription')}</DialogDescription>

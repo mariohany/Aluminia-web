@@ -100,7 +100,7 @@ export function TransactionsPage() {
     {
       key: 'company',
       header: t('transactions.company'),
-      width: '1.6fr',
+      width: '1.4fr',
       cell: (d) => (
         <Link to={`/app/companies/${d.company.id}?tab=billing`} className="font-medium text-foreground hover:underline">
           {i18n.language === 'ar' && d.company.nameAr ? d.company.nameAr : d.company.name}
@@ -111,7 +111,8 @@ export function TransactionsPage() {
     {
       key: 'total',
       header: t('documents.total'),
-      width: '1fr',
+      // Wide enough for "Received EGP 80,700.00 (−EGP 12.00)" under the total.
+      width: '1.8fr',
       className: 'text-end font-mono text-[13px]',
       cell: (d) => (
         <>

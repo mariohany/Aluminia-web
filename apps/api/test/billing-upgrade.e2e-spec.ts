@@ -220,6 +220,7 @@ describe('Billing upgrades (e2e)', () => {
         },
       ],
       today,
+      firstInvoice.endsOn,
     );
     expect(q).toMatchObject({
       purpose: 'upgrade',

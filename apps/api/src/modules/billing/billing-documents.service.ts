@@ -21,6 +21,7 @@ import {
   type DocumentParty,
   type DocumentSeller,
   type MarkPaidInput,
+  type PaymentMethod,
   type VoidQuotationInput,
   type QuotationInput,
   type SendDocumentInput,
@@ -79,6 +80,14 @@ const CSV_LIMIT = 10_000;
  *   payment day; the quotation's length kept). An expired quotation can't
  *   be paid (Q3).
  */
+/** How a payment method reads in the (English) billing history note. */
+const METHOD_LABELS: Record<PaymentMethod, string> = {
+  bank_transfer: 'Bank transfer',
+  instapay: 'InstaPay',
+  cash: 'Cash',
+  cheque: 'Cheque',
+};
+
 @Injectable()
 export class BillingDocumentsService {
   constructor(
@@ -543,7 +552,7 @@ export class BillingDocumentsService {
         isTrial: company.isTrial,
         reason: 'payment_undone',
         documentId: invoice.quotationId,
-        notes: `${invoice.number} · ${invoice.paymentMethod ?? ''} · ref ${invoice.paymentReference ?? '—'} · ${invoice.currency} ${invoice.amountReceived ?? 0} — ${input.reason}`,
+        notes: `${invoice.number} · ${invoice.paymentMethod ? METHOD_LABELS[invoice.paymentMethod] : ''} · ref ${invoice.paymentReference ?? '—'} · ${invoice.currency} ${(invoice.amountReceived ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} — ${input.reason}`,
         actorId,
       });
       await this.auditLog.record(manager, {
@@ -1053,6 +1062,7 @@ async function termsOf(
         ),
       })),
       today,
+      cairoDateOf(company.endsAt!),
     );
   }
   const creditEgp = round2(

@@ -58,7 +58,7 @@ describe('unusedCredit', () => {
   };
 
   it('credits the unused days, today included, at what was paid', () => {
-    expect(unusedCredit([pro], '2026-11-04')).toEqual([
+    expect(unusedCredit([pro], '2026-11-04', '2026-12-31')).toEqual([
       {
         invoiceNumber: 'INV-2026-0043',
         daysLeft: 58,
@@ -81,7 +81,7 @@ describe('unusedCredit', () => {
       endsOn: '2026-09-30',
       startsOn: '2026-07-01',
     };
-    const lines = unusedCredit([old, pro, renewal], '2026-11-04');
+    const lines = unusedCredit([old, pro, renewal], '2026-11-04', '2027-03-31');
     expect(lines.map((l) => [l.invoiceNumber, l.daysLeft])).toEqual([
       ['INV-2026-0043', 58],
       ['INV-2026-0050', 90],
@@ -96,7 +96,7 @@ describe('unusedCredit', () => {
       endsOn: '2026-12-31',
       valueEgp: 24965.22,
     };
-    const lines = unusedCredit([pro, upgrade], '2026-12-01');
+    const lines = unusedCredit([pro, upgrade], '2026-12-01', '2026-12-31');
     expect(lines).toEqual([
       {
         invoiceNumber: 'INV-2026-0044',
@@ -104,6 +104,20 @@ describe('unusedCredit', () => {
         days: 58,
         amountEgp: 13343.48,
       },
+    ]);
+  });
+
+  it('counts no day after the current end (a period cut short by a move to Free)', () => {
+    const ahead = {
+      number: 'INV-2026-0050',
+      startsOn: '2027-01-01',
+      endsOn: '2027-03-31',
+      valueEgp: 18000,
+    };
+    // Moved to Free, then paid again: the plan now ends on 15 Dec.
+    const lines = unusedCredit([pro, ahead], '2026-11-04', '2026-12-15');
+    expect(lines.map((l) => [l.invoiceNumber, l.daysLeft])).toEqual([
+      ['INV-2026-0043', 42],
     ]);
   });
 });

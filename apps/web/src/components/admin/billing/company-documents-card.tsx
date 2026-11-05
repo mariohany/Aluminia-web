@@ -173,7 +173,7 @@ export function CompanyDocumentsCard({ company }: { company: CompanyDetail }) {
                             <MoreHorizontal aria-hidden="true" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align="end" className="w-auto min-w-40 whitespace-nowrap">
                           <DropdownMenuItem onSelect={() => setViewing(doc)}>
                             <FileText aria-hidden="true" />
                             {t('documents.actions.pdf')}

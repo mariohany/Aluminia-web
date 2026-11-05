@@ -308,6 +308,7 @@ export function QuotationDialog({
             valueEgp: round2((d.totals.subtotal - d.totals.discountAmount) * (d.fxRate ?? 1)),
           })),
           today,
+          ctx.currentEnd,
         )
       : []
   const creditEgp = round2(credit.reduce((sum, line) => sum + line.amountEgp, 0))

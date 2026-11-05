@@ -59,6 +59,8 @@ function useSubscriptionChange<T>(change: (input: T) => Promise<CompanyDetail>, 
       void queryClient.invalidateQueries({ queryKey: companiesKey })
       void queryClient.invalidateQueries({ queryKey: dashboardKey })
       void queryClient.invalidateQueries({ queryKey: ['users'] })
+      // Trials and plan changes move Billing › To-do.
+      void queryClient.invalidateQueries({ queryKey: ['billing', 'todo'] })
     },
   })
 }

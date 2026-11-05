@@ -924,14 +924,14 @@
     "daysLeft_other": "{{count}} days left · 23:59 Cairo time",
     "seats": "Seats",
     "seatsUsed": "{{active}} active · {{used}} of {{max}} seats",
-    "renewal": "Renewal",
-    "quotationSent": "Quotation sent {{date}}",
     "howToRenew": "To renew, pay the quotation and send the transfer reference to",
     "howToRenewAfter": "Your end date moves as soon as it's confirmed.",
     "howToRenewNoEmail": "To renew, ask Aluminia for a quotation. Your end date moves as soon as the payment is confirmed.",
-    "documents": "Quotations & invoices",
-    "noDocuments": "Nothing yet: quotations and invoices from Aluminia show here.",
-    "inYourPlan": "In your plan"
+    "documents": "Invoices",
+    "noDocuments": "Nothing yet: your invoices from Aluminia show here.",
+    "inYourPlan": "In your plan",
+    "lastPayment": "Last payment",
+    "paidOn": "Paid {{date}}"
   },
   "expiryBar": {
     "title_one": "{{company}}'s subscription ends in {{count}} day",

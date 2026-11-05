@@ -14,7 +14,8 @@
       "catalogue": "Catalogue",
       "system": "System",
       "billing": "Billing"
-    }
+    },
+    "todo": "To-do"
   },
   "sidebar": {
     "openMenu": "Open menu",
@@ -930,5 +931,36 @@
     "done_one": "Payment undone. The cancellation was emailed to {{count}} address.",
     "done_other": "Payment undone. The cancellation was emailed to {{count}} addresses.",
     "doneNotEmailed": "Payment undone, but the cancellation email to the client didn’t go out: tell them yourself."
+  },
+  "todo": {
+    "title": "To-do",
+    "subtitle": "What needs you in billing now. Each row opens the company’s Billing tab.",
+    "error": "Couldn’t load the to-do list. Try again.",
+    "empty": "Nothing to do: no quotation waiting, no plan ending without a renewal quotation.",
+    "nothing": "Nothing here.",
+    "endsOn": "ends {{date}}",
+    "daysLeft_one": "{{count}} day left",
+    "daysLeft_other": "{{count}} days left",
+    "waiting": {
+      "title": "Waiting for payment",
+      "hint": "Sent quotations not paid yet, oldest first.",
+      "sent_one": "sent {{count}} day ago",
+      "sent_other": "sent {{count}} days ago",
+      "expires_one": "expires in {{count}} day",
+      "expires_other": "expires in {{count}} days"
+    },
+    "ending": {
+      "title": "Ending, no renewal quotation",
+      "hint": "Paid plans ending within 30 days with no renewal or upgrade quotation sent."
+    },
+    "trials": {
+      "title": "Trials ending",
+      "hint": "Trials ending within 7 days.",
+      "plan": "{{plan}} trial"
+    },
+    "differences": {
+      "title": "Paid a different amount",
+      "hint": "Payments of the last 30 days that didn’t match their total."
+    }
   }
 }

@@ -258,7 +258,7 @@ describe('Billing email (e2e)', () => {
     );
     expect(sends.map((s) => s.error)).toEqual([null, 'daily limit reached']);
 
-    // Its admins see it once sent, never a draft (B24); plain users don't.
+    // Its admins see invoices only (P13, replaces B24); plain users nothing.
     const draft = await request(server())
       .post(`/admin/companies/${companyId}/quotations`)
       .set(as(superToken))
@@ -286,10 +286,12 @@ describe('Billing email (e2e)', () => {
         .set(as(adminToken))
         .expect(200)
     ).body as BillingDocumentSummary[];
-    expect(own.map((d) => d.id)).toEqual([quotation.id]);
+    // Invoices only (payment cycle P13): no quotation, sent or draft.
+    expect(own.map((d) => d.id)).not.toContain(quotation.id);
     expect(own.map((d) => d.id)).not.toContain(
       (draft.body as BillingDocumentSummary).id,
     );
+    expect(own.every((d) => d.kind === 'invoice')).toBe(true);
     await request(server())
       .get('/company/billing/documents')
       .set(as(userToken))

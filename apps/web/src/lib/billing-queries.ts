@@ -39,6 +39,12 @@ export function useTransactionsInfiniteQuery(filters: TransactionsFilters) {
   })
 }
 
+/** Billing › To-do and its sidebar badge; under the billing key, so any
+ * document change refreshes it (subscription changes do too). */
+export function useBillingTodoQuery() {
+  return useQuery({ queryKey: [...billingKey, 'todo'] as const, queryFn: billingApi.getBillingTodo })
+}
+
 export function useTransactionsSummaryQuery() {
   return useQuery({ queryKey: [...transactionsKey, 'summary'] as const, queryFn: billingApi.getTransactionsSummary })
 }

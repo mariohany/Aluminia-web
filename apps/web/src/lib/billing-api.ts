@@ -11,6 +11,7 @@ import type {
   UndoPaymentResult,
   VoidQuotationInput,
 } from '@repo/types/billing-documents'
+import type { BillingTodo } from '@repo/types/billing-todo'
 import type { BillingCurrency } from '@repo/types/subscriptions'
 import { apiFetch } from '@/lib/api-client'
 
@@ -46,6 +47,11 @@ export function voidQuotation(id: string, input: VoidQuotationInput): Promise<Bi
 
 export function markPaid(id: string, input: MarkPaidInput): Promise<BillingDocumentSummary> {
   return apiFetch<BillingDocumentSummary>(`/admin/billing/documents/${id}/pay`, { method: 'POST', body: input })
+}
+
+// Billing › To-do (payment cycle §8).
+export function getBillingTodo(): Promise<BillingTodo> {
+  return apiFetch<BillingTodo>('/admin/billing/todo')
 }
 
 // Payment cycle P22: the same-day undo of the latest invoice.

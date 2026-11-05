@@ -18,10 +18,11 @@ import { DocumentPdfDialog } from '@/components/billing/document-pdf-dialog'
 import { DocumentStatusPill } from '@/components/billing/document-status'
 
 /**
- * Config › Subscription (docs/subscriptions_planing.md B24, board
- * `bill-ws-sub`), company admins only: the plan, its end, seats, the
- * quotations and invoices Aluminia sent (each as a PDF), what the plan
- * includes, and how to renew. Read-only: changes are made by Aluminia.
+ * Config › Subscription (docs/subscriptions_planing.md, board
+ * `bill-ws-sub`; payment cycle P13), company admins only: the plan, its
+ * end, seats, the last payment, the invoices (each as a PDF), what the
+ * plan includes, and how to renew. Quotations reach the client by email
+ * only. Read-only: changes are made by Aluminia.
  */
 export function ConfigSubscriptionPage() {
   const { t, i18n } = useTranslation('workspace')
@@ -40,7 +41,8 @@ export function ConfigSubscriptionPage() {
     new Intl.NumberFormat(i18n.language, { style: 'currency', currency: d.currency }).format(d.totals.total)
 
   const state = subscription?.state
-  const renewal = documents?.find((d) => d.kind === 'quotation' && d.status === 'sent')
+  // Newest first: the last payment.
+  const lastPaid = documents?.[0]
   const billingEmail = documents?.[0]?.seller.billingEmail
   const seatsShare = subscription ? Math.min(100, (subscription.seatsUsed / subscription.maxUsers) * 100) : 0
 
@@ -116,13 +118,13 @@ export function ConfigSubscriptionPage() {
                 </span>
               </div>
               <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">{t('subscription.renewal')}</span>
+                <span className="text-xs text-muted-foreground">{t('subscription.lastPayment')}</span>
                 <span className="text-sm font-semibold text-foreground">
-                  {renewal ? t('subscription.quotationSent', { date: date(renewal.lastSent?.at ?? renewal.createdAt) }) : '—'}
+                  {lastPaid?.paidOn ? t('subscription.paidOn', { date: date(lastPaid.paidOn) }) : '—'}
                 </span>
-                {renewal && (
+                {lastPaid && (
                   <span className="text-xs text-muted-foreground">
-                    {renewal.number} · {money(renewal)}
+                    {lastPaid.number} · {money(lastPaid)}
                   </span>
                 )}
               </div>

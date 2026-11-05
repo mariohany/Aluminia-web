@@ -32,6 +32,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/jwt-payload';
 import { BillingDocumentsService } from './billing-documents.service';
+import { BillingTodoService } from './billing-todo.service';
+import type { BillingTodo } from '@repo/types/billing-todo';
 import { FxService } from './fx.service';
 import { defaultSubject } from '../../mail/templates';
 
@@ -55,7 +57,14 @@ export class AdminBillingController {
   constructor(
     private readonly documents: BillingDocumentsService,
     private readonly fx: FxService,
+    private readonly todos: BillingTodoService,
   ) {}
+
+  /** Billing › To-do (payment cycle §8): what to act on now. */
+  @Get('billing/todo')
+  todo(): Promise<BillingTodo> {
+    return this.todos.todo();
+  }
 
   @Get('billing/fx')
   quote(@Query() query: FxQueryDto): Promise<FxQuote> {

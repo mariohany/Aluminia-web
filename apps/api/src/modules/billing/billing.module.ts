@@ -14,6 +14,7 @@ import { CompanyBillingController } from './company-billing.controller';
 import { CompanyAlertsService } from './company-alerts.service';
 import { BillingRemindersService } from './billing-reminders.service';
 import { DailyBillingService } from './daily-billing.service';
+import { BillingTodoService } from './billing-todo.service';
 import { FX_SOURCE, FxService, openErApiSource } from './fx.service';
 
 @Module({
@@ -37,6 +38,7 @@ import { FX_SOURCE, FxService, openErApiSource } from './fx.service';
     CompanyAlertsService,
     BillingRemindersService,
     DailyBillingService,
+    BillingTodoService,
     { provide: FX_SOURCE, useValue: openErApiSource },
   ],
   exports: [

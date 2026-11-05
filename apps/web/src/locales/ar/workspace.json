@@ -998,14 +998,14 @@
     "daysLeft_other": "فاضل {{count}} يوم · 11:59 مساءً بتوقيت القاهرة",
     "seats": "المستخدمين",
     "seatsUsed": "{{active}} نشط · {{used}} من {{max}} مقاعد",
-    "renewal": "التجديد",
-    "quotationSent": "عرض السعر اتبعت {{date}}",
     "howToRenew": "عشان تجدد، ادفع عرض السعر وابعت رقم التحويل على",
     "howToRenewAfter": "تاريخ الانتهاء بيتغير أول ما الدفع يتأكد.",
     "howToRenewNoEmail": "عشان تجدد، اطلب عرض سعر من Aluminia. تاريخ الانتهاء بيتغير أول ما الدفع يتأكد.",
-    "documents": "عروض الأسعار والفواتير",
-    "noDocuments": "لسه مفيش: عروض الأسعار والفواتير من Aluminia بتظهر هنا.",
-    "inYourPlan": "في باقتك"
+    "documents": "الفواتير",
+    "noDocuments": "لسه مفيش: فواتيرك من Aluminia هتظهر هنا.",
+    "inYourPlan": "في باقتك",
+    "lastPayment": "آخر دفعة",
+    "paidOn": "اتدفعت {{date}}"
   },
   "expiryBar": {
     "title_zero": "اشتراك {{company}} بيخلص النهارده",
